@@ -65,7 +65,7 @@ graph TD
 | 2. Queue | Upload → Redis → Celery | Async task enqueue, return `task_id` |
 | 3. Parse | Worker → Parser → OCR fallback | Native text extraction first, OCR only for image-only pages, extract text + structure |
 | 4. Index | TreeBuilder → Embedder → DB | Build document tree: document → page → section, store full sections |
-| 5. Query | Client → ChatSvc → Router | Extract tenant_id, navigate tree, retrieve sections |
+| 5. Query | Client → ChatSvc → Router | Use the project scope, navigate tree, retrieve sections |
 | 6. Generate | Retriever → AIProvider → SSE | Rerank, generate with citations, stream response |
 
 ## Service Separation
@@ -103,7 +103,7 @@ Target production default is `AI_PROVIDER=vllm`. During the current demo phase, 
 
 | Phase | Purpose | Provider | Invariants |
 |-------|---------|----------|------------|
-| Phase 1 | Demo / rapid delivery | Google AI Studio adapter | Same hierarchical RAG pipeline, same `tenant_id`, same REST/SSE APIs |
+| Phase 1 | Demo / rapid delivery | Google AI Studio adapter | Same hierarchical RAG pipeline and same REST/SSE APIs |
 | Phase 2 | On-prem production | `vLLM` + quantized Qwen2.5 | Same application contracts; only provider and infrastructure change |
 
 ## Implementation Invariants
@@ -114,7 +114,7 @@ Target production default is `AI_PROVIDER=vllm`. During the current demo phase, 
 | Ingestion model | MUST try native text extraction first, then OCR fallback for scanned PDFs/images |
 | Provider boundary | MUST isolate LLM calls behind `AIProvider`; application code MUST NOT call Google or `vLLM` SDKs directly outside adapters |
 | API stability | MUST keep `/upload`, `/status/{task_id}`, `/chat`, `/documents/{document_id}` stable across demo and production phases |
-| Tenancy | MUST propagate `tenant_id` from auth layer to DB session before any tenant-scoped query |
+| Workspace scope | MUST propagate the project scope from auth layer to DB session before any scoped query |
 | Citation model | MUST generate answers from retrieved full sections and return citations tied to stored nodes |
 | Async ingestion | MUST keep upload/parse/indexing asynchronous via `Celery`; upload endpoint MUST NOT block on parsing |
 | External data access | MUST be connector-based and policy-controlled; direct ad hoc DB access from chat code is forbidden |

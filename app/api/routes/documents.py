@@ -2,15 +2,15 @@ from uuid import uuid4
 import hashlib
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from celery.result import AsyncResult
 
+from app.api.deps import AuthContext, get_auth_context, require_admin
 from app.core.celery_app import celery_app
 from app.core.config import settings
-from app.models.core import Document, DocNode, Tenant
+from app.models.core import Document, DocNode
 from app.db.session import SessionLocal
 from app.schemas.documents import UploadAcceptedResponse
-from app.services.db import set_tenant_context
 from app.services.registry import DocumentRecord, DocumentRegistry
 from app.services.storage import build_storage
 
@@ -20,7 +20,7 @@ registry = DocumentRegistry()
 
 
 @router.post("/upload", response_model=UploadAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
-async def upload_document(file: UploadFile = File(...)) -> UploadAcceptedResponse:
+async def upload_document(file: UploadFile = File(...), auth: AuthContext = Depends(require_admin)) -> UploadAcceptedResponse:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename is required")
 
@@ -36,15 +36,9 @@ async def upload_document(file: UploadFile = File(...)) -> UploadAcceptedRespons
     object_uri = storage.save_bytes(document_id=document_id, filename=file.filename, content=content)
 
     with SessionLocal() as session:
-        set_tenant_context(session)
-        tenant = session.get(Tenant, settings.default_tenant_id)
-        if tenant is None:
-            session.add(Tenant(id=settings.default_tenant_id, name="Default Tenant"))
-            session.commit()
         session.add(
             Document(
                 id=document_id,
-                tenant_id=settings.default_tenant_id,
                 title=file.filename,
                 file_name=file.filename,
                 file_path=object_uri,
@@ -82,7 +76,6 @@ async def upload_document(file: UploadFile = File(...)) -> UploadAcceptedRespons
         )
     except Exception as exc:
         with SessionLocal() as session:
-            set_tenant_context(session)
             session.query(DocNode).filter(DocNode.document_id == document_id).delete(synchronize_session=False)
             document = session.get(Document, document_id)
             if document is not None:
@@ -97,7 +90,7 @@ async def upload_document(file: UploadFile = File(...)) -> UploadAcceptedRespons
 
 
 @router.get("/status/{task_id}")
-async def get_status(task_id: str) -> dict[str, object]:
+async def get_status(task_id: str, _auth=Depends(get_auth_context)) -> dict[str, object]:
     record = registry.get_by_task_id(task_id)
     if record and record.deleted:
         return {
@@ -152,7 +145,7 @@ async def get_status(task_id: str) -> dict[str, object]:
 
 
 @router.delete("/documents/{document_id}")
-async def soft_delete_document(document_id: str) -> dict[str, str]:
+async def soft_delete_document(document_id: str, _auth=Depends(require_admin)) -> dict[str, str]:
     record = registry.get_by_document_id(document_id)
     storage = build_storage()
     if hasattr(storage, "delete_object"):
@@ -160,7 +153,6 @@ async def soft_delete_document(document_id: str) -> dict[str, str]:
             storage.delete_object(record.object_uri)
 
     with SessionLocal() as session:
-        set_tenant_context(session)
         document = session.get(Document, document_id)
         if document is not None:
             document.deleted_at = datetime.now(timezone.utc)

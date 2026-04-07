@@ -18,12 +18,12 @@ class Settings(BaseSettings):
     vllm_base_url: str = "http://vllm:8000/v1"
 
     database_url: str = "postgresql+psycopg://app_rw:quoctuan@db:5432/ragbot"
-    app_db_user: str = "app_rw"
-    app_db_password: str = "quoctuan"
     redis_url: str = "redis://redis:6379/0"
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/1"
-    default_tenant_id: str = "00000000-0000-0000-0000-000000000001"
+    jwt_secret: str = "quoctuan"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 720
 
     max_upload_size_mb: int = 50
 

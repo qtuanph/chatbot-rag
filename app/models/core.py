@@ -19,33 +19,28 @@ class TimestampMixin:
     )
 
 
-class Tenant(Base, TimestampMixin):
-    __tablename__ = "tenants"
+class Role(Base):
+    __tablename__ = "roles"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    api_key: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True)
-    settings: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class User(Base, TimestampMixin):
     __tablename__ = "users"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
-    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    role_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("roles.id", ondelete="RESTRICT"), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(50), nullable=False, server_default=text("'member'"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
-
-    __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),)
 
 
 class Document(Base, TimestampMixin):
     __tablename__ = "documents"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     file_name: Mapped[str] = mapped_column(String(500), nullable=False)
     file_path: Mapped[str] = mapped_column(String(1000), nullable=False)
@@ -63,7 +58,6 @@ class DocNode(Base):
     __tablename__ = "doc_nodes"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     document_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     parent_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("doc_nodes.id", ondelete="SET NULL"), nullable=True)
     level: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
@@ -76,13 +70,13 @@ class DocNode(Base):
     duplicate_of: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("doc_nodes.id", ondelete="SET NULL"), nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class DataSource(Base, TimestampMixin):
     __tablename__ = "data_sources"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     type: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     config_encrypted: Mapped[bytes] = mapped_column(nullable=False)
@@ -95,11 +89,10 @@ class DataSourceSchemaCache(Base):
     __tablename__ = "data_source_schema_cache"
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", "data_source_id", "schema_name", "table_name", name="uq_data_source_schema_cache_lookup"),
+        UniqueConstraint("data_source_id", "schema_name", "table_name", name="uq_data_source_schema_cache_lookup"),
     )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     data_source_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("data_sources.id", ondelete="CASCADE"), nullable=False)
     schema_name: Mapped[str] = mapped_column(String(255), nullable=False)
     table_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -107,13 +100,13 @@ class DataSourceSchemaCache(Base):
     table_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     join_hints: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class DataSourceQueryAudit(Base):
     __tablename__ = "data_source_query_audit"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    tenant_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     data_source_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("data_sources.id", ondelete="CASCADE"), nullable=False)
     user_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     session_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True)
@@ -122,3 +115,4 @@ class DataSourceQueryAudit(Base):
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -16,7 +16,7 @@ sequenceDiagram
     participant Embed as Embedding Service
 
     C->>API: POST /upload (file, metadata)
-    API->>API: Validate JWT, extract tenant_id
+    API->>API: Validate JWT, apply project scope
     API->>DB: INSERT document (status='pending')
     API->>Redis: Enqueue parse_task(doc_id, file_path)
     API->>C: 202 {task_id, status: "queued"}
@@ -61,20 +61,20 @@ sequenceDiagram
     participant Rerank as BGE Reranker
 
     C->>API: POST /chat {query, session_id?}
-    API->>API: Validate JWT, extract tenant_id
+    API->>API: Validate JWT, extract project scope
     API->>DB: Load chat history (if session_id)
     
-    API->>Router: Route query with tenant context
+    API->>Router: Route query with project scope
     Router->>Router: Classify: on-topic / out-of-scope
     
     alt Out of scope
         Router->>C: SSE: "I can only answer based on uploaded documents."
     else On topic
-        Router->>Filter: Apply tenant_id and router filters
+        Router->>Filter: Apply project scope and router filters
         Note over Filter: Enforce deleted_at IS NULL,
         Note over Filter: optional document_ids/metadata,
         Note over Filter: latest version only by default
-        Filter->>Retriever: Candidate documents
+        Filter->>Retriever: Candidate documents for the single project
         Retriever->>Retriever: Navigate tree with query
         
         Retriever->>DB: Search heading embeddings (HNSW)
@@ -139,7 +139,7 @@ sequenceDiagram
     alt Not a data question
         Router-->>API: Use document workflow
     else Data question
-        Router->>Policy: Check connector configured + tenant authorized
+        Router->>Policy: Check connector configured + role authorized
         alt Not configured or denied
             Policy-->>API: Return explicit limitation
         else Allowed
@@ -175,7 +175,7 @@ sequenceDiagram
     participant Cleanup as Async Cleanup
 
     C->>API: DELETE /documents/{id}
-    API->>API: Validate JWT, extract tenant_id
+    API->>API: Validate JWT, extract project scope
     API->>DB: UPDATE documents SET deleted_at=now()
     API->>C: 200 {status: "deleted"}
     
@@ -196,7 +196,7 @@ sequenceDiagram
 
 | Error | Trigger | Response |
 |-------|---------|----------|
-| `tenant_id mismatch` | JWT tenant ≠ document tenant | 403 Forbidden |
+| `scope mismatch` | JWT scope ≠ document scope | 403 Forbidden |
 | `document not found` | ID doesn't exist or deleted | 404 Not Found |
 | `parse timeout` | Large file, OCR taking too long | Retry with warning |
 | `embedding OOM` | Too many nodes at once | Batch reduce size |
@@ -209,7 +209,7 @@ sequenceDiagram
 |----------|-------------|
 | Upload | MUST return quickly with `task_id`; MUST NOT parse inline in the request thread |
 | Parse | MUST checkpoint by stage so retries do not restart from zero unnecessarily |
-| Query | MUST apply tenant filter, soft-delete exclusion, and version preference before retrieval |
+| Query | MUST apply soft-delete exclusion and version preference before retrieval |
 | Generation | MUST stream via SSE and persist final citations/metrics |
 | Delete | MUST soft delete first and MUST exclude deleted docs from new retrieval immediately |
 

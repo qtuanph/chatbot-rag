@@ -6,7 +6,6 @@ from app.core.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.models.core import Document, DocNode
 from app.services.ingestion import extract_nodes
-from app.services.db import set_tenant_context
 from app.services.storage import build_storage
 
 
@@ -35,7 +34,6 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str) ->
     )
 
     with SessionLocal() as session:
-        set_tenant_context(session)
         document = session.get(Document, document_id)
         if document is None:
             raise ValueError(f"Document not found: {document_id}")
@@ -46,7 +44,6 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str) ->
         session.execute(delete(DocNode).where(DocNode.document_id == document_id))
 
         root = DocNode(
-            tenant_id=document.tenant_id,
             document_id=document.id,
             heading="Document",
             full_text="",
@@ -66,7 +63,6 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str) ->
 
             parent_id = heading_to_id.get(node.parent_ref or "Document", root.id)
             new_node = DocNode(
-                tenant_id=document.tenant_id,
                 document_id=document.id,
                 parent_id=parent_id,
                 heading=node.heading,

@@ -1,8 +1,8 @@
 # chatbot-rag
 
-Docker-first backend skeleton for a multi-tenant hierarchical RAG chatbot.
+Docker-first backend for a single-project hierarchical RAG chatbot.
 
-> Current repo status: Docker-first backend with async ingestion, OCR fallback, and hierarchical document tree indexing in progress.
+> Current repo status: Docker-first backend for one internal project with async ingestion, OCR fallback, and hierarchical document tree indexing.
 
 ## What Exists
 
@@ -182,7 +182,7 @@ If migrations fail during startup, fix the revision/code and rerun `docker compo
 ## Chat Behavior Target
 
 - Keep chat history minimal.
-- Use one active chat session at a time per tenant in the current scaffold.
+- Use one active chat session at a time for the project.
 - Creating a new chat should clear the active session history.
 - Retain messages for 24h only if you need temporary debugging/audit.
 
@@ -190,5 +190,65 @@ If migrations fail during startup, fix the revision/code and rerun `docker compo
 
 - Active chat state is intended to be stored in Redis.
 - The current `/chat` route still does not wire that in yet.
-- Creating a new chat should call the reset path to remove the current session history for that tenant.
+- Creating a new chat should call the reset path to remove the current session history.
 - This is intentionally lightweight for local development and debugging.
+
+## Database Model
+
+The database keeps three main kinds of data:
+
+- `roles`: stores account permissions in DB
+- `documents`: one row per uploaded file, including file path, hash, size, and status
+- `doc_nodes`: the extracted document tree used for hierarchical RAG
+
+Simple flow:
+
+```text
+Upload file
+   |
+   v
+MinIO object
+   |
+   v
+documents row
+   |
+   v
+worker parse/OCR
+   |
+   v
+doc_nodes tree
+   |
+   v
+ready for RAG
+```
+
+1. Upload file to MinIO
+2. Create a `documents` row with `status=pending`
+3. Worker parses/OCRs the file
+4. Worker writes a tree of `doc_nodes`
+5. `documents.status` becomes `ready`
+
+For deletes:
+
+- `documents.deleted_at` is set
+- related `doc_nodes` are removed
+- the file is deleted from MinIO
+
+The rest of the tables support auth, chat history, and future data connectors.
+
+## Auth And Roles
+
+- No public self-signup.
+- Admin users manage account creation.
+- Admin and member accounts are stored in the database.
+- Roles:
+  - `admin`: can create users and upload files
+  - `member`: can only chat with AI
+
+Protected routes:
+
+- `POST /upload` requires `admin`
+- `POST /auth/users` requires `admin`
+- `POST /chat` requires a valid JWT
+
+Login uses the single project scope configured for this deployment plus email/password.

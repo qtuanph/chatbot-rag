@@ -10,6 +10,8 @@ from openpyxl import load_workbook
 from PIL import Image
 import pytesseract
 
+OCR_LANG = "vie+eng"
+
 
 @dataclass
 class IngestedNode:
@@ -96,12 +98,12 @@ def _extract_pdf_nodes(content: bytes) -> list[IngestedNode]:
 def _ocr_pdf_page(page) -> str:
     pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
     image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-    return pytesseract.image_to_string(image).strip()
+    return pytesseract.image_to_string(image, lang=OCR_LANG).strip()
 
 
 def _ocr_image_node(filename: str, content: bytes) -> IngestedNode:
     image = Image.open(BytesIO(content))
-    text = pytesseract.image_to_string(image).strip()
+    text = pytesseract.image_to_string(image, lang=OCR_LANG).strip()
     return IngestedNode(heading=Path(filename).name, full_text=text, summary=text[:240] if text else None)
 
 
