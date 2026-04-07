@@ -52,13 +52,13 @@ def upgrade() -> None:
         "users",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("role_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("email", sa.String(length=255), nullable=False),
+        sa.Column("username", sa.String(length=255), nullable=False),
         sa.Column("password_hash", sa.String(length=255), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.ForeignKeyConstraint(["role_id"], ["roles.id"], name=op.f("fk_users_role_id_roles"), ondelete="RESTRICT"),
-        sa.UniqueConstraint("email", name="uq_users_email"),
+        sa.UniqueConstraint("username", name="uq_users_username"),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_users")),
     )
 
@@ -69,26 +69,6 @@ def upgrade() -> None:
             (gen_random_uuid(), 'admin', 'Project administrator'),
             (gen_random_uuid(), 'member', 'Standard chat user')
         ON CONFLICT (name) DO NOTHING
-        """
-    )
-
-    op.execute(
-        """
-        INSERT INTO users (id, role_id, email, password_hash, is_active)
-        SELECT gen_random_uuid(), r.id, 'admin@local', '$2b$12$8mR9A1mM8eZ0R1vJ5Zp3e.W8W6x3dYfX4tT5r7oY4e1jB7a1G4wQe', true
-        FROM roles r
-        WHERE r.name = 'admin'
-        ON CONFLICT (email) DO NOTHING
-        """
-    )
-
-    op.execute(
-        """
-        INSERT INTO users (id, role_id, email, password_hash, is_active)
-        SELECT gen_random_uuid(), r.id, 'member@local', '$2b$12$8mR9A1mM8eZ0R1vJ5Zp3e.W8W6x3dYfX4tT5r7oY4e1jB7a1G4wQe', true
-        FROM roles r
-        WHERE r.name = 'member'
-        ON CONFLICT (email) DO NOTHING
         """
     )
 
@@ -227,6 +207,29 @@ def upgrade() -> None:
             EXECUTE FUNCTION touch_updated_at()
             """
         )
+
+    for table in ["roles", "users", "documents", "doc_nodes", "chat_sessions", "chat_messages", "data_sources", "data_source_schema_cache", "data_source_query_audit"]:
+        op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE {table} TO app_rw")
+
+    op.execute(
+        """
+        INSERT INTO users (id, role_id, username, password_hash, is_active)
+        SELECT gen_random_uuid(), r.id, 'admin', '$2b$12$tK0.uXpgQw5InbbeNZ0xkOL/gY3aMRRY79StN8xqoDCpZRbOX1M/K', true
+        FROM roles r
+        WHERE r.name = 'admin'
+        ON CONFLICT (username) DO NOTHING
+        """
+    )
+
+    op.execute(
+        """
+        INSERT INTO users (id, role_id, username, password_hash, is_active)
+        SELECT gen_random_uuid(), r.id, 'member', '$2b$12$tK0.uXpgQw5InbbeNZ0xkOL/gY3aMRRY79StN8xqoDCpZRbOX1M/K', true
+        FROM roles r
+        WHERE r.name = 'member'
+        ON CONFLICT (username) DO NOTHING
+        """
+    )
 
 
 def downgrade() -> None:

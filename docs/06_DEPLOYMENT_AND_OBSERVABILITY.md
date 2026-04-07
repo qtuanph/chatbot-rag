@@ -230,12 +230,12 @@ Run on-prem mode with the `onprem` profile so one compose file supports both pha
 
 | Span | Attributes |
 |------|-----------|
-| `request` | method, path, tenant_id, status_code, duration_ms |
+| `request` | method, path, status_code, duration_ms |
 | `db.query` | table, operation, duration_ms, row_count |
 | `celery.task` | task_name, doc_id, status, duration_ms |
 | `ai.chat` | provider, model, tokens_in, tokens_out, latency_ms |
 | `rag.retrieve` | top_k, sections_returned, rerank_scores |
-| `auth.login` | user_id, tenant_id, success/failure |
+| `auth.login` | user_id, success/failure |
 
 ### Key Metrics Dashboard
 
@@ -325,11 +325,11 @@ class BaseDataSource(ABC):
 
 | Responsibility | Required behavior |
 |----------------|-------------------|
-| Connection management | Use tenant-provided encrypted config |
+| Connection management | Use project-provided encrypted config |
 | Schema sync | Cache schemas, tables, columns, PK/FK metadata, and admin-written descriptions |
 | Query execution | Validate read-only SQL and enforce timeout + row limit |
 | Audit | Emit query audit log for every execution |
-| Isolation | Respect tenant-owned connector configuration and policy scope |
+| Isolation | Respect project-owned connector configuration and policy scope |
 
 ### SQL Connector Rollout Policy
 
@@ -337,7 +337,7 @@ class BaseDataSource(ABC):
 |-------|-------|
 | Stage 1 | Documents only |
 | Stage 2 | Add connector registry + schema sync |
-| Stage 3 | Enable read-only SQL Server Q&A for approved tenants/tables |
+| Stage 3 | Enable read-only SQL Server Q&A for approved project tables |
 | Stage 4 | Add richer business glossary, join hints, and guarded analytics flows |
 
 ### Future Source Implementations
@@ -381,7 +381,7 @@ Zero core code changes required; only configuration and infrastructure change.
 | Single source of truth | MUST drive provider selection from environment/config, not code edits |
 | Persistence | MUST persist PostgreSQL data and uploaded files across restarts |
 | Healthchecks | MUST gate dependent services on health where possible |
-| Observability | MUST emit request, retrieval, provider, and queue telemetry with `tenant_id` tags |
+| Observability | MUST emit request, retrieval, provider, and queue telemetry with project tags |
 | Backups | MUST back up database and file storage separately and verify backup integrity |
 
 ## AI Coding Guardrails

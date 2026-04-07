@@ -49,21 +49,21 @@ Final:     partial answer + warning, or explicit failure if no grounded answer e
 ### Fallback Implementation
 
 ```python
-async def chat_with_fallback(query: str, tenant_id: str) -> AsyncGenerator:
+async def chat_with_fallback(query: str, project_id: str) -> AsyncGenerator:
     try:
-        async for chunk in primary_provider.chat(query, tenant_id):
+        async for chunk in primary_provider.chat(query, project_id):
             yield chunk
     except TimeoutError:
         # Fallback 1: reduced context
-        async for chunk in primary_provider.chat(query, tenant_id, top_k=3):
+        async for chunk in primary_provider.chat(query, project_id, top_k=3):
             yield chunk
     except ProviderError:
         # Fallback 2: hybrid retrieval without router dependence
-        sections = hybrid_search_bm25_cosine(query, tenant_id)
+        sections = hybrid_search_bm25_cosine(query, project_id)
         async for chunk in strict_prompt(sections):
             yield chunk
     except Exception:
-        sections = hybrid_search_bm25_cosine(query, tenant_id)
+        sections = hybrid_search_bm25_cosine(query, project_id)
         yield "[Warning] Primary generation is unavailable. Returning a partial grounded answer."
         async for chunk in synthesize_grounded_partial_answer(sections):
             yield chunk
@@ -128,11 +128,11 @@ How many sick days do I get?
 ### SHA-256 Pre-Check (Document Level)
 
 ```python
-async def check_duplicate(sha256: str, tenant_id: str) -> Optional[Document]:
+async def check_duplicate(sha256: str, project_id: str) -> Optional[Document]:
     """Return existing document if exact match found."""
     return await db.query(Document).filter_by(
         sha256=sha256,
-        tenant_id=tenant_id,
+        project_id=project_id,
         deleted_at=None
     ).first()
 ```

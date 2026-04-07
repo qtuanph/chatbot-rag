@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    username: str
     password: str
 
 
@@ -13,12 +13,12 @@ class TokenResponse(BaseModel):
 
 
 class CreateUserRequest(BaseModel):
-    email: EmailStr
+    username: str
     password: str
     role: str = "member"
 
 
 class CreateUserResponse(BaseModel):
     id: str
-    email: EmailStr
+    username: str
     role: str

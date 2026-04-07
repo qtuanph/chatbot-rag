@@ -16,7 +16,7 @@ sequenceDiagram
     participant Embed as Embedding Service
 
     C->>API: POST /upload (file, metadata)
-    API->>API: Validate JWT, apply project scope
+    API->>API: Validate JWT
     API->>DB: INSERT document (status='pending')
     API->>Redis: Enqueue parse_task(doc_id, file_path)
     API->>C: 202 {task_id, status: "queued"}
@@ -61,16 +61,16 @@ sequenceDiagram
     participant Rerank as BGE Reranker
 
     C->>API: POST /chat {query, session_id?}
-    API->>API: Validate JWT, extract project scope
+    API->>API: Validate JWT
     API->>DB: Load chat history (if session_id)
     
-    API->>Router: Route query with project scope
+    API->>Router: Route query
     Router->>Router: Classify: on-topic / out-of-scope
     
     alt Out of scope
         Router->>C: SSE: "I can only answer based on uploaded documents."
     else On topic
-        Router->>Filter: Apply project scope and router filters
+        Router->>Filter: Apply retrieval filters
         Note over Filter: Enforce deleted_at IS NULL,
         Note over Filter: optional document_ids/metadata,
         Note over Filter: latest version only by default
@@ -175,11 +175,11 @@ sequenceDiagram
     participant Cleanup as Async Cleanup
 
     C->>API: DELETE /documents/{id}
-    API->>API: Validate JWT, extract project scope
+    API->>API: Validate JWT
     API->>DB: UPDATE documents SET deleted_at=now()
     API->>C: 200 {status: "deleted"}
     
-    Note over Router: Next query automatically excludes<br/>deleted documents via RLS + WHERE clause
+    Note over Router: Next query automatically excludes<br/>deleted documents via WHERE clause
     
     alt Chat message cites deleted doc
         Router->>C: Show citation with [Đã xóa] tag

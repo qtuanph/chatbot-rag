@@ -13,7 +13,7 @@ router = APIRouter(tags=["auth"])
 @router.post("/auth/login", response_model=TokenResponse)
 def login(payload: LoginRequest) -> TokenResponse:
     with SessionLocal() as session:
-        user = session.query(User).filter(User.email == payload.email).one_or_none()
+        user = session.query(User).filter(User.username == payload.username).one_or_none()
         if user is None or not verify_password(payload.password, user.password_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
         role = session.get(Role, user.role_id)
@@ -33,10 +33,10 @@ def create_user(payload: CreateUserRequest, _auth=Depends(require_admin)) -> Cre
 
         user = User(
             role_id=role.id,
-            email=payload.email,
+            username=payload.username,
             password_hash=hash_password(payload.password),
         )
         session.add(user)
         session.commit()
         session.refresh(user)
-        return CreateUserResponse(id=str(user.id), email=user.email, role=role.name)
+        return CreateUserResponse(id=str(user.id), username=user.username, role=role.name)

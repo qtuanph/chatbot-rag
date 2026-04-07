@@ -1,0 +1,111 @@
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Iterable
+
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session
+
+from app.models.core import DocNode, Document
+
+
+@dataclass(frozen=True)
+class RagNode:
+    node_id: str
+    document_id: str
+    document_title: str
+    heading: str
+    summary: str | None
+    full_text: str
+    page_range: str | None
+
+
+@dataclass(frozen=True)
+class RagContext:
+    nodes: list[RagNode]
+
+
+def _tokenize(query: str) -> list[str]:
+    tokens = [token.lower() for token in re.findall(r"[A-Za-zÀ-ỹ0-9_]+", query)]
+    stopwords = {"the", "and", "or", "la", "va", "cua", "cho", "voi", "theo", "to", "of", "a", "an", "is", "are"}
+    return [token for token in tokens if len(token) > 1 and token not in stopwords][:12]
+
+
+def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext:
+    tokens = _tokenize(query)
+    base_query = session.query(DocNode, Document.title).join(Document, DocNode.document_id == Document.id).filter(Document.deleted_at.is_(None))
+
+    if tokens:
+        lowered_heading = func.lower(DocNode.heading)
+        lowered_summary = func.lower(func.coalesce(DocNode.summary, ""))
+        lowered_text = func.lower(func.coalesce(DocNode.full_text, ""))
+        filters = [or_(lowered_heading.contains(token), lowered_summary.contains(token), lowered_text.contains(token)) for token in tokens]
+        base_query = base_query.filter(or_(*filters))
+
+    candidates = base_query.order_by(DocNode.created_at.desc()).limit(25).all()
+    scored: list[tuple[int, RagNode]] = []
+    for node, title in candidates:
+        text = f"{node.heading}\n{node.summary or ''}\n{node.full_text}".lower()
+        score = sum(text.count(token) for token in tokens) if tokens else 1
+        if score <= 0:
+            continue
+        scored.append(
+            (
+                score,
+                RagNode(
+                    node_id=str(node.id),
+                    document_id=str(node.document_id),
+                    document_title=title,
+                    heading=node.heading,
+                    summary=node.summary,
+                    full_text=node.full_text,
+                    page_range=node.page_range,
+                ),
+            )
+        )
+
+    if not scored:
+        recent = session.query(DocNode, Document.title).join(Document, DocNode.document_id == Document.id).filter(Document.deleted_at.is_(None)).order_by(DocNode.created_at.desc()).limit(limit).all()
+        nodes = [
+            RagNode(
+                node_id=str(node.id),
+                document_id=str(node.document_id),
+                document_title=title,
+                heading=node.heading,
+                summary=node.summary,
+                full_text=node.full_text,
+                page_range=node.page_range,
+            )
+            for node, title in recent
+        ]
+        return RagContext(nodes=nodes)
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return RagContext(nodes=[node for _, node in scored[:limit]])
+
+
+def build_answer(query: str, context: RagContext, history: list[dict[str, str]] | None = None) -> dict:
+    if not context.nodes:
+        return {
+            "answer": "Chưa có tài liệu nào được index để trả lời câu hỏi này.",
+            "citations": [],
+            "context": [],
+        }
+
+    intro = "Dựa trên tài liệu đã upload, mình tìm được các đoạn liên quan nhất:"
+    bullets = []
+    citations = []
+    for idx, node in enumerate(context.nodes, start=1):
+        excerpt = (node.summary or node.full_text[:280]).strip().replace("\n", " ")
+        bullets.append(f"{idx}. {node.document_title} - {node.heading}: {excerpt}")
+        citations.append({
+            "document_id": node.document_id,
+            "node_id": node.node_id,
+            "title": node.document_title,
+            "heading": node.heading,
+            "page_range": node.page_range,
+        })
+
+    answer = f"{intro}\n" + "\n".join(bullets)
+    return {"answer": answer, "citations": citations, "context": [node.__dict__ for node in context.nodes]}

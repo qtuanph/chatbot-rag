@@ -6,8 +6,6 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
-    volumes:
-      - ./:/app
     depends_on:
       db:
         condition: service_healthy
@@ -31,8 +29,6 @@ services:
     env_file:
       - .env
     command: celery -A app.core.celery_app.celery_app worker --loglevel=INFO
-    volumes:
-      - ./:/app
     depends_on:
       db:
         condition: service_healthy
@@ -60,7 +56,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg://db-admin:quoctuan@db:5432/ragbot
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-db-admin}:${POSTGRES_PASSWORD:-quoctuan}@db:5432/${POSTGRES_DB:-ragbot}
     restart: "no"
 
   minio:

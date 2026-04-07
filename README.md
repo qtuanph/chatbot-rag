@@ -66,10 +66,10 @@ chatbot-rag/
 |   |-- script.py.mako
 |   `-- versions/
 |       |-- .gitkeep
-|       `-- 20260407_000001_baseline_scaffold.py
+|       `-- 20260407_000001_project_only_schema.py
 |-- docs/
 |   |-- 01_SYSTEM_ARCHITECTURE.md
-|   |-- 02_DATABASE_AND_TENANCY.md
+|   |-- 02_DATABASE_AND_PROJECT.md
 |   |-- 03_CORE_WORKFLOWS.md
 |   |-- 04_API_CONTRACT_AND_SECURITY.md
 |   |-- 05_RESOURCE_OPTIMIZATION_AND_EDGE_CASES.md
@@ -105,8 +105,8 @@ chatbot-rag/
 | pgAdmin host | `localhost` |
 | pgAdmin port | `5432` |
 | pgAdmin database | `ragbot` |
-| pgAdmin username | `ragbot` |
-| pgAdmin password | `QuocTuanMaiDinh` |
+| pgAdmin username | `db-admin` |
+| pgAdmin password | `quoctuan` |
 
 ### Local File Location
 
@@ -163,9 +163,9 @@ If migrations fail during startup, fix the revision/code and rerun `docker compo
 ## Notes
 
 - This is still an evolving backend, but ingestion now targets production-style document parsing and tree indexing.
-- JWT auth, richer retrieval, and SSE chat flow remain the next big steps.
+- SSE chat flow and richer retrieval remain the next big steps.
 - Alembic is wired and ready; future schema changes should go through migrations instead of `ops/init.sql`.
-- `ops/init.sql` remains as an intentionally empty placeholder for non-schema Postgres bootstrap only.
+- `ops/init.sql` bootstraps local development roles and grants.
 - `/health` now performs real DB, Redis, MinIO, and provider-configuration checks. Other business endpoints are still partial scaffold implementations.
 
 ## Implemented Today
@@ -251,4 +251,4 @@ Protected routes:
 - `POST /auth/users` requires `admin`
 - `POST /chat` requires a valid JWT
 
-Login uses the single project scope configured for this deployment plus email/password.
+Login uses the DB-backed project accounts plus username/password.

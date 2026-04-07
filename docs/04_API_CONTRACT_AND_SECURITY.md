@@ -9,7 +9,7 @@
 | Docker-friendly app boundaries | User wants the system to run with containers, not manual host setup |
 | Stable API surface | Provider changes must not force frontend or client rewrites |
 | Provider-agnostic `/chat` | Demo uses Google now; production uses `vLLM` later |
-| Security before convenience | Multi-tenant isolation is mandatory, not optional |
+| Security before convenience | Role-based access is mandatory, not optional |
 | Grounded answers only | User wants a useful enterprise chatbot, not generic LLM chat |
 | Data access routing | Uploaded documents are the default source. SQL connector is used only when the request clearly asks for live business data and the connector is configured. |
 
@@ -43,7 +43,7 @@ POST /auth/login
 **Request:**
 ```json
 {
-  "email": "user@company.com",
+  "username": "user1",
   "password": "securepassword"
 }
 ```
@@ -55,7 +55,6 @@ POST /auth/login
   "refresh_token": "eyJ...",
   "token_type": "bearer",
   "expires_in": 3600,
-  "tenant_id": "uuid-here",
   "role": "admin"
 }
 ```
@@ -270,12 +269,11 @@ Authorization: Bearer <token>
 ## Auth Flow
 
 ```
-1. Client -> POST /auth/login -> JWT {sub, tenant_id, role, exp}
+1. Client -> POST /auth/login -> JWT {sub, role, exp}
 2. Client includes Authorization: Bearer <jwt> in every request
-3. API Gateway validates JWT signature + expiry
-4. Extract tenant_id from JWT payload
-5. `SELECT set_config('app.tenant_id', :tenant_id, true)` inside request transaction
-6. RLS enforces tenant isolation at database level
+3. API validates JWT signature + expiry
+4. Resolve user role from DB
+5. Admin routes enforce role checks
 ```
 
 ### JWT Payload
@@ -283,9 +281,8 @@ Authorization: Bearer <token>
 ```json
 {
   "sub": "user-uuid",
-  "tenant_id": "tenant-uuid",
   "role": "admin",
-  "email": "user@company.com",
+  "username": "user1",
   "iat": 1712484000,
   "exp": 1712487600
 }
@@ -297,9 +294,9 @@ Authorization: Bearer <token>
 |-----------|---------------|----------|
 | Out-of-scope rejection | Router classifies query relevance | "I can only answer based on your uploaded documents." |
 | Citation mandatory | Every assistant response must include citations | If no citations found -> "No relevant documents found." |
-| Tenant isolation | RLS + JWT tenant_id extraction | 403 if tenant mismatch |
+| Role isolation | JWT role checks + DB-backed accounts | 403 if role mismatch |
 | Version conflict | On re-upload, increment version, mark old as superseded | Return new version info |
-| Rate limiting | Token bucket per tenant_id | 429 Too Many Requests |
+| Rate limiting | Token bucket per endpoint | 429 Too Many Requests |
 | Input validation | Pydantic schemas, max query length 2000 chars | 422 Unprocessable Entity |
 | Security headers | X-Content-Type-Options, X-Frame-Options, CSP | Applied on all responses |
 | CORS | Whitelist allowed origins only | 403 on mismatch |
@@ -312,7 +309,7 @@ Authorization: Bearer <token>
 | SSE buffering | Set `Cache-Control: no-cache` and `X-Accel-Buffering: no` |
 | Auth header | `Authorization: Bearer <jwt>` on all protected routes |
 | Request ID | Generate `X-Request-ID` per request for tracing |
-| Audit trail | Log user_id, tenant_id, endpoint, status_code, latency |
+| Audit trail | Log user_id, endpoint, status_code, latency |
 
 ## Provider Compatibility
 
@@ -321,7 +318,7 @@ Authorization: Bearer <token>
 | `AI_PROVIDER` | `google` | `vllm` |
 | Chat provider | Google AI Studio | On-prem `vLLM` |
 | Application endpoints | Unchanged | Unchanged |
-| Auth / `tenant_id` / RLS | Unchanged | Unchanged |
+| Auth / RLS | Project-only auth model |
 | Retrieval pipeline | Unchanged | Unchanged |
 
 The provider abstraction layer normalizes provider-specific request and response formats so `/chat` remains unchanged across both phases.
@@ -332,7 +329,7 @@ The provider abstraction layer normalizes provider-specific request and response
 |------|-------------|
 | Endpoint naming | MUST keep documented route names stable; do not rename routes during provider migration |
 | SSE contract | MUST preserve `token`, `citations`, `done`, `error` events exactly |
-| Auth | MUST extract `tenant_id` from JWT before DB access; protected routes MUST reject missing/invalid JWT |
+| Auth | MUST reject missing/invalid JWT; admin routes MUST reject non-admin roles |
 | Citations | Assistant responses MUST include citations or an explicit no-grounding response |
 | Version resolution | Default retrieval MUST prefer latest non-deleted version unless caller narrows scope |
 | Data-source routing | `/chat` MUST preserve one public contract even when internally routing to document or SQL workflows |
