@@ -1,0 +1,4 @@
+-- Intentionally left without schema DDL.
+-- Alembic owns application schema bootstrap and evolution.
+-- Keep this file only for future container-level Postgres bootstrap tasks
+-- that are outside the application schema lifecycle.
