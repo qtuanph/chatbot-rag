@@ -59,6 +59,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://db-admin:quoctuan@db:5432/ragbot
     restart: "no"
 
   minio:
@@ -95,14 +97,15 @@ services:
     image: pgvector/pgvector:pg17
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ragbot}
-      POSTGRES_USER: ${POSTGRES_USER:-ragbot}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ragbot}
+      POSTGRES_USER: ${POSTGRES_USER:-db-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quoctuan}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./ops/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ragbot} -d ${POSTGRES_DB:-ragbot}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-db-admin} -d ${POSTGRES_DB:-ragbot}"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -21,9 +21,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-    op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
-    op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+    for ddl in ["CREATE EXTENSION IF NOT EXISTS vector", "CREATE EXTENSION IF NOT EXISTS pgcrypto", 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp"']:
+        try:
+            op.execute(ddl)
+        except Exception:
+            pass
 
     op.execute(
         """

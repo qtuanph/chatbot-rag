@@ -1,4 +1,10 @@
--- Intentionally left without schema DDL.
--- Alembic owns application schema bootstrap and evolution.
--- Keep this file only for future container-level Postgres bootstrap tasks
--- that are outside the application schema lifecycle.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_rw') THEN
+        CREATE ROLE app_rw LOGIN PASSWORD 'quoctuan';
+    END IF;
+END $$;
+
+GRANT CONNECT ON DATABASE ragbot TO app_rw;
+GRANT USAGE, CREATE ON SCHEMA public TO app_rw;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_rw;

@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     google_model: str = "gemini-2.5-flash"
     vllm_base_url: str = "http://vllm:8000/v1"
 
-    database_url: str = "postgresql+psycopg://ragbot:ragbot@db:5432/ragbot"
+    database_url: str = "postgresql+psycopg://app_rw:quoctuan@db:5432/ragbot"
+    app_db_user: str = "app_rw"
+    app_db_password: str = "quoctuan"
     redis_url: str = "redis://redis:6379/0"
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/1"
@@ -27,8 +29,8 @@ class Settings(BaseSettings):
 
     storage_backend: str = "minio"
     minio_endpoint: str = "minio:9000"
-    minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "minioadmin"
+    minio_access_key: str = "minio-admin"
+    minio_secret_key: str = "quoctuan"
     minio_bucket: str = "rag-documents"
     minio_secure: bool = False
 

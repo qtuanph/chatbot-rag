@@ -93,13 +93,15 @@ chatbot-rag/
 | Uploaded object key | `s3://rag-documents/<document_id>/<filename>` |
 | PostgreSQL host | `localhost:5432` |
 | PostgreSQL DB | `ragbot` |
-| PostgreSQL user | `ragbot` |
-| PostgreSQL password | `QuocTuanMaiDinh` |
+| PostgreSQL admin user | `db-admin` |
+| PostgreSQL admin password | `quoctuan` |
+| PostgreSQL app user | `app_rw` |
+| PostgreSQL app password | `quoctuan` |
 | Redis host | `localhost:6379` |
 | MinIO API | `localhost:9000` |
 | MinIO Console | `localhost:9001` |
-| MinIO access key | `QuocTuanMaiDinh` |
-| MinIO secret key | `QuocTuanMaiDinh` |
+| MinIO access key | `minio-admin` |
+| MinIO secret key | `quoctuan` |
 | pgAdmin host | `localhost` |
 | pgAdmin port | `5432` |
 | pgAdmin database | `ragbot` |
