@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import AuthContext, get_auth_context
 from app.adapters.ai import LocalAIProvider
@@ -11,15 +11,20 @@ from app.models.chat import ChatMessage, ChatSession
 from app.schemas.chat import ChatRequest
 from app.services.chat_store import ChatStore
 from app.services.rag import build_answer, retrieve_context
+from app.services.throttle import RequestThrottle
 
 
 router = APIRouter(tags=["chat"])
 store = ChatStore()
 provider = LocalAIProvider()
+throttle = RequestThrottle()
 
 
 @router.post("/chat")
 async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_context)) -> dict[str, object]:
+    if not throttle.allow(f"throttle:chat:{auth.user_id}", limit=30, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many chat requests")
+
     project_id = "project"
     session_id = request.session_id or store.get_active_session(project_id) or str(uuid4())
     store.set_active_session(project_id, session_id)

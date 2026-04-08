@@ -12,6 +12,10 @@ class TokenResponse(BaseModel):
     role: str
 
 
+class LogoutResponse(BaseModel):
+    status: str
+
+
 class CreateUserRequest(BaseModel):
     username: str
     password: str

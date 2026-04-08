@@ -45,7 +45,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    restart: unless-stopped
+    restart: on-failure:3
 
   migrate:
     build: .

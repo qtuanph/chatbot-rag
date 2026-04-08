@@ -2,7 +2,7 @@ from uuid import uuid4
 import hashlib
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from celery.result import AsyncResult
 
 from app.api.deps import AuthContext, get_auth_context, require_admin
@@ -13,14 +13,20 @@ from app.db.session import SessionLocal
 from app.schemas.documents import UploadAcceptedResponse
 from app.services.registry import DocumentRecord, DocumentRegistry
 from app.services.storage import build_storage
+from app.services.audit import safe_record_audit
+from app.services.throttle import RequestThrottle
 
 
 router = APIRouter(tags=["documents"])
 registry = DocumentRegistry()
+throttle = RequestThrottle()
 
 
 @router.post("/upload", response_model=UploadAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
-async def upload_document(file: UploadFile = File(...), auth: AuthContext = Depends(require_admin)) -> UploadAcceptedResponse:
+async def upload_document(request: Request, file: UploadFile = File(...), auth: AuthContext = Depends(require_admin)) -> UploadAcceptedResponse:
+    if not throttle.allow(f"throttle:upload:{auth.user_id}", limit=5, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Too many upload requests")
+
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename is required")
 
@@ -49,6 +55,15 @@ async def upload_document(file: UploadFile = File(...), auth: AuthContext = Depe
             )
         )
         session.commit()
+        safe_record_audit(
+            action="document.upload",
+            actor_user_id=auth.user_id,
+            subject_type="document",
+            subject_id=document_id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            details={"filename": file.filename, "size": len(content)},
+        )
 
     try:
         registry.put(
@@ -145,7 +160,7 @@ async def get_status(task_id: str, _auth=Depends(get_auth_context)) -> dict[str,
 
 
 @router.delete("/documents/{document_id}")
-async def soft_delete_document(document_id: str, _auth=Depends(require_admin)) -> dict[str, str]:
+async def soft_delete_document(request: Request, document_id: str, _auth=Depends(require_admin)) -> dict[str, str]:
     record = registry.get_by_document_id(document_id)
     storage = build_storage()
     if hasattr(storage, "delete_object"):
@@ -159,6 +174,15 @@ async def soft_delete_document(document_id: str, _auth=Depends(require_admin)) -
             document.status = "deleted"
             session.query(DocNode).filter(DocNode.document_id == document_id).delete(synchronize_session=False)
             session.commit()
+        safe_record_audit(
+            action="document.delete",
+            actor_user_id=_auth.user_id,
+            subject_type="document",
+            subject_id=document_id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            details={"status": "deleted"},
+        )
 
     if record:
         try:

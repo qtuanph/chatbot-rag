@@ -122,4 +122,8 @@ def build_health_payload() -> dict[str, Any]:
     elif any(check["status"] == "degraded" for check in checks.values()):
         overall = "degraded"
 
-    return {"status": overall, "checks": checks}
+    public_checks = {
+        name: {"status": check["status"]}
+        for name, check in checks.items()
+    }
+    return {"status": overall, "checks": public_checks}

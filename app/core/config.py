@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     minio_secret_key: str = "quoctuan"
     minio_bucket: str = "rag-documents"
     minio_secure: bool = False
+    allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0"
+
+    def model_post_init(self, __context) -> None:
+        if not self.jwt_secret or self.jwt_secret == "replace-me":
+            raise ValueError("JWT_SECRET must be configured")
+        if not self.minio_secret_key or self.minio_secret_key == "replace-me":
+            raise ValueError("MINIO_SECRET_KEY must be configured")
+        if not self.database_url or self.database_url == "replace-me":
+            raise ValueError("DATABASE_URL must be configured")
 
 
 @lru_cache
