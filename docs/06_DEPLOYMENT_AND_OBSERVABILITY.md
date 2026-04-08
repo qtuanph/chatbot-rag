@@ -357,7 +357,7 @@ class BaseDataSource(ABC):
 - [ ] Async iterator pattern for document streaming
 - [ ] Config schema per source type
 - [ ] Error handling + retry per source
-- [ ] Tenant isolation in source connectors
+- [ ] Access control for source connectors (admin-only configuration)
 - [ ] MCP client library integrated
 - [ ] Source registry in database
 - [ ] UI for managing sources

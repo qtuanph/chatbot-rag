@@ -1,81 +1,100 @@
 # chatbot-rag
 
-Docker-first backend for a single-project hierarchical RAG chatbot.
+**Docker-first, single-tenant hierarchical RAG chatbot** for Vietnamese enterprise documents.
 
-> Current repo status: Docker-first backend for one internal project with async ingestion, OCR fallback, and hierarchical document tree indexing.
+> Deployment: Pure Docker. Self-hosted on your infrastructure. One project, shared document library, role-based access (admin / member).
 
 ## What Exists
 
-- FastAPI backend scaffold
-- Celery worker scaffold
-- PostgreSQL + Redis + MinIO via Docker Compose
-- S3-compatible object storage for uploaded files
-- Optional `vllm` service behind the `onprem` profile
-- Multi-format ingestion foundation for PDF, scanned PDF, images, DOCX, and XLSX
-- OCR fallback path for image-only pages and scans
-- Hierarchical node indexing in PostgreSQL for document → page → section retrieval
+- FastAPI backend with async ingestion pipeline
+- Celery worker for document parsing and OCR
+- PostgreSQL + Redis + MinIO (object storage) via docker-compose
+- S3-compatible object storage (MinIO) for uploaded files
+- Optional `vllm` service (onprem profile) for local LLM inference
+- Multi-format ingestion: PDF, scanned PDF, images, DOCX, XLSX, Markdown, plain text
+- Automatic OCR fallback for image-only pages and scanned documents
+- Hierarchical document indexing: document → chapters → sections → subsections
+- Weighted retrieval with parent context injection
+
+## Database Initialization
+
+Database schema and seed data are initialized automatically at container startup:
+
+- **Location**: [ops/init.sql](ops/init.sql) (comprehensive single-file initialization)
+- **Mounted by docker-compose**: `./ops/init.sql:/docker-entrypoint-initdb.d/init.sql:ro`
+- **Execution**: PostgreSQL automatically runs SQL files in `/docker-entrypoint-initdb.d/` on first startup
+- **What it creates**:
+  - Vector extension for embeddings (`pgvector`)
+  - UUID extension (`pgcrypto`, `uuid-ossp`)
+  - 10 core tables: roles, users, documents, doc_nodes, chat_sessions, chat_messages, data_sources, data_source_schema_cache, data_source_query_audit
+  - Indexes on document/node/session lookups
+  - Automatic `updated_at` triggers
+  - Seed users: admin/member (password: `password123`)
+
+No Alembic migrations needed. Database is idempotent and initialized from a single `.sql` file.
 
 ## Project Structure
 
 ```text
 chatbot-rag/
-|-- .dockerignore
-|-- AGENTS.md
-|-- alembic.ini
-|-- Dockerfile
-|-- .gitignore
-|-- README.md
-|-- docker-compose.yml
-|-- requirements.txt
-|-- .env.example
-|-- app/
-|   |-- __init__.py
-|   |-- main.py
-|   |-- worker.py
-|   |-- adapters/
-|   |   |-- __init__.py
-|   |   `-- ai/
-|   |       |-- __init__.py
-|   |       `-- base.py
-|   |-- api/
-|   |   |-- __init__.py
-|   |   `-- routes/
-|   |       |-- __init__.py
-|   |       |-- chat.py
-|   |       |-- documents.py
-|   |       `-- health.py
-|   |-- core/
-|   |   |-- __init__.py
-|   |   |-- celery_app.py
-|   |   `-- config.py
-|   |-- db/
-|   |   |-- __init__.py
-|   |   `-- base.py
-|   |-- models/
-|   |   `-- __init__.py
-|   |-- schemas/
-|   |   |-- __init__.py
-|   |   |-- chat.py
-|   |   `-- documents.py
-|   `-- services/
-|       |-- __init__.py
-|       `-- storage.py
-|-- alembic/
-|   |-- README
-|   |-- env.py
-|   |-- script.py.mako
-|   `-- versions/
-|       |-- .gitkeep
-|       `-- 20260407_000001_project_only_schema.py
-|-- docs/
-|   |-- 01_SYSTEM_ARCHITECTURE.md
-|   |-- 02_DATABASE_AND_PROJECT.md
-|   |-- 03_CORE_WORKFLOWS.md
-|   |-- 04_API_CONTRACT_AND_SECURITY.md
-|   |-- 05_RESOURCE_OPTIMIZATION_AND_EDGE_CASES.md
-|   `-- 06_DEPLOYMENT_AND_OBSERVABILITY.md
-`-- ops/
-    `-- init.sql
+├── AGENTS.md                    # Build guide and project objectives
+├── README.md                    # This file
+├── Dockerfile                   # Application container (FastAPI + Celery worker)
+├── docker-compose.yml           # Complete local stack (PostgreSQL, Redis, MinIO, app, worker)
+├── requirements.txt             # Python dependencies
+├── .env.example                 # Environment variables template
+├── .gitignore
+├── .dockerignore
+│
+├── app/                         # Application code
+│   ├── main.py                  # FastAPI app entry point
+│   ├── worker.py                # Celery task definitions
+│   ├── adapters/
+│   │   └── ai/                  # Provider adapters (Google AI, vLLM, etc.)
+│   ├── api/
+│   │   ├── deps.py              # Dependency injection (auth, DB session)
+│   │   └── routes/
+│   │       ├── auth.py          # Login/token endpoints
+│   │       ├── chat.py          # /chat endpoint with SSE streaming
+│   │       ├── documents.py     # /upload, /documents endpoints
+│   │       └── health.py        # /health endpoint
+│   ├── core/
+│   │   ├── config.py            # Settings from .env
+│   │   └── celery_app.py        # Celery configuration
+│   ├── db/
+│   │   ├── session.py           # SQLAlchemy session factory
+│   │   ├── base.py              # Declarative base for models
+│   │   └── types.py             # Custom column types (Vector)
+│   ├── models/
+│   │   ├── core.py              # DocNode, Document, User, ChatMessage ORM models
+│   │   └── chat.py              # Chat-related models
+│   ├── schemas/
+│   │   ├── auth.py              # Login/token request/response schemas
+│   │   ├── chat.py              # Chat request/response schemas
+│   │   └── documents.py         # Document upload/metadata schemas
+│   └── services/
+│       ├── ingestion.py         # Document parsing (PDF, DOCX, images, etc.)
+│       ├── ocr.py               # PaddleOCR integration
+│       ├── rag.py               # RAG retrieval with hierarchical context injection
+│       ├── chat_store.py        # Chat persistence
+│       ├── auth.py              # JWT and password hashing
+│       ├── storage.py           # MinIO S3 client wrapper
+│       ├── audit.py             # Security audit logging
+│       ├── health.py            # Service health checks
+│       └── registry.py          # AI provider registry
+│
+├── docs/                        # Architecture and design
+│   ├── 01_SYSTEM_ARCHITECTURE.md
+│   ├── 02_DATABASE_AND_PROJECT.md
+│   ├── 03_CORE_WORKFLOWS.md
+│   ├── 04_API_CONTRACT_AND_SECURITY.md
+│   ├── 05_RESOURCE_OPTIMIZATION_AND_EDGE_CASES.md
+│   └── 06_DEPLOYMENT_AND_OBSERVABILITY.md
+│
+├── ops/                         # Deployment and database
+│   └── init.sql                 # Single comprehensive database initialization
+│
+└── FILEUPLOADTEST/              # Manual testing folder (upload examples)
 ```
 
 ## Storage Choice
@@ -102,77 +121,124 @@ chatbot-rag/
 | MinIO Console | `localhost:9001` |
 | MinIO access key | `minio-admin` |
 | MinIO secret key | `quoctuan` |
-| pgAdmin host | `localhost` |
-| pgAdmin port | `5432` |
-| pgAdmin database | `ragbot` |
-| pgAdmin username | `db-admin` |
-| pgAdmin password | `quoctuan` |
+## Local Paths and Access
 
-### Local File Location
+### Connection Details
 
-- There is no local upload directory source-of-truth.
-- Uploaded files live in MinIO only.
-- If you need a local test file for upload, use any temp path on your machine, then upload it through `POST /upload`.
+| What | Value |
+|------|-------|
+| PostgreSQL host | `localhost:5432` |
+| PostgreSQL DB | `ragbot` |
+| PostgreSQL admin user | `db-admin` (for schema management) |
+| PostgreSQL app user | `app_rw` (app runtime) |
+| PostgreSQL password | `quoctuan` (for both) |
+| Redis host | `localhost:6379` |
+| MinIO API | `localhost:9000` |
+| MinIO Console | `localhost:9001` |
+| MinIO credentials | `minioadmin` / `minioadmin` |
 
-## Run
+### Storage
 
-1. Copy `.env.example` to `.env`
-2. Start backend stack:
+- **Uploaded files**: Stored in MinIO bucket `rag-documents` (not local disk)
+- **Object keys**: `s3://rag-documents/<document_id>/<filename>`
+- **Local test files**: Use any temp path on your machine, upload via `POST /upload`
+
+## Quick Start
+
+### Prerequisites
+
+- Docker and Docker Compose
+- `.env` file (copy from `.env.example`)
+
+### Run the Stack
 
 ```bash
+# 1. Initialize environment
+cp .env.example .env
+
+# 2. Start all services (database, cache, storage, api, worker)
 docker compose up --build
+
+# 3. Wait for services to be healthy (30-60 seconds on first run)
+
+# 4. Test API health
+curl http://localhost:8000/health
 ```
 
-This also runs the one-shot `migrate` service before `api` and `worker` start.
+### Service Endpoints
 
-3. Optional on-prem inference profile:
+| Service | URL |
+|---------|-----|
+| **API** | `http://localhost:8000` |
+| **OpenAPI Docs** | `http://localhost:8000/docs` |
+| **MinIO S3 API** | `http://localhost:9000` |
+| **MinIO Web Console** | `http://localhost:9001` |
+| **Health Check** | `http://localhost:8000/health` |
+
+### Default Login Credentials (Development)
+
+```
+Username: admin
+Password: password123
+
+Username: member
+Password: password123
+```
+
+### Optional: Run with Local LLM (vLLM)
+
+To use a locally-hosted LLM instead of Google AI Studio:
 
 ```bash
 docker compose --profile onprem up --build
 ```
 
-## Migrations
+This starts the `vllm` service with Qwen 2.5 7B (quantized). Set `AI_PROVIDER=vllm` in `.env`.
 
-Run migrations with the one-shot migration service:
+## Database
+
+The database is **automatically initialized** on first run via PostgreSQL's init hook:
+
+- **Initialization file**: `ops/init.sql` (comprehens single-file schema)
+- **Idempotent**: Safe to re-run; uses `CREATE IF NOT EXISTS` pattern
+- **Seed data**: Default admin/member users and roles
+- **No migrations needed**: Schema is complete at startup
+
+### Troubleshooting Database Initialization
+
+If the database doesn't initialize properly:
 
 ```bash
-docker compose run --rm migrate
+# 1. Stop all services
+docker compose down
+
+# 2. Remove PostgreSQL data volume
+docker volume rm chatbot-rag_pgdata
+
+# 3. Restart (will reinitialize from init.sql)
+docker compose up --build
 ```
-
-Create a new revision:
-
-```bash
-docker compose exec api python -m alembic revision -m "describe change"
-```
-
-If migrations fail during startup, fix the revision/code and rerun `docker compose run --rm migrate` before restarting app services.
-
-## Scope
-
-- This repo currently sets up the backend API and worker only.
-- Frontend can be built later as a separate app consuming the backend REST/SSE API.
-- Keep this structure section updated whenever files/folders are added, removed, or moved.
-
-## Version Baseline
-
-- Python: `3.12.11-slim`
-- PostgreSQL: `17` via `pgvector/pgvector:pg17`
-- Redis: `7.4-alpine`
-- MinIO: `minio/minio:RELEASE.2025-09-07T16-13-09Z`
 
 ## Notes
 
-- This is still an evolving backend, but ingestion now targets production-style document parsing and tree indexing.
-- SSE chat flow and richer retrieval remain the next big steps.
-- Alembic is wired and ready; future schema changes should go through migrations instead of `ops/init.sql`.
-- `ops/init.sql` bootstraps local development roles and grants.
-- `/health` now performs real DB, Redis, MinIO, and provider-configuration checks. Other business endpoints are still partial scaffold implementations.
+- **Database**: Single `.sql` file initialization (`ops/init.sql`) via PostgreSQL init hook. No Alembic needed.
+- **Ingestion**: Production-style multi-format parsing (PDF, DOCX, images, etc.) with OCR fallback and hierarchical indexing.
+- **Retrieval**: Weighted scoring with parent context injection for chapter-aware Q&A.
+- **Next steps**: SSE-based streaming chat flow, more sophisticated RAG evaluation, production telemetry.
+- `/health` performs real dependency checks (PostgreSQL, Redis, MinIO, AI provider). Other business endpoints are currently scaffold implementations.
+- `AI_PROVIDER` in `.env` controls LLM backend: `google` or `vllm` (must set `VLLM_BASE_URL` for local inference).
 
-## Implemented Today
+## Implemented Endpoints (Scaffold → Production)
 
-- `GET /health` returns real dependency status and timestamp.
-- `POST /upload` stores the file in MinIO and enqueues a Celery job.
-- `GET /status/{task_id}` reads Celery task state and terminal result metadata.
+| Endpoint | Method | Status | Notes |
+|----------|--------|--------|-------|
+| `/health` | GET | ✅ Working | Real dependency checks |
+| `/auth/login` | POST | 🟡 Scaffold | Returns JWT + refresh token (not yet persisted) |
+| `/upload` | POST | 🟡 Scaffold | Enqueues Celery job; returns task_id |
+| `/status/{task_id}` | GET | 🟡 Scaffold | Returns Celery task state |
+| `/chat` | POST | ⏳ TODO | SSE streaming (not yet implemented) |
+| `/documents` | GET | ⏳ TODO | List user documents |
+| `/documents/{id}` | GET | ⏳ TODO | Document details + nodes |
 - Worker ingestion now extracts text from PDF, scanned PDF, images, DOCX, and XLSX.
 - OCR fallback is used for image-only pages and scanned documents.
 - Indexed output is stored as hierarchical nodes for later retrieval.

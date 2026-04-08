@@ -13,6 +13,7 @@ from app.models.core import DocNode, Document
 @dataclass(frozen=True)
 class RagNode:
     node_id: str
+    parent_id: str | None
     document_id: str
     document_title: str
     heading: str
@@ -34,7 +35,11 @@ def _tokenize(query: str) -> list[str]:
 
 def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext:
     tokens = _tokenize(query)
-    base_query = session.query(DocNode, Document.title).join(Document, DocNode.document_id == Document.id).filter(Document.deleted_at.is_(None))
+    base_query = (
+        session.query(DocNode, Document.title)
+        .join(Document, DocNode.document_id == Document.id)
+        .filter(Document.deleted_at.is_(None), DocNode.level > 0)
+    )
 
     if tokens:
         lowered_heading = func.lower(DocNode.heading)
@@ -43,11 +48,19 @@ def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext
         filters = [or_(lowered_heading.contains(token), lowered_summary.contains(token), lowered_text.contains(token)) for token in tokens]
         base_query = base_query.filter(or_(*filters))
 
-    candidates = base_query.order_by(DocNode.created_at.desc()).limit(25).all()
+    candidates = base_query.order_by(DocNode.created_at.desc()).limit(80).all()
     scored: list[tuple[int, RagNode]] = []
     for node, title in candidates:
         text = f"{node.heading}\n{node.summary or ''}\n{node.full_text}".lower()
-        score = sum(text.count(token) for token in tokens) if tokens else 1
+        if tokens:
+            heading_text = (node.heading or "").lower()
+            heading_score = sum(heading_text.count(token) for token in tokens) * 3
+            summary_text = (node.summary or "").lower()
+            summary_score = sum(summary_text.count(token) for token in tokens) * 2
+            body_score = sum(text.count(token) for token in tokens)
+            score = heading_score + summary_score + body_score
+        else:
+            score = 1
         if score <= 0:
             continue
         scored.append(
@@ -55,6 +68,7 @@ def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext
                 score,
                 RagNode(
                     node_id=str(node.id),
+                    parent_id=str(node.parent_id) if node.parent_id else None,
                     document_id=str(node.document_id),
                     document_title=title,
                     heading=node.heading,
@@ -66,10 +80,18 @@ def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext
         )
 
     if not scored:
-        recent = session.query(DocNode, Document.title).join(Document, DocNode.document_id == Document.id).filter(Document.deleted_at.is_(None)).order_by(DocNode.created_at.desc()).limit(limit).all()
+        recent = (
+            session.query(DocNode, Document.title)
+            .join(Document, DocNode.document_id == Document.id)
+            .filter(Document.deleted_at.is_(None), DocNode.level > 0)
+            .order_by(DocNode.created_at.desc())
+            .limit(limit)
+            .all()
+        )
         nodes = [
             RagNode(
                 node_id=str(node.id),
+                parent_id=str(node.parent_id) if node.parent_id else None,
                 document_id=str(node.document_id),
                 document_title=title,
                 heading=node.heading,
@@ -79,10 +101,47 @@ def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext
             )
             for node, title in recent
         ]
-        return RagContext(nodes=nodes)
+        return RagContext(nodes=_with_parent_context(session, nodes))
 
     scored.sort(key=lambda item: item[0], reverse=True)
-    return RagContext(nodes=[node for _, node in scored[:limit]])
+    top_nodes = [node for _, node in scored[:limit]]
+    return RagContext(nodes=_with_parent_context(session, top_nodes))
+
+
+def _with_parent_context(session: Session, nodes: list[RagNode]) -> list[RagNode]:
+    if not nodes:
+        return []
+
+    parent_ids = {node.parent_id for node in nodes if node.parent_id}
+    if not parent_ids:
+        return nodes
+
+    parent_rows = session.query(DocNode).filter(DocNode.id.in_(parent_ids)).all()
+    parent_map = {str(row.id): row for row in parent_rows}
+
+    enriched: list[RagNode] = []
+    for node in nodes:
+        parent = parent_map.get(node.parent_id or "")
+        if parent and parent.heading and parent.heading != "Document":
+            parent_prefix = f"[{parent.heading}]\n"
+            full_text = f"{parent_prefix}{node.full_text}" if node.full_text else parent_prefix
+            summary = node.summary or parent.heading
+            enriched.append(
+                RagNode(
+                    node_id=node.node_id,
+                    parent_id=node.parent_id,
+                    document_id=node.document_id,
+                    document_title=node.document_title,
+                    heading=node.heading,
+                    summary=summary,
+                    full_text=full_text,
+                    page_range=node.page_range,
+                )
+            )
+        else:
+            enriched.append(node)
+
+    return enriched
 
 
 def build_answer(query: str, context: RagContext, history: list[dict[str, str]] | None = None) -> dict:

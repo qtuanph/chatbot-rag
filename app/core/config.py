@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     google_model: str = "gemini-2.5-flash"
     vllm_base_url: str = "http://vllm:8000/v1"
 
+    ocr_provider: str = "paddle"
+    ocr_language: str = "vi"
+    ocr_use_angle_cls: bool = True
+
     database_url: str = "postgresql+psycopg://app_rw:quoctuan@db:5432/ragbot"
     redis_url: str = "redis://redis:6379/0"
     celery_broker_url: str = "redis://redis:6379/0"
@@ -42,6 +46,8 @@ class Settings(BaseSettings):
             raise ValueError("MINIO_SECRET_KEY must be configured")
         if not self.database_url or self.database_url == "replace-me":
             raise ValueError("DATABASE_URL must be configured")
+        if self.ocr_provider.lower().strip() != "paddle":
+            raise ValueError("OCR_PROVIDER must be 'paddle'")
 
 
 @lru_cache

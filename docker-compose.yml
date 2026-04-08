@@ -9,8 +9,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
       redis:
         condition: service_healthy
       minio:
@@ -32,8 +30,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
       redis:
         condition: service_healthy
       minio:
@@ -47,17 +43,6 @@ services:
       retries: 3
     restart: on-failure:3
 
-  migrate:
-    build: .
-    env_file:
-      - .env
-    command: python -m alembic upgrade head
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-db-admin}:${POSTGRES_PASSWORD:-quoctuan}@db:5432/${POSTGRES_DB:-ragbot}
-    restart: "no"
 
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z

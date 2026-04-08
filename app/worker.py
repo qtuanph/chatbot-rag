@@ -54,14 +54,11 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str) ->
         session.add(root)
         session.flush()
 
-        heading_to_id = {"Document": root.id}
+        ref_to_id = {"root": root.id}
         created_nodes = 1
 
         for node in nodes:
-            if node.level == 0 and node.heading == "Document":
-                continue
-
-            parent_id = heading_to_id.get(node.parent_ref or "Document", root.id)
+            parent_id = ref_to_id.get(node.parent_ref or "root", root.id)
             new_node = DocNode(
                 document_id=document.id,
                 parent_id=parent_id,
@@ -74,7 +71,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str) ->
             )
             session.add(new_node)
             session.flush()
-            heading_to_id[node.heading] = new_node.id
+            ref_to_id[node.ref] = new_node.id
             created_nodes += 1
 
         document.status = "ready"

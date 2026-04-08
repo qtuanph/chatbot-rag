@@ -1,6 +1,8 @@
 # 02 — Database and Project
 
-> Status: project-only database design for one internal deployment. No SaaS tenancy, no tenant routing.
+> Status: **Single-tenant, self-hosted** deployment for one internal project. 
+> All users share the same document library with role-based access control (admin / member).
+> No multi-tenant layer, no tenant isolation.
 
 ## Core Tables
 
@@ -18,15 +20,13 @@
 
 ## Project Model
 
-- This repository is for one internal project deployment.
-- There is no customer tenancy layer.
-- Authentication is DB-backed.
-- Authorization is role-backed (`admin` and `member`).
-
-## RLS
-
-- Not used in this project-only model.
-- Access control is handled by JWT auth and role checks.
+- **Single Tenant**: One project, self-hosted on your infrastructure.
+- **Shared Documents**: All authenticated users access the same document library.
+- **Role-Based Access Control**: 
+  - Admin: Full permissions (upload, delete, configure data sources)
+  - Member: Chat and document search only
+- **No RLS**: PostgreSQL Row-Level Security is not used. Authorization is enforced at the application layer (JWT + role checks).
+- **No Tenant Isolation**: No `tenant_id` columns. Access control is user-role-based, not data-level isolated.
 
 ## Document Flow
 

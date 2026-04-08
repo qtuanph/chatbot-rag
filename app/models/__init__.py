@@ -1,4 +1,4 @@
-"""Import ORM model modules here so Alembic autogenerate can discover them."""
+"""ORM model modules."""
 
 from app.models.chat import ChatMessage, ChatSession
 from app.models.core import DataSource, DataSourceQueryAudit, DataSourceSchemaCache, Document, DocNode, Role, SecurityAudit, User

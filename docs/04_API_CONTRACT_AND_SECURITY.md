@@ -347,7 +347,7 @@ The provider abstraction layer normalizes provider-specific request and response
 
 | Rule | Requirement |
 |------|-------------|
-| Connection ownership | Tenant admins configure SQL Server connections; the application stores encrypted config only |
+| Connection ownership | Admin configures SQL Server connections; the application stores encrypted config only |
 | Access policy | Only approved schemas/tables may be queried |
 | SQL verbs | Only `SELECT` is allowed |
 | Query limits | Apply row limit, timeout, and redaction before returning results |
