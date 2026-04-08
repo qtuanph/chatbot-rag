@@ -119,6 +119,8 @@ GET /status/{task_id}
 Authorization: Bearer <token>
 ```
 
+**Access Control:** Admin-only. Task progress belongs to admin upload workflow.
+
 **Response 200:**
 ```json
 {
@@ -237,6 +239,8 @@ GET /chat/sessions/{session_id}/messages?page=1&page_size=50
 Authorization: Bearer <token>
 ```
 
+**Access Control:** A session is owned by exactly one authenticated user. Requests for another user's session must be rejected.
+
 **Response 200:**
 ```json
 {
@@ -318,7 +322,7 @@ Authorization: Bearer <token>
 | `AI_PROVIDER` | `google` | `vllm` |
 | Chat provider | Google AI Studio | On-prem `vLLM` |
 | Application endpoints | Unchanged | Unchanged |
-| Auth / RLS | Project-only auth model |
+| Auth model | Project-only auth model |
 | Retrieval pipeline | Unchanged | Unchanged |
 
 The provider abstraction layer normalizes provider-specific request and response formats so `/chat` remains unchanged across both phases.

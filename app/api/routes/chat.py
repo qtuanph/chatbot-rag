@@ -5,7 +5,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import AuthContext, get_auth_context
-from app.adapters.ai import LocalAIProvider
+from app.adapters.ai import build_ai_provider
 from app.db.session import SessionLocal
 from app.models.chat import ChatMessage, ChatSession
 from app.schemas.chat import ChatRequest
@@ -16,7 +16,7 @@ from app.services.throttle import RequestThrottle
 
 router = APIRouter(tags=["chat"])
 store = ChatStore()
-provider = LocalAIProvider()
+provider = build_ai_provider()
 throttle = RequestThrottle()
 
 
@@ -25,22 +25,24 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
     if not throttle.allow(f"throttle:chat:{auth.user_id}", limit=30, window_seconds=60):
         raise HTTPException(status_code=429, detail="Too many chat requests")
 
-    project_id = "project"
-    session_id = request.session_id or store.get_active_session(project_id) or str(uuid4())
-    store.set_active_session(project_id, session_id)
+    scope_id = f"user:{auth.user_id}"
+    session_id = request.session_id or store.get_active_session(scope_id) or str(uuid4())
+    store.set_active_session(scope_id, session_id)
 
     with SessionLocal() as session:
         chat_session = session.get(ChatSession, session_id)
         if chat_session is None:
-            chat_session = ChatSession(id=session_id, title="Active chat")
+            chat_session = ChatSession(id=session_id, user_id=auth.user_id, title="Active chat")
             session.add(chat_session)
             session.commit()
+        elif str(chat_session.user_id) != auth.user_id:
+            raise HTTPException(status_code=403, detail="Chat session does not belong to this user")
 
-        store.append_message(project_id, session_id, "user", request.query)
+        store.append_message(scope_id, session_id, "user", request.query)
 
         context = retrieve_context(session, request.query, limit=5)
         assistant_seed = build_answer(request.query, context)
-        history = store.get_history(project_id, session_id)
+        history = store.get_history(scope_id, session_id)
         response = await provider.chat(
             [{"role": item["role"], "content": item["content"]} for item in history],
             context=assistant_seed["context"],
@@ -60,5 +62,5 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
         )
         session.commit()
 
-    store.append_message(project_id, session_id, "assistant", answer)
+    store.append_message(scope_id, session_id, "assistant", answer)
     return {"session_id": session_id, "answer": answer, "citations": citations}

@@ -1,8 +1,8 @@
 # 02 — Database and Project
 
-> Status: **Single-tenant, self-hosted** deployment for one internal project. 
+> Status: **Single-project, self-hosted** deployment for one internal project. 
 > All users share the same document library with role-based access control (admin / member).
-> No multi-tenant layer, no tenant isolation.
+> No customer-isolation layer; this deployment uses one shared project dataset.
 
 ## Core Tables
 
@@ -20,13 +20,13 @@
 
 ## Project Model
 
-- **Single Tenant**: One project, self-hosted on your infrastructure.
+- **Single Project**: One project, self-hosted on your infrastructure.
 - **Shared Documents**: All authenticated users access the same document library.
 - **Role-Based Access Control**: 
   - Admin: Full permissions (upload, delete, configure data sources)
   - Member: Chat and document search only
-- **No RLS**: PostgreSQL Row-Level Security is not used. Authorization is enforced at the application layer (JWT + role checks).
-- **No Tenant Isolation**: No `tenant_id` columns. Access control is user-role-based, not data-level isolated.
+- **App-Level Authorization**: Access control is enforced in the application layer (JWT + role checks).
+- **No Data Partition Layer**: Access control is user-role-based, not per-customer data partitioning.
 
 ## Document Flow
 

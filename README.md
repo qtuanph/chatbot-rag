@@ -1,6 +1,6 @@
 # chatbot-rag
 
-**Docker-first, single-tenant hierarchical RAG chatbot** for Vietnamese enterprise documents.
+**Docker-first, single-project hierarchical RAG chatbot** for Vietnamese enterprise documents.
 
 > Deployment: Pure Docker. Self-hosted on your infrastructure. One project, shared document library, role-based access (admin / member).
 
@@ -43,6 +43,7 @@ chatbot-rag/
 ├── docker-compose.yml           # Complete local stack (PostgreSQL, Redis, MinIO, app, worker)
 ├── requirements.txt             # Python dependencies
 ├── .env.example                 # Environment variables template
+├── .python-version              # Local Python version pin (3.12)
 ├── .gitignore
 ├── .dockerignore
 │
@@ -89,7 +90,8 @@ chatbot-rag/
 │   ├── 03_CORE_WORKFLOWS.md
 │   ├── 04_API_CONTRACT_AND_SECURITY.md
 │   ├── 05_RESOURCE_OPTIMIZATION_AND_EDGE_CASES.md
-│   └── 06_DEPLOYMENT_AND_OBSERVABILITY.md
+│   ├── 06_DEPLOYMENT_AND_OBSERVABILITY.md
+│   └── 07_INGESTION_AND_RETRIEVAL_STRATEGY.md
 │
 ├── ops/                         # Deployment and database
 │   └── init.sql                 # Single comprehensive database initialization
@@ -104,23 +106,6 @@ chatbot-rag/
 - MinIO API: `http://localhost:9000`
 - MinIO console: `http://localhost:9001`
 
-## Local Paths And Access
-
-| What | Where / How |
-|------|-------------|
-| Upload file storage | MinIO bucket `rag-documents` |
-| Uploaded object key | `s3://rag-documents/<document_id>/<filename>` |
-| PostgreSQL host | `localhost:5432` |
-| PostgreSQL DB | `ragbot` |
-| PostgreSQL admin user | `db-admin` |
-| PostgreSQL admin password | `quoctuan` |
-| PostgreSQL app user | `app_rw` |
-| PostgreSQL app password | `quoctuan` |
-| Redis host | `localhost:6379` |
-| MinIO API | `localhost:9000` |
-| MinIO Console | `localhost:9001` |
-| MinIO access key | `minio-admin` |
-| MinIO secret key | `quoctuan` |
 ## Local Paths and Access
 
 ### Connection Details
@@ -135,7 +120,7 @@ chatbot-rag/
 | Redis host | `localhost:6379` |
 | MinIO API | `localhost:9000` |
 | MinIO Console | `localhost:9001` |
-| MinIO credentials | `minioadmin` / `minioadmin` |
+| MinIO credentials | `minio-admin` / `quoctuan` |
 
 ### Storage
 
@@ -173,16 +158,16 @@ curl http://localhost:8000/health
 | **OpenAPI Docs** | `http://localhost:8000/docs` |
 | **MinIO S3 API** | `http://localhost:9000` |
 | **MinIO Web Console** | `http://localhost:9001` |
-| **Health Check** | `http://localhost:8000/health` |
+| **Health Check** | `http://localhost:8000/api/v1/health` |
 
 ### Default Login Credentials (Development)
 
 ```
 Username: admin
-Password: password123
+Password: abc123
 
 Username: member
-Password: password123
+Password: abc123
 ```
 
 ### Optional: Run with Local LLM (vLLM)
@@ -222,28 +207,34 @@ docker compose up --build
 ## Notes
 
 - **Database**: Single `.sql` file initialization (`ops/init.sql`) via PostgreSQL init hook. No Alembic needed.
-- **Ingestion**: Production-style multi-format parsing (PDF, DOCX, images, etc.) with OCR fallback and hierarchical indexing.
-- **Retrieval**: Weighted scoring with parent context injection for chapter-aware Q&A.
+- **Ingestion**: Production-style multi-format parsing (PDF, DOCX, images, etc.) with OCR fallback, manual heading detection, and hierarchical indexing.
+- **OCR runtime mode**: `OCR_USE_GPU=auto` detects CUDA availability and falls back to CPU safely.
+- **OCR strategy mode**: `OCR_STRATEGY=traditional|markdown|hybrid` (`hybrid` default) with `OCR_MARKDOWN_ENGINE` and `OCR_LAYOUT_ANALYSIS` controls.
+- **Retrieval**: Weighted scoring with parent context injection, latest-version preference, and chapter-aware Q&A.
 - **Next steps**: SSE-based streaming chat flow, more sophisticated RAG evaluation, production telemetry.
 - `/health` performs real dependency checks (PostgreSQL, Redis, MinIO, AI provider). Other business endpoints are currently scaffold implementations.
-- `AI_PROVIDER` in `.env` controls LLM backend: `google` or `vllm` (must set `VLLM_BASE_URL` for local inference).
+- `AI_PROVIDER` in `.env` controls LLM backend: `vllm` (on-prem default) or `google` (temporary demo mode).
+- `API_V1_PREFIX` in `.env` controls the production namespace (default `/api/v1`).
+- For temporary online testing, set `AI_PROVIDER=google` and provide `GOOGLE_API_KEY`.
+- Optional key rotation/fallback: set `GOOGLE_API_KEYS` as comma-separated keys (keeps API contract unchanged while testing).
 
 ## Implemented Endpoints (Scaffold → Production)
 
 | Endpoint | Method | Status | Notes |
 |----------|--------|--------|-------|
-| `/health` | GET | ✅ Working | Real dependency checks |
-| `/auth/login` | POST | 🟡 Scaffold | Returns JWT + refresh token (not yet persisted) |
-| `/upload` | POST | 🟡 Scaffold | Enqueues Celery job; returns task_id |
-| `/status/{task_id}` | GET | 🟡 Scaffold | Returns Celery task state |
-| `/chat` | POST | ⏳ TODO | SSE streaming (not yet implemented) |
-| `/documents` | GET | ⏳ TODO | List user documents |
-| `/documents/{id}` | GET | ⏳ TODO | Document details + nodes |
+| `/api/v1/health` | GET | ✅ Working | Real dependency checks |
+| `/api/v1/auth/login` | POST | 🟡 Scaffold | Returns JWT + refresh token (not yet persisted) |
+| `/api/v1/upload` | POST | 🟡 Scaffold | Enqueues Celery job; returns task_id |
+| `/api/v1/status/{task_id}` | GET | 🟡 Scaffold | Returns Celery task state (admin only) |
+| `/api/v1/chat` | POST | ✅ Working | Provider-driven chat (`vllm` on-prem default, `google` demo mode) |
+| `/api/v1/documents` | GET | ⏳ TODO | List user documents |
+| `/api/v1/documents/{id}` | GET | ⏳ TODO | Document details + nodes |
 - Worker ingestion now extracts text from PDF, scanned PDF, images, DOCX, and XLSX.
 - OCR fallback is used for image-only pages and scanned documents.
 - Indexed output is stored as hierarchical nodes for later retrieval.
 - `DELETE /documents/{document_id}` removes the uploaded object and marks the document deleted in DB.
-- `POST /chat` is still a placeholder.
+- `POST /chat` uses adapter-based provider selection from `AI_PROVIDER`.
+- Public API contract is served under `/api/v1/*`.
 
 ## Chat Behavior Target
 
@@ -254,10 +245,10 @@ docker compose up --build
 
 ## Chat Storage Today
 
-- Active chat state is intended to be stored in Redis.
-- The current `/chat` route still does not wire that in yet.
-- Creating a new chat should call the reset path to remove the current session history.
-- This is intentionally lightweight for local development and debugging.
+- Active chat state is stored in Redis with per-user key scoping.
+- Session ownership is checked against `chat_sessions.user_id` to prevent cross-user access.
+- Messages are kept with short TTL in Redis for runtime context and persisted to DB as assistant replies.
+- This remains lightweight for local development and debugging.
 
 ## Database Model
 
@@ -297,7 +288,7 @@ ready for RAG
 For deletes:
 
 - `documents.deleted_at` is set
-- related `doc_nodes` are removed
+- related `doc_nodes` are preserved for history but excluded from new retrieval via document soft-delete filters
 - the file is deleted from MinIO
 
 The rest of the tables support auth, chat history, and future data connectors.

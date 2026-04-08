@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from celery.result import AsyncResult
+from sqlalchemy import func
 
 from app.api.deps import AuthContext, get_auth_context, require_admin
 from app.core.celery_app import celery_app
@@ -38,6 +39,32 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
     document_id = str(uuid4())
     task_id = str(uuid4())
     sha256 = hashlib.sha256(content).hexdigest()
+
+    with SessionLocal() as session:
+        duplicate = (
+            session.query(Document)
+            .filter(Document.sha256 == sha256, Document.deleted_at.is_(None))
+            .order_by(Document.created_at.desc())
+            .first()
+        )
+        if duplicate is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "status": "duplicate",
+                    "message": "Document already exists",
+                    "existing_document_id": str(duplicate.id),
+                    "existing_version": duplicate.version,
+                },
+            )
+
+        next_version = (
+            session.query(func.coalesce(func.max(Document.version), 0))
+            .filter(Document.file_name == file.filename, Document.deleted_at.is_(None))
+            .scalar()
+            + 1
+        )
+
     storage = build_storage()
     object_uri = storage.save_bytes(document_id=document_id, filename=file.filename, content=content)
 
@@ -51,6 +78,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
                 sha256=sha256,
                 file_type=file.content_type or "application/octet-stream",
                 file_size=len(content),
+                version=next_version,
                 status="pending",
             )
         )
@@ -105,7 +133,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
 
 
 @router.get("/status/{task_id}")
-async def get_status(task_id: str, _auth=Depends(get_auth_context)) -> dict[str, object]:
+async def get_status(task_id: str, _auth=Depends(require_admin)) -> dict[str, object]:
     record = registry.get_by_task_id(task_id)
     if record and record.deleted:
         return {
@@ -172,7 +200,6 @@ async def soft_delete_document(request: Request, document_id: str, _auth=Depends
         if document is not None:
             document.deleted_at = datetime.now(timezone.utc)
             document.status = "deleted"
-            session.query(DocNode).filter(DocNode.document_id == document_id).delete(synchronize_session=False)
             session.commit()
         safe_record_audit(
             action="document.delete",

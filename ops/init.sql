@@ -1,6 +1,6 @@
 -- Hierarchical RAG Database Initialization
--- Single-tenant, self-hosted Vietnamese chatbot
--- No multi-tenant layer; all users share same documents
+-- Single-project, self-hosted Vietnamese chatbot
+-- One shared project dataset for authenticated users
 
 -- ============= EXTENSIONS =============
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -156,13 +156,48 @@ CREATE TABLE IF NOT EXISTS data_source_query_audit (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
 
+-- Security audit log
+CREATE TABLE IF NOT EXISTS security_audit (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    action VARCHAR(100) NOT NULL,
+    subject_type VARCHAR(100),
+    subject_id VARCHAR(255),
+    ip_address VARCHAR(64),
+    user_agent VARCHAR(500),
+    details JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+ALTER TABLE doc_nodes DROP CONSTRAINT IF EXISTS ck_doc_nodes_level;
+ALTER TABLE doc_nodes ADD CONSTRAINT ck_doc_nodes_level CHECK (level >= 0);
+
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS ck_documents_version;
+ALTER TABLE documents ADD CONSTRAINT ck_documents_version CHECK (version >= 1);
+
+ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS ck_chat_messages_tokens_in;
+ALTER TABLE chat_messages ADD CONSTRAINT ck_chat_messages_tokens_in CHECK (tokens_in IS NULL OR tokens_in >= 0);
+
+ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS ck_chat_messages_tokens_out;
+ALTER TABLE chat_messages ADD CONSTRAINT ck_chat_messages_tokens_out CHECK (tokens_out IS NULL OR tokens_out >= 0);
+
 -- ============= INDEXES =============
 CREATE INDEX IF NOT EXISTS idx_documents_sha256 ON documents(sha256);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+CREATE INDEX IF NOT EXISTS idx_documents_deleted_at ON documents(deleted_at) WHERE deleted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_doc ON doc_nodes(document_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_parent ON doc_nodes(parent_id);
+CREATE INDEX IF NOT EXISTS idx_nodes_doc_level ON doc_nodes(document_id, level);
+CREATE INDEX IF NOT EXISTS idx_nodes_duplicate_of ON doc_nodes(duplicate_of);
 CREATE INDEX IF NOT EXISTS idx_nodes_heading_embedding ON doc_nodes USING hnsw (heading_embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session_time ON chat_messages(session_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_data_source_query_audit_created ON data_source_query_audit(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_data_source_query_audit_source_time ON data_source_query_audit(data_source_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_security_audit_actor ON security_audit(actor_user_id);
+CREATE INDEX IF NOT EXISTS idx_security_audit_created ON security_audit(created_at DESC);
 
 -- ============= TRIGGERS =============
 CREATE TRIGGER touch_roles_updated_at BEFORE UPDATE ON roles FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
@@ -185,6 +220,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE chat_messages TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_sources TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_source_schema_cache TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_source_query_audit TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE security_audit TO app_rw;
 
 -- ============= SEED DATA =============
 -- Insert default roles (if not already present)
@@ -194,15 +230,15 @@ VALUES
     ('member', 'Standard member with chat and document access')
 ON CONFLICT (name) DO NOTHING;
 
--- Insert default users (passwords: bcrypt('password123'))
--- Username: admin, password: password123
--- Username: member, password: password123
+-- Insert default users (passwords: bcrypt('abc123'))
+-- Username: admin, password: abc123
+-- Username: member, password: abc123
 INSERT INTO users (role_id, username, password_hash, is_active)
-SELECT r.id, 'admin', '$2b$12$tK0.uXpgQw5InbbeNZ0xkOL/gY3aMRRY79StN8xqoDCpZRbOX1M/K', true
+SELECT r.id, 'admin', '$2b$12$Zu/0SxKObaExq.O16nsgXOxP6VVhPMTaYG0Gy1vQecXfShKhtAed6', true
 FROM roles r WHERE r.name = 'admin'
 ON CONFLICT (username) DO NOTHING;
 
 INSERT INTO users (role_id, username, password_hash, is_active)
-SELECT r.id, 'member', '$2b$12$tK0.uXpgQw5InbbeNZ0xkOL/gY3aMRRY79StN8xqoDCpZRbOX1M/K', true
+SELECT r.id, 'member', '$2b$12$Zu/0SxKObaExq.O16nsgXOxP6VVhPMTaYG0Gy1vQecXfShKhtAed6', true
 FROM roles r WHERE r.name = 'member'
 ON CONFLICT (username) DO NOTHING;

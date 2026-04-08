@@ -18,7 +18,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
-app.include_router(auth.router)
-app.include_router(health.router)
-app.include_router(documents.router)
-app.include_router(chat.router)
+
+routers = [auth.router, health.router, documents.router, chat.router]
+
+for router in routers:
+    app.include_router(router, prefix=settings.api_v1_prefix)

@@ -25,7 +25,7 @@ sequenceDiagram
 
     Redis->>Worker: Dequeue task
     Worker->>Parser: Parse file (PDF/DOCX/XLSX/Images)
-    Parser-->>Worker: Native text + OCR fallback + structure
+    Parser-->>Worker: Native text + selective OCR fallback + structure hints
 
     Worker->>Tree: Build document tree
     Tree->>Tree: Document root -> page nodes -> section nodes
@@ -74,6 +74,7 @@ sequenceDiagram
         Note over Filter: Enforce deleted_at IS NULL,
         Note over Filter: optional document_ids/metadata,
         Note over Filter: latest version only by default
+        Note over Filter: preserve parent context per file
         Filter->>Retriever: Candidate documents for the single project
         Retriever->>Retriever: Navigate tree with query
         
@@ -209,9 +210,16 @@ sequenceDiagram
 |----------|-------------|
 | Upload | MUST return quickly with `task_id`; MUST NOT parse inline in the request thread |
 | Parse | MUST checkpoint by stage so retries do not restart from zero unnecessarily |
-| Query | MUST apply soft-delete exclusion and version preference before retrieval |
+| Query | MUST apply soft-delete exclusion and latest-version preference before retrieval |
 | Generation | MUST stream via SSE and persist final citations/metrics |
 | Delete | MUST soft delete first and MUST exclude deleted docs from new retrieval immediately |
+
+## Ingestion Strategy Summary
+
+- PDF: use native text first, then OCR only on scanned or empty pages.
+- DOCX: use styles when present, but also detect manual headings by numbering, capitalization, and spacing.
+- Large uploads: keep hierarchy per file, then retrieve across files at answer time instead of merging documents on ingest.
+- Quality tracking: store ingestion artifacts such as coverage ratio and warnings so low-quality parses can be reviewed.
 
 ## AI Coding Guardrails
 

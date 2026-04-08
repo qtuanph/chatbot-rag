@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from jose import JWTError, jwt
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.db.session import SessionLocal
@@ -18,11 +19,14 @@ throttle = RequestThrottle()
 
 @router.post("/auth/login", response_model=TokenResponse)
 def login(payload: LoginRequest, request: Request) -> TokenResponse:
-    if not throttle.allow(f"throttle:login:{payload.username}", limit=10, window_seconds=300):
+    client_ip = request.client.host if request.client else "unknown"
+    normalized_username = payload.username.lower().strip()
+    throttle_key = f"throttle:login:{client_ip}:{normalized_username}"
+    if not throttle.allow(throttle_key, limit=10, window_seconds=300):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many login attempts")
 
     with SessionLocal() as session:
-        user = session.query(User).filter(User.username == payload.username).one_or_none()
+        user = session.query(User).filter(User.username == normalized_username).one_or_none()
         if user is None or not verify_password(payload.password, user.password_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
         role = session.get(Role, user.role_id)
@@ -30,7 +34,6 @@ def login(payload: LoginRequest, request: Request) -> TokenResponse:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
         token = create_access_token(subject=str(user.id))
-        session.commit()
         safe_record_audit(
             action="auth.login",
             actor_user_id=str(user.id),
@@ -71,16 +74,34 @@ def logout(request: Request, authorization: str | None = Header(default=None)) -
 @router.post("/auth/users", response_model=CreateUserResponse)
 def create_user(payload: CreateUserRequest, _auth=Depends(require_admin)) -> CreateUserResponse:
     with SessionLocal() as session:
+        normalized_username = payload.username.lower().strip()
+        existing_user = session.query(User).filter(User.username == normalized_username).one_or_none()
+        if existing_user is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+
         role = session.query(Role).filter(Role.name == payload.role).one_or_none()
         if role is None:
             raise HTTPException(status_code=400, detail="Invalid role")
 
         user = User(
             role_id=role.id,
-            username=payload.username,
+            username=normalized_username,
             password_hash=hash_password(payload.password),
         )
         session.add(user)
-        session.commit()
-        session.refresh(user)
+        try:
+            session.commit()
+            session.refresh(user)
+        except IntegrityError:
+            session.rollback()
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists") from None
+        safe_record_audit(
+            action="auth.user.create",
+            actor_user_id=_auth.user_id,
+            subject_type="user",
+            subject_id=str(user.id),
+            ip_address=None,
+            user_agent=None,
+            details={"username": user.username, "role": role.name},
+        )
         return CreateUserResponse(id=str(user.id), username=user.username, role=role.name)

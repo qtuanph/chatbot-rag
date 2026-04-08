@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Iterable
 
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_, true
 from sqlalchemy.orm import Session
 
 from app.models.core import DocNode, Document
@@ -35,10 +35,12 @@ def _tokenize(query: str) -> list[str]:
 
 def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext:
     tokens = _tokenize(query)
+    latest_doc_ids = _latest_document_ids(session)
+    latest_filter = Document.id.in_(latest_doc_ids) if latest_doc_ids else true()
     base_query = (
         session.query(DocNode, Document.title)
         .join(Document, DocNode.document_id == Document.id)
-        .filter(Document.deleted_at.is_(None), DocNode.level > 0)
+        .filter(Document.deleted_at.is_(None), DocNode.level > 0, latest_filter)
     )
 
     if tokens:
@@ -83,7 +85,7 @@ def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext
         recent = (
             session.query(DocNode, Document.title)
             .join(Document, DocNode.document_id == Document.id)
-            .filter(Document.deleted_at.is_(None), DocNode.level > 0)
+            .filter(Document.deleted_at.is_(None), DocNode.level > 0, latest_filter)
             .order_by(DocNode.created_at.desc())
             .limit(limit)
             .all()
@@ -106,6 +108,31 @@ def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext
     scored.sort(key=lambda item: item[0], reverse=True)
     top_nodes = [node for _, node in scored[:limit]]
     return RagContext(nodes=_with_parent_context(session, top_nodes))
+
+
+def _latest_document_ids(session: Session) -> set[str]:
+    latest_versions = (
+        session.query(
+            Document.file_name.label("file_name"),
+            func.max(Document.version).label("max_version"),
+        )
+        .filter(Document.deleted_at.is_(None))
+        .group_by(Document.file_name)
+        .subquery()
+    )
+    rows = (
+        session.query(Document.id)
+        .join(
+            latest_versions,
+            and_(
+                Document.file_name == latest_versions.c.file_name,
+                Document.version == latest_versions.c.max_version,
+            ),
+        )
+        .filter(Document.deleted_at.is_(None))
+        .all()
+    )
+    return {str(row[0]) for row in rows if row and row[0]}
 
 
 def _with_parent_context(session: Session, nodes: list[RagNode]) -> list[RagNode]:
