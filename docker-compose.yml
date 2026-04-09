@@ -38,9 +38,9 @@ services:
       qdrant:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "celery -A app.core.celery_app.celery_app inspect ping -d worker@$$HOSTNAME --timeout=3"]
+      test: ["CMD-SHELL", "celery -A app.core.celery_app.celery_app inspect ping --timeout=10"]
       interval: 30s
-      timeout: 10s
+      timeout: 20s
       retries: 3
     restart: on-failure:3
 
@@ -105,8 +105,6 @@ services:
       - "6333:6333"
     volumes:
       - qdrantdata:/qdrant/storage
-    environment:
-      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-}
     healthcheck:
       test: ["CMD-SHELL", "bash -c ': </dev/tcp/127.0.0.1/6333'"]
       interval: 10s

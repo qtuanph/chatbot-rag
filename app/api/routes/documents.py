@@ -215,13 +215,16 @@ async def get_status(task_id: str, _auth=Depends(require_admin)) -> TaskStatusRe
         if record:
             record.status = "ready"
             registry.update(record)
+        payload_stage = str(payload.get("stage")) if payload.get("stage") else None
+        payload_status = str(payload.get("status")) if payload.get("status") else None
+        payload_percent = payload.get("progress", {}).get("percent") if isinstance(payload.get("progress"), dict) else None
         return _to_status_response(
             task_id=task_id,
-            status_value=(document.status if document is not None else "ready"),
-            stage=(document.status_stage if document is not None and document.status_stage else "ready"),
-            percent=(int(document.progress_percent) if document is not None else 100),
+            status_value=(payload_status or (document.status if document is not None else "ready")),
+            stage=(payload_stage or (document.status_stage if document is not None and document.status_stage else "ready")),
+            percent=(int(payload_percent) if payload_percent is not None else (int(document.progress_percent) if document is not None else 100)),
             document_id=payload.get("document_id") or document_id,
-            status_message=document.status_message if document is not None else "Ingestion complete.",
+            status_message=document.status_message if document is not None else str(payload.get("status_message") or "Task complete."),
             result=payload,
         )
     if result.failed():
@@ -307,38 +310,40 @@ async def get_document_detail(document_id: str, _auth=Depends(require_admin)) ->
 
 
 @router.delete("/documents/{document_id}", response_model=DocumentDeleteResponse)
-async def soft_delete_document(request: Request, document_id: str, _auth=Depends(require_admin)) -> DocumentDeleteResponse:
-    record = registry.get_by_document_id(document_id)
-    storage = build_storage()
-    if hasattr(storage, "delete_object"):
-        if record:
-            storage.delete_object(record.object_uri)
-
+async def delete_document(request: Request, document_id: str, _auth=Depends(require_admin)) -> DocumentDeleteResponse:
     with SessionLocal() as session:
         document = session.get(Document, document_id)
-        if document is not None:
-            document.deleted_at = datetime.now(timezone.utc)
-            document.status = "deleted"
-            document.status_stage = "deleted"
-            document.progress_percent = 100
-            document.status_message = "Document was soft-deleted by admin."
-            document.status_updated_at = datetime.now(timezone.utc)
-            session.commit()
-        safe_record_audit(
-            action="document.delete",
-            actor_user_id=_auth.user_id,
-            subject_type="document",
-            subject_id=document_id,
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-            details={"status": "deleted"},
+        if document is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+    delete_task_id = str(uuid4())
+
+    try:
+        celery_app.send_task(
+            "app.worker.delete_document_task",
+            kwargs={
+                "task_id": delete_task_id,
+                "document_id": document_id,
+                "user_id": _auth.user_id,
+            },
+            task_id=delete_task_id,
         )
+        celery_app.backend.store_result(
+            delete_task_id,
+            {"stage": "delete_queued", "progress": {"step": "delete_queued", "percent": 0}, "document_id": document_id},
+            state="QUEUED",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Failed to enqueue delete task: {exc}") from exc
 
-    if record:
-        try:
-            celery_app.backend.delete(record.task_id)
-        except Exception:
-            logger.warning("Failed to delete Celery backend result for document %s", document_id, exc_info=True)
-        registry.delete(document_id)
+    safe_record_audit(
+        action="document.delete",
+        actor_user_id=_auth.user_id,
+        subject_type="document",
+        subject_id=document_id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        details={"status": "delete_queued", "task_id": delete_task_id},
+    )
 
-    return DocumentDeleteResponse(status="deleted", document_id=document_id)
+    return DocumentDeleteResponse(status="delete_queued", document_id=document_id)

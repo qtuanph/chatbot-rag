@@ -12,6 +12,7 @@ from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.services.storage import build_storage
 from app.services.ingestion.pipeline import IngestionPipeline
 from app.services.ingestion.parser_manager import ParserManager
+from app.services.document_cleanup import hard_delete_document
 
 logger = logging.getLogger(__name__)
 
@@ -217,3 +218,29 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
     }
     
     return result
+
+
+@celery_app.task(name="app.worker.delete_document_task", bind=True)
+def delete_document_task(self, task_id: str, document_id: str, user_id: str | None = None) -> dict:
+    """Celery task for hard-deleting a document and all related artifacts."""
+    self.update_state(
+        task_id=task_id,
+        state="STARTED",
+        meta={
+            "stage": "delete",
+            "progress": {"step": "delete", "percent": 20},
+            "document_id": document_id,
+        },
+    )
+
+    cleanup_result = hard_delete_document(document_id)
+
+    return {
+        "task_id": task_id,
+        "document_id": document_id,
+        "status": "deleted",
+        "stage": "deleted",
+        "progress": {"step": "deleted", "percent": 100},
+        "requested_by": user_id,
+        "cleanup": cleanup_result,
+    }

@@ -67,27 +67,16 @@ def check_storage() -> dict[str, Any]:
         }
     except ClientError as exc:
         error_code = exc.response.get("Error", {}).get("Code", "")
-        # Auto-create bucket when missing so RustFS-only deployments don't need an init container.
+        # Health endpoint must be read-only: do not create bucket here.
         if error_code in {"404", "NoSuchBucket", "NotFound"}:
-            try:
-                client.create_bucket(Bucket=settings.s3_bucket)
-                return {
-                    "status": "up",
-                    "latency_ms": _latency_ms(start),
-                    "backend": settings.storage_backend,
-                    "endpoint": endpoint,
-                    "bucket_exists": True,
-                    "bucket_created": True,
-                }
-            except Exception:
-                return {
-                    "status": "degraded",
-                    "latency_ms": _latency_ms(start),
-                    "backend": settings.storage_backend,
-                    "endpoint": endpoint,
-                    "bucket_exists": False,
-                    "error": "bucket_not_initialized",
-                }
+            return {
+                "status": "degraded",
+                "latency_ms": _latency_ms(start),
+                "backend": settings.storage_backend,
+                "endpoint": endpoint,
+                "bucket_exists": False,
+                "error": "bucket_not_initialized",
+            }
         return {
             "status": "down",
             "latency_ms": _latency_ms(start),

@@ -54,3 +54,9 @@ class DocumentRegistry:
             record.deleted = True
             record.status = "deleted"
             self.put(record)
+
+    def purge(self, document_id: str) -> None:
+        record = self.get_by_document_id(document_id)
+        self.client.delete(self._key(document_id))
+        if record is not None:
+            self.client.delete(self._task_key(record.task_id))

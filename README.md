@@ -73,6 +73,7 @@ chatbot-rag/
 │       ├── chat_store.py
 │       ├── auth.py
 │       ├── audit.py
+│       ├── document_cleanup.py
 │       ├── health.py
 │       ├── registry.py
 │       ├── throttle.py
