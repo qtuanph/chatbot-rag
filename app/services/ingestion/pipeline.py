@@ -34,7 +34,7 @@ class IngestionPipeline:
     Main ingestion orchestration:
     1. Parse document (DoclingParser → ClassicParser fallback)
     2. Validate hierarchy
-    3. Embed nodes (BGE-M3)
+    3. Embed nodes (Gemini Embedding)
     4. Store in PostgreSQL + Qdrant + RustFS
     """
 

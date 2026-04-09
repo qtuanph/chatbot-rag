@@ -13,7 +13,7 @@ Use Qdrant for retrieval data path and keep PostgreSQL as system metadata/state 
 3. Parse with Docling to Markdown.
 4. Build hierarchy with LlamaIndex MarkdownNodeParser.
 5. Validate parent-child structure.
-6. Generate embeddings with BGE-M3.
+6. Generate embeddings with Gemini Embedding API.
 7. Store vectors and retrieval payload in Qdrant.
 8. Persist system metadata and task state in PostgreSQL.
 
@@ -28,7 +28,7 @@ Use Qdrant for retrieval data path and keep PostgreSQL as system metadata/state 
 ## Retrieval Contract
 
 1. Filter allowed documents from PostgreSQL (latest active, not deleted).
-2. Embed user query with BGE-M3.
+2. Embed user query with Gemini Embedding API.
 3. Query Qdrant directly for top-k relevant nodes.
 4. Build answer context from Qdrant payload.
 5. Generate response and return citations.
@@ -69,5 +69,5 @@ Persist ingestion artifact summary including:
 | Ingestion orchestration | app/services/ingestion/pipeline.py |
 | Hierarchy checks | app/services/ingestion/hierarchy_validator.py |
 | Vector adapter | app/adapters/vector_stores/qdrant.py |
-| Embedding adapter | app/adapters/embeddings/bge_m3.py |
+| Embedding adapter | app/adapters/embeddings/gemini.py |
 | Retrieval service | app/services/rag.py |

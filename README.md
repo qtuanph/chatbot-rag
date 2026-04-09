@@ -49,7 +49,7 @@ chatbot-rag/
 │   │   ├── base.py                        # Shared adapter contracts
 │   │   ├── ai/                            # LLM provider adapters
 │   │   ├── parsers/                       # Docling + Classic parser adapters
-│   │   ├── embeddings/                    # BGE-M3 embedding adapter
+│   │   ├── embeddings/                    # Gemini embedding adapter (online)
 │   │   └── vector_stores/                 # Qdrant vector store adapter
 │   ├── api/
 │   │   ├── deps.py

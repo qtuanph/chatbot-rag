@@ -1,40 +1,48 @@
-x-app-base: &app-base
-  build: .
-  env_file: [.env]
-  depends_on:
-    db:        { condition: service_healthy }
-    redis:     { condition: service_healthy }
-    rustfs:    { condition: service_healthy }
-    qdrant:    { condition: service_healthy }
-    rustfs-init: { condition: service_completed_successfully }
-
-x-logging: &logging
-  driver: "json-file"
-  options: { max-size: "50m", max-file: "5" }
-
 services:
   api:
-    <<: *app-base
+    image: chatbot-rag-app:local
+    build: .
+    env_file:
+      - .env
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
-    ports: ["8000:8000"]
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=5)\""]
       interval: 30s
       timeout: 10s
       retries: 3
     restart: unless-stopped
-    logging: *logging
 
   worker:
-    <<: *app-base
+    image: chatbot-rag-app:local
+    env_file:
+      - .env
     command: celery -A app.core.celery_app.celery_app worker --loglevel=INFO
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.core.celery_app.celery_app inspect ping -d worker@$$HOSTNAME --timeout=3"]
       interval: 30s
       timeout: 10s
       retries: 3
     restart: on-failure:3
-    logging: *logging
 
   db:
     image: postgres:18.3-trixie
@@ -45,12 +53,13 @@ services:
       - -c
       - app.db_admin_password=${POSTGRES_PASSWORD:-replace-me}
     environment:
-      POSTGRES_DB:       ${POSTGRES_DB:-ragbot}
-      POSTGRES_USER:     ${POSTGRES_USER:-db-admin}
+      POSTGRES_DB: ${POSTGRES_DB:-ragbot}
+      POSTGRES_USER: ${POSTGRES_USER:-db-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-replace-me}
-    ports: ["5432:5432"]
+    ports:
+      - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
       - ./ops/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-db-admin} -d ${POSTGRES_DB:-ragbot}"]
@@ -58,73 +67,54 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    logging: *logging
 
   redis:
     image: redis:7.4-alpine
-    ports: ["6379:6379"]
-    volumes: [redisdata:/data]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    logging: *logging
 
   rustfs:
     image: rustfs/rustfs:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER:     ${S3_ACCESS_KEY:-rustfs-admin}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-replace-me}
-    ports: ["9000:9000", "9001:9001"]
-    volumes: [rustfsdata:/data]
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfs-admin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-replace-me}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - rustfsdata:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/health/live"]
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9000"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    logging: *logging
-
-  rustfs-init:
-    image: rustfs/rustfs:latest
-    depends_on:
-      rustfs: { condition: service_healthy }
-    environment:
-      RUSTFS_ENDPOINT:    http://rustfs:9000
-      RUSTFS_ACCESS_KEY:  ${S3_ACCESS_KEY:-rustfs-admin}
-      RUSTFS_SECRET_KEY:  ${S3_SECRET_KEY:-replace-me}
-      RUSTFS_ALIAS_NAME:  local
-      S3_BUCKET:          ${S3_BUCKET:-rag-documents}
-    entrypoint: >
-      /bin/sh -c "
-      rc alias set local $$RUSTFS_ENDPOINT $$RUSTFS_ACCESS_KEY $$RUSTFS_SECRET_KEY &&
-      rc mb --ignore-existing local/$$S3_BUCKET
-      "
-    restart: "no"
 
   qdrant:
     image: qdrant/qdrant:v1.17.1
-    ports: ["6333:6333"]
-    volumes: [qdrantdata:/qdrant/storage]
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrantdata:/qdrant/storage
     environment:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-}
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      test: ["CMD-SHELL", "bash -c ': </dev/tcp/127.0.0.1/6333'"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    logging: *logging
 
-  # vLLM service (on-prem local inference) - disabled by default due to GPU/memory requirements
-  # To enable: docker compose --profile onprem up
-  # Requires: NVIDIA GPU + 16GB+ VRAM + ~8GB disk for model cache
-  # Future upgrade path: Qwen/Qwen2.5-14B-Instruct-AWQ (customize in docker-compose when ready)
-  # Currently using Google AI Studio (cloud inference) - see AI_PROVIDER=google in .env
-  #
+  # Keep vLLM disabled for now (resource-heavy). Enable later when infrastructure is ready.
   # vllm:
   #   image: vllm/vllm-openai:v0.19.0
   #   command: >
@@ -132,12 +122,15 @@ services:
   #     --quantization awq
   #     --host 0.0.0.0
   #     --port 8000
-  #   ports: ["8001:8000"]
+  #   ports:
+  #     - "8001:8000"
   #   deploy:
   #     resources:
   #       reservations:
   #         devices:
-  #           - { driver: nvidia, count: all, capabilities: [gpu] }
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]
   #   profiles: ["onprem"]
   #   healthcheck:
   #     test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)\""]
@@ -145,7 +138,6 @@ services:
   #     timeout: 10s
   #     retries: 5
   #   restart: unless-stopped
-  #   logging: *logging
 
 volumes:
   pgdata:

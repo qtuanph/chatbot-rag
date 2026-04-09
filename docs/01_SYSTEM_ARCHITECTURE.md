@@ -8,7 +8,7 @@ Status: authoritative architecture baseline for implementation.
 |-----------|----------|
 | Deployment | Docker-first, self-hosted, single-project deployment |
 | Ingestion | Docling-first conversion to Markdown, then LlamaIndex hierarchy parsing |
-| Embedding | Local BGE-M3 via sentence-transformers |
+| Embedding | Google Gemini Embedding API (gemini-embedding-001) |
 | Vector Store | Qdrant for vectors and retrieval payload |
 | Metadata Store | PostgreSQL for users, documents, sessions, audit, connector metadata |
 | Queue/Cache | Redis only for Celery broker/result and cache-like concerns |
@@ -32,7 +32,7 @@ graph TD
     Worker --> Parser[Docling Parser Adapter]
     Parser --> NodeParser[LlamaIndex MarkdownNodeParser]
     NodeParser --> Validator[Hierarchy Validator]
-    Validator --> Embedder[BGE-M3 Embedding Adapter]
+    Validator --> Embedder[Gemini Embedding Adapter]
     Embedder --> Qdrant[(Qdrant)]
     Validator --> PG[(PostgreSQL system DB)]
 
@@ -56,7 +56,7 @@ graph TD
 | 2. Queue | API -> Redis -> Worker | Async task created, task_id returned |
 | 3. Parse | Worker -> Docling -> LlamaIndex | Hierarchical nodes |
 | 4. Validate | Worker -> Hierarchy Validator | Parent-child consistency report |
-| 5. Embed | Worker -> BGE-M3 | Dense vectors per node |
+| 5. Embed | Worker -> Gemini Embedding API | Dense vectors per node |
 | 6. Persist | Worker -> PostgreSQL + Qdrant | System metadata stored in PostgreSQL; node vectors stored in Qdrant |
 | 7. Retrieve | Chat -> Retriever | Section candidates with parent context |
 | 8. Generate | Chat -> AI Provider -> JSON response | Grounded answer with citations |

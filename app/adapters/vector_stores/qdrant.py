@@ -31,7 +31,7 @@ class QdrantVectorStore(BaseVectorStore):
         url: str = "http://localhost:6333",
         api_key: Optional[str] = None,
         collection_name: str = "documents_vectors",
-        vector_size: int = 384,  # BGE-M3 dimension
+        vector_size: int = 768,  # Gemini embedding dimension
         timeout: int = 30,
     ):
         """
@@ -41,7 +41,7 @@ class QdrantVectorStore(BaseVectorStore):
             url: Qdrant server URL (e.g., http://qdrant:6333)
             api_key: Optional API key for Qdrant cloud
             collection_name: Name of Qdrant collection
-            vector_size: Dimension of vectors (384 for BGE-M3)
+            vector_size: Dimension of vectors (768 for Gemini embedding)
             timeout: Request timeout in seconds
         """
         self.url = url

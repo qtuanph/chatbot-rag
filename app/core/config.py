@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0"
 
     # Embedding and vector store configuration
-    embedding_model: str = "bge-m3"  # Model name for embeddings
+    embedding_model: str = "gemini-embedding-001"  # Model name for embeddings
     embedding_batch_size: int = 32
     embedding_normalize: bool = True
     vector_store: str = "qdrant"  # Vector store backend (qdrant, chroma, etc.)
@@ -70,7 +70,7 @@ class Settings(BaseSettings):
             raise ValueError("INGESTION_MIN_TOTAL_TEXT_CHARS must be >= 1")
         
         # Embedding and vector store validation
-        self.embedding_model = str(self.embedding_model).strip().lower() or "bge-m3"
+        self.embedding_model = str(self.embedding_model).strip().lower() or "gemini-embedding-001"
         self.vector_store = str(self.vector_store).strip().lower() or "qdrant"
         if self.vector_store not in {"qdrant", "chroma", "weaviate"}:
             raise ValueError("VECTOR_STORE must be qdrant/chroma/weaviate")

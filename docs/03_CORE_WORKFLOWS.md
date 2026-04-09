@@ -28,7 +28,7 @@ sequenceDiagram
     Worker->>Parser: parse(filename, bytes)
     Parser->>Pipeline: nodes + parse metadata
     Pipeline->>Pipeline: validate hierarchy
-    Pipeline->>Pipeline: embed nodes with BGE-M3
+    Pipeline->>Pipeline: embed nodes with Gemini Embedding API
     Pipeline->>Qdrant: upsert vectors
     Worker->>DB: save artifact metadata
     Worker->>DB: set status=ready or failed

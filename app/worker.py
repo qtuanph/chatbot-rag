@@ -7,7 +7,7 @@ from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.core import Document
-from app.adapters.embeddings.bge_m3 import BGEM3Embedding
+from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.services.storage import build_storage
 from app.services.ingestion.pipeline import IngestionPipeline
@@ -100,19 +100,17 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
         logger.info(f"[{document_id}] Parsing with new pipeline...")
 
         parser_manager = ParserManager()
+        embedding_service = build_embedding_service()
 
         with SessionLocal() as pipeline_session:
             pipeline = IngestionPipeline(
                 parser_manager=parser_manager,
-                embedding_service=BGEM3Embedding(
-                    model_name="BAAI/bge-m3",
-                    batch_size=settings.embedding_batch_size,
-                    normalize=settings.embedding_normalize,
-                ),
+                embedding_service=embedding_service,
                 vector_store=QdrantVectorStore(
                     url=settings.qdrant_url,
                     api_key=settings.qdrant_api_key or None,
                     collection_name=settings.qdrant_collection,
+                    vector_size=embedding_service.get_dimension(),
                     timeout=settings.qdrant_timeout,
                 ),
             )

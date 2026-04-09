@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.models.core import Document
 from app.core.config import settings
-from app.adapters.embeddings.bge_m3 import BGEM3Embedding
+from app.adapters.base import BaseEmbedding
+from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
 
 
@@ -38,20 +39,18 @@ def _tokenize(query: str) -> list[str]:
 
 
 @lru_cache(maxsize=1)
-def _get_embedding_service() -> BGEM3Embedding:
-    return BGEM3Embedding(
-        model_name="BAAI/bge-m3",
-        batch_size=settings.embedding_batch_size,
-        normalize=settings.embedding_normalize,
-    )
+def _get_embedding_service() -> BaseEmbedding:
+    return build_embedding_service()
 
 
 @lru_cache(maxsize=1)
 def _get_vector_store() -> QdrantVectorStore:
+    embedding_service = _get_embedding_service()
     return QdrantVectorStore(
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key or None,
         collection_name=settings.qdrant_collection,
+        vector_size=embedding_service.get_dimension(),
         timeout=settings.qdrant_timeout,
     )
 

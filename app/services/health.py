@@ -8,6 +8,7 @@ import httpx
 import psycopg
 import redis
 from botocore.client import Config
+from botocore.exceptions import ClientError
 
 from app.core.config import settings
 
@@ -63,6 +64,36 @@ def check_storage() -> dict[str, Any]:
             "backend": settings.storage_backend,
             "endpoint": endpoint,
             "bucket_exists": True,
+        }
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code", "")
+        # Auto-create bucket when missing so RustFS-only deployments don't need an init container.
+        if error_code in {"404", "NoSuchBucket", "NotFound"}:
+            try:
+                client.create_bucket(Bucket=settings.s3_bucket)
+                return {
+                    "status": "up",
+                    "latency_ms": _latency_ms(start),
+                    "backend": settings.storage_backend,
+                    "endpoint": endpoint,
+                    "bucket_exists": True,
+                    "bucket_created": True,
+                }
+            except Exception:
+                return {
+                    "status": "degraded",
+                    "latency_ms": _latency_ms(start),
+                    "backend": settings.storage_backend,
+                    "endpoint": endpoint,
+                    "bucket_exists": False,
+                    "error": "bucket_not_initialized",
+                }
+        return {
+            "status": "down",
+            "latency_ms": _latency_ms(start),
+            "backend": settings.storage_backend,
+            "endpoint": endpoint,
+            "error": "storage_unreachable",
         }
     except Exception as exc:
         return {
