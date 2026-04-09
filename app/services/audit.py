@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
 from app.models.core import SecurityAudit
+
+
+logger = logging.getLogger(__name__)
 
 
 def record_audit(
@@ -56,4 +60,4 @@ def safe_record_audit(
             )
             session.commit()
     except Exception:
-        pass
+        logger.warning("Failed to write security audit event", exc_info=True)

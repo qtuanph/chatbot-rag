@@ -205,7 +205,6 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
         
         raise
     
-    # Return result
     result = {
         "task_id": task_id,
         "document_id": document_id,

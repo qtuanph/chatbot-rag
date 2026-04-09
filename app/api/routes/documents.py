@@ -1,6 +1,7 @@
 from uuid import uuid4
 import hashlib
 from datetime import datetime, timezone
+import logging
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from celery.result import AsyncResult
@@ -29,6 +30,7 @@ from app.services.throttle import RequestThrottle
 router = APIRouter(tags=["documents"])
 registry = DocumentRegistry()
 throttle = RequestThrottle()
+logger = logging.getLogger(__name__)
 
 
 def _to_status_response(
@@ -336,7 +338,7 @@ async def soft_delete_document(request: Request, document_id: str, _auth=Depends
         try:
             celery_app.backend.delete(record.task_id)
         except Exception:
-            pass
+            logger.warning("Failed to delete Celery backend result for document %s", document_id, exc_info=True)
         registry.delete(document_id)
 
     return DocumentDeleteResponse(status="deleted", document_id=document_id)
