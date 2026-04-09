@@ -3,10 +3,11 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Any
 
+import boto3
 import httpx
 import psycopg
 import redis
-from minio import Minio
+from botocore.client import Config
 
 from app.core.config import settings
 
@@ -45,21 +46,23 @@ def check_redis() -> dict[str, Any]:
 
 def check_storage() -> dict[str, Any]:
     start = perf_counter()
-    endpoint = f"http{'s' if settings.minio_secure else ''}://{settings.minio_endpoint}/{settings.minio_bucket}"
+    endpoint = f"http{'s' if settings.s3_secure else ''}://{settings.s3_endpoint}/{settings.s3_bucket}"
     try:
-        client = Minio(
-            settings.minio_endpoint,
-            access_key=settings.minio_access_key,
-            secret_key=settings.minio_secret_key,
-            secure=settings.minio_secure,
+        client = boto3.client(
+            "s3",
+            endpoint_url=f"http{'s' if settings.s3_secure else ''}://{settings.s3_endpoint}",
+            aws_access_key_id=settings.s3_access_key,
+            aws_secret_access_key=settings.s3_secret_key,
+            config=Config(signature_version='s3v4'),
+            region_name='us-east-1'
         )
-        exists = client.bucket_exists(settings.minio_bucket)
+        client.head_bucket(Bucket=settings.s3_bucket)
         return {
-            "status": "up" if exists else "degraded",
+            "status": "up",
             "latency_ms": _latency_ms(start),
             "backend": settings.storage_backend,
             "endpoint": endpoint,
-            "bucket_exists": exists,
+            "bucket_exists": True,
         }
     except Exception as exc:
         return {

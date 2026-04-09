@@ -8,7 +8,7 @@ Use Qdrant for retrieval data path and keep PostgreSQL as system metadata/state 
 
 ## Ingestion Pipeline (Authoritative)
 
-1. Upload file to MinIO.
+1. Upload file to RustFS (S3-compatible storage).
 2. Queue async worker task.
 3. Parse with Docling to Markdown.
 4. Build hierarchy with LlamaIndex MarkdownNodeParser.
@@ -23,7 +23,7 @@ Use Qdrant for retrieval data path and keep PostgreSQL as system metadata/state 
 |-------|--------------------|
 | Qdrant | node text payload, vectors, retrieval metadata |
 | PostgreSQL | document status, file metadata, versions, audit, sessions |
-| MinIO | original file and ingestion artifacts |
+| RustFS | original file and ingestion artifacts |
 
 ## Retrieval Contract
 

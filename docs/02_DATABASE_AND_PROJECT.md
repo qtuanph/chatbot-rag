@@ -8,7 +8,7 @@ Status: single-project data model with role-based authorization.
 |-------|------------|----------------|
 | Relational metadata | PostgreSQL | users, roles, documents, sessions, audit, connector metadata |
 | Vector index | Qdrant | node vectors + retrieval payload |
-| Object storage | MinIO | raw uploads + ingestion artifacts |
+| Object storage | RustFS | raw uploads + ingestion artifacts |
 | Queue/cache | Redis | Celery broker/backend, lightweight runtime mappings |
 
 ## Core PostgreSQL Tables
@@ -46,7 +46,7 @@ Status: single-project data model with role-based authorization.
 
 ## Ingestion Persistence Flow
 
-1. Save upload to MinIO.
+1. Save upload to RustFS.
 2. Insert documents row with pending status.
 3. Worker parses with Docling and LlamaIndex.
 4. Persist vectors and node payload in Qdrant.

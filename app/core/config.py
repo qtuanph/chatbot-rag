@@ -33,12 +33,12 @@ class Settings(BaseSettings):
 
     max_upload_size_mb: int = 50
 
-    storage_backend: str = "minio"
-    minio_endpoint: str = "minio:9000"
-    minio_access_key: str = "minio-admin"
-    minio_secret_key: str = "replace-me"
-    minio_bucket: str = "rag-documents"
-    minio_secure: bool = False
+    storage_backend: str = "s3"
+    s3_endpoint: str = "rustfs:9000"
+    s3_access_key: str = "rustfs"
+    s3_secret_key: str = "replace-me"
+    s3_bucket: str = "rag-documents"
+    s3_secure: bool = False
     allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0"
 
     # Embedding and vector store configuration
@@ -54,8 +54,8 @@ class Settings(BaseSettings):
     def model_post_init(self, __context) -> None:
         if not self.jwt_secret or self.jwt_secret == "replace-me":
             raise ValueError("JWT_SECRET must be configured")
-        if not self.minio_secret_key or self.minio_secret_key == "replace-me":
-            raise ValueError("MINIO_SECRET_KEY must be configured")
+        if not self.s3_secret_key or self.s3_secret_key == "replace-me":
+            raise ValueError("S3_SECRET_KEY must be configured")
         if not self.database_url or self.database_url == "replace-me":
             raise ValueError("DATABASE_URL must be configured")
         self.api_v1_prefix = str(self.api_v1_prefix).strip() or "/api/v1"

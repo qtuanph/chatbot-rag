@@ -48,7 +48,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
     Args:
         task_id: Celery task ID
         document_id: Document ID
-        file_path: Path in storage (e.g., minio://bucket/key)
+        file_path: Path in storage (e.g., s3://bucket/key)
         user_id: User who uploaded document
     
     Returns:

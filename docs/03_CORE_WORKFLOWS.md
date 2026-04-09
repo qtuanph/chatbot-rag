@@ -8,7 +8,7 @@ Status: implementation workflow baseline aligned with the new architecture.
 sequenceDiagram
     participant Client
     participant API as FastAPI
-    participant MinIO
+    participant RustFS
     participant DB as PostgreSQL
     participant Redis
     participant Worker as Celery Worker
@@ -18,7 +18,7 @@ sequenceDiagram
 
     Client->>API: POST /api/v1/upload
     API->>API: validate auth and size
-    API->>MinIO: store file
+    API->>RustFS: store file
     API->>DB: create document(status=pending)
     API->>Redis: enqueue parse task
     API-->>Client: 202 task_id

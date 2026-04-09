@@ -35,7 +35,7 @@ class IngestionPipeline:
     1. Parse document (DoclingParser → ClassicParser fallback)
     2. Validate hierarchy
     3. Embed nodes (BGE-M3)
-    4. Store in PostgreSQL + Qdrant + MinIO
+    4. Store in PostgreSQL + Qdrant + RustFS
     """
 
     def __init__(

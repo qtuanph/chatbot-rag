@@ -10,7 +10,7 @@ Primary runtime uses Docker Compose with the following services:
 - worker (Celery)
 - db (PostgreSQL)
 - redis (broker/result/cache)
-- minio (object storage)
+- rustfs (object storage)
 - qdrant (vector retrieval store)
 - vllm (optional on-prem profile)
 
@@ -20,7 +20,7 @@ Primary runtime uses Docker Compose with the following services:
 |-----------|------|
 | PostgreSQL | system database: auth, roles, sessions, documents metadata, status, audit |
 | Qdrant | retrieval database: node vectors and retrieval payload |
-| MinIO | raw upload and artifact object storage |
+| RustFS | raw upload and artifact object storage |
 | Redis | queue and lightweight runtime cache |
 
 PostgreSQL is not the primary retrieval context store in the new direction.
@@ -31,7 +31,7 @@ PostgreSQL is not the primary retrieval context store in the new direction.
 |----------|---------|
 | DATABASE_URL | PostgreSQL connection |
 | REDIS_URL | Redis connection |
-| MINIO_* | object storage configuration |
+| S3_* | object storage configuration |
 | QDRANT_URL | qdrant endpoint |
 | QDRANT_COLLECTION | vector collection |
 | EMBEDDING_MODEL | embedding model selection |
@@ -73,10 +73,10 @@ Track at least:
 | Data | Strategy |
 |------|----------|
 | PostgreSQL | periodic dump with retention |
-| MinIO buckets | object sync backup |
+| RustFS buckets | object sync backup |
 | Qdrant storage volume | volume snapshot or backup policy |
 
 Recovery priority:
 1. PostgreSQL system state
-2. MinIO raw uploads/artifacts
+2. RustFS raw uploads/artifacts
 3. Qdrant vectors (rebuildable if raw docs + ingestion pipeline are intact)

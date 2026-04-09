@@ -8,8 +8,8 @@
 
 - FastAPI backend with async ingestion pipeline
 - Celery worker for asynchronous document parsing
-- PostgreSQL + Redis + MinIO + Qdrant via docker-compose
-- S3-compatible object storage (MinIO) for uploaded files
+- PostgreSQL + Redis + RustFS + Qdrant via docker-compose
+- S3-compatible object storage (RustFS) for uploaded files
 - Optional `vllm` service (onprem profile) for local LLM inference
 - Multi-format ingestion: PDF, scanned PDF, images, DOCX, XLSX, Markdown, plain text
 - Docling-first document extraction with deterministic fallback path
@@ -85,10 +85,58 @@ chatbot-rag/
 
 ## Storage Choice
 
-- Uploaded files are stored in `MinIO`, not inside the git project and not as a local app folder source-of-truth.
+- Uploaded files are stored in `RustFS`, not inside the git project and not as a local app folder source-of-truth.
 - Reason: closer to production behavior, easier debugging of object-storage flows, cleaner future migration to S3-compatible deployments.
-- MinIO API: `http://localhost:9000`
-- MinIO console: `http://localhost:9001`
+- RustFS API: `http://localhost:9000`
+- RustFS console: `http://localhost:9001`
+
+## LLM Configuration
+
+### Current Setup (Production Demo)
+- **AI Provider**: Google AI Studio (cloud-based)
+- **Model**: Gemini 2.5 Flash
+- **Configuration**: `AI_PROVIDER=google` in `.env`
+- **Why**: Minimal resource requirements, immediate production-ready demonstration for stakeholders
+
+### Future vLLM On-Premises Upgrade
+
+When you have GPU hardware available, enable local inference:
+
+#### Phase 1: Enable vLLM Service
+1. Uncomment the `vllm` service in `docker-compose.yml` (lines ~125-160)
+2. Optionally add HuggingFace model cache volume to persist downloaded models:
+   ```yaml
+   volumes:
+     - hf_cache:/root/.cache/huggingface
+   
+   volumes:
+     hf_cache:
+   ```
+3. Change `.env`: `AI_PROVIDER=vllm` (or keep `google` as fallback)
+4. Start with profile: `docker compose --profile onprem up -d`
+
+#### Phase 2: Scale Model Capacity (Optional)
+Current default: `Qwen/Qwen2.5-7B-Instruct-AWQ` (7B parameters, lighter)
+
+To upgrade to larger model in future, modify docker-compose.yml vLLM command:
+```yaml
+command: >
+  --model Qwen/Qwen2.5-14B-Instruct-AWQ
+  --quantization awq
+  --host 0.0.0.0
+  --port 8000
+```
+
+#### Hardware Requirements
+- **Minimum**: NVIDIA GPU with 12GB VRAM
+- **Recommended**: NVIDIA GPU with 16GB+ VRAM
+- **Disk**: 8GB+ for model cache (persistent with volume)
+- **Startup**: 5-15 minutes first run (model download), ~30 seconds with cached volume
+
+#### Fallback Strategy
+- Configure both providers in `.env`: `AI_PROVIDER=google` (fallback)
+- App automatically routes to working provider if one fails
+- Healthcheck includes vLLM when service is active
 
 ## Local Paths and Access
 
@@ -101,14 +149,14 @@ chatbot-rag/
 | PostgreSQL admin user | `db-admin` (for schema management) |
 | PostgreSQL app user | `app_rw` (app runtime) |
 | PostgreSQL password | set `POSTGRES_PASSWORD` / `APP_DB_PASSWORD` in `.env` |
-| Redis host | `localhost:6379` |
-| MinIO API | `localhost:9000` |
-| MinIO Console | `localhost:9001` |
-| MinIO credentials | `minio-admin` / set `MINIO_SECRET_KEY` in `.env` |
+| RedisHost | `localhost:6379` |
+| RustFS API | `localhost:9000` |
+| RustFS Console | `localhost:9001` |
+| RustFS credentials | `rustfs` / set `S3_SECRET_KEY` in `.env` |
 
 ### Storage
 
-- **Uploaded files**: Stored in MinIO bucket `rag-documents` (not local disk)
+- **Uploaded files**: Stored in RustFS bucket `rag-documents` (not local disk)
 - **Object keys**: `s3://rag-documents/<document_id>/<filename>`
 - **Local test files**: Use any temp path on your machine, upload via `POST /api/v1/upload`
 
@@ -140,8 +188,8 @@ curl http://localhost:8000/api/v1/health
 |---------|-----|
 | **API** | `http://localhost:8000` |
 | **OpenAPI Docs** | `http://localhost:8000/docs` |
-| **MinIO S3 API** | `http://localhost:9000` |
-| **MinIO Web Console** | `http://localhost:9001` |
+| **RustFS S3 API** | `http://localhost:9000` |
+| **RustFS Web Console** | `http://localhost:9001` |
 | **Health Check** | `http://localhost:8000/api/v1/health` |
 
 ### Default Login Credentials (Development)
@@ -196,7 +244,7 @@ docker compose up --build
 - **Ingestion engine**: `INGESTION_ENGINE=docling|classic` (`docling` default) controls the upload pipeline.
 - **Retrieval**: Weighted scoring with parent context injection, latest-version preference, and chapter-aware Q&A.
 - **Next steps**: chat response latency, more sophisticated RAG evaluation, production telemetry.
-- `/health` performs real dependency checks (PostgreSQL, Redis, MinIO, AI provider). Other business endpoints are currently scaffold implementations.
+- `/health` performs real dependency checks (PostgreSQL, Redis, RustFS, AI provider). Other business endpoints are currently scaffold implementations.
 - `AI_PROVIDER` in `.env` controls LLM backend: `vllm` (on-prem default) or `google` (temporary demo mode).
 - `API_V1_PREFIX` in `.env` controls the production namespace (default `/api/v1`).
 - For temporary online testing, set `AI_PROVIDER=google` and provide `GOOGLE_API_KEY`.
@@ -236,7 +284,7 @@ When an admin uploads a file via `POST /api/v1/upload`, the system runs this pip
    - Compute next version for same filename.
 
 3. **Persist source file + document row**
-   - Save original file to MinIO as `s3://<bucket>/<document_id>/<filename>`.
+   - Save original file to RustFS as `s3://<bucket>/<document_id>/<filename>`.
    - Insert `documents` row with `status=pending`, `status_stage=uploaded`, `progress_percent=1`.
    - Write upload audit log.
 
@@ -247,7 +295,7 @@ When an admin uploads a file via `POST /api/v1/upload`, the system runs this pip
    - Return `202 Accepted` immediately with `task_id`, `document_id`, `status=queued`.
 
 5. **Worker parsing and indexing**
-   - Download file from MinIO (`status_stage=download`, `progress_percent=10`).
+   - Download file from RustFS (`status_stage=download`, `progress_percent=10`).
    - Convert the file locally with Docling into Markdown (`status_stage=parse`, `progress_percent=40`).
    - Use LlamaIndex `MarkdownNodeParser` to turn the Markdown into hierarchical nodes.
    - Build hierarchical retrieval nodes for Qdrant (root + parent/child relationships).
@@ -312,7 +360,7 @@ Simple flow:
 Upload file
    |
    v
-MinIO object
+RustFS object
    |
    v
 documents row
@@ -327,7 +375,7 @@ hierarchical nodes in Qdrant
 ready for RAG
 ```
 
-1. Upload file to MinIO
+1. Upload file to RustFS
 2. Create a `documents` row with `status=pending`
 3. Worker parses the file
 4. Worker writes hierarchical nodes to Qdrant
@@ -337,7 +385,7 @@ For deletes:
 
 - `documents.deleted_at` is set
 - related retrieval nodes remain in Qdrant for historical reference but are excluded from new retrieval via document soft-delete filters
-- the file is deleted from MinIO
+- the file is deleted from RustFS
 
 The rest of the tables support auth, chat history, and future data connectors.
 

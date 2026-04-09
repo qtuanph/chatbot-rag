@@ -36,8 +36,8 @@ graph TD
     Embedder --> Qdrant[(Qdrant)]
     Validator --> PG[(PostgreSQL system DB)]
 
-    Upload --> MinIO[(MinIO)]
-    Worker --> MinIO
+    Upload --> RustFS[(RustFS)]
+    Worker --> RustFS
 
     Chat --> Retriever[Hierarchical Retriever]
     Retriever --> PG
@@ -52,7 +52,7 @@ graph TD
 
 | Stage | Path | Output |
 |-------|------|--------|
-| 1. Upload | Client -> API -> MinIO | File persisted, document row pending |
+| 1. Upload | Client -> API -> RustFS | File persisted, document row pending |
 | 2. Queue | API -> Redis -> Worker | Async task created, task_id returned |
 | 3. Parse | Worker -> Docling -> LlamaIndex | Hierarchical nodes |
 | 4. Validate | Worker -> Hierarchy Validator | Parent-child consistency report |
