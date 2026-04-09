@@ -7,12 +7,12 @@
 ## What Exists
 
 - FastAPI backend with async ingestion pipeline
-- Celery worker for document parsing and OCR
-- PostgreSQL + Redis + MinIO (object storage) via docker-compose
+- Celery worker for asynchronous document parsing
+- PostgreSQL + Redis + MinIO + Qdrant via docker-compose
 - S3-compatible object storage (MinIO) for uploaded files
 - Optional `vllm` service (onprem profile) for local LLM inference
 - Multi-format ingestion: PDF, scanned PDF, images, DOCX, XLSX, Markdown, plain text
-- Automatic OCR fallback for image-only pages and scanned documents
+- Docling-first document extraction with deterministic fallback path
 - Hierarchical document indexing: document → chapters → sections → subsections
 - Weighted retrieval with parent context injection
 
@@ -24,12 +24,11 @@ Database schema and seed data are initialized automatically at container startup
 - **Mounted by docker-compose**: `./ops/init.sql:/docker-entrypoint-initdb.d/init.sql:ro`
 - **Execution**: PostgreSQL automatically runs SQL files in `/docker-entrypoint-initdb.d/` on first startup
 - **What it creates**:
-  - Vector extension for embeddings (`pgvector`)
   - UUID extension (`pgcrypto`, `uuid-ossp`)
-  - 10 core tables: roles, users, documents, doc_nodes, chat_sessions, chat_messages, data_sources, data_source_schema_cache, data_source_query_audit
-  - Indexes on document/node/session lookups
+   - 9 core tables: roles, users, documents, chat_sessions, chat_messages, data_sources, data_source_schema_cache, data_source_query_audit, security_audit
+   - Indexes on document/session/audit lookups
   - Automatic `updated_at` triggers
-  - Seed users: admin/member (password: `password123`)
+   - Seed users: admin/member (password: `abc123`)
 
 No Alembic migrations needed. Database is idempotent and initialized from a single `.sql` file.
 
@@ -37,66 +36,51 @@ No Alembic migrations needed. Database is idempotent and initialized from a sing
 
 ```text
 chatbot-rag/
-├── AGENTS.md                    # Build guide and project objectives
-├── README.md                    # This file
-├── Dockerfile                   # Application container (FastAPI + Celery worker)
-├── docker-compose.yml           # Complete local stack (PostgreSQL, Redis, MinIO, app, worker)
-├── requirements.txt             # Python dependencies
-├── .env.example                 # Environment variables template
-├── .python-version              # Local Python version pin (3.12)
-├── .gitignore
-├── .dockerignore
-│
-├── app/                         # Application code
-│   ├── main.py                  # FastAPI app entry point
-│   ├── worker.py                # Celery task definitions
+├── AGENTS.md
+├── README.md
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+├── .env.example
+├── app/
+│   ├── main.py
+│   ├── worker.py
 │   ├── adapters/
-│   │   └── ai/                  # Provider adapters (Google AI, vLLM, etc.)
+│   │   ├── base.py                        # Shared adapter contracts
+│   │   ├── ai/                            # LLM provider adapters
+│   │   ├── parsers/                       # Docling + Classic parser adapters
+│   │   ├── embeddings/                    # BGE-M3 embedding adapter
+│   │   └── vector_stores/                 # Qdrant vector store adapter
 │   ├── api/
-│   │   ├── deps.py              # Dependency injection (auth, DB session)
+│   │   ├── deps.py
 │   │   └── routes/
-│   │       ├── auth.py          # Login/token endpoints
-│   │       ├── chat.py          # /chat endpoint with SSE streaming
-│   │       ├── documents.py     # /upload, /documents endpoints
-│   │       └── health.py        # /health endpoint
 │   ├── core/
-│   │   ├── config.py            # Settings from .env
-│   │   └── celery_app.py        # Celery configuration
+│   │   ├── config.py
+│   │   ├── celery_app.py
+│   │   └── exceptions.py
 │   ├── db/
-│   │   ├── session.py           # SQLAlchemy session factory
-│   │   ├── base.py              # Declarative base for models
-│   │   └── types.py             # Custom column types (Vector)
 │   ├── models/
-│   │   ├── core.py              # DocNode, Document, User, ChatMessage ORM models
-│   │   └── chat.py              # Chat-related models
 │   ├── schemas/
-│   │   ├── auth.py              # Login/token request/response schemas
-│   │   ├── chat.py              # Chat request/response schemas
-│   │   └── documents.py         # Document upload/metadata schemas
 │   └── services/
-│       ├── ingestion.py         # Document parsing (PDF, DOCX, images, etc.)
-│       ├── ocr.py               # PaddleOCR integration
-│       ├── rag.py               # RAG retrieval with hierarchical context injection
-│       ├── chat_store.py        # Chat persistence
-│       ├── auth.py              # JWT and password hashing
-│       ├── storage.py           # MinIO S3 client wrapper
-│       ├── audit.py             # Security audit logging
-│       ├── health.py            # Service health checks
-│       └── registry.py          # AI provider registry
-│
-├── docs/                        # Architecture and design
-│   ├── 01_SYSTEM_ARCHITECTURE.md
-│   ├── 02_DATABASE_AND_PROJECT.md
-│   ├── 03_CORE_WORKFLOWS.md
-│   ├── 04_API_CONTRACT_AND_SECURITY.md
-│   ├── 05_RESOURCE_OPTIMIZATION_AND_EDGE_CASES.md
-│   ├── 06_DEPLOYMENT_AND_OBSERVABILITY.md
-│   └── 07_INGESTION_AND_RETRIEVAL_STRATEGY.md
-│
-├── ops/                         # Deployment and database
-│   └── init.sql                 # Single comprehensive database initialization
-│
-└── FILEUPLOADTEST/              # Manual testing folder (upload examples)
+│       ├── ingestion/
+│       │   ├── parser_manager.py
+│       │   ├── hierarchy_validator.py
+│       │   └── pipeline.py
+│       ├── storage/
+│       │   ├── __init__.py
+│       │   └── document_store.py
+│       ├── rag.py
+│       ├── chat_store.py
+│       ├── auth.py
+│       ├── audit.py
+│       ├── health.py
+│       ├── registry.py
+│       ├── throttle.py
+│       └── token_blacklist.py
+├── docs/
+├── ops/
+│   └── init.sql
+└── tests/
 ```
 
 ## Storage Choice
@@ -116,17 +100,17 @@ chatbot-rag/
 | PostgreSQL DB | `ragbot` |
 | PostgreSQL admin user | `db-admin` (for schema management) |
 | PostgreSQL app user | `app_rw` (app runtime) |
-| PostgreSQL password | `quoctuan` (for both) |
+| PostgreSQL password | set `POSTGRES_PASSWORD` / `APP_DB_PASSWORD` in `.env` |
 | Redis host | `localhost:6379` |
 | MinIO API | `localhost:9000` |
 | MinIO Console | `localhost:9001` |
-| MinIO credentials | `minio-admin` / `quoctuan` |
+| MinIO credentials | `minio-admin` / set `MINIO_SECRET_KEY` in `.env` |
 
 ### Storage
 
 - **Uploaded files**: Stored in MinIO bucket `rag-documents` (not local disk)
 - **Object keys**: `s3://rag-documents/<document_id>/<filename>`
-- **Local test files**: Use any temp path on your machine, upload via `POST /upload`
+- **Local test files**: Use any temp path on your machine, upload via `POST /api/v1/upload`
 
 ## Quick Start
 
@@ -147,7 +131,7 @@ docker compose up --build
 # 3. Wait for services to be healthy (30-60 seconds on first run)
 
 # 4. Test API health
-curl http://localhost:8000/health
+curl http://localhost:8000/api/v1/health
 ```
 
 ### Service Endpoints
@@ -207,11 +191,11 @@ docker compose up --build
 ## Notes
 
 - **Database**: Single `.sql` file initialization (`ops/init.sql`) via PostgreSQL init hook. No Alembic needed.
-- **Ingestion**: Production-style multi-format parsing (PDF, DOCX, images, etc.) with OCR fallback, manual heading detection, and hierarchical indexing.
-- **OCR runtime mode**: `OCR_USE_GPU=auto` detects CUDA availability and falls back to CPU safely.
-- **OCR strategy mode**: `OCR_STRATEGY=traditional|markdown|hybrid` (`hybrid` default) with `OCR_MARKDOWN_ENGINE` and `OCR_LAYOUT_ANALYSIS` controls.
+- **Ingestion**: Docling-first on-prem parsing to Markdown, then LlamaIndex hierarchical node building, with the classic parser kept only as fallback.
+- **Docling extraction**: Upload parsing is Docling-first and provider-agnostic.
+- **Ingestion engine**: `INGESTION_ENGINE=docling|classic` (`docling` default) controls the upload pipeline.
 - **Retrieval**: Weighted scoring with parent context injection, latest-version preference, and chapter-aware Q&A.
-- **Next steps**: SSE-based streaming chat flow, more sophisticated RAG evaluation, production telemetry.
+- **Next steps**: chat response latency, more sophisticated RAG evaluation, production telemetry.
 - `/health` performs real dependency checks (PostgreSQL, Redis, MinIO, AI provider). Other business endpoints are currently scaffold implementations.
 - `AI_PROVIDER` in `.env` controls LLM backend: `vllm` (on-prem default) or `google` (temporary demo mode).
 - `API_V1_PREFIX` in `.env` controls the production namespace (default `/api/v1`).
@@ -223,18 +207,82 @@ docker compose up --build
 | Endpoint | Method | Status | Notes |
 |----------|--------|--------|-------|
 | `/api/v1/health` | GET | ✅ Working | Real dependency checks |
-| `/api/v1/auth/login` | POST | 🟡 Scaffold | Returns JWT + refresh token (not yet persisted) |
-| `/api/v1/upload` | POST | 🟡 Scaffold | Enqueues Celery job; returns task_id |
-| `/api/v1/status/{task_id}` | GET | 🟡 Scaffold | Returns Celery task state (admin only) |
+| `/api/v1/auth/login` | POST | ✅ Working | Returns bearer access token |
+| `/api/v1/auth/logout` | POST | ✅ Working | Revokes active token |
+| `/api/v1/auth/users` | POST | ✅ Working | Creates a user (admin only) |
+| `/api/v1/upload` | POST | ✅ Working | Enqueues Celery job; returns task_id |
+| `/api/v1/status/{task_id}` | GET | ✅ Working | Returns normalized task/document progress |
 | `/api/v1/chat` | POST | ✅ Working | Provider-driven chat (`vllm` on-prem default, `google` demo mode) |
-| `/api/v1/documents` | GET | ⏳ TODO | List user documents |
-| `/api/v1/documents/{id}` | GET | ⏳ TODO | Document details + nodes |
+| `/api/v1/documents` | GET | ✅ Working | Lists documents and current pipeline status |
+| `/api/v1/documents/{id}` | GET | ✅ Working | Returns full document metadata/status |
+- `DELETE /api/v1/documents/{document_id}` soft-deletes a document and removes the source object from storage.
 - Worker ingestion now extracts text from PDF, scanned PDF, images, DOCX, and XLSX.
-- OCR fallback is used for image-only pages and scanned documents.
+- Parsing uses the Docling-first pipeline with classic parser fallback.
 - Indexed output is stored as hierarchical nodes for later retrieval.
-- `DELETE /documents/{document_id}` removes the uploaded object and marks the document deleted in DB.
-- `POST /chat` uses adapter-based provider selection from `AI_PROVIDER`.
+- `POST /api/v1/chat` uses adapter-based provider selection from `AI_PROVIDER`.
 - Public API contract is served under `/api/v1/*`.
+
+## Upload Processing Workflow
+
+When an admin uploads a file via `POST /api/v1/upload`, the system runs this pipeline:
+
+1. **Guardrails at API layer**
+   - Enforce admin role and upload rate limit.
+   - Validate filename and max size (`MAX_UPLOAD_SIZE_MB`).
+
+2. **Deduplication and versioning**
+   - Compute SHA-256 for uploaded bytes.
+   - Reject active duplicates (`409 duplicate`) when hash matches an existing non-deleted document.
+   - Compute next version for same filename.
+
+3. **Persist source file + document row**
+   - Save original file to MinIO as `s3://<bucket>/<document_id>/<filename>`.
+   - Insert `documents` row with `status=pending`, `status_stage=uploaded`, `progress_percent=1`.
+   - Write upload audit log.
+
+4. **Queue asynchronous ingestion**
+   - Register `document_id <-> task_id` in Redis.
+   - Enqueue Celery task `app.worker.parse_document_task`.
+   - Update `documents` progress to `status_stage=queued`, `progress_percent=5`.
+   - Return `202 Accepted` immediately with `task_id`, `document_id`, `status=queued`.
+
+5. **Worker parsing and indexing**
+   - Download file from MinIO (`status_stage=download`, `progress_percent=10`).
+   - Convert the file locally with Docling into Markdown (`status_stage=parse`, `progress_percent=40`).
+   - Use LlamaIndex `MarkdownNodeParser` to turn the Markdown into hierarchical nodes.
+   - Build hierarchical retrieval nodes for Qdrant (root + parent/child relationships).
+   - If Docling or LlamaIndex fails, fall back to the classic parser so upload still completes when possible.
+   - Validate extraction quality thresholds (`INGESTION_MIN_NON_EMPTY_NODES`, `INGESTION_MIN_TOTAL_TEXT_CHARS`).
+   - Save ingestion artifact into `documents.metadata.ingestion_artifact`.
+   - Persist metadata (`status_stage=persist`, `progress_percent=75`).
+   - Mark document `ready` on success (`progress_percent=100`) or `failed` + `parse_error` on failure.
+
+6. **Client polling**
+   - Use `GET /api/v1/status/{task_id}` until status is `ready` or `failed`.
+
+### Document Status Lifecycle
+
+- `status` (coarse): `pending | processing | ready | failed | deleted`
+- `status_stage` (detailed): `uploaded | queued | enqueue_failed | download | parse | persist | ready | failed | deleted`
+- `progress_percent`: `0..100`
+
+7. **Retrieval behavior after ready**
+   - Chat retrieval excludes soft-deleted documents.
+   - Retrieval prefers latest document version per filename.
+
+## Text Extraction And AI Usage
+
+Short answer: **yes, extraction uses local AI/ML processing**, but **does not call the chat LLM provider during upload**.
+
+1. **During upload ingestion**
+   - Docling is the primary local parser for upload.
+   - LlamaIndex turns the Docling Markdown output into hierarchical nodes.
+   - The classic parser path is fallback only.
+   - No call to `AI_PROVIDER` (`google`/`vllm`) in the upload pipeline.
+
+2. **During chat answering**
+   - `AI_PROVIDER` is used in `POST /api/v1/chat` to generate final answer from retrieved context.
+   - Citations come from indexed hierarchical nodes stored in Qdrant.
 
 ## Chat Behavior Target
 
@@ -256,7 +304,7 @@ The database keeps three main kinds of data:
 
 - `roles`: stores account permissions in DB
 - `documents`: one row per uploaded file, including file path, hash, size, and status
-- `doc_nodes`: the extracted document tree used for hierarchical RAG
+- Qdrant: the extracted document tree and retrieval payload used for hierarchical RAG
 
 Simple flow:
 
@@ -270,10 +318,10 @@ MinIO object
 documents row
    |
    v
-worker parse/OCR
+worker parse
    |
    v
-doc_nodes tree
+hierarchical nodes in Qdrant
    |
    v
 ready for RAG
@@ -281,14 +329,14 @@ ready for RAG
 
 1. Upload file to MinIO
 2. Create a `documents` row with `status=pending`
-3. Worker parses/OCRs the file
-4. Worker writes a tree of `doc_nodes`
+3. Worker parses the file
+4. Worker writes hierarchical nodes to Qdrant
 5. `documents.status` becomes `ready`
 
 For deletes:
 
 - `documents.deleted_at` is set
-- related `doc_nodes` are preserved for history but excluded from new retrieval via document soft-delete filters
+- related retrieval nodes remain in Qdrant for historical reference but are excluded from new retrieval via document soft-delete filters
 - the file is deleted from MinIO
 
 The rest of the tables support auth, chat history, and future data connectors.
@@ -304,8 +352,8 @@ The rest of the tables support auth, chat history, and future data connectors.
 
 Protected routes:
 
-- `POST /upload` requires `admin`
-- `POST /auth/users` requires `admin`
-- `POST /chat` requires a valid JWT
+- `POST /api/v1/upload` requires `admin`
+- `POST /api/v1/auth/users` requires `admin`
+- `POST /api/v1/chat` requires a valid JWT
 
 Login uses the DB-backed project accounts plus username/password.

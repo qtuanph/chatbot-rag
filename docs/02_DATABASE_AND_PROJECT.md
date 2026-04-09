@@ -1,37 +1,54 @@
 # 02 — Database and Project
 
-> Status: **Single-project, self-hosted** deployment for one internal project. 
-> All users share the same document library with role-based access control (admin / member).
-> No customer-isolation layer; this deployment uses one shared project dataset.
+Status: single-project data model with role-based authorization.
 
-## Core Tables
+## Storage Split (Source of Truth)
+
+| Layer | Technology | Responsibility |
+|-------|------------|----------------|
+| Relational metadata | PostgreSQL | users, roles, documents, sessions, audit, connector metadata |
+| Vector index | Qdrant | node vectors + retrieval payload |
+| Object storage | MinIO | raw uploads + ingestion artifacts |
+| Queue/cache | Redis | Celery broker/backend, lightweight runtime mappings |
+
+## Core PostgreSQL Tables
 
 | Table | Purpose |
 |------|---------|
-| `roles` | DB-backed account roles (`admin`, `member`) |
-| `users` | Login accounts stored in DB |
-| `documents` | Uploaded files and processing state |
-| `doc_nodes` | Hierarchical document tree for RAG |
-| `chat_sessions` | Chat sessions for the project |
-| `chat_messages` | Chat messages and citations |
-| `data_sources` | Future connector registry |
-| `data_source_schema_cache` | Future schema cache |
-| `data_source_query_audit` | Future query audit |
+| roles | role definitions (admin, member) |
+| users | authenticated accounts |
+| documents | uploaded file metadata, status, version, soft-delete |
+| chat_sessions | conversation sessions |
+| chat_messages | message history and citations payload |
+| security_audit | audit trail for sensitive actions |
+| data_sources | approved connector registry |
+| data_source_schema_cache | connector schema metadata cache |
+| data_source_query_audit | SQL connector query audit log |
 
-## Project Model
+## Project Scope Model
 
-- **Single Project**: One project, self-hosted on your infrastructure.
-- **Shared Documents**: All authenticated users access the same document library.
-- **Role-Based Access Control**: 
-  - Admin: Full permissions (upload, delete, configure data sources)
-  - Member: Chat and document search only
-- **App-Level Authorization**: Access control is enforced in the application layer (JWT + role checks).
-- **No Data Partition Layer**: Access control is user-role-based, not per-customer data partitioning.
+| Topic | Rule |
+|-------|------|
+| Project mode | One shared project dataset |
+| Access model | JWT auth + role checks |
+| Admin rights | upload, delete, manage connectors |
+| Member rights | chat and retrieval only |
+| Isolation model | role-based authorization, not tenant partitioning |
 
-## Document Flow
+## Versioning and Soft Delete Policy
 
-1. Upload file to MinIO.
-2. Create `documents` row.
-3. Worker extracts text or OCR.
-4. Worker writes `doc_nodes` tree.
-5. Document becomes `ready`.
+| Policy | Required behavior |
+|--------|-------------------|
+| Versioning | same filename with new content creates next version |
+| Latest preference | retrieval should prioritize latest active version |
+| Soft delete | set deleted marker; exclude from new retrieval |
+| Historical integrity | prior chat history keeps old citations for audit |
+
+## Ingestion Persistence Flow
+
+1. Save upload to MinIO.
+2. Insert documents row with pending status.
+3. Worker parses with Docling and LlamaIndex.
+4. Persist vectors and node payload in Qdrant.
+5. Save ingestion artifact metadata in the document row.
+6. Mark document ready or failed.

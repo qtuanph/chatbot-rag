@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from dataclasses import dataclass
 from typing import Iterable
 
 from sqlalchemy import and_, func, or_, true
 from sqlalchemy.orm import Session
 
-from app.models.core import DocNode, Document
+from app.models.core import Document
+from app.core.config import settings
+from app.adapters.embeddings.bge_m3 import BGEM3Embedding
+from app.adapters.vector_stores.qdrant import QdrantVectorStore
 
 
 @dataclass(frozen=True)
@@ -33,81 +37,67 @@ def _tokenize(query: str) -> list[str]:
     return [token for token in tokens if len(token) > 1 and token not in stopwords][:12]
 
 
-def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext:
-    tokens = _tokenize(query)
-    latest_doc_ids = _latest_document_ids(session)
-    latest_filter = Document.id.in_(latest_doc_ids) if latest_doc_ids else true()
-    base_query = (
-        session.query(DocNode, Document.title)
-        .join(Document, DocNode.document_id == Document.id)
-        .filter(Document.deleted_at.is_(None), DocNode.level > 0, latest_filter)
+@lru_cache(maxsize=1)
+def _get_embedding_service() -> BGEM3Embedding:
+    return BGEM3Embedding(
+        model_name="BAAI/bge-m3",
+        batch_size=settings.embedding_batch_size,
+        normalize=settings.embedding_normalize,
     )
 
-    if tokens:
-        lowered_heading = func.lower(DocNode.heading)
-        lowered_summary = func.lower(func.coalesce(DocNode.summary, ""))
-        lowered_text = func.lower(func.coalesce(DocNode.full_text, ""))
-        filters = [or_(lowered_heading.contains(token), lowered_summary.contains(token), lowered_text.contains(token)) for token in tokens]
-        base_query = base_query.filter(or_(*filters))
 
-    candidates = base_query.order_by(DocNode.created_at.desc()).limit(80).all()
-    scored: list[tuple[int, RagNode]] = []
-    for node, title in candidates:
-        text = f"{node.heading}\n{node.summary or ''}\n{node.full_text}".lower()
-        if tokens:
-            heading_text = (node.heading or "").lower()
-            heading_score = sum(heading_text.count(token) for token in tokens) * 3
-            summary_text = (node.summary or "").lower()
-            summary_score = sum(summary_text.count(token) for token in tokens) * 2
-            body_score = sum(text.count(token) for token in tokens)
-            score = heading_score + summary_score + body_score
-        else:
-            score = 1
-        if score <= 0:
-            continue
-        scored.append(
-            (
-                score,
-                RagNode(
-                    node_id=str(node.id),
-                    parent_id=str(node.parent_id) if node.parent_id else None,
-                    document_id=str(node.document_id),
-                    document_title=title,
-                    heading=node.heading,
-                    summary=node.summary,
-                    full_text=node.full_text,
-                    page_range=node.page_range,
-                ),
-            )
-        )
+@lru_cache(maxsize=1)
+def _get_vector_store() -> QdrantVectorStore:
+    return QdrantVectorStore(
+        url=settings.qdrant_url,
+        api_key=settings.qdrant_api_key or None,
+        collection_name=settings.qdrant_collection,
+        timeout=settings.qdrant_timeout,
+    )
 
-    if not scored:
-        recent = (
-            session.query(DocNode, Document.title)
-            .join(Document, DocNode.document_id == Document.id)
-            .filter(Document.deleted_at.is_(None), DocNode.level > 0, latest_filter)
-            .order_by(DocNode.created_at.desc())
-            .limit(limit)
-            .all()
+
+def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext:
+    latest_doc_ids = _latest_document_ids(session)
+    if not latest_doc_ids:
+        return RagContext(nodes=[])
+
+    document_rows = (
+        session.query(Document.id, Document.title)
+        .filter(
+            Document.deleted_at.is_(None),
+            Document.status == "ready",
+            Document.id.in_(latest_doc_ids),
         )
-        nodes = [
+        .all()
+    )
+    title_by_id = {str(doc_id): title for doc_id, title in document_rows}
+
+    query_vector = _get_embedding_service().embed(query)
+    retrieved = _get_vector_store().retrieve(
+        query_vector=query_vector,
+        top_k=max(limit, 1),
+        document_ids_filter=list(title_by_id.keys()),
+    )
+
+    nodes: list[RagNode] = []
+    for item in retrieved[:limit]:
+        heading = item.metadata.get("section_title") or item.metadata.get("node_type") or "Section"
+        page_number = item.metadata.get("page_number")
+        page_range = str(page_number) if page_number else None
+        nodes.append(
             RagNode(
-                node_id=str(node.id),
-                parent_id=str(node.parent_id) if node.parent_id else None,
-                document_id=str(node.document_id),
-                document_title=title,
-                heading=node.heading,
-                summary=node.summary,
-                full_text=node.full_text,
-                page_range=node.page_range,
+                node_id=item.node_id,
+                parent_id=item.metadata.get("parent_id"),
+                document_id=item.document_id,
+                document_title=title_by_id.get(item.document_id, "Untitled Document"),
+                heading=str(heading),
+                summary=(item.text[:280] if item.text else None),
+                full_text=item.text,
+                page_range=page_range,
             )
-            for node, title in recent
-        ]
-        return RagContext(nodes=_with_parent_context(session, nodes))
+        )
 
-    scored.sort(key=lambda item: item[0], reverse=True)
-    top_nodes = [node for _, node in scored[:limit]]
-    return RagContext(nodes=_with_parent_context(session, top_nodes))
+    return RagContext(nodes=nodes)
 
 
 def _latest_document_ids(session: Session) -> set[str]:
@@ -116,7 +106,7 @@ def _latest_document_ids(session: Session) -> set[str]:
             Document.file_name.label("file_name"),
             func.max(Document.version).label("max_version"),
         )
-        .filter(Document.deleted_at.is_(None))
+        .filter(Document.deleted_at.is_(None), Document.status == "ready")
         .group_by(Document.file_name)
         .subquery()
     )
@@ -129,46 +119,10 @@ def _latest_document_ids(session: Session) -> set[str]:
                 Document.version == latest_versions.c.max_version,
             ),
         )
-        .filter(Document.deleted_at.is_(None))
+        .filter(Document.deleted_at.is_(None), Document.status == "ready")
         .all()
     )
     return {str(row[0]) for row in rows if row and row[0]}
-
-
-def _with_parent_context(session: Session, nodes: list[RagNode]) -> list[RagNode]:
-    if not nodes:
-        return []
-
-    parent_ids = {node.parent_id for node in nodes if node.parent_id}
-    if not parent_ids:
-        return nodes
-
-    parent_rows = session.query(DocNode).filter(DocNode.id.in_(parent_ids)).all()
-    parent_map = {str(row.id): row for row in parent_rows}
-
-    enriched: list[RagNode] = []
-    for node in nodes:
-        parent = parent_map.get(node.parent_id or "")
-        if parent and parent.heading and parent.heading != "Document":
-            parent_prefix = f"[{parent.heading}]\n"
-            full_text = f"{parent_prefix}{node.full_text}" if node.full_text else parent_prefix
-            summary = node.summary or parent.heading
-            enriched.append(
-                RagNode(
-                    node_id=node.node_id,
-                    parent_id=node.parent_id,
-                    document_id=node.document_id,
-                    document_title=node.document_title,
-                    heading=node.heading,
-                    summary=summary,
-                    full_text=full_text,
-                    page_range=node.page_range,
-                )
-            )
-        else:
-            enriched.append(node)
-
-    return enriched
 
 
 def build_answer(query: str, context: RagContext, history: list[dict[str, str]] | None = None) -> dict:

@@ -3,18 +3,31 @@
 -- One shared project dataset for authenticated users
 
 -- ============= EXTENSIONS =============
-CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============= ROLES & PERMISSIONS =============
 DO $$
+DECLARE
+    app_rw_password text := current_setting('app.app_rw_password', true);
+    db_admin_password text := current_setting('app.db_admin_password', true);
 BEGIN
+    IF app_rw_password IS NULL OR app_rw_password = '' THEN
+        RAISE EXCEPTION 'app.app_rw_password must be provided to initialize app_rw';
+    END IF;
+    IF db_admin_password IS NULL OR db_admin_password = '' THEN
+        RAISE EXCEPTION 'app.db_admin_password must be provided to initialize db-admin';
+    END IF;
+
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_rw') THEN
-        CREATE ROLE app_rw LOGIN PASSWORD 'quoctuan';
+        EXECUTE format('CREATE ROLE app_rw LOGIN PASSWORD %L', app_rw_password);
+    ELSE
+        EXECUTE format('ALTER ROLE app_rw WITH LOGIN PASSWORD %L', app_rw_password);
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'db-admin') THEN
-        CREATE ROLE "db-admin" LOGIN PASSWORD 'quoctuan';
+        EXECUTE format('CREATE ROLE "db-admin" LOGIN PASSWORD %L', db_admin_password);
+    ELSE
+        EXECUTE format('ALTER ROLE "db-admin" WITH LOGIN PASSWORD %L', db_admin_password);
     END IF;
 END $$;
 
@@ -54,7 +67,7 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
 
--- Documents: uploaded files and parse state
+-- Documents: uploaded files, parse state, and ingestion metadata
 CREATE TABLE IF NOT EXISTS documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(500) NOT NULL,
@@ -65,6 +78,10 @@ CREATE TABLE IF NOT EXISTS documents (
     file_size BIGINT NOT NULL,
     version INTEGER DEFAULT 1 NOT NULL,
     status VARCHAR(50) DEFAULT 'pending' NOT NULL,
+    status_stage VARCHAR(50) DEFAULT 'uploaded' NOT NULL,
+    progress_percent INTEGER DEFAULT 0 NOT NULL,
+    status_message VARCHAR(500),
+    status_updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     parse_error TEXT,
     metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
     deleted_at TIMESTAMP WITH TIME ZONE,
@@ -72,23 +89,10 @@ CREATE TABLE IF NOT EXISTS documents (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
 
--- DocNode: hierarchical tree structure (chapters → sections → subsections)
-CREATE TABLE IF NOT EXISTS doc_nodes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    parent_id UUID REFERENCES doc_nodes(id) ON DELETE SET NULL,
-    level INTEGER DEFAULT 0 NOT NULL,
-    heading TEXT NOT NULL,
-    summary TEXT,
-    full_text TEXT NOT NULL,
-    page_range VARCHAR(50),
-    heading_embedding vector(1024),
-    is_duplicate BOOLEAN DEFAULT false NOT NULL,
-    duplicate_of UUID REFERENCES doc_nodes(id) ON DELETE SET NULL,
-    order_index INTEGER DEFAULT 0 NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
-);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_stage VARCHAR(50) DEFAULT 'uploaded' NOT NULL;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS progress_percent INTEGER DEFAULT 0 NOT NULL;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_message VARCHAR(500);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL;
 
 -- Chat sessions: conversations per user
 CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -169,11 +173,18 @@ CREATE TABLE IF NOT EXISTS security_audit (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
 
-ALTER TABLE doc_nodes DROP CONSTRAINT IF EXISTS ck_doc_nodes_level;
-ALTER TABLE doc_nodes ADD CONSTRAINT ck_doc_nodes_level CHECK (level >= 0);
-
 ALTER TABLE documents DROP CONSTRAINT IF EXISTS ck_documents_version;
 ALTER TABLE documents ADD CONSTRAINT ck_documents_version CHECK (version >= 1);
+
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS ck_documents_status;
+ALTER TABLE documents ADD CONSTRAINT ck_documents_status CHECK (
+    status IN ('pending', 'processing', 'ready', 'failed', 'deleted')
+);
+
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS ck_documents_progress_percent;
+ALTER TABLE documents ADD CONSTRAINT ck_documents_progress_percent CHECK (
+    progress_percent >= 0 AND progress_percent <= 100
+);
 
 ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS ck_chat_messages_tokens_in;
 ALTER TABLE chat_messages ADD CONSTRAINT ck_chat_messages_tokens_in CHECK (tokens_in IS NULL OR tokens_in >= 0);
@@ -184,13 +195,9 @@ ALTER TABLE chat_messages ADD CONSTRAINT ck_chat_messages_tokens_out CHECK (toke
 -- ============= INDEXES =============
 CREATE INDEX IF NOT EXISTS idx_documents_sha256 ON documents(sha256);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+CREATE INDEX IF NOT EXISTS idx_documents_status_stage ON documents(status_stage);
 CREATE INDEX IF NOT EXISTS idx_documents_deleted_at ON documents(deleted_at) WHERE deleted_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id);
-CREATE INDEX IF NOT EXISTS idx_nodes_doc ON doc_nodes(document_id);
-CREATE INDEX IF NOT EXISTS idx_nodes_parent ON doc_nodes(parent_id);
-CREATE INDEX IF NOT EXISTS idx_nodes_doc_level ON doc_nodes(document_id, level);
-CREATE INDEX IF NOT EXISTS idx_nodes_duplicate_of ON doc_nodes(duplicate_of);
-CREATE INDEX IF NOT EXISTS idx_nodes_heading_embedding ON doc_nodes USING hnsw (heading_embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session_time ON chat_messages(session_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id);
@@ -203,7 +210,6 @@ CREATE INDEX IF NOT EXISTS idx_security_audit_created ON security_audit(created_
 CREATE TRIGGER touch_roles_updated_at BEFORE UPDATE ON roles FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_documents_updated_at BEFORE UPDATE ON documents FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
-CREATE TRIGGER touch_doc_nodes_updated_at BEFORE UPDATE ON doc_nodes FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_chat_sessions_updated_at BEFORE UPDATE ON chat_sessions FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_chat_messages_updated_at BEFORE UPDATE ON chat_messages FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_data_sources_updated_at BEFORE UPDATE ON data_sources FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
@@ -214,7 +220,6 @@ CREATE TRIGGER touch_data_source_query_audit_updated_at BEFORE UPDATE ON data_so
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE roles TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE users TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE documents TO app_rw;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE doc_nodes TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE chat_sessions TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE chat_messages TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_sources TO app_rw;

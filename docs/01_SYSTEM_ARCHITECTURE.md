@@ -1,158 +1,90 @@
 # 01 — System Architecture
 
-> Status: target production architecture and implementation spec. The current repository only implements a partial backend scaffold.
+Status: authoritative architecture baseline for implementation.
 
-## Project Intent For AI Implementers
+## Core Direction
 
-| Intent | Meaning |
-|--------|---------|
-| Delivery style | Build a working system, not a prototype toy. Prefer minimal correct code over clever abstractions. |
-| Runtime model | MUST be Docker-first so the project can run without manual local dependency installation beyond Docker. |
-| AI rollout plan | Phase 1 uses Google AI Studio by API key for fast delivery. Phase 2 switches to on-prem `vLLM` on GPU. The codebase MUST support both through configuration. |
-| Retrieval model | Use `hierarchical RAG` over a document hierarchy. Do NOT implement a binary tree data structure for retrieval. |
-| Storage model | Use PostgreSQL as the primary database of record; use Redis only for queue/cache duties. |
-| Query routing model | Default to uploaded-document answering. Only route to database access when the user question clearly requires live business data and an approved SQL connector is configured. |
-| Implementation priority | Keep contracts stable and migration simple. Do not optimize prematurely with extra infrastructure or alternate databases. |
+| Principle | Decision |
+|-----------|----------|
+| Deployment | Docker-first, self-hosted, single-project deployment |
+| Ingestion | Docling-first conversion to Markdown, then LlamaIndex hierarchy parsing |
+| Embedding | Local BGE-M3 via sentence-transformers |
+| Vector Store | Qdrant for vectors and retrieval payload |
+| Metadata Store | PostgreSQL for users, documents, sessions, audit, connector metadata |
+| Queue/Cache | Redis only for Celery broker/result and cache-like concerns |
+| Retrieval | Hierarchical RAG by default; preserve section-parent context |
+| Query routing | Document RAG default; SQL route only when explicitly required and approved |
+
+PostgreSQL is the system database for metadata, status, auth, audit, and connector state. Qdrant is the retrieval store for node vectors and payload.
 
 ## High-Level Component Diagram
 
 ```mermaid
 graph TD
-    Client[Web Client / API Consumer] --> Gateway[API Gateway / FastAPI]
-    Gateway --> Auth[Auth Service JWT]
-    Gateway --> ChatSvc[Chat Service]
-    Gateway --> DocSvc[Document Service]
-    Gateway --> Upload[Upload Handler]
+    Client[Client] --> API[FastAPI]
+    API --> Auth[Auth and RBAC]
+    API --> Upload[Upload Endpoint]
+    API --> Chat[Chat Endpoint]
 
-    Upload --> Queue[(Redis Broker)]
-    Queue --> Worker[Celery Worker]
+    Upload --> Redis[(Redis)]
+    Redis --> Worker[Celery Worker]
 
-    Worker --> Parser[Document Parser]
-    Parser --> OCR[PaddleOCR / Marker]
-    Parser --> TreeBuilder[Tree Builder ToC]
-    Parser --> Embedder[Embedding Service BGE-M3]
+    Worker --> Parser[Docling Parser Adapter]
+    Parser --> NodeParser[LlamaIndex MarkdownNodeParser]
+    NodeParser --> Validator[Hierarchy Validator]
+    Validator --> Embedder[BGE-M3 Embedding Adapter]
+    Embedder --> Qdrant[(Qdrant)]
+    Validator --> PG[(PostgreSQL system DB)]
 
-    TreeBuilder --> DB[(PostgreSQL)]
-    Embedder --> DB
+    Upload --> MinIO[(MinIO)]
+    Worker --> MinIO
 
-    ChatSvc --> Router[Query Router]
-    Router --> Retriever[Hierarchical Retriever]
-    Router -. optional .-> SQLRouter[Structured Data Router]
-    Retriever --> DB
-    Retriever --> AIProvider[AI Provider Abstraction]
-    SQLRouter --> DataSource[BaseDataSource Adapter]
-    DataSource --> SQLServer[(SQL Server)]
-    SQLRouter --> AIProvider
-
-    AIProvider --> vLLM[vLLM OpenAI-Compatible]
-    AIProvider --> EmbedAPI[BGE-M3 Embedding]
-    AIProvider --> Reranker[BGE Reranker]
-    AIProvider -. optional .-> DemoProvider[Remote Demo Provider]
-
-    ChatSvc --> SSE[SSE Response Stream]
-    SSE --> Client
-
-    Observability[Langfuse + OpenTelemetry] -.-> Gateway
-    Observability -.-> Worker
-    Observability -.-> AIProvider
+    Chat --> Retriever[Hierarchical Retriever]
+    Retriever --> PG
+    Retriever --> Qdrant
+    Retriever -. optional .-> SQLConnector[Approved SQL Connector]
+    Chat --> LLM[AI Provider Adapter]
+    LLM --> Google[Google Demo Mode]
+    LLM --> vLLM[vLLM Production Mode]
 ```
 
-## Data Flow
+## Runtime Data Flow
 
-| Stage | Component | Description |
-|-------|-----------|-------------|
-| 1. Ingest | Client → Gateway → Upload | File upload, validate, SHA-256 compute |
-| 2. Queue | Upload → Redis → Celery | Async task enqueue, return `task_id` |
-| 3. Parse | Worker → Parser → OCR fallback | Native text extraction first, OCR only for image-only pages, extract text + structure |
-| 4. Index | TreeBuilder → Embedder → DB | Build document tree: document → page → section, store full sections |
-| 5. Query | Client → ChatSvc → Router | Retrieve sections from the project document tree |
-| 6. Generate | Retriever → AIProvider → SSE | Rerank, generate with citations, stream response |
+| Stage | Path | Output |
+|-------|------|--------|
+| 1. Upload | Client -> API -> MinIO | File persisted, document row pending |
+| 2. Queue | API -> Redis -> Worker | Async task created, task_id returned |
+| 3. Parse | Worker -> Docling -> LlamaIndex | Hierarchical nodes |
+| 4. Validate | Worker -> Hierarchy Validator | Parent-child consistency report |
+| 5. Embed | Worker -> BGE-M3 | Dense vectors per node |
+| 6. Persist | Worker -> PostgreSQL + Qdrant | System metadata stored in PostgreSQL; node vectors stored in Qdrant |
+| 7. Retrieve | Chat -> Retriever | Section candidates with parent context |
+| 8. Generate | Chat -> AI Provider -> JSON response | Grounded answer with citations |
 
-## Service Separation
+## Non-Negotiable Invariants
 
-| Service | Responsibility | Tech |
-|---------|---------------|------|
-| **API** | HTTP endpoints, auth, validation, SSE streaming | FastAPI + Pydantic |
-| **Worker** | Async document processing pipeline | Celery + Redis |
-| **Storage** | Document metadata, tree nodes, embeddings, chat history | PostgreSQL + pgvector |
-| **Data Connectors** | Optional external sources behind controlled adapters | `BaseDataSource` + future SQL Server adapter |
-| **AI Serving** | LLM inference, embedding, reranking | Phase 1 demo: Google AI Studio via adapter. Phase 2 production: vLLM + Qwen2.5-AWQ + BGE-M3 + bge-reranker-base |
-| **Observability** | Tracing, metrics, prompt logging | Langfuse + OpenTelemetry |
+| Rule | Required behavior |
+|------|-------------------|
+| API contracts | Keep upload/status/chat/document endpoints stable |
+| Async ingestion | Upload endpoint must never block on parsing |
+| Provider boundary | Route handlers must never call provider SDKs directly |
+| Hierarchical retrieval | Do not replace with naive chunk-only retrieval |
+| Citation policy | Every grounded answer must include citations |
+| Soft-delete policy | Deleted documents excluded from new retrieval |
+| Version policy | Latest active version preferred during retrieval |
 
-## AI Provider Abstraction Architecture
+## Explicitly Removed Legacy Patterns
 
-```
-┌─────────────────────────────────┐
-│       AIProvider Protocol       │
-│  - chat(messages, **kwargs)     │
-│  - embed(texts)                 │
-│  - rerank(query, docs)          │
-└──────────────┬──────────────────┘
-               │
-    ┌──────────┴──────────┐
-    │                     │
-┌───▼──────────────┐  ┌──────▼────────┐
-│ RemoteProvider   │  │  vLLMProvider │
-│ (Optional Demo)  │  │  (Production) │
-└──────────────────┘  └───────────────┘
-```
+| Removed | Reason |
+|---------|--------|
+| OCR-first parsing strategy | Replaced by Docling-first pipeline |
+| Monolithic ingestion service file | Replaced by modular ingestion package |
+| Dead service stubs and unused registries | Simplified to production-safe surface |
 
-Target production default is `AI_PROVIDER=vllm`. During the current demo phase, `AI_PROVIDER=google` can be enabled by configuration only. No core retrieval, API, or tenancy changes are required.
+## Clarification: Tree Means Document Hierarchy
 
-## Phase Strategy
-
-| Phase | Purpose | Provider | Invariants |
-|-------|---------|----------|------------|
-| Phase 1 | Demo / rapid delivery | Google AI Studio adapter | Same hierarchical RAG pipeline and same REST/SSE APIs |
-| Phase 2 | On-prem production | `vLLM` + quantized Qwen2.5 | Same application contracts; only provider and infrastructure change |
-
-## Implementation Invariants
-
-| Rule | Requirement |
-|------|-------------|
-| Retrieval model | MUST use `hierarchical RAG`; MUST NOT fall back to naive fixed-size chunking as the primary strategy |
-| Ingestion model | MUST try native text extraction first, then OCR fallback for scanned PDFs/images |
-| Provider boundary | MUST isolate LLM calls behind `AIProvider`; application code MUST NOT call Google or `vLLM` SDKs directly outside adapters |
-| API stability | MUST keep `/upload`, `/status/{task_id}`, `/chat`, `/documents/{document_id}` stable across demo and production phases |
-| Project scope | Authenticated requests operate on the single project dataset |
-| Citation model | MUST generate answers from retrieved full sections and return citations tied to stored nodes |
-| Async ingestion | MUST keep upload/parse/indexing asynchronous via `Celery`; upload endpoint MUST NOT block on parsing |
-| External data access | MUST be connector-based and policy-controlled; direct ad hoc DB access from chat code is forbidden |
-
-## Query Routing Policy
-
-| Question type | Default route |
-|---------------|---------------|
-| Internal handbook, policy, technical docs | Uploaded document hierarchical RAG |
-| Explicit request for ERP or operational data | Controlled SQL connector path if configured and authorized |
-| Ambiguous question that could be answered by docs | Prefer document route first |
-| No configured SQL connector | Return document-only answer or explicit limitation |
-
-## Explicit Non-Goals
-
-| Anti-pattern | Why forbidden |
-|-------------|---------------|
-| Flat vector-only chunk search | Breaks document structure and weakens citations |
-| Provider-specific business logic in routes | Makes Google -> `vLLM` migration expensive |
-| Per-request ad hoc schema changes | Causes AI-generated code drift and inconsistent contracts |
-
-## Why Hierarchical RAG > Naive Vector Chunking
-
-| Aspect | Naive Chunking | Hierarchical RAG |
-|--------|---------------|------------------|
-| Context loss | Chunks lose document structure | Full sections preserved with parent context |
-| Navigation | Flat similarity search | Tree navigation → precise section targeting |
-| Citation | Hard to trace chunk → source | Node → section → page range → document |
-| Long docs | Chunks scattered, incomplete answers | LLM navigates ToC → retrieves complete sections |
-| Cross-section reasoning | Impossible without massive context | Parent node injection enables cross-section understanding |
-
-For technical documentation, policies, and structured docs (`.md`), hierarchical retrieval is **significantly more accurate** because it respects the author's intended structure.
-
-## Clarification: Document Tree, Not Binary Tree
-
-| Concept | Required interpretation |
-|---------|-------------------------|
-| "Tree-based retrieval" | A document hierarchy / ToC tree where one parent can have many children |
-| `parent_id` model | N-ary tree, not binary tree |
-| Retrieval speed | Comes from metadata filtering, HNSW heading search, and full-section expansion |
-| Forbidden misunderstanding | Do not implement binary-search-tree style retrieval logic for documents |
+| Concept | Correct meaning |
+|---------|-----------------|
+| Tree retrieval | N-ary document hierarchy with parent-child nodes |
+| Parent context | Retrieve section + parent context for grounding |
+| Forbidden interpretation | Binary tree search algorithms are not used |

@@ -9,9 +9,17 @@ from sqlalchemy import func
 from app.api.deps import AuthContext, get_auth_context, require_admin
 from app.core.celery_app import celery_app
 from app.core.config import settings
-from app.models.core import Document, DocNode
+from app.models.core import Document
 from app.db.session import SessionLocal
-from app.schemas.documents import UploadAcceptedResponse
+from app.schemas.documents import (
+    DocumentDeleteResponse,
+    DocumentDetailResponse,
+    DocumentListResponse,
+    DocumentSummaryResponse,
+    TaskProgressInfo,
+    TaskStatusResponse,
+    UploadAcceptedResponse,
+)
 from app.services.registry import DocumentRecord, DocumentRegistry
 from app.services.storage import build_storage
 from app.services.audit import safe_record_audit
@@ -21,6 +29,29 @@ from app.services.throttle import RequestThrottle
 router = APIRouter(tags=["documents"])
 registry = DocumentRegistry()
 throttle = RequestThrottle()
+
+
+def _to_status_response(
+    *,
+    task_id: str,
+    status_value: str,
+    stage: str,
+    percent: int,
+    document_id: str | None,
+    status_message: str | None = None,
+    error: str | None = None,
+    result: dict[str, object] | None = None,
+) -> TaskStatusResponse:
+    return TaskStatusResponse(
+        task_id=task_id,
+        status=status_value,
+        stage=stage,
+        progress=TaskProgressInfo(step=stage, percent=percent),
+        document_id=document_id,
+        status_message=status_message,
+        error=error,
+        result=result,
+    )
 
 
 @router.post("/upload", response_model=UploadAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -80,6 +111,9 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
                 file_size=len(content),
                 version=next_version,
                 status="pending",
+                status_stage="uploaded",
+                progress_percent=1,
+                status_message="File uploaded and awaiting queue.",
             )
         )
         session.commit()
@@ -117,13 +151,25 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
             {"stage": "queued", "progress": {"step": "queued", "percent": 0}, "document_id": document_id},
             state="QUEUED",
         )
+        with SessionLocal() as session:
+            document = session.get(Document, document_id)
+            if document is not None:
+                document.status = "pending"
+                document.status_stage = "queued"
+                document.progress_percent = 5
+                document.status_message = "Task queued for worker processing."
+                document.status_updated_at = datetime.now(timezone.utc)
+                session.commit()
     except Exception as exc:
         with SessionLocal() as session:
-            session.query(DocNode).filter(DocNode.document_id == document_id).delete(synchronize_session=False)
             document = session.get(Document, document_id)
             if document is not None:
                 document.deleted_at = datetime.now(timezone.utc)
                 document.status = "failed"
+                document.status_stage = "enqueue_failed"
+                document.progress_percent = 100
+                document.status_message = "Failed to enqueue ingestion task."
+                document.status_updated_at = datetime.now(timezone.utc)
             session.commit()
         if hasattr(storage, "delete_object"):
             storage.delete_object(object_uri)
@@ -132,63 +178,134 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
     return UploadAcceptedResponse(task_id=task_id, status="queued", document_id=document_id)
 
 
-@router.get("/status/{task_id}")
-async def get_status(task_id: str, _auth=Depends(require_admin)) -> dict[str, object]:
+@router.get("/status/{task_id}", response_model=TaskStatusResponse)
+async def get_status(task_id: str, _auth=Depends(require_admin)) -> TaskStatusResponse:
     record = registry.get_by_task_id(task_id)
     if record and record.deleted:
-        return {
-            "task_id": task_id,
-            "status": "deleted",
-            "progress": {"step": "deleted", "percent": 100},
-            "document_id": record.document_id,
-        }
+        return _to_status_response(
+            task_id=task_id,
+            status_value="deleted",
+            stage="deleted",
+            percent=100,
+            document_id=record.document_id,
+            status_message="Document was deleted.",
+        )
 
     result = AsyncResult(task_id, app=celery_app)
     info = result.info if isinstance(result.info, dict) else {}
+    document_id = record.document_id if record else info.get("document_id")
+    document = None
+    if document_id:
+        with SessionLocal() as session:
+            document = session.get(Document, document_id)
+
+    status_value = document.status if document is not None else (record.status if record else result.state.lower())
+    stage = (
+        document.status_stage
+        if document is not None and document.status_stage
+        else str(info.get("stage") or status_value)
+    )
+    percent = int(document.progress_percent if document is not None else info.get("progress", {}).get("percent", 0))
+    status_message = document.status_message if document is not None else None
 
     if result.successful():
         payload = result.result if isinstance(result.result, dict) else {}
         if record:
             record.status = "ready"
             registry.update(record)
-        return {
-            "task_id": task_id,
-            "status": "ready",
-            "progress": {"step": "done", "percent": 100},
-            "document_id": payload.get("document_id"),
-            "result": payload,
-        }
+        return _to_status_response(
+            task_id=task_id,
+            status_value=(document.status if document is not None else "ready"),
+            stage=(document.status_stage if document is not None and document.status_stage else "ready"),
+            percent=(int(document.progress_percent) if document is not None else 100),
+            document_id=payload.get("document_id") or document_id,
+            status_message=document.status_message if document is not None else "Ingestion complete.",
+            result=payload,
+        )
     if result.failed():
         if record:
             record.status = "failed"
             registry.update(record)
-        return {
-            "task_id": task_id,
-            "status": "failed",
-            "progress": {"step": "failed", "percent": 100},
-            "error": str(result.result),
-        }
+        return _to_status_response(
+            task_id=task_id,
+            status_value=(document.status if document is not None else "failed"),
+            stage=(document.status_stage if document is not None and document.status_stage else "failed"),
+            percent=(int(document.progress_percent) if document is not None else 100),
+            document_id=document_id,
+            status_message=document.status_message if document is not None else None,
+            error=str(result.result),
+        )
 
-    if record:
-        return {
-            "task_id": task_id,
-            "status": record.status,
-            "progress": info.get("progress", {"step": record.status, "percent": 0}),
-            "stage": info.get("stage", record.status),
-            "document_id": record.document_id,
-        }
-
-    return {
-        "task_id": task_id,
-        "status": result.state.lower(),
-        "progress": info.get("progress", {"step": result.state.lower(), "percent": 0}),
-        "stage": info.get("stage"),
-        "document_id": info.get("document_id"),
-    }
+    return _to_status_response(
+        task_id=task_id,
+        status_value=status_value,
+        stage=stage,
+        percent=percent,
+        document_id=document_id,
+        status_message=status_message,
+    )
 
 
-@router.delete("/documents/{document_id}")
-async def soft_delete_document(request: Request, document_id: str, _auth=Depends(require_admin)) -> dict[str, str]:
+@router.get("/documents", response_model=DocumentListResponse)
+async def list_documents(_auth=Depends(require_admin)) -> DocumentListResponse:
+    with SessionLocal() as session:
+        rows = (
+            session.query(Document)
+            .filter(Document.deleted_at.is_(None))
+            .order_by(Document.created_at.desc())
+            .all()
+        )
+
+    items = [
+        DocumentSummaryResponse(
+            document_id=str(row.id),
+            title=row.title,
+            file_name=row.file_name,
+            file_type=row.file_type,
+            file_size=row.file_size,
+            version=row.version,
+            status=row.status,
+            stage=row.status_stage,
+            progress_percent=int(row.progress_percent),
+            status_message=row.status_message,
+            created_at=row.created_at.isoformat(),
+            updated_at=row.updated_at.isoformat(),
+        )
+        for row in rows
+    ]
+    return DocumentListResponse(items=items, total=len(items))
+
+
+@router.get("/documents/{document_id}", response_model=DocumentDetailResponse)
+async def get_document_detail(document_id: str, _auth=Depends(require_admin)) -> DocumentDetailResponse:
+    with SessionLocal() as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        return DocumentDetailResponse(
+            document_id=str(document.id),
+            title=document.title,
+            file_name=document.file_name,
+            file_path=document.file_path,
+            sha256=document.sha256,
+            file_type=document.file_type,
+            file_size=document.file_size,
+            version=document.version,
+            status=document.status,
+            stage=document.status_stage,
+            progress_percent=int(document.progress_percent),
+            status_message=document.status_message,
+            parse_error=document.parse_error,
+            metadata=dict(document.extra_metadata or {}),
+            deleted_at=document.deleted_at.isoformat() if document.deleted_at else None,
+            created_at=document.created_at.isoformat(),
+            updated_at=document.updated_at.isoformat(),
+        )
+
+
+@router.delete("/documents/{document_id}", response_model=DocumentDeleteResponse)
+async def soft_delete_document(request: Request, document_id: str, _auth=Depends(require_admin)) -> DocumentDeleteResponse:
     record = registry.get_by_document_id(document_id)
     storage = build_storage()
     if hasattr(storage, "delete_object"):
@@ -200,6 +317,10 @@ async def soft_delete_document(request: Request, document_id: str, _auth=Depends
         if document is not None:
             document.deleted_at = datetime.now(timezone.utc)
             document.status = "deleted"
+            document.status_stage = "deleted"
+            document.progress_percent = 100
+            document.status_message = "Document was soft-deleted by admin."
+            document.status_updated_at = datetime.now(timezone.utc)
             session.commit()
         safe_record_audit(
             action="document.delete",
@@ -218,4 +339,4 @@ async def soft_delete_document(request: Request, document_id: str, _auth=Depends
             pass
         registry.delete(document_id)
 
-    return {"status": "deleted", "document_id": document_id}
+    return DocumentDeleteResponse(status="deleted", document_id=document_id)

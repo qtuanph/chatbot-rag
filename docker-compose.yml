@@ -13,6 +13,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      qdrant:
+        condition: service_healthy
       minio-init:
         condition: service_completed_successfully
     healthcheck:
@@ -33,6 +35,8 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      qdrant:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
@@ -76,10 +80,16 @@ services:
 
   db:
     image: pgvector/pgvector:pg17
+    command:
+      - postgres
+      - -c
+      - app.app_rw_password=${APP_DB_PASSWORD:-replace-me}
+      - -c
+      - app.db_admin_password=${POSTGRES_PASSWORD:-replace-me}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ragbot}
       POSTGRES_USER: ${POSTGRES_USER:-db-admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quoctuan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-replace-me}
     ports:
       - "5432:5432"
     volumes:
@@ -122,7 +132,23 @@ services:
       retries: 5
     restart: unless-stopped
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrantdata:/qdrant/storage
+    environment:
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   pgdata:
   redisdata:
   miniodata:
+  qdrantdata:

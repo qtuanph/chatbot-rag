@@ -9,8 +9,6 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-from app.db.types import Vector
-
 
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -49,28 +47,13 @@ class Document(Base, TimestampMixin):
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     status: Mapped[str] = mapped_column(String(50), nullable=False, server_default=text("'pending'"))
+    status_stage: Mapped[str] = mapped_column(String(50), nullable=False, server_default=text("'uploaded'"))
+    progress_percent: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    status_message: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    status_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     parse_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     extra_metadata: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class DocNode(Base):
-    __tablename__ = "doc_nodes"
-
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    document_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
-    parent_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("doc_nodes.id", ondelete="SET NULL"), nullable=True)
-    level: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    heading: Mapped[str] = mapped_column(Text, nullable=False)
-    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    full_text: Mapped[str] = mapped_column(Text, nullable=False)
-    page_range: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    heading_embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(1024), nullable=True)
-    is_duplicate: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
-    duplicate_of: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("doc_nodes.id", ondelete="SET NULL"), nullable=True)
-    order_index: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class DataSource(Base, TimestampMixin):

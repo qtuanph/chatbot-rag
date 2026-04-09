@@ -1,328 +1,123 @@
 # 04 — API Contract and Security
 
-> Status: target public API contract. The current scaffold implements only a subset and does not yet provide JWT auth, SSE chat, or persistence-backed workflows.
+Status: stable API and security baseline.
 
-## What The AI Must Preserve
+## Contract Stability Rules
 
-| Requirement | Why it exists |
-|-------------|---------------|
-| Docker-friendly app boundaries | User wants the system to run with containers, not manual host setup |
-| Stable API surface | Provider changes must not force frontend or client rewrites |
-| Provider-agnostic `/chat` | Demo uses Google now; production uses `vLLM` later |
-| Security before convenience | Role-based access is mandatory, not optional |
-| Grounded answers only | User wants a useful enterprise chatbot, not generic LLM chat |
-| Data access routing | Uploaded documents are the default source. SQL connector is used only when the request clearly asks for live business data and the connector is configured. |
+| Rule | Requirement |
+|------|-------------|
+| Endpoint stability | Keep public routes stable while internals evolve |
+| Provider abstraction | Do not expose provider-specific payloads in public API |
+| Grounding | Document route is default; return citations for grounded answers |
+| Authorization | RBAC is mandatory (admin/member) |
 
-## REST Endpoints
+## Public API Surface
 
-### Health Check
+All routes are served under the configured API prefix.
 
-```
-GET /health
-```
+| Endpoint | Method | Purpose | Access |
+|----------|--------|---------|--------|
+| /health | GET | service health summary | authenticated or open (deployment policy) |
+| /auth/login | POST | obtain access token | public |
+| /auth/logout | POST | revoke current token | authenticated |
+| /auth/users | POST | create user | admin |
+| /upload | POST | enqueue ingestion task | admin |
+| /status/{task_id} | GET | task/document processing state | admin |
+| /documents | GET | list document metadata | admin |
+| /documents/{document_id} | GET | document details | admin |
+| /documents/{document_id} | DELETE | soft delete document | admin |
+| /chat | POST | grounded answer response | authenticated |
 
-**Response 200:**
+## Upload Contract
+
+Request: multipart form with file payload.
+
+Response on accepted task:
+
 ```json
 {
-  "status": "healthy",
-  "services": {
-    "database": "connected",
-    "redis": "connected",
-    "ai_provider": "google"
-  },
-  "timestamp": "2026-04-07T10:00:00Z"
-}
-```
-
-### Authentication
-
-```
-POST /auth/login
-```
-
-**Request:**
-```json
-{
-  "username": "user1",
-  "password": "securepassword"
-}
-```
-
-**Response 200:**
-```json
-{
-  "access_token": "eyJ...",
-  "refresh_token": "eyJ...",
-  "token_type": "bearer",
-  "expires_in": 3600,
-  "role": "admin"
-}
-```
-
-```
-POST /auth/refresh
-```
-
-**Request:**
-```json
-{
-  "refresh_token": "eyJ..."
-}
-```
-
-**Response 200:**
-```json
-{
-  "access_token": "eyJ...",
-  "expires_in": 3600
-}
-```
-
-### Document Upload
-
-```
-POST /upload
-Content-Type: multipart/form-data
-Authorization: Bearer <token>
-```
-
-**Form Data:**
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `file` | File | Yes | Document file (.md, .pdf, .docx, .txt) |
-| `title` | String | No | Override filename as title |
-| `metadata` | JSON | No | Custom metadata |
-
-**Response 202:**
-```json
-{
-  "task_id": "celery-task-uuid",
+  "task_id": "task-uuid",
   "status": "queued",
   "document_id": "doc-uuid"
 }
 ```
 
-**Response 200 (duplicate):**
+## Task Status Contract
+
+Typical lifecycle:
+
+uploaded -> queued -> download -> parse -> persist -> ready
+
+or
+
+uploaded -> queued -> enqueue_failed|download|parse|persist -> failed
+
+Response shape:
+
 ```json
 {
-  "status": "duplicate",
-  "message": "Document already exists",
-  "existing_document_id": "doc-uuid",
-  "existing_version": 2
-}
-```
-
-### Task Status
-
-```
-GET /status/{task_id}
-Authorization: Bearer <token>
-```
-
-**Access Control:** Admin-only. Task progress belongs to admin upload workflow.
-
-**Response 200:**
-```json
-{
-  "task_id": "celery-task-uuid",
-  "status": "parsing",
-  "progress": {
-    "step": "tree_building",
-    "percent": 65
-  },
-  "document_id": "doc-uuid"
-}
-```
-
-**Status values:** `queued` -> `parsing` -> `ready` | `failed`
-
-### List Documents
-
-```
-GET /documents?page=1&page_size=20&status=ready
-Authorization: Bearer <token>
-```
-
-**Response 200:**
-```json
-{
-  "items": [
-    {
-      "id": "doc-uuid",
-      "title": "Company Policy",
-      "file_name": "policy.md",
-      "file_type": "md",
-      "file_size": 15234,
-      "version": 1,
-      "status": "ready",
-      "node_count": 12,
-      "created_at": "2026-04-07T10:00:00Z",
-      "updated_at": "2026-04-07T10:01:30Z"
-    }
-  ],
-  "total": 1,
-  "page": 1,
-  "page_size": 20
-}
-```
-
-### Delete Document (Soft Delete)
-
-```
-DELETE /documents/{document_id}
-Authorization: Bearer <token>
-```
-
-**Response 200:**
-```json
-{
-  "status": "deleted",
+  "task_id": "task-uuid",
+  "status": "processing",
+  "stage": "parse",
   "document_id": "doc-uuid",
-  "hard_delete_at": "2026-05-07T10:00:00Z"
+  "status_message": "Parsing document with Docling.",
+  "progress": {
+    "step": "parse",
+    "percent": 40
+  }
 }
 ```
 
-### Chat (SSE)
+## Chat Contract (JSON)
 
-```
-POST /chat
-Authorization: Bearer <token>
-Accept: text/event-stream
-```
-
-**Request:**
-```json
-{
-  "query": "What is the vacation policy?",
-  "session_id": "optional-session-uuid",
-  "document_ids": ["optional-filter"],
-  "stream": true
-}
-```
-
-**SSE Success Stream:**
-```
-event: token
-data: {"content": "The", "session_id": "uuid", "message_id": "msg-uuid"}
-
-event: token
-data: {"content": " vacation", "session_id": "uuid", "message_id": "msg-uuid"}
-
-event: citations
-data: {
-  "citations": [
-    {
-      "node_id": "node-uuid",
-      "document_id": "doc-uuid",
-      "document_title": "HR Policy",
-      "heading": "Leave Policy",
-      "score": 0.92,
-      "deleted": false
-    }
-  ]
-}
-
-event: done
-data: {"session_id": "uuid", "message_id": "msg-uuid", "model": "gemini-2.5-flash"}
-```
-
-**SSE Error Stream:**
-```
-event: error
-data: {"error": "Unable to process request. Please try again.", "code": "PROVIDER_TIMEOUT"}
-```
-
-### Chat History
-
-```
-GET /chat/sessions/{session_id}/messages?page=1&page_size=50
-Authorization: Bearer <token>
-```
-
-**Access Control:** A session is owned by exactly one authenticated user. Requests for another user's session must be rejected.
-
-**Response 200:**
-```json
-{
-  "items": [
-    {
-      "id": "msg-uuid",
-      "role": "user",
-      "content": "What is the vacation policy?",
-      "created_at": "2026-04-07T10:00:00Z"
-    },
-    {
-      "id": "msg-uuid-2",
-      "role": "assistant",
-      "content": "The vacation policy states...",
-      "citations": [
-        {
-          "document_title": "HR Policy",
-          "heading": "Leave Policy",
-          "deleted": false
-        }
-      ],
-      "model_used": "gemini-2.5-flash",
-      "created_at": "2026-04-07T10:00:05Z"
-    }
-  ],
-  "total": 2
-}
-```
-
-## Auth Flow
-
-```
-1. Client -> POST /auth/login -> JWT {sub, role, exp}
-2. Client includes Authorization: Bearer <jwt> in every request
-3. API validates JWT signature + expiry
-4. Resolve user role from DB
-5. Admin routes enforce role checks
-```
-
-### JWT Payload
+Request body:
 
 ```json
 {
-  "sub": "user-uuid",
-  "role": "admin",
-  "username": "user1",
-  "iat": 1712484000,
-  "exp": 1712487600
+  "query": "question text",
+  "session_id": "optional-session-id"
 }
 ```
 
-## Guardrails
+Response shape:
 
-| Guardrail | Implementation | Response |
-|-----------|---------------|----------|
-| Out-of-scope rejection | Router classifies query relevance | "I can only answer based on your uploaded documents." |
-| Citation mandatory | Every assistant response must include citations | If no citations found -> "No relevant documents found." |
-| Role isolation | JWT role checks + DB-backed accounts | 403 if role mismatch |
-| Version conflict | On re-upload, increment version, mark old as superseded | Return new version info |
-| Rate limiting | Token bucket per endpoint | 429 Too Many Requests |
-| Input validation | Pydantic schemas, max query length 2000 chars | 422 Unprocessable Entity |
-| Security headers | X-Content-Type-Options, X-Frame-Options, CSP | Applied on all responses |
-| CORS | Whitelist allowed origins only | 403 on mismatch |
+```json
+{
+  "session_id": "session-id",
+  "answer": "grounded answer text",
+  "citations": []
+}
+```
 
-## Transport Requirements
+## Security Baseline
 
-| Concern | Requirement |
-|---------|-------------|
-| TLS | Terminate TLS at reverse proxy; reject plain HTTP outside trusted internal network |
-| SSE buffering | Set `Cache-Control: no-cache` and `X-Accel-Buffering: no` |
-| Auth header | `Authorization: Bearer <jwt>` on all protected routes |
-| Request ID | Generate `X-Request-ID` per request for tracing |
-| Audit trail | Log user_id, endpoint, status_code, latency |
+| Concern | Policy |
+|---------|--------|
+| Authentication | JWT bearer token |
+| Authorization | role checks at route boundary |
+| Rate limiting | enforce per sensitive endpoint |
+| Input validation | schema validation and size limits |
+| Audit logging | log privileged actions and failures |
+| Soft-delete safety | deletion excludes docs from new retrieval, preserves history |
 
-## Provider Compatibility
+## Routing Guardrails
 
-| Concern | Demo Phase | Production Phase |
-|---------|------------|------------------|
+| Scenario | Required behavior |
+|----------|-------------------|
+| Question answerable from docs | Use document RAG |
+| Explicit live business data request | SQL connector path only if approved/configured |
+| No connector configured | Return explicit limitation, do not run ad hoc SQL |
+
+## Compatibility Promise
+
+The API contract remains stable across provider mode changes:
+
+| Area | Demo mode | Production mode |
+|------|-----------|-----------------|
 | `AI_PROVIDER` | `google` | `vllm` |
 | Chat provider | Google AI Studio | On-prem `vLLM` |
 | Application endpoints | Unchanged | Unchanged |
-| Auth model | Project-only auth model |
+| Auth model | Project-only auth model | Project-only auth model |
 | Retrieval pipeline | Unchanged | Unchanged |
 
 The provider abstraction layer normalizes provider-specific request and response formats so `/chat` remains unchanged across both phases.
@@ -332,7 +127,7 @@ The provider abstraction layer normalizes provider-specific request and response
 | Area | Requirement |
 |------|-------------|
 | Endpoint naming | MUST keep documented route names stable; do not rename routes during provider migration |
-| SSE contract | MUST preserve `token`, `citations`, `done`, `error` events exactly |
+| Response contract | MUST preserve `session_id`, `answer`, `citations` fields exactly |
 | Auth | MUST reject missing/invalid JWT; admin routes MUST reject non-admin roles |
 | Citations | Assistant responses MUST include citations or an explicit no-grounding response |
 | Version resolution | Default retrieval MUST prefer latest non-deleted version unless caller narrows scope |

@@ -8,16 +8,15 @@ redis==7.4.0
 celery==5.6.3
 minio==7.2.20
 httpx==0.28.1
-requests==2.33.1
-SQLAlchemy-Utils==0.42.1
 PyMuPDF==1.27.2.2
 Pillow==12.2.0
 python-docx==1.2.0
 openpyxl==3.1.5
 python-jose[cryptography]==3.5.0
-passlib[bcrypt]==1.7.4
-bcrypt==4.0.1
+bcrypt==5.0.0
 email-validator==2.3.0
-# Paddle OCR stack pinned for Python 3.12; GPU is enabled at runtime when a CUDA build is available.
-paddleocr==3.4.0
-paddlepaddle==3.3.1
+docling==2.85.0
+llama-index==0.14.20
+sentence-transformers==5.3.0
+qdrant-client==1.17.1
+PyPDF2==3.0.1
