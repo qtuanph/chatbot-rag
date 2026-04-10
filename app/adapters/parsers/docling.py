@@ -54,15 +54,50 @@ class DoclingParser(BaseParser):
     def _initialize_docling(self) -> None:
         """Lazy-initialize Docling converter."""
         try:
-            from docling.document_converter import DocumentConverter
-            self.docling_converter = DocumentConverter()
-            logger.info("Docling DocumentConverter initialized")
+            from docling.document_converter import (
+                DocumentConverter,
+                PdfFormatOption,
+                ImageFormatOption,
+            )
+            from docling.datamodel.base_models import InputFormat
+            from docling.datamodel.pipeline_options import PdfPipelineOptions, TesseractCliOcrOptions
+
+            # Force Vietnamese-aware OCR for scanned/image-heavy documents.
+            # Keep English as fallback because many forms mix vi/en terms.
+            pipeline_pdf = PdfPipelineOptions()
+            pipeline_pdf.do_ocr = True
+            pipeline_pdf.ocr_options = TesseractCliOcrOptions(
+                lang=["vie", "eng"],
+                force_full_page_ocr=True,
+            )
+
+            pipeline_image = PdfPipelineOptions()
+            pipeline_image.do_ocr = True
+            pipeline_image.ocr_options = TesseractCliOcrOptions(
+                lang=["vie", "eng"],
+                force_full_page_ocr=True,
+            )
+
+            format_options = {
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_pdf),
+                InputFormat.IMAGE: ImageFormatOption(pipeline_options=pipeline_image),
+            }
+
+            self.docling_converter = DocumentConverter(format_options=format_options)
+            logger.info("Docling DocumentConverter initialized with OCR langs: vie, eng")
         except ImportError:
             logger.warning("Docling not installed; will skip Docling parsing")
             self.docling_converter = None
         except Exception as e:
-            logger.warning(f"Failed to initialize Docling: {str(e)}")
-            self.docling_converter = None
+            logger.warning(f"Failed to initialize Docling with Vietnamese OCR config: {str(e)}")
+            try:
+                from docling.document_converter import DocumentConverter
+
+                self.docling_converter = DocumentConverter()
+                logger.info("Docling DocumentConverter initialized with default OCR settings")
+            except Exception:
+                logger.warning("Failed to initialize default Docling converter")
+                self.docling_converter = None
 
     def _initialize_llamaindex(self) -> None:
         """Lazy-initialize LlamaIndex Markdown parser."""
