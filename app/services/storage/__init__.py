@@ -19,6 +19,11 @@ class ObjectStorage(ABC):
 	def download_bytes(self, object_uri: str) -> bytes:
 		raise NotImplementedError
 
+	@abstractmethod
+	def file_exists(self, object_uri: str) -> bool:
+		"""Return True if the object exists in storage, False otherwise."""
+		raise NotImplementedError
+
 
 class S3ObjectStorage(ObjectStorage):
 	def __init__(self) -> None:
@@ -69,6 +74,20 @@ class S3ObjectStorage(ObjectStorage):
 			return
 		object_name = object_uri.removeprefix(prefix)
 		self.client.delete_object(Bucket=self.bucket, Key=object_name)
+
+	def file_exists(self, object_uri: str) -> bool:
+		"""Check if a file exists in S3/RustFS using a lightweight HEAD request."""
+		prefix = f"s3://{self.bucket}/"
+		if not object_uri.startswith(prefix):
+			return False
+		object_name = object_uri.removeprefix(prefix)
+		try:
+			self.client.head_object(Bucket=self.bucket, Key=object_name)
+			return True
+		except ClientError as e:
+			if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
+				return False
+			raise
 
 	def list_objects(self) -> list[dict]:
 		"""List all objects in bucket with their metadata."""

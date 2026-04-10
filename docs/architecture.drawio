@@ -1,0 +1,232 @@
+<mxfile host="app.diagrams.net" modified="2026-04-10" version="21.0.0">
+  <diagram name="chatbot-rag Architecture" id="main">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- ╔══════════════════════════════════╗ -->
+        <!-- ║       ZONE BACKGROUNDS           ║ -->
+        <!-- ╚══════════════════════════════════╝ -->
+        <mxCell id="zone_upload" value="📤 Upload Flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;opacity=30;fontSize=11;fontStyle=1;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="20" y="175" width="290" height="410" as="geometry"/>
+        </mxCell>
+        <mxCell id="zone_chat" value="💬 Chat Flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=30;fontSize=11;fontStyle=1;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="330" y="175" width="580" height="410" as="geometry"/>
+        </mxCell>
+        <mxCell id="zone_delete" value="🗑️ Delete Flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;opacity=30;fontSize=11;fontStyle=1;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="930" y="175" width="285" height="410" as="geometry"/>
+        </mxCell>
+
+        <!-- ╔══════════════════════════════════╗ -->
+        <!-- ║             USER                 ║ -->
+        <!-- ╚══════════════════════════════════╝ -->
+        <mxCell id="user" value="👤 User / Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="535" y="30" width="180" height="46" as="geometry"/>
+        </mxCell>
+
+        <!-- ╔══════════════════════════════════╗ -->
+        <!-- ║          FastAPI Gateway         ║ -->
+        <!-- ╚══════════════════════════════════╝ -->
+        <mxCell id="api" value="🌐  FastAPI  ·  JWT Auth  ·  Role Check  (admin / member)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="200" y="118" width="850" height="46" as="geometry"/>
+        </mxCell>
+
+        <!-- ╔══════════════════════════════════╗ -->
+        <!-- ║         ROUTE HANDLERS           ║ -->
+        <!-- ╚══════════════════════════════════╝ -->
+        <!-- Upload routes -->
+        <mxCell id="r_upload" value="POST /upload" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="50" y="210" width="130" height="36" as="geometry"/>
+        </mxCell>
+        <mxCell id="r_status" value="GET /status/{id}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="195" y="210" width="100" height="36" as="geometry"/>
+        </mxCell>
+        <!-- Chat routes -->
+        <mxCell id="r_chat" value="POST /chat  (SSE stream)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="430" y="210" width="170" height="36" as="geometry"/>
+        </mxCell>
+        <mxCell id="r_docs" value="GET /documents/{id}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="615" y="210" width="150" height="36" as="geometry"/>
+        </mxCell>
+        <!-- Delete route -->
+        <mxCell id="r_del" value="DELETE /documents/{id}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="955" y="210" width="170" height="36" as="geometry"/>
+        </mxCell>
+
+        <!-- ╔══════════════════════════════════╗ -->
+        <!-- ║              REDIS               ║ -->
+        <!-- ╚══════════════════════════════════╝ -->
+        <mxCell id="q_ing" value="⬛ Redis Queue
+(ingestion)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="65" y="300" width="120" height="46" as="geometry"/>
+        </mxCell>
+        <mxCell id="r_redis" value="⬛ Redis
+Cache · Registry · Rate Limit (Lua)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="380" y="300" width="240" height="46" as="geometry"/>
+        </mxCell>
+        <mxCell id="q_del" value="⬛ Redis Queue
+(cleanup)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="970" y="300" width="120" height="46" as="geometry"/>
+        </mxCell>
+
+        <!-- ╔══════════════════════════════════╗ -->
+        <!-- ║        CELERY WORKERS            ║ -->
+        <!-- ╚══════════════════════════════════╝ -->
+        <mxCell id="w_ing" value="⚙️ parse_document_task
+─────────────────────
+① Download from RustFS
+② Parse  Docling + EasyOCR
+③ Embed  BAAI/bge-m3 fp16
+④ Verify  Qdrant &gt; 0 · file exists
+⑤ Persist metadata → PostgreSQL
+⑥ Unload model → free VRAM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="28" y="395" width="230" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="w_del" value="⚙️ delete_document_task
+─────────────────────
+① Registry mark deleted
+② Delete Qdrant vectors
+③ Delete RustFS file
+④ Delete PostgreSQL row
+⑤ Purge Redis registry
+⑥ Verify: count=0 · file gone · DB gone" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="940" y="395" width="235" height="130" as="geometry"/>
+        </mxCell>
+
+        <!-- ╔══════════════════════════════════╗ -->
+        <!-- ║         AI SERVICES              ║ -->
+        <!-- ╚══════════════════════════════════╝ -->
+        <mxCell id="bge" value="🤖 BAAI/bge-m3
+─────────────────
+sentence-transformers · GPU fp16
+1024-dim · 8192 tokens · Offline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="390" y="405" width="210" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="llm_g" value="Gemini API
+(demo · google)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="390" y="500" width="130" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="llm_v" value="vLLM · Qwen2.5-7B
+(on-prem · future)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="540" y="500" width="155" height="44" as="geometry"/>
+        </mxCell>
+
+        <!-- ╔══════════════════════════════════╗ -->
+        <!-- ║            STORAGE               ║ -->
+        <!-- ╚══════════════════════════════════╝ -->
+        <mxCell id="pg" value="🐘 PostgreSQL
+documents · sessions
+users · roles · audit" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="100" y="580" width="150" height="76" as="geometry"/>
+        </mxCell>
+        <mxCell id="qdrant" value="🔷 Qdrant
+vectors (1024-dim)
+document chunks" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="540" y="495" width="155" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="rustfs" value="🗄️ RustFS / S3
+PDF · DOCX · files" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="580" width="150" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- ╔══════════════════════════════════╗ -->
+        <!-- ║          EDGES / ARROWS          ║ -->
+        <!-- ╚══════════════════════════════════╝ -->
+
+        <!-- User → API -->
+        <mxCell id="e_user_api" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;" edge="1" source="user" target="api" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- API → routes -->
+        <mxCell id="e_api_upload" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" source="api" target="r_upload" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_api_status" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;dashed=1;" edge="1" source="api" target="r_status" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_api_chat" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;" edge="1" source="api" target="r_chat" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_api_docs" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;dashed=1;" edge="1" source="api" target="r_docs" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_api_del" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;" edge="1" source="api" target="r_del" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Upload flow -->
+        <mxCell id="e_upload_q" value="enqueue" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;fontSize=9;" edge="1" source="r_upload" target="q_ing" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_upload_fs" value="save file" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;fontSize=9;" edge="1" source="r_upload" target="rustfs" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_upload_pg" value="insert pending" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;fontSize=9;" edge="1" source="r_upload" target="pg" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_q_wing" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" source="q_ing" target="w_ing" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_wing_bge" value="embed" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;fontSize=9;" edge="1" source="w_ing" target="bge" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_bge_qdrant" value="upsert vectors" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;fontSize=9;" edge="1" source="bge" target="qdrant" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_wing_pg" value="status=ready" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;fontSize=9;" edge="1" source="w_ing" target="pg" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_fs_wing" value="download" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;fontSize=9;dashed=1;" edge="1" source="rustfs" target="w_ing" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Status polling -->
+        <mxCell id="e_status_redis" value="read" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;fontSize=9;dashed=1;" edge="1" source="r_status" target="r_redis" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Chat flow -->
+        <mxCell id="e_chat_redis" value="rate limit + cache" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;fontSize=9;" edge="1" source="r_chat" target="r_redis" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_redis_bge" value="cache miss → embed" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;fontSize=9;" edge="1" source="r_redis" target="bge" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_qdrant_chat" value="top-k ≥ 0.35" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;fontSize=9;dashed=1;" edge="1" source="qdrant" target="r_chat" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_chat_llmg" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;" edge="1" source="r_chat" target="llm_g" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_chat_llmv" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" edge="1" source="r_chat" target="llm_v" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_chat_pg" value="save history" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;fontSize=9;" edge="1" source="r_chat" target="pg" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Delete flow -->
+        <mxCell id="e_del_q" value="enqueue" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;fontSize=9;" edge="1" source="r_del" target="q_del" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_q_wdel" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;" edge="1" source="q_del" target="w_del" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_wdel_qdrant" value="del vectors" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;fontSize=9;" edge="1" source="w_del" target="qdrant" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_wdel_fs" value="del file" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;fontSize=9;" edge="1" source="w_del" target="rustfs" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_wdel_pg" value="del row" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;fontSize=9;" edge="1" source="w_del" target="pg" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

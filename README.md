@@ -4,17 +4,76 @@
 
 > Deployment: Pure Docker. Self-hosted on your infrastructure. One project, shared document library, role-based access (admin / member).
 
+## System Architecture
+
+> Visual diagram: [`docs/architecture.drawio`](docs/architecture.drawio) — open with [draw.io](https://app.diagrams.net)
+
+```mermaid
+flowchart TD
+    U(["👤 User"]) --> API["🌐 FastAPI + JWT Auth"]
+
+    API --> |upload| UP["POST /upload"]
+    API --> |chat| CH["POST /chat  SSE"]
+    API --> |delete| DE["DELETE /documents/{id}"]
+
+    subgraph Ingestion ["📤 Upload & Ingestion"]
+        UP --> |save file| FS[("🗄️ RustFS")]
+        UP --> |insert pending| PG[("🐘 PostgreSQL")]
+        UP --> |enqueue| QI["⬛ Redis Queue · ingestion"]
+        QI --> W1["⚙️ parse_document_task
+        ─────────────────────
+        ① Download  ② Parse Docling+OCR
+        ③ Embed BAAI/bge-m3 fp16
+        ④ Verify  ⑤ Persist  ⑥ Unload VRAM"]
+        W1 --> |upsert 1024-dim| QD[("🔷 Qdrant")]
+        W1 --> |status=ready| PG
+    end
+
+    subgraph ChatFlow ["💬 Chat & Retrieval"]
+        CH --> |rate limit + cache| RE["⬛ Redis · Cache · Registry"]
+        RE --> |cache miss → embed| BGE["🤖 BAAI/bge-m3
+        1024-dim · offline · GPU fp16"]
+        BGE --> |search score ≥ 0.35| QD
+        QD --> |top-k chunks + citations| CH
+        CH --> |AI_PROVIDER=google| LLM1["Gemini API (demo)"]
+        CH --> |AI_PROVIDER=vllm| LLM2["vLLM Qwen2.5 (on-prem)"]
+        CH --> |save history| PG
+    end
+
+    subgraph Deletion ["🗑️ Delete Pipeline"]
+        DE --> |enqueue| QD2["⬛ Redis Queue · cleanup"]
+        QD2 --> W2["⚙️ delete_document_task
+        ─────────────────────
+        ① Registry mark  ② Del Vectors
+        ③ Del File  ④ Del DB row
+        ⑤ Registry purge  ⑥ Verify all clean"]
+        W2 --> |del vectors| QD
+        W2 --> |del file| FS
+        W2 --> |del row| PG
+    end
+
+    style Ingestion fill:#1a3a1a,stroke:#4caf50,color:#e8f5e9
+    style ChatFlow fill:#1a1a3a,stroke:#5c6bc0,color:#e8eaf6
+    style Deletion fill:#3a1a1a,stroke:#f44336,color:#ffebee
+```
+
 ## What Exists
 
-- FastAPI backend with async ingestion pipeline
-- Celery worker for asynchronous document parsing
+- FastAPI backend with async ingestion pipeline and live progress reporting
+- Celery worker with `acks_late`, `prefetch=1`, and 25-min soft time limit for reliability
 - PostgreSQL + Redis + RustFS + Qdrant via docker-compose
 - S3-compatible object storage (RustFS) for uploaded files
 - Optional `vllm` service (onprem profile) for local LLM inference
 - Multi-format ingestion: PDF, scanned PDF, images, DOCX, XLSX, Markdown, plain text
-- Docling-first document extraction with deterministic fallback path
+- **EasyOCR** (`vi+en`, GPU auto-detected) as mandatory OCR backend — no Tesseract
+- Docling-first document extraction with ClassicParser fallback path
 - Hierarchical document indexing: document → chapters → sections → subsections
-- Weighted retrieval with parent context injection
+- **BAAI/bge-m3 local embedding**: 1024-dim, 8192-token context, fully offline — no API calls, no rate limits
+- **Query embedding cache**: Redis-backed, MD5-keyed, TTL=1h — skip re-inference on repeated questions
+- **Score threshold filter**: Drop retrieval results with cosine similarity < 0.35
+- **Atomic rate limiting**: Lua script in Redis — no INCR+EXPIRE race condition
+- **Hard-delete**: Full removal from vectors, file storage, and DB (with registry-first ordering)
+- **Hardware auto-detection**: CPU/GPU count → embedding device selection (CUDA or CPU)
 
 ## Database Initialization
 
@@ -38,25 +97,27 @@ No Alembic migrations needed. Database is idempotent and initialized from a sing
 chatbot-rag/
 ├── AGENTS.md
 ├── README.md
-├── Dockerfile
+├── Dockerfile                         # BuildKit-optimized: pip + EasyOCR model cache mounts
+├── .dockerignore
 ├── docker-compose.yml
 ├── requirements.txt
 ├── .env.example
 ├── app/
-│   ├── main.py
-│   ├── worker.py
+│   ├── main.py                        # FastAPI app — no DDL at startup
+│   ├── worker.py                      # Celery tasks: parse + delete
 │   ├── adapters/
-│   │   ├── base.py                        # Shared adapter contracts
-│   │   ├── ai/                            # LLM provider adapters
-│   │   ├── parsers/                       # Docling + Classic parser adapters
-│   │   ├── embeddings/                    # Gemini embedding adapter (online)
-│   │   └── vector_stores/                 # Qdrant vector store adapter
+│   │   ├── base.py                    # Shared adapter contracts
+│   │   ├── ai/                        # LLM provider adapters (google, vllm)
+│   │   ├── parsers/                   # Docling + EasyOCR + Classic parser adapters
+│   │   ├── embeddings/                # Gemini embedding — parallel ThreadPoolExecutor
+│   │   └── vector_stores/             # Qdrant vector store adapter
 │   ├── api/
 │   │   ├── deps.py
 │   │   └── routes/
 │   ├── core/
-│   │   ├── config.py
-│   │   ├── celery_app.py
+│   │   ├── config.py                  # All settings with env var overrides
+│   │   ├── celery_app.py              # Celery: acks_late, prefetch=1, queue routing
+│   │   ├── hardware.py                # CPU/GPU auto-detection → parallelism config
 │   │   └── exceptions.py
 │   ├── db/
 │   ├── models/
@@ -65,22 +126,30 @@ chatbot-rag/
 │       ├── ingestion/
 │       │   ├── parser_manager.py
 │       │   ├── hierarchy_validator.py
-│       │   └── pipeline.py
+│       │   └── pipeline.py            # Chunked embed+store with progress_callback
 │       ├── storage/
 │       │   ├── __init__.py
 │       │   └── document_store.py
-│       ├── rag.py
+│       ├── rag.py                     # Retrieval: cache → embed → Qdrant → score filter
+│       ├── query_cache.py             # Redis query embedding cache (MD5, TTL=1h)
 │       ├── chat_store.py
 │       ├── auth.py
 │       ├── audit.py
-│       ├── document_cleanup.py
+│       ├── document_cleanup.py        # Hard-delete: registry-first 5-step sequence
 │       ├── health.py
 │       ├── registry.py
-│       ├── throttle.py
+│       ├── throttle.py                # Atomic Lua rate limiter
 │       └── token_blacklist.py
 ├── docs/
+│   ├── 01_SYSTEM_ARCHITECTURE.md
+│   ├── 02_DATABASE_AND_PROJECT.md
+│   ├── 03_CORE_WORKFLOWS.md
+│   ├── 04_API_CONTRACT_AND_SECURITY.md
+│   ├── 05_RESOURCE_OPTIMIZATION_AND_EDGE_CASES.md
+│   ├── 06_DEPLOYMENT_AND_OBSERVABILITY.md
+│   └── 07_INGESTION_AND_RETRIEVAL_STRATEGY.md
 ├── ops/
-│   └── init.sql
+│   └── init.sql                       # Full schema — no runtime DDL patches
 └── tests/
 ```
 
@@ -173,15 +242,22 @@ command: >
 ```bash
 # 1. Initialize environment
 cp .env.example .env
+# Edit .env: set GOOGLE_API_KEY for demo mode
 
-# 2. Start all services (database, cache, storage, api, worker)
-docker compose up --build
+# 2. Build and start (BuildKit cache: pip + EasyOCR models cached across rebuilds)
+DOCKER_BUILDKIT=1 docker compose up --build
 
-# 3. Wait for services to be healthy (30-60 seconds on first run)
+# docker compose v2 (Compose V2) has BuildKit enabled by default
+# On older versions: export DOCKER_BUILDKIT=1
+
+# 3. Wait for services to be healthy (first build ~5-10min for EasyOCR model download)
 
 # 4. Test API health
 curl http://localhost:8000/api/v1/health
 ```
+
+> **Build optimization**: Dockerfile uses BuildKit `--mount=type=cache` for both pip packages
+> and EasyOCR models. Subsequent `docker build` runs reuse cached layers — no re-download.
 
 ### Service Endpoints
 
@@ -239,17 +315,17 @@ docker compose up --build
 
 ## Notes
 
-- **Database**: Single `.sql` file initialization (`ops/init.sql`) via PostgreSQL init hook. No Alembic needed.
-- **Ingestion**: Docling-first on-prem parsing to Markdown, then LlamaIndex hierarchical node building, with the classic parser kept only as fallback.
-- **Docling extraction**: Upload parsing is Docling-first and provider-agnostic.
-- **Ingestion engine**: `INGESTION_ENGINE=docling|classic` (`docling` default) controls the upload pipeline.
-- **Retrieval**: Weighted scoring with parent context injection, latest-version preference, and chapter-aware Q&A.
-- **Next steps**: chat response latency, more sophisticated RAG evaluation, production telemetry.
-- `/health` performs real dependency checks (PostgreSQL, Redis, RustFS, AI provider). Other business endpoints are currently scaffold implementations.
-- `AI_PROVIDER` in `.env` controls LLM backend: `vllm` (on-prem default) or `google` (temporary demo mode).
-- `API_V1_PREFIX` in `.env` controls the production namespace (default `/api/v1`).
-- For temporary online testing, set `AI_PROVIDER=google` and provide `GOOGLE_API_KEY`.
-- Optional key rotation/fallback: set `GOOGLE_API_KEYS` as comma-separated keys (keeps API contract unchanged while testing).
+- **Database**: Single `.sql` file initialization (`ops/init.sql`). No Alembic, no runtime DDL patches.
+- **OCR**: EasyOCR (`vi+en`) is mandatory — pre-downloaded in Docker image, GPU auto-detected.
+- **Ingestion**: Docling-first → EasyOCR → LlamaIndex hierarchy → chunked parallel embedding.
+- **Embedding**: Parallel `ThreadPoolExecutor`, chunk size 32, configurable via `INGESTION_EMBEDDING_CHUNK_SIZE`.
+- **Retrieval**: Query vector cached in Redis (1h TTL). Score threshold filters low-relevance chunks.
+- **Rate limiting**: Atomic Lua script — safe under concurrent load, no key-expiry race condition.
+- **Delete**: Full hard-delete (vectors + file + DB row). Registry marked deleted first so /status updates instantly.
+- **vLLM model**: Configured via `VLLM_MODEL` env var — no longer hardcoded.
+- **Hardware detection**: CPU/GPU auto-detected at startup via `app/core/hardware.py`.
+- `/health` performs real dependency checks (PostgreSQL, Redis, RustFS, AI provider).
+- `AI_PROVIDER=google` for demo; `AI_PROVIDER=vllm` for production on-premise.
 
 ## Implemented Endpoints (Scaffold → Production)
 
@@ -384,9 +460,9 @@ ready for RAG
 
 For deletes:
 
-- `documents.deleted_at` is set
-- related retrieval nodes remain in Qdrant for historical reference but are excluded from new retrieval via document soft-delete filters
-- the file is deleted from RustFS
+- **Hard-delete** removes ALL traces: vectors from Qdrant, file from RustFS, DB row.
+- Deletion order: (1) `registry.delete()` → /status = 'deleted' immediately, (2) Qdrant vectors, (3) RustFS file, (4) DB row, (5) `registry.purge()`.
+- Historical chat messages referencing the document are preserved in DB for audit.
 
 The rest of the tables support auth, chat history, and future data connectors.
 

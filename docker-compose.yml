@@ -27,7 +27,11 @@ services:
     image: chatbot-rag-app:local
     env_file:
       - .env
-    command: celery -A app.core.celery_app.celery_app worker --loglevel=INFO
+    command: >
+      celery -A app.core.celery_app.celery_app worker
+      --loglevel=INFO
+      --queues=ingestion,cleanup,default
+      --max-tasks-per-child=50
     depends_on:
       db:
         condition: service_healthy

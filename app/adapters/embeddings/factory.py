@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 from app.adapters.base import BaseEmbedding
-from app.adapters.embeddings.gemini import GeminiEmbedding
+from app.adapters.embeddings.sentence_transformer import SentenceTransformerEmbedding
 from app.core.config import settings
 
 
 def build_embedding_service() -> BaseEmbedding:
-    model = (settings.embedding_model or "").strip().lower()
+    """
+    Factory: returns the local embedding adapter (always sentence-transformer).
 
-    if model in {"gemini", "gemini-embedding-001", "models/gemini-embedding-001"}:
-        return GeminiEmbedding(
-            model_name="models/gemini-embedding-001",
-            normalize=settings.embedding_normalize,
-            output_dimensionality=768,
-        )
+    Model: BAAI/bge-m3 — 1024-dim, 8192-token context, multilingual.
+    Configurable via EMBEDDING_HF_MODEL env var if needed.
 
-    raise ValueError(
-        "Unsupported EMBEDDING_MODEL. Use gemini-embedding-001 for current lightweight setup."
+    IMPORTANT: changing the model changes the vector dimension.
+    Drop Qdrant data on model switch:
+      docker volume rm chatbot-rag_qdrantdata && docker compose up -d
+    """
+    return SentenceTransformerEmbedding(
+        model_name=settings.embedding_hf_model,
+        normalize=settings.embedding_normalize,
+        batch_size=settings.embedding_batch_size,
+        query_prefix=settings.embedding_query_prefix,
+        passage_prefix=settings.embedding_passage_prefix,
     )

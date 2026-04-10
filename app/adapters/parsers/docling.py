@@ -21,6 +21,7 @@ from app.core.exceptions import (
     ParsingException,
     ParsingFallbackException,
 )
+from app.core.hardware import hardware
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +52,20 @@ class DoclingParser(BaseParser):
         self._initialize_docling()
         self._initialize_llamaindex()
 
+    def _select_ocr_backend(self):
+        """
+        Build EasyOCR options for Vietnamese + English documents.
+        GPU is used automatically when detected by the hardware profile.
+        easyocr must be installed (see requirements.txt).
+        """
+        from docling.datamodel.pipeline_options import EasyOcrOptions
+        use_gpu = hardware.gpu_count > 0
+        opts = EasyOcrOptions(lang=["vi", "en"], use_gpu=use_gpu)
+        logger.info("OCR backend: EasyOCR [vi, en] gpu=%s", use_gpu)
+        return opts
+
     def _initialize_docling(self) -> None:
-        """Lazy-initialize Docling converter."""
+        """Lazy-initialize Docling converter with best available OCR backend."""
         try:
             from docling.document_converter import (
                 DocumentConverter,
@@ -60,22 +73,20 @@ class DoclingParser(BaseParser):
                 ImageFormatOption,
             )
             from docling.datamodel.base_models import InputFormat
-            from docling.datamodel.pipeline_options import PdfPipelineOptions, TesseractCliOcrOptions
+            from docling.datamodel.pipeline_options import PdfPipelineOptions
 
-            # Force Vietnamese-aware OCR for scanned/image-heavy documents.
-            # Keep English as fallback because many forms mix vi/en terms.
-            pipeline_pdf = PdfPipelineOptions()
-            pipeline_pdf.do_ocr = True
-            pipeline_pdf.ocr_options = TesseractCliOcrOptions(
-                lang=["vie", "eng"],
-                force_full_page_ocr=True,
+            ocr_options = self._select_ocr_backend()
+
+            pipeline_pdf = PdfPipelineOptions(
+                do_ocr=True,
+                ocr_options=ocr_options,
+                do_table_structure=True,   # Preserve table structure for technical docs
             )
 
-            pipeline_image = PdfPipelineOptions()
-            pipeline_image.do_ocr = True
-            pipeline_image.ocr_options = TesseractCliOcrOptions(
-                lang=["vie", "eng"],
-                force_full_page_ocr=True,
+            pipeline_image = PdfPipelineOptions(
+                do_ocr=True,
+                ocr_options=ocr_options,
+                do_table_structure=True,
             )
 
             format_options = {

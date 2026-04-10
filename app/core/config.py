@@ -18,10 +18,17 @@ class Settings(BaseSettings):
     google_api_keys: str = ""
     google_model: str = "gemini-2.5-flash"
     vllm_base_url: str = "http://vllm:8000/v1"
+    vllm_model: str = "Qwen/Qwen2.5-7B-Instruct-AWQ"  # On-prem model name for vLLM
 
     ingestion_engine: str = "docling"
     ingestion_min_non_empty_nodes: int = 1
     ingestion_min_total_text_chars: int = 80
+    # Embedding pipeline tuning — 0 means auto-detect from hardware profile
+    ingestion_embedding_chunk_size: int = 32   # nodes per embed+store batch
+    ingestion_embed_parallelism: int = 0       # 0 = use hardware.embed_parallelism
+
+    # Retrieval quality
+    retrieval_min_score: float = 0.35          # Drop chunks below this cosine similarity
 
     database_url: str = "replace-me"
     redis_url: str = "redis://redis:6379/0"
@@ -41,11 +48,14 @@ class Settings(BaseSettings):
     s3_secure: bool = False
     allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0"
 
-    # Embedding and vector store configuration
-    embedding_model: str = "gemini-embedding-001"  # Model name for embeddings
+    # Embedding — local/offline, on-premise
+    embedding_model: str = "sentence-transformer"
+    embedding_hf_model: str = "BAAI/bge-m3"          # 1024-dim, 8192 tokens, multilingual
+    embedding_query_prefix: str = ""
+    embedding_passage_prefix: str = ""
     embedding_batch_size: int = 32
     embedding_normalize: bool = True
-    vector_store: str = "qdrant"  # Vector store backend (qdrant, chroma, etc.)
+    vector_store: str = "qdrant"
     qdrant_url: str = "http://qdrant:6333"
     qdrant_api_key: str = ""  # Empty for in-memory; set for cloud Qdrant
     qdrant_collection: str = "documents_vectors"
@@ -69,8 +79,8 @@ class Settings(BaseSettings):
         if self.ingestion_min_total_text_chars < 1:
             raise ValueError("INGESTION_MIN_TOTAL_TEXT_CHARS must be >= 1")
         
-        # Embedding and vector store validation
-        self.embedding_model = str(self.embedding_model).strip().lower() or "gemini-embedding-001"
+        # Embedding validation
+        self.embedding_model = "sentence-transformer"
         self.vector_store = str(self.vector_store).strip().lower() or "qdrant"
         if self.vector_store not in {"qdrant", "chroma", "weaviate"}:
             raise ValueError("VECTOR_STORE must be qdrant/chroma/weaviate")

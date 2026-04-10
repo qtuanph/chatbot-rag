@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from functools import lru_cache
 from dataclasses import dataclass
@@ -13,6 +14,9 @@ from app.core.config import settings
 from app.adapters.base import BaseEmbedding
 from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
+from app.services.query_cache import QueryEmbeddingCache
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -55,6 +59,13 @@ def _get_vector_store() -> QdrantVectorStore:
     )
 
 
+@lru_cache(maxsize=1)
+def _get_query_cache() -> QueryEmbeddingCache:
+    import redis
+    client = redis.Redis.from_url(settings.redis_url, decode_responses=False)
+    return QueryEmbeddingCache(client)
+
+
 def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext:
     latest_doc_ids = _latest_document_ids(session)
     if not latest_doc_ids:
@@ -71,15 +82,38 @@ def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext
     )
     title_by_id = {str(doc_id): title for doc_id, title in document_rows}
 
-    query_vector = _get_embedding_service().embed(query)
+    # Query embedding — check cache first to avoid re-computing on repeated questions
+    cache = _get_query_cache()
+    query_vector = cache.get(query)
+    if query_vector is None:
+        svc = _get_embedding_service()
+        # Use embed_query() to apply query_prefix (for E5-style models).
+        # Falls back to embed() for adapters that don't override it.
+        embed_fn = getattr(svc, "embed_query", None) or svc.embed
+        query_vector = embed_fn(query)
+        cache.set(query, query_vector)
+        logger.debug("Query cache MISS — embedded locally")
+    else:
+        logger.debug("Query cache HIT — skipped embedding")
+
+
     retrieved = _get_vector_store().retrieve(
         query_vector=query_vector,
-        top_k=max(limit, 1),
+        top_k=max(limit * 2, 10),   # Retrieve extra, then filter by score
         document_ids_filter=list(title_by_id.keys()),
     )
 
+    # Drop low-relevance chunks — prevents LLM from being confused by noise
+    min_score = settings.retrieval_min_score
+    filtered = [item for item in retrieved if item.score >= min_score]
+    if len(filtered) < len(retrieved):
+        logger.debug(
+            "Score filter: kept %d/%d chunks (threshold=%.2f)",
+            len(filtered), len(retrieved), min_score,
+        )
+
     nodes: list[RagNode] = []
-    for item in retrieved[:limit]:
+    for item in filtered[:limit]:
         heading = item.metadata.get("section_title") or item.metadata.get("node_type") or "Section"
         page_number = item.metadata.get("page_number")
         page_range = str(page_number) if page_number else None

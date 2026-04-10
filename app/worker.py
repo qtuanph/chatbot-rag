@@ -1,7 +1,9 @@
-"""Celery task definitions for document ingestion and processing."""
+"""Celery task definitions for document ingestion and cleanup."""
 
 import logging
 from datetime import datetime, timezone
+
+from celery.exceptions import SoftTimeLimitExceeded
 
 from app.core.celery_app import celery_app
 from app.core.config import settings
@@ -41,34 +43,74 @@ def _set_document_status(
         session.commit()
 
 
-@celery_app.task(name="app.worker.parse_document_task", bind=True)
-def parse_document_task(self, task_id: str, document_id: str, file_path: str, user_id: str = None) -> dict:
+def _build_vector_store(embedding_service) -> QdrantVectorStore:
+    """Build a QdrantVectorStore instance with the current embedding dimension."""
+    return QdrantVectorStore(
+        url=settings.qdrant_url,
+        api_key=settings.qdrant_api_key or None,
+        collection_name=settings.qdrant_collection,
+        vector_size=embedding_service.get_dimension(),
+        timeout=settings.qdrant_timeout,
+    )
+
+
+def _verify_ingestion(
+    document_id: str,
+    file_path: str,
+    vector_store: QdrantVectorStore,
+    storage,
+) -> dict:
     """
-    Celery task for document ingestion using new pipeline.
-    
-    Args:
-        task_id: Celery task ID
-        document_id: Document ID
-        file_path: Path in storage (e.g., s3://bucket/key)
-        user_id: User who uploaded document
-    
-    Returns:
-        Result dict with status and metadata
+    Post-ingestion verification: confirm vectors indexed and file stored.
+
+    Returns a dict with verification results for logging and artifact storage.
+    Does NOT raise — verification failure is logged as WARNING only.
+    """
+    qdrant_count = vector_store.count(document_id)
+    file_ok = storage.file_exists(file_path)
+
+    result = {
+        "qdrant_vectors": qdrant_count,
+        "qdrant_ok": qdrant_count > 0,
+        "file_in_storage": file_ok,
+        "passed": qdrant_count > 0 and file_ok,
+    }
+
+    if result["passed"]:
+        logger.info(
+            "[%s] ✓ Ingestion verified: qdrant_vectors=%d file_ok=%s",
+            document_id, qdrant_count, file_ok,
+        )
+    else:
+        logger.warning(
+            "[%s] ✗ Ingestion verify FAILED: qdrant_vectors=%d file_ok=%s",
+            document_id, qdrant_count, file_ok,
+        )
+
+    return result
+
+
+@celery_app.task(
+    name="app.worker.parse_document_task",
+    bind=True,
+    acks_late=True,
+)
+def parse_document_task(
+    self, task_id: str, document_id: str, file_path: str, user_id: str = None
+) -> dict:
+    """
+    Celery task: download → parse → embed → store → verify → unload.
+
+    The embedding model is loaded fresh per task and unloaded after completion
+    to release VRAM for the vLLM chat model.
     """
     storage = build_storage()
     content = b""
-    
+    embedding_service = None
+    vector_store = None
+
     try:
-        # Step 1: Download file
-        self.update_state(
-            task_id=task_id,
-            state="STARTED",
-            meta={
-                "stage": "download",
-                "progress": {"step": "download", "percent": 10},
-                "document_id": document_id,
-            },
-        )
+        # ── Step 1: Download ─────────────────────────────────────────────────
         _set_document_status(
             document_id=document_id,
             status="processing",
@@ -77,84 +119,84 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             status_message="Downloading source file from object storage.",
             parse_error="",
         )
-        logger.info(f"[{document_id}] Downloading from {file_path}...")
+        logger.info("[%s] Downloading from %s...", document_id, file_path)
         content = storage.download_bytes(file_path)
         filename = file_path.rsplit("/", 1)[-1]
-        
-        # Step 2: Parse document with new pipeline
-        self.update_state(
-            task_id=task_id,
-            state="STARTED",
-            meta={
-                "stage": "parse",
-                "progress": {"step": "parse", "percent": 40},
-                "document_id": document_id,
-            },
-        )
+
+        # ── Step 2: Load embedding model ─────────────────────────────────────
+        # Model is loaded fresh per task; unloaded in finally block.
         _set_document_status(
             document_id=document_id,
             status="processing",
             stage="parse",
-            progress_percent=40,
-            status_message="Parsing document and building hierarchical nodes.",
+            progress_percent=20,
+            status_message=f"Parsing {filename}…",
         )
-        logger.info(f"[{document_id}] Parsing with new pipeline...")
-
-        parser_manager = ParserManager()
         embedding_service = build_embedding_service()
+        vector_store = _build_vector_store(embedding_service)
 
-        with SessionLocal() as pipeline_session:
-            pipeline = IngestionPipeline(
-                parser_manager=parser_manager,
-                embedding_service=embedding_service,
-                vector_store=QdrantVectorStore(
-                    url=settings.qdrant_url,
-                    api_key=settings.qdrant_api_key or None,
-                    collection_name=settings.qdrant_collection,
-                    vector_size=embedding_service.get_dimension(),
-                    timeout=settings.qdrant_timeout,
-                ),
-            )
+        # ── Step 3: Parse & embed ────────────────────────────────────────────
+        logger.info("[%s] Parsing with pipeline...", document_id)
+        parser_manager = ParserManager()
+        pipeline = IngestionPipeline(
+            parser_manager=parser_manager,
+            embedding_service=embedding_service,
+            vector_store=vector_store,
+        )
 
-            ingestion_result = pipeline.ingest(
-                filename=filename,
-                content=content,
-                user_id=user_id or "system",
+        def _progress_callback(stage: str, percent: int, message: str = "") -> None:
+            _set_document_status(
                 document_id=document_id,
+                status="processing",
+                stage=stage,
+                progress_percent=percent,
+                status_message=message or stage,
             )
-        
+
+        ingestion_result = pipeline.ingest(
+            filename=filename,
+            content=content,
+            user_id=user_id or "system",
+            document_id=document_id,
+            progress_callback=_progress_callback,
+        )
+
         if not ingestion_result.success:
             raise Exception(f"Pipeline failed: {', '.join(ingestion_result.errors)}")
 
         if ingestion_result.node_count > 0 and not ingestion_result.storage_ids:
             raise ValueError("Vector store did not persist any node IDs for this document")
-        
-        # Step 3: Persist document metadata
-        self.update_state(
-            task_id=task_id,
-            state="STARTED",
-            meta={
-                "stage": "persist",
-                "progress": {"step": "persist", "percent": 75},
-                "document_id": document_id,
-            },
+
+        # ── Step 4: Post-ingestion verification ──────────────────────────────
+        _set_document_status(
+            document_id=document_id,
+            status="processing",
+            stage="verify",
+            progress_percent=90,
+            status_message="Verifying ingestion integrity…",
         )
+        verify = _verify_ingestion(document_id, file_path, vector_store, storage)
+
+        # ── Step 5: Persist metadata ─────────────────────────────────────────
         _set_document_status(
             document_id=document_id,
             status="processing",
             stage="persist",
-            progress_percent=75,
+            progress_percent=95,
             status_message="Persisting ingestion artifact and finalizing document.",
         )
-        logger.info(f"[{document_id}] Storing ingestion metadata to PostgreSQL...")
-        
+        logger.info("[%s] Storing ingestion metadata to PostgreSQL...", document_id)
+
         with SessionLocal() as session:
             document = session.get(Document, document_id)
             if document is None:
                 raise ValueError(f"Document not found: {document_id}")
-            
-            # Validate quality thresholds
-            if ingestion_result.validation_report and ingestion_result.validation_report.node_count < settings.ingestion_min_non_empty_nodes:
+
+            if (
+                ingestion_result.validation_report
+                and ingestion_result.validation_report.node_count
+                < settings.ingestion_min_non_empty_nodes
+            ):
                 raise ValueError(
                     f"Extraction quality too low: {ingestion_result.node_count} nodes "
                     f"< {settings.ingestion_min_non_empty_nodes} minimum"
@@ -164,22 +206,26 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                     f"Extraction quality too low: {ingestion_result.total_text_chars} chars "
                     f"< {settings.ingestion_min_total_text_chars} minimum"
                 )
-            
-            # Store artifact metadata
+
             metadata = dict(document.extra_metadata or {})
-            artifact_dict = ingestion_result.parse_metadata.to_dict() if ingestion_result.parse_metadata else {}
-            artifact_dict.update({
-                'valid': ingestion_result.success,
-                'node_count': ingestion_result.node_count,
-                'total_chars': ingestion_result.total_text_chars,
-                'errors': ingestion_result.errors,
-                'warnings': ingestion_result.warnings,
-                'duration_ms': ingestion_result.duration_ms,
-            })
-            metadata['ingestion_artifact'] = artifact_dict
+            artifact_dict = (
+                ingestion_result.parse_metadata.to_dict()
+                if ingestion_result.parse_metadata
+                else {}
+            )
+            artifact_dict.update(
+                {
+                    "valid": ingestion_result.success,
+                    "node_count": ingestion_result.node_count,
+                    "total_chars": ingestion_result.total_text_chars,
+                    "errors": ingestion_result.errors,
+                    "warnings": ingestion_result.warnings,
+                    "duration_ms": ingestion_result.duration_ms,
+                    "verification": verify,
+                }
+            )
+            metadata["ingestion_artifact"] = artifact_dict
             document.extra_metadata = metadata
-            
-            # Mark document as ready
             document.status = "ready"
             document.status_stage = "ready"
             document.progress_percent = 100
@@ -188,11 +234,22 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             document.parse_error = None
             document.updated_at = datetime.now(timezone.utc)
             session.commit()
-            
-            logger.info(f"[{document_id}] ✓ Document metadata persisted")
-    
+            logger.info("[%s] ✓ Document metadata persisted", document_id)
+
+    except SoftTimeLimitExceeded:
+        logger.error("[%s] Task exceeded soft time limit", document_id)
+        _set_document_status(
+            document_id=document_id,
+            status="failed",
+            stage="timeout",
+            progress_percent=0,
+            status_message="Document processing timed out. Try a smaller file.",
+            parse_error="SoftTimeLimitExceeded",
+        )
+        raise
+
     except Exception as exc:
-        logger.error(f"[{document_id}] ✗ Pipeline failed: {str(exc)}")
+        logger.error("[%s] ✗ Pipeline failed: %s", document_id, exc)
         _set_document_status(
             document_id=document_id,
             status="failed",
@@ -201,28 +258,81 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             status_message="Ingestion failed.",
             parse_error=str(exc),
         )
-        
         raise
-    
-    result = {
+
+    finally:
+        # Always release VRAM/RAM after task — whether success or failure.
+        # Next ingestion task will load the model fresh from disk cache.
+        if embedding_service is not None:
+            unload_fn = getattr(embedding_service, "unload", None)
+            if callable(unload_fn):
+                unload_fn()
+
+    return {
         "task_id": task_id,
         "document_id": document_id,
         "file_path": file_path,
         "status": "ready",
-        "stage": "done",
-        "progress": {"step": "done", "percent": 100},
+        "stage": "ready",
+        "progress": {"step": "ready", "percent": 100},
         "bytes": len(content),
         "node_count": ingestion_result.node_count,
         "duration_ms": ingestion_result.duration_ms,
         "ingestion_artifact": metadata.get("ingestion_artifact", {}),
     }
-    
+
+
+def _verify_deletion(
+    document_id: str,
+    file_path: str | None,
+    vector_store: QdrantVectorStore,
+    storage,
+) -> dict:
+    """
+    Post-delete verification: confirm vectors purged, file removed, DB row gone.
+
+    Returns verification dict. Does NOT raise — logs WARNING on failure.
+    """
+    qdrant_count = vector_store.count(document_id)
+    file_gone = (not storage.file_exists(file_path)) if file_path else True
+    with SessionLocal() as session:
+        db_gone = session.get(Document, document_id) is None
+
+    result = {
+        "qdrant_vectors_remaining": qdrant_count,
+        "qdrant_clean": qdrant_count == 0,
+        "file_removed": file_gone,
+        "db_row_gone": db_gone,
+        "passed": qdrant_count == 0 and file_gone and db_gone,
+    }
+
+    if result["passed"]:
+        logger.info(
+            "[%s] ✓ Deletion verified: qdrant=0 file_removed=%s db_gone=%s",
+            document_id, file_gone, db_gone,
+        )
+    else:
+        logger.warning(
+            "[%s] ✗ Deletion verify FAILED: qdrant_remaining=%d file_removed=%s db_gone=%s",
+            document_id, qdrant_count, file_gone, db_gone,
+        )
+
     return result
 
 
-@celery_app.task(name="app.worker.delete_document_task", bind=True)
-def delete_document_task(self, task_id: str, document_id: str, user_id: str | None = None) -> dict:
-    """Celery task for hard-deleting a document and all related artifacts."""
+@celery_app.task(
+    name="app.worker.delete_document_task",
+    bind=True,
+    acks_late=True,
+)
+def delete_document_task(
+    self, task_id: str, document_id: str, user_id: str | None = None
+) -> dict:
+    """
+    Celery task: hard-delete document + all artifacts → verify cleanup.
+
+    Steps: registry → vectors → file → DB row → registry purge → verify.
+    """
     self.update_state(
         task_id=task_id,
         state="STARTED",
@@ -233,7 +343,26 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
         },
     )
 
+    storage = build_storage()
+    # Resolve file_path before hard_delete removes the DB row
+    file_path: str | None = None
+    with SessionLocal() as session:
+        doc = session.get(Document, document_id)
+        if doc is not None:
+            file_path = doc.file_path
+
     cleanup_result = hard_delete_document(document_id)
+
+    # ── Post-delete verification ──────────────────────────────────────────────
+    # Build a minimal vector_store (no embedding needed for count/verify)
+    vector_store = QdrantVectorStore(
+        url=settings.qdrant_url,
+        api_key=settings.qdrant_api_key or None,
+        collection_name=settings.qdrant_collection,
+        vector_size=1,       # dimension irrelevant for count — collection already exists
+        timeout=settings.qdrant_timeout,
+    )
+    verify = _verify_deletion(document_id, file_path, vector_store, storage)
 
     return {
         "task_id": task_id,
@@ -243,4 +372,5 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
         "progress": {"step": "deleted", "percent": 100},
         "requested_by": user_id,
         "cleanup": cleanup_result,
+        "verification": verify,
     }

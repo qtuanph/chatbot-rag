@@ -11,7 +11,7 @@ from app.core.config import settings
 class VLLMAIProvider(AIProvider):
     def __init__(self) -> None:
         self.base_url = settings.vllm_base_url.rstrip("/")
-        self.model = "local-model"
+        self.model = settings.vllm_model   # Bug fix: was hardcoded "local-model"
 
     async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> dict[str, Any]:
         payload_messages = self._build_messages(messages, kwargs)

@@ -9,3 +9,9 @@ __pycache__
 .mypy_cache
 docs
 uploads
+FILEUPLOADTEST
+tests
+*.md
+!README.md
+.python-version
+MEMORY.md

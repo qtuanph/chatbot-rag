@@ -3,13 +3,16 @@ Ingestion Pipeline: Main orchestration for document parsing → hierarchy → em
 """
 
 import logging
-from typing import List
-from dataclasses import dataclass
+import math
 import time
+from typing import List, Callable, Optional
+from dataclasses import dataclass
 
 from app.adapters.base import IngestedNode, ParsingMetadata
 from app.services.ingestion.parser_manager import ParserManager
 from app.services.ingestion.hierarchy_validator import HierarchyValidator, ValidationReport
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,13 +32,17 @@ class IngestionResult:
     duration_ms: float
 
 
+# Type alias for clarity
+ProgressCallback = Callable[[str, int, str], None]  # (stage, percent, message)
+
+
 class IngestionPipeline:
     """
     Main ingestion orchestration:
     1. Parse document (DoclingParser → ClassicParser fallback)
     2. Validate hierarchy
-    3. Embed nodes (Gemini Embedding)
-    4. Store in PostgreSQL + Qdrant + RustFS
+    3. Embed + store nodes in chunks (parallel embedding, incremental Qdrant writes)
+    4. Report progress at each chunk via optional callback
     """
 
     def __init__(
@@ -55,22 +62,19 @@ class IngestionPipeline:
         content: bytes,
         user_id: str,
         document_id: str,
-    ) -> IngestionResult:
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> 'IngestionResult':
         """
-        Async ingestion pipeline (main entry point).
-        
-        Args:
-            filename: Original filename
-            content: Raw file bytes
-            user_id: User performing upload
-            document_id: Unique document ID (UUID)
-        
-        Returns:
-            IngestionResult with detailed status
+        Async entry point — runs synchronous ingest() in a thread pool
+        so it doesn't block the FastAPI event loop.
         """
         import asyncio
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self.ingest, filename, content, user_id, document_id)
+        return await loop.run_in_executor(
+            None,
+            self.ingest,
+            filename, content, user_id, document_id, progress_callback,
+        )
 
     def ingest(
         self,
@@ -78,56 +82,108 @@ class IngestionPipeline:
         content: bytes,
         user_id: str,
         document_id: str,
-    ) -> IngestionResult:
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> 'IngestionResult':
         """
-        Synchronous ingestion pipeline.
+        Synchronous ingestion pipeline with chunked embed+store and progress reporting.
+
+        Progress stages (approximate %):
+          5%  → starting parse
+          30% → parse complete
+          35% → hierarchy validation complete
+          40-90% → chunked embed+store (incremental, 1 tick per chunk)
+          100% → done
+
+        Args:
+            filename:          Original filename
+            content:           Raw file bytes
+            user_id:           User performing the upload
+            document_id:       Unique document ID (UUID)
+            progress_callback: Optional callable(stage, percent, message).
+                               Called after each significant step and after each embed chunk.
         """
         start_time = time.time()
-        errors = []
-        warnings = []
+        errors: List[str] = []
+        warnings: List[str] = []
         nodes: List[IngestedNode] = []
-        parse_metadata: ParsingMetadata = None
-        validation_report: ValidationReport = None
+        parse_metadata: Optional[ParsingMetadata] = None
+        validation_report: Optional[ValidationReport] = None
         storage_ids: List[str] = []
-        
+
+        def _cb(stage: str, percent: int, message: str = "") -> None:
+            """Fire progress callback safely — never let a callback error crash the pipeline."""
+            if progress_callback:
+                try:
+                    progress_callback(stage, percent, message)
+                except Exception as cb_exc:
+                    logger.warning("[%s] Progress callback error: %s", document_id, cb_exc)
+
         try:
-            # Step 1: Parse document
-            logger.info(f"[{document_id}] Starting ingestion: {filename}")
+            # ── Step 1: Parse ────────────────────────────────────────────────
+            logger.info("[%s] Starting ingestion: %s", document_id, filename)
+            _cb("parse", 5, f"Parsing {filename}…")
+
             nodes, parse_metadata = self.parser_manager.parse(filename, content)
-            logger.info(f"[{document_id}] Parsed: {len(nodes)} nodes from {filename}")
-            
-            # Step 2: Validate hierarchy
+            logger.info("[%s] Parsed: %d nodes from %s", document_id, len(nodes), filename)
+            _cb("parse", 30, f"Parsed {len(nodes)} sections")
+
+            # ── Step 2: Validate hierarchy ───────────────────────────────────
+            _cb("validate", 35, "Validating document structure…")
             validation_report = self.validator.validate(nodes)
             if not validation_report.is_valid:
                 errors.extend(validation_report.errors)
                 warnings.extend(validation_report.warnings)
-                logger.warning(f"[{document_id}] Validation issues: {len(errors)} errors, {len(warnings)} warnings")
+                logger.warning(
+                    "[%s] Validation: %d errors, %d warnings",
+                    document_id, len(errors), len(warnings),
+                )
             else:
-                logger.info(f"[{document_id}] Hierarchy valid: depth={validation_report.depth}")
-            
-            # Step 3: Embed nodes (if embedding service available)
-            embeddings = []
-            if self.embedding_service:
-                try:
-                    logger.info(f"[{document_id}] Embedding {len(nodes)} nodes...")
-                    texts = [node.text for node in nodes]
-                    embeddings = self.embedding_service.embed_batch(texts)
-                    logger.info(f"[{document_id}] Embedded: {len(embeddings)} vectors")
-                except Exception as e:
-                    logger.warning(f"[{document_id}] Embedding failed: {str(e)}")
-                    warnings.append(f"Embedding failed: {str(e)}")
-            
-            # Step 4: Store in vector store (if available)
-            if self.vector_store and embeddings:
-                try:
-                    storage_ids = self.vector_store.store(document_id, nodes, embeddings)
-                    logger.info(f"[{document_id}] Stored in Qdrant: {len(storage_ids)} nodes")
-                except Exception as e:
-                    logger.error(f"[{document_id}] Vector store failed: {str(e)}")
-                    errors.append(f"Vector store store failed: {str(e)}")
-            
+                logger.info("[%s] Hierarchy valid (depth=%s)", document_id, validation_report.depth)
+
+            # ── Step 3: Embed + Store in chunks ──────────────────────────────
+            if self.embedding_service and nodes:
+                chunk_size = settings.ingestion_embedding_chunk_size
+                n_chunks = math.ceil(len(nodes) / chunk_size) or 1
+
+                for chunk_idx, chunk_start in enumerate(range(0, len(nodes), chunk_size)):
+                    chunk_nodes = nodes[chunk_start : chunk_start + chunk_size]
+                    chunk_texts = [n.text for n in chunk_nodes]
+
+                    try:
+                        # embed_batch handles internal parallelism via ThreadPoolExecutor
+                        vecs = self.embedding_service.embed_batch(chunk_texts)
+
+                        if self.vector_store:
+                            ids = self.vector_store.store(document_id, chunk_nodes, vecs)
+                            storage_ids.extend(ids)
+                    except Exception as e:
+                        logger.error(
+                            "[%s] Chunk %d/%d failed: %s",
+                            document_id, chunk_idx + 1, n_chunks, e,
+                        )
+                        errors.append(f"Chunk {chunk_idx + 1} embed/store failed: {e}")
+                        # Continue with remaining chunks — partial index beats total failure
+                        continue
+
+                    pct = 40 + int(50 * (chunk_idx + 1) / n_chunks)  # 40% → 90%
+                    _cb(
+                        "embed_store",
+                        pct,
+                        f"Indexing section {chunk_idx + 1}/{n_chunks}…",
+                    )
+                    logger.info(
+                        "[%s] Chunk %d/%d embedded+stored (%d nodes)",
+                        document_id, chunk_idx + 1, n_chunks, len(chunk_nodes),
+                    )
+            else:
+                if not self.embedding_service:
+                    warnings.append("No embedding service configured — skipping vector indexing")
+                elif not nodes:
+                    warnings.append("No nodes produced — empty document?")
+
             duration_ms = (time.time() - start_time) * 1000
-            
+            _cb("ready", 100, "Ingestion complete")
+
             result = IngestionResult(
                 success=True,
                 document_id=document_id,
@@ -141,13 +197,17 @@ class IngestionPipeline:
                 warnings=warnings,
                 duration_ms=duration_ms,
             )
-            
-            logger.info(f"[{document_id}] ✓ Ingestion complete: {result.node_count} nodes in {duration_ms:.0f}ms")
+
+            logger.info(
+                "[%s] ✓ Ingestion complete: %d nodes in %.0fms",
+                document_id, result.node_count, duration_ms,
+            )
             return result
-        
+
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
-            logger.error(f"[{document_id}] ✗ Ingestion failed: {str(e)}")
+            logger.error("[%s] ✗ Ingestion failed: %s", document_id, e)
+            _cb("failed", 0, str(e))
 
             return IngestionResult(
                 success=False,

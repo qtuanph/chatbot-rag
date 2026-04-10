@@ -326,6 +326,34 @@ class QdrantVectorStore(BaseVectorStore):
                 error_code="QDRANT_DELETE_FAILED",
                 details={'document_id': document_id, 'error': str(e)}
             )
+    def count(self, document_id: str) -> int:
+        """
+        Count vectors stored for a given document_id.
+
+        Used for post-ingestion verification (expect > 0) and
+        post-delete verification (expect == 0).
+        """
+        try:
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+            result = self.client.count(
+                collection_name=self.collection_name,
+                count_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="document_id",
+                            match=MatchValue(value=document_id),
+                        )
+                    ]
+                ),
+                exact=True,
+            )
+            return result.count
+        except Exception as e:
+            logger.warning(
+                "Failed to count vectors for document %s: %s", document_id, e
+            )
+            return -1  # -1 signals error, not zero
 
     def _node_id_to_qdrant_id(self, node_id: str) -> int:
         """
