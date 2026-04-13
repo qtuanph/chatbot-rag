@@ -6,7 +6,7 @@ type: feedback
 
 # Database Credentials Structure - CRITICAL
 
-## QUAN TRỌNG: Tôi đã NHẦU nhiều lần về password!
+## QUAN TRỌNG: Tôi đã NHẦM nhiều lần về password!
 
 ### Cấu trúc ĐÚNG:
 

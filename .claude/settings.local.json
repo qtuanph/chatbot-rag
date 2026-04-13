@@ -29,7 +29,11 @@
       "Bash(docker volume:*)",
       "Bash(grep -E \"\\\\.py$|\\\\.sh$\")",
       "Bash(grep -v \"^$\")",
-      "Bash(grep -E \"\\\\.md$\")"
+      "Bash(grep -E \"\\\\.md$\")",
+      "Bash(find D:\\\\Dev\\\\MyProject\\\\chatbot-rag\\\\app:*)",
+      "Bash(find \"D:\\\\Dev\\\\MyProject\\\\chatbot-rag\\\\app\" -type f -name \"*.py\" -exec grep -l \"app.view\" {} \\\\;)",
+      "Bash(grep:*)",
+      "Bash(docker network:*)"
     ]
   }
 }

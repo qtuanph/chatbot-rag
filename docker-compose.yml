@@ -22,6 +22,23 @@ services:
       timeout: 10s
       retries: 3
     restart: unless-stopped
+    networks:
+      - internal
+
+  web:
+    image: chatbot-rag-app:local
+    env_file:
+      - .env
+    command: streamlit run streamlit_app/app.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE_URL=http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - internal
 
   worker:
     image: chatbot-rag-app:local
@@ -126,28 +143,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  visualizer:
-    image: chatbot-rag-app:local
-    env_file:
-      - .env
-    command: >
-      python -m streamlit run app/view/visualizer.py
-      --server.port=8501
-      --server.address=0.0.0.0
-      --server.headless=true
-      --server.enableCORS=false
-      --server.enableXsrfProtection=false
-    ports:
-      - "8501:8501"
-    depends_on:
-      api:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=5)\""]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
 
 
 volumes:
@@ -156,3 +151,7 @@ volumes:
   rustfsdata:
   qdrantdata:
   hf-cache:
+
+networks:
+  internal:
+    driver: bridge

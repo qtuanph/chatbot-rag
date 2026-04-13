@@ -163,8 +163,8 @@ async def get_document_tree(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting tree for {document_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) from None
+        logger.error(f"Error getting tree for {document_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve document tree") from None
 
 
 @router.get("/tree/{document_id}/nodes/{node_id}")
@@ -239,8 +239,8 @@ async def get_node_details(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting node {node_id} for {document_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) from None
+        logger.error(f"Error getting node {node_id} for {document_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve node details") from None
 
 
 @router.get("/tree/{document_id}/search")
@@ -303,5 +303,5 @@ async def search_nodes(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error searching nodes in {document_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) from None
+        logger.error(f"Error searching nodes in {document_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to search nodes") from None

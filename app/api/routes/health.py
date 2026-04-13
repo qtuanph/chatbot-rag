@@ -4,7 +4,6 @@ from typing import Any
 import json
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
 import httpx
 
 from app.core.config import settings
@@ -200,87 +199,11 @@ def _build_snapshot(selected_document_id: str | None = None) -> dict[str, Any]:
     }
 
 
-def _render_page(snapshot: dict[str, Any]) -> str:
-    prefix = settings.api_v1_prefix.rstrip("/")
-    return f"""
-<!doctype html>
-<html>
-<head>
-  <meta charset='utf-8'/>
-  <meta name='viewport' content='width=device-width, initial-scale=1'/>
-  <title>Service Health Monitoring</title>
-  <style>
-    body {{ font-family: sans-serif; margin: 16px; background-color: #f8fafc; color: #334155; }}
-    table {{ border-collapse: collapse; width: 100%; max-width: 600px; margin-bottom: 16px; background: white; }}
-    th, td {{ border: 1px solid #e2e8f0; padding: 10px; text-align: left; }}
-    th {{ background: #f1f5f9; }}
-    h1, h2 {{ margin: 8px 0; color: #0f172a; }}
-    .badge {{ padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; }}
-    .up {{ background: #22c55e; }}
-    .down {{ background: #ef4444; }}
-    .degraded {{ background: #f59e0b; }}
-    .container {{ background: white; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; max-width: 800px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
-    .info-box {{ background: #e0f2fe; padding: 12px; border-radius: 4px; margin-top: 20px; font-size: 14px; border: 1px solid #bae6fd; }}
-  </style>
-  <script>
-    async function refreshData() {{
-      try {{
-        const res = await fetch('{prefix}/health/data');
-        const data = await res.json();
-        document.getElementById('status').textContent = data.status;
-        document.getElementById('ts').textContent = data.timestamp;
-        
-        // Cập nhật lại HTML cho bảng Services
-        const tbody = document.getElementById('services-body');
-        let newHtml = '';
-        const checks = data.checks || {{}};
-        for (const [name, check] of Object.entries(checks)) {{
-            let statusClass = check.status === 'up' ? 'up' : (check.status === 'down' ? 'down' : 'degraded');
-            newHtml += `<tr>
-                <td>${{name}}</td>
-                <td><span class="badge ${{statusClass}}">${{check.status}}</span></td>
-            </tr>`;
-        }}
-        tbody.innerHTML = newHtml;
-      }} catch (e) {{
-        console.error(e);
-      }}
-    }}
-    setInterval(refreshData, 5000);
-  </script>
-</head>
-<body>
-  <div class="container">
-      <h1>🩺 Service Health Monitor</h1>
-      <p>Overall Status: <strong id='status'>{html.escape(str(snapshot['status']).upper())}</strong></p>
-      <p>Last checked: <span id='ts'>{html.escape(str(snapshot['timestamp']))}</span></p>
-      <p><a href="/" style="color: #3b82f6;">← Về trang Admin Dashboard</a></p>
-
-      <h2>Core Services</h2>
-      <table>
-        <thead><tr><th>Service Name</th><th>Status</th></tr></thead>
-        <tbody id='services-body'>{snapshot['services_html']}</tbody>
-      </table>
-
-      <div class="info-box">
-          <strong>💡 Hướng dẫn Restart Service đang lỗi:</strong><br><br>
-          Hiện tại API không có quyền thực thi lệnh docker (vì lý do bảo mật). Để khởi động lại dịch vụ bị lỗi (Ví dụ <code>redis</code> báo DOWN), hãy SSH vào server và chạy lệnh sau:<br><br>
-          <code>docker compose restart [tên-service]</code><br><br>
-          Ví dụ: <code>docker compose restart redis</code> hoặc <code>docker compose restart worker</code>
-      </div>
-  </div>
-</body>
-</html>
-"""
-
 
 @router.get("/health")
 async def healthcheck(request: Request):
     selected_document_id = request.query_params.get("document_id")
-    snapshot = _build_snapshot(selected_document_id=selected_document_id)
-    if "text/html" in request.headers.get("accept", ""):
-        return HTMLResponse(_render_page(snapshot))
-    return snapshot
+    return _build_snapshot(selected_document_id=selected_document_id)
 
 
 @router.get("/health/data")

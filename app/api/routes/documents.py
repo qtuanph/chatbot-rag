@@ -163,6 +163,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
                 document.status_updated_at = datetime.now(timezone.utc)
                 session.commit()
     except Exception as exc:
+        logger.error(f"Failed to enqueue document task for {document_id}: {exc}", exc_info=True)
         with SessionLocal() as session:
             document = session.get(Document, document_id)
             if document is not None:
@@ -175,7 +176,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
             session.commit()
         if hasattr(storage, "delete_object"):
             storage.delete_object(object_uri)
-        raise HTTPException(status_code=503, detail=f"Failed to enqueue document task: {exc}") from exc
+        raise HTTPException(status_code=503, detail="Failed to enqueue document task. Please try again later.") from exc
 
     return UploadAcceptedResponse(task_id=task_id, status="queued", document_id=document_id)
 
@@ -334,7 +335,8 @@ async def delete_document(request: Request, document_id: str, _auth=Depends(requ
             state="QUEUED",
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Failed to enqueue delete task: {exc}") from exc
+        logger.error(f"Failed to enqueue delete task for {document_id}: {exc}", exc_info=True)
+        raise HTTPException(status_code=503, detail="Failed to enqueue delete task. Please try again later.") from exc
 
     safe_record_audit(
         action="document.delete",

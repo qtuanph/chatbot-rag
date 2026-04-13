@@ -6,13 +6,12 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.routes import auth, chat, documents, health, tree
 from app.core.config import settings
-from app.view.router import router as view_router
 
 
 logger = logging.getLogger(__name__)
 
 
-app = FastAPI(title=settings.app_name)
+app = FastAPI(title=settings.app_name, docs_url=None, redoc_url=None)
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=[host.strip() for host in settings.allowed_hosts.split(",") if host.strip()],
@@ -29,8 +28,6 @@ routers = [auth.router, health.router, documents.router, chat.router, tree.route
 
 for router in routers:
     app.include_router(router, prefix=settings.api_v1_prefix)
-
-app.include_router(view_router)
 
 
 @app.on_event("startup")
