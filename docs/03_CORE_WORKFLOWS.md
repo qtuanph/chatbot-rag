@@ -63,7 +63,7 @@ sequenceDiagram
     participant Client
     participant API
     participant Redis
-    participant Embedder as Gemini Embedding
+    participant Embedder as BAAI/bge-m3 Local
     participant Retriever
     participant DB as PostgreSQL
     participant Qdrant

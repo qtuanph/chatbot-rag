@@ -126,7 +126,7 @@ Cache is particularly effective during demos and employee training sessions wher
 | Parser selection and fallback | `app/services/ingestion/parser_manager.py` |
 | Ingestion orchestration + chunked embed | `app/services/ingestion/pipeline.py` |
 | Hierarchy checks | `app/services/ingestion/hierarchy_validator.py` |
-| Parallel embedding | `app/adapters/embeddings/gemini.py:embed_batch()` |
+| Parallel embedding | `app/adapters/embeddings/sentence_transformer.py:embed_batch()` |
 | Vector store adapter | `app/adapters/vector_stores/qdrant.py` |
 | Retrieval + score filter | `app/services/rag.py:retrieve_context()` |
 | Query embedding cache | `app/services/query_cache.py` |

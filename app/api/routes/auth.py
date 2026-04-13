@@ -105,3 +105,12 @@ def create_user(payload: CreateUserRequest, _auth=Depends(require_admin)) -> Cre
             details={"username": user.username, "role": role.name},
         )
         return CreateUserResponse(id=str(user.id), username=user.username, role=role.name)
+
+@router.get("/auth/users", response_model=list[CreateUserResponse])
+def get_users(_auth=Depends(require_admin)) -> list[CreateUserResponse]:
+    with SessionLocal() as session:
+        results = session.query(User, Role).join(Role, User.role_id == Role.id).all()
+        return [
+            CreateUserResponse(id=str(u.id), username=u.username, role=r.name)
+            for u, r in results
+        ]

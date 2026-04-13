@@ -22,3 +22,17 @@ llama-index-core==0.14.20
 qdrant-client==1.17.1
 PyPDF2==3.0.1
 google-generativeai==0.8.6
+torch>=2.7.1
+transformers>=4.45.0
+accelerate>=0.34.0
+# autoawq>=0.2.6
+# gptqmodel
+streamlit
+streamlit-agraph
+graphviz
+
+# Testing dependencies
+pytest==7.4.4
+pytest-asyncio==0.23.4
+pytest-cov==4.1.0
+pytest-mock==3.12.0

@@ -114,7 +114,7 @@ def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext
 
     nodes: list[RagNode] = []
     for item in filtered[:limit]:
-        heading = item.metadata.get("section_title") or item.metadata.get("node_type") or "Section"
+        heading = item.metadata.get("section_title") or item.metadata.get("heading") or item.metadata.get("node_type") or "Nội dung"
         page_number = item.metadata.get("page_number")
         page_range = str(page_number) if page_number else None
         nodes.append(
@@ -122,8 +122,8 @@ def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext
                 node_id=item.node_id,
                 parent_id=item.metadata.get("parent_id"),
                 document_id=item.document_id,
-                document_title=title_by_id.get(item.document_id, "Untitled Document"),
-                heading=str(heading),
+                document_title=title_by_id.get(item.document_id, "Tài liệu"),
+                heading=str(heading).strip(),
                 summary=(item.text[:280] if item.text else None),
                 full_text=item.text,
                 page_range=page_range,

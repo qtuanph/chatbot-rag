@@ -70,11 +70,14 @@ class GoogleAIProvider(AIProvider):
         context_text = "\n\n".join(context_blocks) if context_blocks else "No document context available."
 
         return (
-            "You are an enterprise assistant. Answer strictly from provided document context. "
-            "If context is insufficient, state the limitation clearly.\n\n"
+            "You are an enterprise AI assistant. Your primary task is to answer questions STRICTLY based on the provided document context.\n"
+            "CRITICAL RULES:\n"
+            "1. If the user sends a simple greeting (e.g. hello, xin chào), respond naturally and politely, but briefly remind them that you are ready to answer questions based on the enterprise documents uploaded by the Admin.\n"
+            "2. If the user asks a factual question and the context is empty ('No document context available.'), you MUST NOT hallucinate or answer from outside knowledge. Instead, explicitly answer: 'Hiện tại tôi chưa có tài liệu nào để trả lời câu hỏi này. Vui lòng yêu cầu Admin upload thêm tài liệu vào hệ thống.'\n"
+            "3. If the context has documents but they don't contain the answer, say you don't know based on the current documents.\n"
+            "4. Always respond in Vietnamese.\n\n"
             f"User question:\n{user_query}\n\n"
-            f"Context:\n{context_text}\n\n"
-            "Return a concise Vietnamese answer."
+            f"Context:\n{context_text}\n"
         )
 
     @staticmethod

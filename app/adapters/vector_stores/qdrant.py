@@ -380,3 +380,77 @@ class QdrantVectorStore(BaseVectorStore):
         except Exception as e:
             logger.warning(f"Failed to get collection stats: {str(e)}")
             return {}
+
+    def scroll(
+        self,
+        filter: Optional[Dict[str, Any]] = None,
+        with_payload: bool = True,
+        with_vector: bool = False,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """
+        Scroll through all points that match the filter.
+
+        Used by Tree API to fetch all nodes for a document.
+
+        Args:
+            filter: Qdrant filter dict (e.g., {"must": [{"key": "document_id", "match": {"value": "..."}}]})
+            with_payload: Whether to include payload in results
+            with_vector: Whether to include vector in results
+            limit: Maximum number of points to return
+
+        Returns:
+            List of point dicts with id, payload, and optionally vector
+        """
+        try:
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+            # Convert filter dict to Qdrant Filter object
+            qdrant_filter = None
+            if filter:
+                # Build Qdrant Filter from dict
+                must_conditions = []
+                for condition in filter.get("must", []):
+                    key = condition.get("key")
+                    match = condition.get("match", {})
+
+                    if "value" in match:
+                        must_conditions.append(
+                            FieldCondition(
+                                key=key,
+                                match=MatchValue(value=match["value"]),
+                            )
+                        )
+
+                if must_conditions:
+                    qdrant_filter = Filter(must=must_conditions)
+
+            # Scroll through points
+            results = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=qdrant_filter,
+                limit=limit,
+                with_payload=with_payload,
+                with_vectors=with_vector,
+            )
+
+            # Convert results to list of dicts
+            points = []
+            for point in results[0]:  # scroll() returns (points, next_page_offset)
+                point_dict = {
+                    "id": str(point.id),
+                    "payload": point.payload if with_payload else None,
+                }
+                if with_vector and point.vector is not None:
+                    point_dict["vector"] = point.vector
+                points.append(point_dict)
+
+            return points
+
+        except Exception as e:
+            logger.error(f"Failed to scroll Qdrant: {str(e)}")
+            raise VectorStoreOperationException(
+                f"Failed to scroll Qdrant: {str(e)}",
+                error_code="QDRANT_SCROLL_FAILED",
+                details={'filter': filter, 'limit': limit, 'error': str(e)}
+            )

@@ -116,7 +116,7 @@ def parse_document_task(
             status="processing",
             stage="download",
             progress_percent=10,
-            status_message="Downloading source file from object storage.",
+            status_message="[1/4] Đang tải file an toàn từ S3 Object Storage xuống RAM...",
             parse_error="",
         )
         logger.info("[%s] Downloading from %s...", document_id, file_path)
@@ -125,12 +125,15 @@ def parse_document_task(
 
         # ── Step 2: Load embedding model ─────────────────────────────────────
         # Model is loaded fresh per task; unloaded in finally block.
+        import torch
+        device_name = "GPU" if torch.cuda.is_available() else "CPU"
+        
         _set_document_status(
             document_id=document_id,
             status="processing",
             stage="parse",
-            progress_percent=20,
-            status_message=f"Parsing {filename}…",
+            progress_percent=15,
+            status_message=f"[2/4] Đang khởi tạo Model trên {device_name} & Cắt file {filename} thành các Node...",
         )
         embedding_service = build_embedding_service()
         vector_store = _build_vector_store(embedding_service)
@@ -145,12 +148,19 @@ def parse_document_task(
         )
 
         def _progress_callback(stage: str, percent: int, message: str = "") -> None:
+            # Map default English texts to Vietnamese if possible
+            translated_msg = message
+            if "Extracting text" in message:
+                translated_msg = "[2/4] Đang dùng AI trích xuất chữ (OCR) & Bóc tách bố cục..."
+            elif "Processing section" in message or "Processing chunk" in message:
+                translated_msg = "[3/4] Đang băm văn bản và nhúng (Embed) thành số liệu Vector..."
+            
             _set_document_status(
                 document_id=document_id,
                 status="processing",
                 stage=stage,
                 progress_percent=percent,
-                status_message=message or stage,
+                status_message=translated_msg or stage,
             )
 
         ingestion_result = pipeline.ingest(
@@ -172,8 +182,8 @@ def parse_document_task(
             document_id=document_id,
             status="processing",
             stage="verify",
-            progress_percent=90,
-            status_message="Verifying ingestion integrity…",
+            progress_percent=95,
+            status_message="[4/4] Khâu cuối: Đang đối soát và verify kết quả trên Qdrant...",
         )
         verify = _verify_ingestion(document_id, file_path, vector_store, storage)
 

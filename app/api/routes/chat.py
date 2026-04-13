@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -29,6 +29,12 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
     session_id = request.session_id or store.get_active_session(scope_id) or str(uuid4())
     store.set_active_session(scope_id, session_id)
 
+    # Validate UUID format before DB query
+    try:
+        UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid session ID format")
+
     with SessionLocal() as session:
         chat_session = session.get(ChatSession, session_id)
         if chat_session is None:
@@ -43,11 +49,16 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
         context = retrieve_context(session, request.query, limit=5)
         assistant_seed = build_answer(request.query, context)
         history = store.get_history(scope_id, session_id)
-        response = await provider.chat(
-            [{"role": item["role"], "content": item["content"]} for item in history],
-            context=assistant_seed["context"],
-            citations=assistant_seed["citations"],
-        )
+        try:
+            response = await provider.chat(
+                [{"role": item["role"], "content": item["content"]} for item in history],
+                context=assistant_seed["context"],
+                citations=assistant_seed["citations"],
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("AI Provider error: %s", e, exc_info=True)
+            raise HTTPException(status_code=503, detail="Lỗi kết nối với AI Model. Có thể từ khóa bị chặn hoặc hết lượt gọi cấp phép. Vui lòng thử lại sau.") from None
 
         answer = response.get("answer") or assistant_seed["answer"]
         citations = response.get("citations") or assistant_seed["citations"]

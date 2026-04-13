@@ -33,9 +33,10 @@ def get_auth_context(authorization: str | None = Header(default=None)) -> AuthCo
             role = session.get(Role, user.role_id)
             if role is None:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+            role_name = role.name
         return AuthContext(
             user_id=str(payload["sub"]),
-            role=role.name,
+            role=role_name,
             token_id=token_id,
         )
     except (JWTError, KeyError, TypeError, ValueError):

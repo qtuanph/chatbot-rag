@@ -11,22 +11,7 @@ Status: stable API and security baseline.
 | Grounding | Document route is default; return citations for grounded answers |
 | Authorization | RBAC is mandatory (admin/member) |
 
-## Public API Surface
 
-All routes are served under the configured API prefix.
-
-| Endpoint | Method | Purpose | Access |
-|----------|--------|---------|--------|
-| /health | GET | service health summary | authenticated or open (deployment policy) |
-| /auth/login | POST | obtain access token | public |
-| /auth/logout | POST | revoke current token | authenticated |
-| /auth/users | POST | create user | admin |
-| /upload | POST | enqueue ingestion task | admin |
-| /status/{task_id} | GET | task/document processing state | admin |
-| /documents | GET | list document metadata | admin |
-| /documents/{document_id} | GET | document details | admin |
-| /documents/{document_id} | DELETE | soft delete document | admin |
-| /chat | POST | grounded answer response | authenticated |
 
 ## Upload Contract
 
@@ -161,4 +146,116 @@ User re-uploads "policy.md" (same filename, different content)
 -> Previous version stays accessible but marked as superseded
 -> Router prioritizes latest version by default
 -> User can query specific version via document_ids filter
+```
+
+---
+
+## Route Reference (Implemented)
+
+> Base prefix: `/api/v1` (configurable via `API_V1_PREFIX` env var)
+
+### Auth
+
+| Method | Path | Auth | Body / Notes |
+|--------|------|------|--------------|
+| `POST` | `/api/v1/auth/login` | ❌ Public | `{username, password}` → `{access_token, token_type, role}` |
+| `POST` | `/api/v1/auth/logout` | ✅ Bearer | Vô hiệu hoá token hiện tại |
+| `POST` | `/api/v1/auth/users` | 🔒 Admin | `{username, password, role}` → tạo user mới |
+
+### Documents & Ingestion
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `POST` | `/api/v1/upload` | 🔒 Admin | `multipart/form-data` field `file` → `{task_id, document_id}` **202** |
+| `GET` | `/api/v1/status/{task_id}` | ✅ Bearer | Poll trạng thái xử lý pipeline |
+| `GET` | `/api/v1/documents` | 🔒 Admin | Danh sách tài liệu (không bao gồm soft-deleted) |
+| `GET` | `/api/v1/documents/{document_id}` | 🔒 Admin | Chi tiết 1 document |
+| `DELETE` | `/api/v1/documents/{document_id}` | 🔒 Admin | Kích hoạt worker xóa: DB + S3 + Qdrant |
+
+### Chat
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `POST` | `/api/v1/chat` | ✅ Bearer | `{query, session_id?}` → `{answer, citations, session_id}` |
+
+### Health / Monitoring (JSON)
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET` | `/api/v1/health` | ❌ Public | Health HTML + JSON snapshot |
+| `GET` | `/api/v1/health/data` | ❌ Public | JSON snapshot phục vụ auto-refresh |
+| `GET` | `/api/v1/health/nodes` | ❌ Public | `?document_id=` → JSON danh sách Qdrant nodes |
+| `GET` | `/api/v1/health/node` | ❌ Public | `?document_id=&node_id=` → JSON chi tiết 1 node |
+
+### Demo UI (app/view/ — có thể xóa khi go-live)
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `GET` | `/` | SPA Admin/Chat — auth xử lý phía client (JWT localStorage) |
+| `GET` | `/view/stats` | JSON tổng hợp dùng cho Dashboard |
+| `GET` | `/view/nodes` | HTML danh sách nodes (light theme) |
+| `GET` | `/view/node` | HTML chi tiết 1 node (mở tab mới) |
+
+### Tree API (Streamlit Visualizer Support)
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET` | `/api/v1/tree/{document_id}` | 🔒 Bearer | Trả về cấu trúc phân cấp hoàn chỉnh của tài liệu |
+| `GET` | `/api/v1/tree/{document_id}/nodes/{node_id}` | 🔒 Bearer | Chi tiết một node với đầy đủ nội dung và metadata |
+| `GET` | `/api/v1/tree/{document_id}/search?query=` | 🔒 Bearer | Tìm kiếm node theo tiêu đề hoặc nội dung |
+
+**Tree API Response Examples**:
+
+`GET /api/v1/tree/{document_id}`
+```json
+{
+  "document_id": "uuid-here",
+  "document_title": "Policy.pdf",
+  "total_nodes": 45,
+  "max_depth": 3,
+  "nodes": [
+    {
+      "node_id": "node-uuid",
+      "title": "Chapter 1",
+      "level": 1,
+      "breadcrumb": "Policy.pdf > Chapter 1",
+      "parent_id": null,
+      "child_count": 5,
+      "text_length": 2500,
+      "page_number": 1
+    }
+  ]
+}
+```
+
+`GET /api/v1/tree/{document_id}/nodes/{node_id}`
+```json
+{
+  "node_id": "node-uuid",
+  "title": "Section 1.1",
+  "level": 2,
+  "breadcrumb": "Policy.pdf > Chapter 1 > Section 1.1",
+  "text": "Full text content here...",
+  "metadata": {
+    "page_number": 5,
+    "node_type": "section",
+    "order": 1,
+    "char_count": 2500,
+    "token_count": 500
+  }
+}
+```
+
+`GET /api/v1/tree/{document_id}/search?query=policy`
+```json
+{
+  "results": [
+    {
+      "node_id": "node-uuid",
+      "title": "Matching Section",
+      "preview": "...context around match...",
+      "highlight": "policy"
+    }
+  ]
+}
 ```

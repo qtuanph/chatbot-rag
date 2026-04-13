@@ -4,8 +4,9 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.api.routes import auth, chat, documents, health
+from app.api.routes import auth, chat, documents, health, tree
 from app.core.config import settings
+from app.view.router import router as view_router
 
 
 logger = logging.getLogger(__name__)
@@ -18,16 +19,18 @@ app.add_middleware(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[],
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
-routers = [auth.router, health.router, documents.router, chat.router]
+routers = [auth.router, health.router, documents.router, chat.router, tree.router]
 
 for router in routers:
     app.include_router(router, prefix=settings.api_v1_prefix)
+
+app.include_router(view_router)
 
 
 @app.on_event("startup")

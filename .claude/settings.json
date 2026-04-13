@@ -1,0 +1,69 @@
+{
+  // Claude Code Project Configuration
+  // File này chứa cấu hình riêng cho project này
+  // MCP Servers - Cho phép Claude truy cập external services
+  "mcpServers": {
+    // GitHub integration - đọc issues, PRs, commits
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_TOKEN": "YOUR_GITHUB_TOKEN_HERE"
+      }
+    },
+    // Filesystem access - cho phép đọc codebase rộng hơn
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "D:/Dev"
+      ]
+    },
+    // Brave Search - tìm kiếm web khi cần
+    "brave-search": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-brave-search"
+      ],
+      "env": {
+        "BRAVE_API_KEY": "YOUR_BRAVE_API_KEY_HERE"
+      }
+    },
+    // Postgres database - truy vấn database trực tiếp
+    "postgres": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://app_rw:replace-me@localhost:5432/ragbot"
+      ]
+    }
+  },
+  // Hooks - Tự động chạy lệnh trước/sau khi thực hiện hành động
+  "hooks": {
+    // Hook chạy trước khi dùng Bash tool
+    "preToolUse": {
+      "Bash": {
+        "command": "echo '⚡ Running: {command}'",
+        "runInBackground": false
+      }
+    }
+  },
+  // Cấu hình UI
+  "ui": {
+    "fontSize": 14,
+    "theme": "dark",
+    "showLineNumbers": true
+  },
+  // Environment variables riêng cho project
+  "env": {
+    "PROJECT_NAME": "chatbot-rag",
+    "PROJECT_TYPE": "fastapi-rag-system",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}

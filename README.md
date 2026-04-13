@@ -4,6 +4,33 @@
 
 > Deployment: Pure Docker. Self-hosted on your infrastructure. One project, shared document library, role-based access (admin / member).
 
+## Tech Stack
+
+### Core Framework
+- **FastAPI 0.135** - Async API framework
+- **Celery 5.6** - Distributed task queue
+- **PostgreSQL 18** - Primary database
+- **Redis 8.6** - Cache, queue, rate limiting
+
+### AI & ML
+- **BAAI/bge-m3** - Local embedding model (1024-dim, offline)
+- **Rule-based refiner** - Fast text refinement (0GB VRAM)
+- **Google Gemini 2.5-flash** - Chat LLM (temporary, external)
+- **vLLM** - Local LLM inference (future, on-premise)
+
+### Document Processing
+- **Docling 2.85** - PDF/DOCX to Markdown conversion
+- **EasyOCR** - Vietnamese + English OCR
+- **LlamaIndex** - Hierarchical node parsing
+
+### Storage & Retrieval
+- **Qdrant 1.17** - Vector database
+- **RustFS** - S3-compatible object storage
+- **HuggingFace Transformers** - Model management
+
+### Frontend
+- **Streamlit 1.56** - Tree visualizer
+
 ## System Architecture
 
 > Visual diagram: [`docs/architecture.drawio`](docs/architecture.drawio) — open with [draw.io](https://app.diagrams.net)
@@ -60,6 +87,7 @@ flowchart TD
 ## What Exists
 
 - FastAPI backend with async ingestion pipeline and live progress reporting
+- **Streamlit Tree Visualizer** on port 8501 — Interactive hierarchical document explorer with zoom/pan, click-to-view, and search
 - Celery worker with `acks_late`, `prefetch=1`, and 25-min soft time limit for reliability
 - PostgreSQL + Redis + RustFS + Qdrant via docker-compose
 - S3-compatible object storage (RustFS) for uploaded files
@@ -69,6 +97,7 @@ flowchart TD
 - Docling-first document extraction with ClassicParser fallback path
 - Hierarchical document indexing: document → chapters → sections → subsections
 - **BAAI/bge-m3 local embedding**: 1024-dim, 8192-token context, fully offline — no API calls, no rate limits
+- **Rule-based AI refiner**: 0GB VRAM, ~1ms per node — fixes OCR errors, detects headers, validates hierarchy (NOT Qwen/Gemini)
 - **Query embedding cache**: Redis-backed, MD5-keyed, TTL=1h — skip re-inference on repeated questions
 - **Score threshold filter**: Drop retrieval results with cosine similarity < 0.35
 - **Atomic rate limiting**: Lua script in Redis — no INCR+EXPIRE race condition
@@ -93,64 +122,40 @@ No Alembic migrations needed. Database is idempotent and initialized from a sing
 
 ## Project Structure
 
-```text
+```
 chatbot-rag/
-├── AGENTS.md
-├── README.md
-├── Dockerfile                         # BuildKit-optimized: pip + EasyOCR model cache mounts
-├── .dockerignore
-├── docker-compose.yml
-├── requirements.txt
-├── .env.example
 ├── app/
-│   ├── main.py                        # FastAPI app — no DDL at startup
-│   ├── worker.py                      # Celery tasks: parse + delete
-│   ├── adapters/
-│   │   ├── base.py                    # Shared adapter contracts
-│   │   ├── ai/                        # LLM provider adapters (google, vllm)
-│   │   ├── parsers/                   # Docling + EasyOCR + Classic parser adapters
-│   │   ├── embeddings/                # Gemini embedding — parallel ThreadPoolExecutor
-│   │   └── vector_stores/             # Qdrant vector store adapter
-│   ├── api/
-│   │   ├── deps.py
+│   ├── adapters/           # External integrations (AI, parsers, embeddings)
+│   ├── api/                # FastAPI routes & endpoints
 │   │   └── routes/
-│   ├── core/
-│   │   ├── config.py                  # All settings with env var overrides
-│   │   ├── celery_app.py              # Celery: acks_late, prefetch=1, queue routing
-│   │   ├── hardware.py                # CPU/GPU auto-detection → parallelism config
-│   │   └── exceptions.py
-│   ├── db/
-│   ├── models/
-│   ├── schemas/
-│   └── services/
-│       ├── ingestion/
-│       │   ├── parser_manager.py
-│       │   ├── hierarchy_validator.py
-│       │   └── pipeline.py            # Chunked embed+store with progress_callback
-│       ├── storage/
-│       │   ├── __init__.py
-│       │   └── document_store.py
-│       ├── rag.py                     # Retrieval: cache → embed → Qdrant → score filter
-│       ├── query_cache.py             # Redis query embedding cache (MD5, TTL=1h)
-│       ├── chat_store.py
-│       ├── auth.py
-│       ├── audit.py
-│       ├── document_cleanup.py        # Hard-delete: registry-first 5-step sequence
-│       ├── health.py
-│       ├── registry.py
-│       ├── throttle.py                # Atomic Lua rate limiter
-│       └── token_blacklist.py
-├── docs/
+│   │       ├── auth.py     # JWT authentication
+│   │       ├── chat.py     # RAG chat endpoint
+│   │       ├── documents.py # Document management
+│   │       └── tree.py     # Hierarchical tree API
+│   ├── core/               # Configuration, exceptions, hardware
+│   ├── db/                 # PostgreSQL session management
+│   ├── models/             # SQLAlchemy ORM models
+│   ├── services/           # Business logic (RAG, ingestion, query cache)
+│   ├── view/               # Streamlit visualizer
+│   └── worker.py           # Celery task worker
+├── tests/                  # Test suite (pytest)
+│   ├── test_ingestion/     # Ingestion tests
+│   ├── test_api/           # API endpoint tests
+│   └── integration/        # End-to-end tests
+├── docs/                   # Comprehensive documentation
 │   ├── 01_SYSTEM_ARCHITECTURE.md
 │   ├── 02_DATABASE_AND_PROJECT.md
 │   ├── 03_CORE_WORKFLOWS.md
 │   ├── 04_API_CONTRACT_AND_SECURITY.md
 │   ├── 05_RESOURCE_OPTIMIZATION_AND_EDGE_CASES.md
 │   ├── 06_DEPLOYMENT_AND_OBSERVABILITY.md
-│   └── 07_INGESTION_AND_RETRIEVAL_STRATEGY.md
-├── ops/
-│   └── init.sql                       # Full schema — no runtime DDL patches
-└── tests/
+│   ├── 07_INGESTION_AND_RETRIEVAL_STRATEGY.md
+│   └── STREAMLIT_VISUALIZER.md
+├── ops/                    # Operations & infrastructure
+│   └── init.sql            # Database schema initialization
+├── docker-compose.yml      # Docker services
+├── Dockerfile              # Application container
+└── requirements.txt        # Python dependencies
 ```
 
 ## Storage Choice
@@ -265,6 +270,7 @@ curl http://localhost:8000/api/v1/health
 |---------|-----|
 | **API** | `http://localhost:8000` |
 | **OpenAPI Docs** | `http://localhost:8000/docs` |
+| **Streamlit Visualizer** | `http://localhost:8501` |
 | **RustFS S3 API** | `http://localhost:9000` |
 | **RustFS Web Console** | `http://localhost:9001` |
 | **Health Check** | `http://localhost:8000/api/v1/health` |
@@ -288,6 +294,27 @@ docker compose --profile onprem up --build
 ```
 
 This starts the `vllm` service with Qwen 2.5 7B (quantized). Set `AI_PROVIDER=vllm` in `.env`.
+
+### Streamlit Tree Visualizer
+
+The **Streamlit Tree Visualizer** is an interactive web-based tool for exploring hierarchical document structure:
+
+- **URL**: `http://localhost:8501`
+- **Purpose**: Browse document hierarchy, view node content, search across documents
+- **Features**:
+  - Hierarchical tree view (chapters → sections → subsections)
+  - Color-coded levels (L1-L6) for visual depth
+  - Click any node to view full text content
+  - Search across all nodes by keyword
+  - Vietnamese text support
+
+**Usage**:
+1. Open `http://localhost:8501` in your browser
+2. Enter a Document ID (UUID from `/api/v1/documents`)
+3. Click "🔄 Load Tree" to visualize the document structure
+4. Click node titles to view content, use 📂 to expand/collapse
+
+**Documentation**: See [`docs/STREAMLIT_VISUALIZER.md`](docs/STREAMLIT_VISUALIZER.md) for detailed usage guide.
 
 ## Database
 
@@ -377,6 +404,7 @@ When an admin uploads a file via `POST /api/v1/upload`, the system runs this pip
    - Use LlamaIndex `MarkdownNodeParser` to turn the Markdown into hierarchical nodes.
    - Build hierarchical retrieval nodes for Qdrant (root + parent/child relationships).
    - If Docling or LlamaIndex fails, fall back to the classic parser so upload still completes when possible.
+   - **Rule-based refiner** fixes OCR errors (e.g., "M Ụ C T I Ê U" → "MỤC TIÊU"), detects headers, validates hierarchy — 0GB VRAM, ~1ms per node.
    - Validate extraction quality thresholds (`INGESTION_MIN_NON_EMPTY_NODES`, `INGESTION_MIN_TOTAL_TEXT_CHARS`).
    - Save ingestion artifact into `documents.metadata.ingestion_artifact`.
    - Persist metadata (`status_stage=persist`, `progress_percent=75`).
@@ -394,6 +422,35 @@ When an admin uploads a file via `POST /api/v1/upload`, the system runs this pip
 7. **Retrieval behavior after ready**
    - Chat retrieval excludes soft-deleted documents.
    - Retrieval prefers latest document version per filename.
+
+### Streamlit Tree Visualizer
+
+**NEW**: Interactive hierarchical document explorer on port 8501.
+
+#### Features
+- **Hierarchical tree display**: View complete document structure as expandable tree
+- **Click-to-view details**: Click any node to view full text content and metadata
+- **Search functionality**: Search nodes by title or content across entire document
+- **Color-coded levels**: Visual distinction by hierarchy depth (L1-L6)
+- **Zoom/pan support**: Navigate large documents with 100+ nodes efficiently
+- **Breadcrumb navigation**: See full path from root to current node
+- **Metadata display**: View page numbers, node types, character counts, token counts
+
+#### Usage
+1. Start all services: `docker compose up --build`
+2. Open browser: `http://localhost:8501`
+3. Enter Document ID (UUID from admin dashboard or `/api/v1/documents`)
+4. Click "Load Tree" to visualize document structure
+5. Click any node title to view full content
+6. Use Search tab to find specific text in document
+
+#### API Integration
+The visualizer uses new tree API endpoints:
+- `GET /api/v1/documents/{document_id}/tree` — Get complete hierarchical structure
+- `GET /api/v1/documents/{document_id}/nodes/{node_id}` — Get single node details
+- `GET /api/v1/documents/{document_id}/search` — Search nodes by content
+
+See [docs/STREAMLIT_VISUALIZER.md](docs/STREAMLIT_VISUALIZER.md) for detailed usage guide.
 
 ## Text Extraction And AI Usage
 

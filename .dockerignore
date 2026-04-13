@@ -10,7 +10,6 @@ __pycache__
 docs
 uploads
 FILEUPLOADTEST
-tests
 *.md
 !README.md
 .python-version

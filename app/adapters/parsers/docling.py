@@ -10,6 +10,7 @@ from typing import List, Tuple, Optional
 from io import BytesIO
 import os
 import tempfile
+import re
 
 from app.adapters.base import (
     BaseParser,
@@ -21,6 +22,7 @@ from app.core.exceptions import (
     ParsingException,
     ParsingFallbackException,
 )
+from app.services.ingestion.rule_based_refiner import rule_based_refiner
 from app.core.hardware import hardware
 
 logger = logging.getLogger(__name__)
@@ -78,9 +80,13 @@ class DoclingParser(BaseParser):
             ocr_options = self._select_ocr_backend()
 
             pipeline_pdf = PdfPipelineOptions(
-                do_ocr=True,
-                ocr_options=ocr_options,
+                do_ocr=False,              # Native PDF: extract embedded text directly (faster, no garbled chars)
                 do_table_structure=True,   # Preserve table structure for technical docs
+            )
+            pipeline_pdf_scanned = PdfPipelineOptions(
+                do_ocr=True,               # Scanned PDF fallback: use EasyOCR
+                ocr_options=ocr_options,
+                do_table_structure=True,
             )
 
             pipeline_image = PdfPipelineOptions(
@@ -176,6 +182,60 @@ class DoclingParser(BaseParser):
                         warnings=[],
                     )
                     logger.info(f"Parsed {filename} with Docling+LlamaIndex: {len(nodes)} nodes")
+                    
+                    # Step 3: Local AI Structural Audit & Refinement
+                    try:
+                        logger.info(f"Starting AI Structural Audit for {len(nodes)} nodes...")
+                        
+                        # ID Map to fix Parent/Child relationships
+                        # LlamaIndex internal ID -> IngestedNode ID
+                        id_map = {node.metadata.get('llamaindex_id'): node.node_id for node in nodes if node.metadata.get('llamaindex_id')}
+                        
+                        # Heading Stack to track breadcrumbs
+                        # depth -> title
+                        heading_stack = {}
+                        
+                        for node in nodes:
+                            # 1. Structural Audit with AI
+                            # Rule-based refiner fixes OCR errors and detects headers
+                            original_text = node.text
+                            original_header = node.section_title
+
+                            cleaned_text, predicted_header = rule_based_refiner.refine_text(original_text, original_header)
+                            
+                            # Update node
+                            node.text = cleaned_text
+                            
+                            # 2. Hierarchy Preservation
+                            # If level is H1-H6, update the stack
+                            if node.node_type == ParsedNodeType.SECTION:
+                                # Try to detect level from text (# = 1, ## = 2)
+                                level_match = re.match(r'^(#+)', original_text)
+                                level = len(level_match.group(1)) if level_match else 1
+                                
+                                title = predicted_header or original_text.lstrip('#').strip()
+                                node.section_title = title
+                                heading_stack[level] = title
+                                # Clear deeper levels
+                                for l in list(heading_stack.keys()):
+                                    if l > level: del heading_stack[l]
+                            
+                            # 3. Breadcrumb Enrichment
+                            current_breadcrumb = [heading_stack[l] for l in sorted(heading_stack.keys())]
+                            node.metadata['breadcrumb'] = current_breadcrumb
+                            
+                            # 4. Fix Parent ID
+                            # If llama_id parent exists but points to old ID, remap it
+                            li_parent_id = node.metadata.get('llamaindex_metadata', {}).get('parent_id')
+                            if li_parent_id and li_parent_id in id_map:
+                                node.parent_id = id_map[li_parent_id]
+
+                        # No VRAM cleanup needed - rule-based refiner uses 0GB VRAM
+                    except Exception as refine_err:
+                        logger.error(f"AI Structural Audit failed: {refine_err}")
+                        import traceback
+                        logger.error(traceback.format_exc())
+
                     return nodes, metadata
         
         except Exception as e:
@@ -304,6 +364,7 @@ class DoclingParser(BaseParser):
                     order=idx,
                     metadata={
                         'source_format': source_format,
+                        'llamaindex_id': node.node_id, # Store original ID for remapping
                         'llamaindex_metadata': node.metadata,
                     },
                 )

@@ -46,7 +46,17 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
+    shm_size: '2gb'
+    volumes:
+      - hf-cache:/root/.cache/huggingface
     restart: on-failure:3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility, compute]
 
   db:
     image: postgres:18.3-trixie
@@ -73,7 +83,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7.4-alpine
+    image: redis:8.6.2-trixie
     ports:
       - "6379:6379"
     volumes:
@@ -116,33 +126,33 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Keep vLLM disabled for now (resource-heavy). Enable later when infrastructure is ready.
-  # vllm:
-  #   image: vllm/vllm-openai:v0.19.0
-  #   command: >
-  #     --model Qwen/Qwen2.5-7B-Instruct-AWQ
-  #     --quantization awq
-  #     --host 0.0.0.0
-  #     --port 8000
-  #   ports:
-  #     - "8001:8000"
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: all
-  #             capabilities: [gpu]
-  #   profiles: ["onprem"]
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)\""]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #   restart: unless-stopped
+  visualizer:
+    image: chatbot-rag-app:local
+    env_file:
+      - .env
+    command: >
+      python -m streamlit run app/view/visualizer.py
+      --server.port=8501
+      --server.address=0.0.0.0
+      --server.headless=true
+      --server.enableCORS=false
+      --server.enableXsrfProtection=false
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
 
 volumes:
   pgdata:
   redisdata:
   rustfsdata:
   qdrantdata:
+  hf-cache:

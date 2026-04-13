@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose:*)",
+      "Bash(openssl rand:*)",
+      "Bash(curl -s http://localhost:8000/api/v1/health)",
+      "Bash(python -m json.tool)",
+      "Bash(docker exec chatbot-rag-api-1:*)",
+      "Bash(docker exec chatbot-rag-visualizer-1:*)",
+      "Bash(tee build.log)",
+      "Bash(python -m pytest --version)",
+      "Bash(python:*)",
+      "Bash(docker run:*)",
+      "Bash(jobs -l)",
+      "Bash(awk '{print $9}')",
+      "Bash(grep -v \"^\\\\.$\\\\|^\\\\.\\\\.$\")",
+      "Bash(pytest --collect-only)",
+      "Bash(find app:*)",
+      "Bash(wc:*)",
+      "Bash(grep -h \"from app\\\\|import app\" tests/**/*.py tests/*.py)",
+      "Bash(grep -h \"from app\\\\|import app\" tests/**/*.py)",
+      "Bash(pkill -f \"docker.*build\")",
+      "Bash(awk '{print $1}')",
+      "Bash(xargs -r docker rm -f)",
+      "Bash(docker exec chatbot-rag-db-1:*)",
+      "Bash(curl -s http://localhost:9000)",
+      "Bash(curl:*)",
+      "Bash(docker volume rm:*)",
+      "Bash(docker volume:*)",
+      "Bash(grep -E \"\\\\.py$|\\\\.sh$\")",
+      "Bash(grep -v \"^$\")",
+      "Bash(grep -E \"\\\\.md$\")"
+    ]
+  }
+}

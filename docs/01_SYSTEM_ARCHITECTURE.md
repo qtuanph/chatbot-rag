@@ -9,7 +9,7 @@ Status: authoritative architecture baseline — updated to reflect production im
 | Deployment | Docker-first, self-hosted, single-project deployment |
 | Ingestion | Docling-first conversion to Markdown, then LlamaIndex hierarchy parsing |
 | OCR | EasyOCR (vi + en) — mandatory, deep-learning, GPU auto-detected |
-| Embedding | Google Gemini Embedding API (gemini-embedding-001); vLLM local embedding future |
+| Embedding | **BAAI/bge-m3 LOCAL** via sentence-transformers (1024-dim, fully offline) |
 | Vector Store | Qdrant for vectors and retrieval payload |
 | Metadata Store | PostgreSQL for users, documents, sessions, audit, connector metadata |
 | Queue/Cache | Redis for Celery broker/result, query embedding cache, rate limiting |
@@ -34,7 +34,7 @@ graph TD
     Worker --> Parser[Docling Parser + EasyOCR]
     Parser --> NodeParser[LlamaIndex MarkdownNodeParser]
     NodeParser --> Validator[Hierarchy Validator]
-    Validator --> Embedder[Gemini Embedding — Parallel Batches]
+    Validator --> Embedder[BAAI/bge-m3 Local — Parallel Batches]
     Embedder --> Qdrant[(Qdrant)]
     Validator --> PG[(PostgreSQL system DB)]
 
@@ -60,7 +60,7 @@ graph TD
 | 2. Queue | API → Redis → Worker | Async task created, task_id returned |
 | 3. Parse | Worker → Docling + EasyOCR → LlamaIndex | Hierarchical nodes |
 | 4. Validate | Worker → Hierarchy Validator | Parent-child consistency report |
-| 5. Embed | Worker → Gemini (parallel batches of 32) | Dense vectors per node |
+| 5. Embed | Worker → BAAI/bge-m3 (parallel batches of 32) | Dense vectors per node |
 | 6. Persist | Worker → PostgreSQL + Qdrant | Metadata in PG; vectors in Qdrant |
 | 7. Retrieve | Chat → QueryCache → Embedder → Qdrant → Score Filter | Top-k nodes, score ≥ 0.35 |
 | 8. Generate | Chat → AI Provider → JSON response | Grounded answer with citations |
