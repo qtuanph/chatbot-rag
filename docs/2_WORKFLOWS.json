@@ -1,0 +1,48 @@
+{
+  "title": "Workflows",
+  "description": "Chỉ mục các workflow chính của project ở trạng thái multi-tenant + stateless chat hiện tại.",
+  "index": [
+    {
+      "id": "ingestion",
+      "title": "Document Ingestion",
+      "file": "2.1_WORKFLOWS_INGESTION.md",
+      "summary": "Upload -> queue -> parse -> sections -> embed -> Qdrant -> finalize.",
+      "key_rules": [
+        "Tenant-aware từ đầu đến cuối",
+        "Progress dùng SSE với auto-reconnect",
+        "Embedding mặc định dùng Docker Model Runner",
+        "Qdrant payload phải có tenant_id, document_id, section_id"
+      ]
+    },
+    {
+      "id": "chat",
+      "title": "Chat",
+      "file": "2.2_WORKFLOWS_CHAT.md",
+      "summary": "Stateless chat cho webapp nội bộ và public OpenAI-compatible API.",
+      "key_rules": [
+        "Không lưu persisted transcript",
+        "Tenant context là bắt buộc",
+        "Browser phải đi qua /api/bep/*",
+        "Feedback like/dislike được lưu riêng"
+      ]
+    },
+    {
+      "id": "delete",
+      "title": "Hard Delete",
+      "file": "2.3_WORKFLOWS_DELETE.md",
+      "summary": "Thứ tự xóa cứng không được thay đổi."
+    },
+    {
+      "id": "audit",
+      "title": "Audit",
+      "file": "2.4_WORKFLOWS_AUDIT.md",
+      "summary": "Ghi audit không block request chính."
+    },
+    {
+      "id": "analytics",
+      "title": "Analytics",
+      "file": "2.5_WORKFLOWS_ANALYTICS.md",
+      "summary": "Analytics theo usage model, tenant, token, cost VND và feedback."
+    }
+  ]
+}

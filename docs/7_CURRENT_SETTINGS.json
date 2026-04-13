@@ -1,0 +1,166 @@
+{
+  "document": {
+    "id": "7_CURRENT_SETTINGS",
+    "version": "2026-07-25",
+    "purpose": "Snapshot cấu hình hiện tại — ADR-02 Knowledge Base shared documents & ADR-04 Reranker default disabled."
+  },
+  "architecture": {
+    "mode": "multi-tenant-shared-kb",
+    "chat_mode": "stateless",
+    "primary_roles": ["platform_admin", "tenant_admin"],
+    "browser_api_rule": "Browser business requests must go through /api/bep/*"
+  },
+  "providers": {
+    "embedding_default": {
+      "provider": "dmr",
+      "url": "http://model-runner.docker.internal:12434/engines/v1",
+      "model": "ai/qwen3-embedding:0.6B-F16",
+      "status": "success",
+      "is_fallback": false
+    },
+    "reranker_default": {
+      "provider": "nvidia",
+      "url": "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking",
+      "model": "nvidia/llama-nemotron-rerank-1b-v2",
+      "status": "disabled_by_default"
+    },
+    "reranker_fallback": {
+      "provider": "dmr",
+      "url": "http://model-runner.docker.internal:12434",
+      "model": "ai/qwen3-reranker:0.6B",
+      "status": "unknown"
+    },
+    "llm_default": {
+      "provider": "9router",
+      "url": "http://ai-proxy:2908/v1",
+      "model": "chatbot-rag"
+    }
+  },
+  "storage": {
+    "database": "PostgreSQL",
+    "vector_db": "Qdrant v1.18.2",
+    "cache_queue": "Redis",
+    "object_storage": "RustFS",
+    "settings_db": "/app/data/settings.db"
+  },
+  "qdrant": {
+    "section_collection": "documents_sections",
+    "chunk_collection": "documents_chunks",
+    "payload_indexes": [
+      "tenant_id",
+      "document_id",
+      "section_id",
+      "section_code",
+      "parent_section_id",
+      "document_title",
+      "heading",
+      "breadcrumb_text",
+      "level",
+      "order_index",
+      "node_kind"
+    ]
+  },
+  "ingestion": {
+    "parser_engine": "llamaparse (default) | docling",
+    "worker_mode": "celery background task",
+    "canonical_source_of_truth": "document_sections",
+    "frontend_progress_mode": "SSE with auto-reconnect",
+    "is_true_realtime": true,
+    "retrieval_hierarchical_chunk_sizes": [2048, 768],
+    "retrieval_sentence_window_size": 3,
+    "embedding_batch_size": 50,
+    "pipeline_batch_size": 8,
+    "embedding_adapter": "app.adapters.embedding",
+    "sparse_auto_detect": true,
+    "sparse_fallback": "Qdrant/bm25"
+  },
+  "chat": {
+    "history_persistence_admin_audit": true,
+    "chat_retention_days": 90,
+    "user_facing_stateless": true,
+    "client_context_window_messages": 6,
+    "retrieval_history_query_count": 3,
+    "retrieval_section_top_k": 8,
+    "retrieval_recursive_top_k": 8,
+    "retrieval_chunk_top_k": 20,
+    "retrieval_auto_merge_ratio_threshold": 0.5,
+    "retrieval_route_section_max_chars": 96,
+    "retrieval_route_section_max_terms": 12,
+    "retrieval_section_hydration_enabled": true,
+    "retrieval_section_hydration_top_k": 6,
+    "retrieval_rerank_skip_enabled": true,
+    "retrieval_rerank_skip_query_max_chars": 48,
+    "retrieval_rerank_skip_query_max_terms": 8,
+    "retrieval_rerank_skip_dominance_ratio": 2.0,
+    "temperature": 0.3,
+    "max_output_tokens": 8192,
+    "internal_chat_route": "/v1/chat/stream",
+    "feedback_route": "/v1/chat/feedback",
+    "public_chat_route": "/v1/chat/completions"
+  },
+  "caching": {
+    "exact_cache_enabled": true,
+    "exact_cache_ttl_seconds": 2592000,
+    "semantic_cache_enabled": false,
+    "semantic_cache_threshold": 0.95,
+    "tiered_cache": "L1 Exact -> L2 Semantic"
+  },
+  "quota_and_budget": {
+    "user_rate_per_min": "Quản lý qua SQLite platform_settings. Fallback to env var nếu không có.",
+    "user_daily_requests": "Quản lý qua SQLite platform_settings. Fallback to env var.",
+    "tenant_rate_per_min": 30,
+    "tenant_monthly_llm_calls": 1000,
+    "alert_pct_warn": "Quản lý qua SQLite platform_settings (70%).",
+    "alert_pct_alert": "Quản lý qua SQLite platform_settings (85%).",
+    "alert_pct_cutoff": "Quản lý qua SQLite platform_settings (100%).",
+    "hard_budget_vnd": "Quản lý qua SQLite platform_settings. Giá trị mặc định 0.",
+    "fail_closed": true,
+    "ai_input_price_vnd_per_1m": "Quản lý qua SQLite platform_settings. Giá trị mặc định 0.",
+    "ai_output_price_vnd_per_1m": "Quản lý qua SQLite platform_settings. Giá trị mặc định 0.",
+    "rate_limit_relaxed_mode": "MUST be false in production. Default is now false in config.py (safe default)."
+  },
+  "usage_tracking": {
+    "currency_code": "VND",
+    "cost_storage": "cost_micros_vnd",
+    "tracked_model_types": ["llm", "embedding", "reranker"],
+    "feedback_tracking": true,
+    "cache_hit_tracking": true
+  },
+  "deployment": {
+    "reverse_proxy": "Traefik v3.7.10",
+    "webapp_proxy_base": "/api/bep",
+    "api_internal_url": "http://api:8000/v1",
+    "ai_proxy_service": "ai-proxy",
+    "docker_model_runner_host": "model-runner.docker.internal",
+    "hf_token_source": "docker secret hf_token",
+    "fastembed_cache_path": "/home/qtuanph/.cache/huggingface/fastembed",
+    "worker_prewarm_sparse_model": "Qdrant/bm25",
+    "native_sparse_inject": true,
+    "production_domains": {
+      "webapp": "chatbot.sse.net.vn",
+      "api": "chatbot-api.sse.net.vn",
+      "ai_proxy": "chatbot-9router.sse.net.vn",
+      "object_storage": "chatbot-media.sse.net.vn",
+      "storage_console": "chatbot-console.sse.net.vn"
+    },
+    "server_ip": "103.200.25.140",
+    "open_ports": [80, 443]
+  },
+
+  "frontend": {
+    "validation_library": "zod v4.4.3",
+    "validation_import_path": "zod/v4",
+    "schema_source_of_truth": "lib/schemas.ts",
+    "type_re_export": "types/api.ts",
+    "api_client_pattern": "apiFetchParse<T>(schema, path, options, token) + parseRequest(schema, payload) cho mutation request body",
+    "api_client_file": "lib/api-client.ts",
+    "migration_status": "response parse chuẩn hóa qua apiFetchParse; request payload mutation đã thêm parseRequest; SSE documents và live stream chunk đã parse guard bằng Zod",
+    "unmigrated": [
+      "streamList (EventSource transport layer không parse ở api-client)",
+      "guide code snippets dạng string minh họa vẫn dùng JSON.parse"
+    ],
+    "next_output_file_tracing_root": "workspace root (../ from chatbot-webapp)",
+    "next_turbopack_root": "workspace root (../ from chatbot-webapp)",
+    "vercel_build_warning_status": "fixed: outputFileTracingRoot and turbopack.root aligned"
+  }
+}

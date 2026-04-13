@@ -1,0 +1,44 @@
+{
+  "document": {
+    "id": "0_QUICK_REFERENCE",
+    "version": "2026-07-25",
+    "purpose": "Cheat sheet ngắn gọn cho project hiện tại."
+  },
+  "read_order": [
+    "AGENTS.md",
+    "docs/1_ARCHITECTURE.md",
+    "docs/2_WORKFLOWS.json",
+    "docs/3_API_CONTRACTS.md",
+    "docs/4_DEPLOYMENT.md",
+    "docs/7_CURRENT_SETTINGS.json"
+  ],
+  "must_know": {
+    "mode": "multi-tenant SaaS with shared Knowledge Bases",
+    "chat": "stateless for users, fire-and-forget async audit persistence for admins (90d retention)",
+    "caching": "Tiered L0 FAQ O(1) ~20ms -> L1 Exact (Redis ~0.5ms) -> L2 Semantic (0.95 threshold) with refusal empty payload guard",
+    "escalations": "Auto-creates open escalation row on AI refusal ('Chưa đủ căn cứ') for admin review into FAQ",
+    "quota": "Dynamic rates & quotas read from DB tenants table (RPM, monthly requests/tokens) & SQLite platform_settings",
+    "gateway": "Browser -> /api/bep/* -> Next.js proxy -> FastAPI",
+    "money": "VND, lưu integer cost_micros_vnd",
+    "time": "DB lưu UTC, backend/frontend format giờ Việt Nam khi hiển thị",
+    "delete_order": "registry -> vectors -> sections -> file -> DB row -> purge",
+    "embedding_default": "Docker Model Runner ai/qwen3-embedding:0.6B-F16",
+    "reranker_default": "NVIDIA NIM, có local fallback",
+    "llm_default": "9Router"
+  },
+  "important_notes": [
+    "User chat flow 100% stateless; Admin audit persistence handles turn-by-turn logging asynchronously via Celery",
+    "Tenant isolation là bắt buộc ở document, KB, retrieval, quota, usage",
+    "Admin Audit UI tại /admin/conversations cho phép xem câu hỏi 'Chưa đủ căn cứ' để nâng cấp tài liệu KB",
+    "Tiến trình ingestion/chat sử dụng SSE (Server-Sent Events) với tự động kết nối lại"
+  ],
+  "docs": {
+    "1_ARCHITECTURE.md": "Kiến trúc thật của project hiện tại",
+    "2.1_WORKFLOWS_INGESTION.md": "Upload, parse, embed, index",
+    "2.2_WORKFLOWS_CHAT.md": "Stateless chat nội bộ và public API",
+    "2.5_WORKFLOWS_ANALYTICS.md": "Usage/token/cost theo tenant",
+    "3_API_CONTRACTS.md": "Route và rule bảo mật",
+    "4_DEPLOYMENT.md": "Docker topology và realtime recommendation",
+    "7_CURRENT_SETTINGS.json": "Snapshot cấu hình hiện tại"
+  }
+}

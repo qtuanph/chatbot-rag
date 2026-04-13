@@ -1,0 +1,159 @@
+{
+  "document": "Known Issues & Post-Mortems",
+  "version": "2026-06-04",
+  "schema": {
+    "issue_id": "integer",
+    "title": "string",
+    "symptom": "string",
+    "root_cause": "string",
+    "resolution": "string",
+    "lesson_learned": "string"
+  },
+  "issues": [
+    {
+      "issue_id": 1,
+      "title": "Stateful Async Client Reused Across Event Loops",
+      "symptom": "Celery workers or API requests intermittently crash with event loop mismatch errors.",
+      "root_cause": "A stateful async AI provider client was cached globally and got reused across different event loops.",
+      "resolution": "Removed unsafe global caching and reinitialized clients per valid loop context.",
+      "lesson_learned": "Do not globally cache loop-bound async clients in mixed API + worker systems."
+    },
+    {
+      "issue_id": 2,
+      "title": "Beat Scheduler Started on Multiple Worker Replicas",
+      "symptom": "Periodic cleanup and maintenance tasks execute multiple times in a cluster.",
+      "root_cause": "Celery Beat was enabled on more than one worker replica.",
+      "resolution": "Limited Beat startup to a single designated worker instance.",
+      "lesson_learned": "Distributed schedulers must run as a singleton."
+    },
+    {
+      "issue_id": 3,
+      "title": "Redis-Dependent Objects Created at Import Time",
+      "symptom": "API startup crashes or route import failures when Redis is not ready.",
+      "root_cause": "Redis-backed objects such as rate limiters were constructed at module import time.",
+      "resolution": "Moved construction to dependency injection / runtime factory paths.",
+      "lesson_learned": "Avoid side-effectful infrastructure initialization at import time."
+    },
+    {
+      "issue_id": 4,
+      "title": "Reserved SQLAlchemy Attribute Name",
+      "symptom": "Application startup fails with SQLAlchemy InvalidRequestError related to `metadata`.",
+      "root_cause": "An ORM model used `metadata` as a mapped Python attribute name.",
+      "resolution": "Renamed the Python attribute to `artifact_metadata` while preserving DB column mapping where needed.",
+      "lesson_learned": "Never map reserved SQLAlchemy names directly as ORM attributes."
+    },
+    {
+      "issue_id": 5,
+      "title": "Qdrant Document ID Drift",
+      "symptom": "Upload appears successful but retrieval/delete by document ID fails or returns zero matches.",
+      "root_cause": "LlamaIndex auto-generated ref_doc_id/doc_id values that no longer matched PostgreSQL document IDs.",
+      "resolution": "Pinned LlamaIndex source document IDs explicitly to the PostgreSQL `document_id`.",
+      "lesson_learned": "Cross-system joins require explicit stable IDs."
+    },
+    {
+      "issue_id": 6,
+      "title": "Double Chunking in Ingestion",
+      "symptom": "Sections are fragmented into overly small chunks and retrieval quality drops.",
+      "root_cause": "Markdown parse logic and the ingestion pipeline both applied chunk splitting.",
+      "resolution": "Kept chunking in one place only: the ingestion pipeline.",
+      "lesson_learned": "Chunking must happen exactly once."
+    },
+    {
+      "issue_id": 7,
+      "title": "Worker Startup Broke Due to Noisy Hardware Detection Output",
+      "symptom": "Celery worker fails because concurrency/autoscale values are parsed as invalid strings.",
+      "root_cause": "Third-party hardware libraries printed extra text to stdout during shell command substitution.",
+      "resolution": "Captured only the final line and validated numeric values before using them.",
+      "lesson_learned": "Always sanitize subprocess stdout before using it as config."
+    },
+    {
+      "issue_id": 8,
+      "title": "Allowed Origins Textarea Lost Newlines",
+      "symptom": "Platform admin cannot press Enter to add multiple origins line by line.",
+      "root_cause": "Frontend normalized `allowed_origins` on every keystroke, immediately collapsing blank newline state.",
+      "resolution": "Switched to draft textarea state and only parse lines on load/save.",
+      "lesson_learned": "Keep raw multiline form state until submit time."
+    },
+    {
+      "issue_id": 9,
+      "title": "Frontend Crash on Admin Dashboard Health Card",
+      "symptom": "The `/admin` page renders a blank error screen with `Object.entries(undefined)`.",
+      "root_cause": "Frontend expected `health.checks` while backend returned `health.services`.",
+      "resolution": "Frontend now supports both shapes and uses safe fallbacks when data is missing.",
+      "lesson_learned": "Health/status contracts should tolerate additive backend shape changes."
+    },
+    {
+      "issue_id": 10,
+      "title": "Root Docs Drifted Away From Actual Project State",
+      "symptom": "README, AGENTS, and architecture docs describe single-tenant, TEI-only, session-based behavior that no longer exists.",
+      "root_cause": "Large refactor landed faster than top-level documentation updates.",
+      "resolution": "Rewrote root docs to match the current multi-tenant, stateless, OpenAI-compatible architecture.",
+      "lesson_learned": "Large refactors need documentation closure before release tagging."
+    },
+    {
+      "issue_id": 11,
+      "title": "Redis Restart Loop From Corrupted AOF Tail",
+      "symptom": "Redis container keeps restarting and logs `Bad file format reading the append only file appendonly.aof.1.incr.aof`.",
+      "root_cause": "The incremental AOF tail inside the Redis volume became corrupted, so Redis could not finish loading append-only persistence.",
+      "resolution": "Stopped Redis, backed up the volume, repaired the AOF with `redis-check-aof --fix`, then restarted the stack.",
+      "lesson_learned": "When Redis runs with AOF persistence in Docker, abrupt shutdowns can corrupt the AOF tail. Back up first, then repair the AOF instead of blaming application code."
+    },
+    {
+      "issue_id": 12,
+      "title": "Multi-Query Retrieval Caused 4x Embed + Rerank Overhead with Negligible Benefit",
+      "symptom": "Chat turns cost ~4s of pure retrieval overhead. LLM responses showed no measurable accuracy gain from the extra retrieved context, while the public benchmark surfaced no citation-quality improvement either.",
+      "root_cause": "`IngestionService._build_retrieval_queries` built up to `retrieval_history_query_count + 1` queries (1 latest + 1 combined-concatenated + up to 3 previous user messages) and submitted each through the full embed+rerank pipeline. The `combined` query was literal newline-joined user text, not a semantic rewrite, so the extra query added noise. The LLM already receives the full recent message history via `ai_max_history_messages` in the system prompt, so multi-query RAG duplication was effectively redundant. The code had no documented design rationale — git history showed it was generated by an AI coding assistant (ChatGPT) and landed alongside unrelated features (LlamaParse, HyDE, query expansion, AI usage tracking) without isolation.",
+      "resolution": "Reduced `_build_retrieval_queries` to return only the latest user query by default. Lowered `RETRIEVAL_HISTORY_QUERY_COUNT` default to `0` and relaxed its validator to `0..5` (0 = no history aggregation, latest-only). The setting is preserved as an opt-in escape hatch for cases where multi-query is empirically justified. LLM conversation context (separate from retrieval) remains governed by `ai_max_history_messages=6` and is untouched.",
+      "lesson_learned": "AI-generated code that introduces multi-step RAG patterns (query expansion, multi-query, HyDE) must be empirically benchmarked before being kept as the default. When the LLM already has full conversation history, history-aggregated retrieval is usually redundant. Treat non-obvious AI-suggested defaults as opt-in, not baseline."
+    },
+    {
+      "issue_id": 13,
+      "title": "Flat Vector-Only Retrieval Missed Numbered ERP Sections",
+      "symptom": "Queries like `4.5`, `4.6.3`, hoặc tên mục tính năng dễ rơi vào section sai hoặc thiếu child section quan trọng.",
+      "root_cause": "Pipeline cũ coi manual như semantic text phẳng: một collection, payload tối giản, không có section graph chuẩn, không có route section -> chunk theo cấu trúc.",
+      "resolution": "Rebuilt RAG around canonical `document_sections`, dual Qdrant collections (`documents_sections`, `documents_chunks`), structure-aware metadata, sentence-window chunk retrieval, recursive section expansion, và auto-merging về parent section.",
+      "lesson_learned": "Tài liệu ERP/manual không nên được index như text phẳng. Nếu muốn trả lời đúng heading/section, phải mang cấu trúc tài liệu vào ingestion và retrieval ngay từ đầu."
+    }
+    ,
+    {
+      "issue_id": 14,
+      "title": "Ingestion Recursion Triggered by Oversized Parser Metadata",
+      "symptom": "Document upload reached worker ingestion but failed with `maximum recursion depth exceeded` or metadata-length warnings during chunk parsing.",
+      "root_cause": "Deep section metadata such as `breadcrumb` and `breadcrumb_text` was passed directly into LlamaIndex parsers, consuming too much of the effective chunk budget for ERP manuals.",
+      "resolution": "Split parser metadata from retrieval metadata. Chunk parsers now receive only a minimal metadata subset, and full retrieval metadata is attached after node generation. A guarded fallback keeps sentence-window chunking alive if hierarchical support hits recursion depth.",
+      "lesson_learned": "Parser metadata and retrieval metadata serve different purposes; keeping parser metadata intentionally small makes ingestion much more stable."
+    }
+    ,
+    {
+      "issue_id": 15,
+      "title": "Cached Async Qdrant Client Reused Across Celery Worker Event Loops",
+      "symptom": "Worker ingestion fails with \"Event loop is closed\" / \"ResponseHandlingException: Event loop is closed\" when calling Qdrant. The first task succeeds but subsequent tasks crash.",
+      "root_cause": "`get_async_qdrant_client()`, `get_section_vector_store()`, and `get_chunk_vector_store()` in `app/core/llama_index.py` were decorated with `@lru_cache(maxsize=1)`. Celery workers use `asyncio.run()` which creates a fresh event loop per task. The cached `AsyncQdrantClient` held a reference to the old (closed) event loop's internal `httpx.AsyncClient`, causing the crash on the next task.",
+      "resolution": "Removed `@lru_cache` from `get_async_qdrant_client()`, `get_section_vector_store()`, `get_chunk_vector_store()`, and `get_vector_store()`. The sync `get_qdrant_client()` kept its cache since it has no event loop dependency.",
+      "lesson_learned": "Never cache async clients that internally manage HTTP sessions (httpx.AsyncClient, aiohttp.ClientSession, etc.) in mixed sync+async environments where event loops are created per-task (Celery + asyncio.run()). Each asyncio.run() invocation must get a fresh async client."
+    },
+    {
+      "issue_id": 16,
+      "title": "Semantic Cache crashed due to empty normalized query",
+      "symptom": "Chat completion request crashes with 400 BadRequest: 'Input list must be non-empty'.",
+      "root_cause": "The user query consisted entirely of stopwords (e.g., 'chào', 'hi'), causing `normalize_query` to return an empty string. The Semantic Cache then attempted to embed this empty string via OpenAI, which rejects empty inputs.",
+      "resolution": "Added a truthiness check for `normalized_query`. If it evaluates to empty, the system bypasses Semantic Cache entirely and falls back to normal RAG retrieval (which correctly uses the raw, non-empty user query).",
+      "lesson_learned": "Do not pass unvalidated normalized strings to embedding models. Always handle edge cases where stopword filtering strips out the entire string."
+    },
+    {
+      "issue_id": 17,
+      "title": "PostgreSQL Schema Out of Sync on Pre-existing Containers",
+      "symptom": "API returns 500 error with `psycopg.errors.UndefinedTable: relation conversations does not exist` when accessing new endpoints.",
+      "root_cause": "PostgreSQL init scripts in `/docker-entrypoint-initdb.d/init.sql` only execute during initial container volume creation. Subsequent schema updates added to `ops/init.sql` require explicit DDL execution on pre-existing database volumes.",
+      "resolution": "Executed `ops/init.sql` DDL statements using the database superuser `db-admin` (`psql -U db-admin -d ragbot < ops/init.sql`), which created the new `conversations`, `conversation_messages`, `knowledge_bases`, `tenant_knowledge_bases`, `products`, `product_versions`, `tenant_products`, and `escalations` tables.",
+    },
+    {
+      "issue_id": 18,
+      "title": "Public API Requests Shared Low Per-User Rate Limit Bucket",
+      "symptom": "Clients sending requests via Tenant API Key hit 429 rate limit error after only a few requests in multi-user environment.",
+      "root_cause": "The public inference router passed `user_id=None`. In `QuotaService`, `user_id=None` caused all API key requests for that tenant to fall back to a shared `'anon'` counter bucket, enforcing a strict per-user limit (6 req/min) and daily request quota across the whole tenant.",
+      "resolution": "Updated `QuotaService.check_and_increment_rate` and `check_and_increment_daily` to bypass per-user counters completely when `user_id` is None (Public API key calls). Public API requests are now strictly governed by a single Tenant-scoped limit (`rate_limit_rpm` from PostgreSQL `tenants` table) set by Tenant Admin.",
+      "lesson_learned": "Public API callers (M2M / integrations) do not have user identity context. Do not force an 'anon' user bucket on public API requests; enforce single-level tenant-scoped quotas instead."
+    }
+  ]
+}
