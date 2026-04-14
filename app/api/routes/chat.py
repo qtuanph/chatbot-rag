@@ -46,7 +46,7 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
 
         store.append_message(scope_id, session_id, "user", request.query)
 
-        context = retrieve_context(session, request.query, limit=5)
+        context = retrieve_context(session, request.query, limit=20)
         assistant_seed = build_answer(request.query, context)
         history = store.get_history(scope_id, session_id)
         try:

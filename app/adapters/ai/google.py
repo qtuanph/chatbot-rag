@@ -59,26 +59,52 @@ class GoogleAIProvider(AIProvider):
                 user_query = str(message.get("content", "")).strip()
                 break
 
+        # Detect language from query (simple heuristic)
+        vietnamese_chars = set('àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳỹỷỵABCDEFGHIJKLMNOPQRSTUVWXYZ')
+        is_vietnamese = any(char in vietnamese_chars for char in user_query)
+
         context_nodes = kwargs.get("context") or []
+
+        # Build rich context with inline citation markers
         context_blocks: list[str] = []
         for idx, node in enumerate(context_nodes, start=1):
             title = node.get("document_title") or "Untitled"
             heading = node.get("heading") or "Section"
-            text = (node.get("full_text") or "")[:2000]
+            text = (node.get("full_text") or "")[:2000]  # Balanced context
             context_blocks.append(f"[{idx}] {title} | {heading}\n{text}")
 
-        context_text = "\n\n".join(context_blocks) if context_blocks else "No document context available."
+        context_text = "\n\n".join(context_blocks) if context_blocks else "NO DOCUMENTS"
 
-        return (
-            "You are an enterprise AI assistant. Your primary task is to answer questions STRICTLY based on the provided document context.\n"
-            "CRITICAL RULES:\n"
-            "1. If the user sends a simple greeting (e.g. hello, xin chào), respond naturally and politely, but briefly remind them that you are ready to answer questions based on the enterprise documents uploaded by the Admin.\n"
-            "2. If the user asks a factual question and the context is empty ('No document context available.'), you MUST NOT hallucinate or answer from outside knowledge. Instead, explicitly answer: 'Hiện tại tôi chưa có tài liệu nào để trả lời câu hỏi này. Vui lòng yêu cầu Admin upload thêm tài liệu vào hệ thống.'\n"
-            "3. If the context has documents but they don't contain the answer, say you don't know based on the current documents.\n"
-            "4. Always respond in Vietnamese.\n\n"
-            f"User question:\n{user_query}\n\n"
-            f"Context:\n{context_text}\n"
-        )
+        if is_vietnamese:
+            return (
+                "Bạn là trợ lý AI thông minh. Nhiệm vụ: TỔNG HỢP thông tin từ TẤT CẢ tài liệu để trả lời câu hỏi.\n\n"
+                "QUY TẮC:\n"
+                "1. Đọc TẤT CẢ các nguồn được đánh dấu [1], [2], [3]...\n"
+                "2. TỔNG HỢP thông tin từ nhiều nguồn khác nhau\n"
+                "3. Viết câu trả lời hoàn chỉnh, có logic, có cấu trúc\n"
+                "4. Khi trích dẫn, dùng format [1], [2] trong câu trả lời\n"
+                "5. Đừng chỉ liệt kê, hãy PHÂN TÍCH và TỔNG HỢP\n"
+                "6. Nếu nhiều tài liệu nói về cùng chủ đề, tổng hợp lại\n"
+                f"7. Trả lời bằng TIẾNG VIỆT (người dùng hỏi tiếng Việt)\n\n"
+                f"CÂU HỎI:\n{user_query}\n\n"
+                f"TÀI LIỆU THAM KHẢO:\n{context_text}\n\n"
+                "YÊU CẦU: Viết câu trả lời chi tiết, có phân tích, có trích dẫn."
+            )
+        else:
+            return (
+                "You are an intelligent AI assistant. Task: SYNTHESIZE information from ALL documents to answer questions.\n\n"
+                "RULES:\n"
+                "1. Read ALL sources marked [1], [2], [3]...\n"
+                "2. SYNTHESIZE information from multiple different sources\n"
+                "3. Write complete, logical, structured answers\n"
+                "4. Use citation format [1], [2] within answers\n"
+                "5. Don't just list, ANALYZE and SYNTHESIZE\n"
+                "6. If multiple documents cover same topic, combine them\n"
+                f"7. Answer in the same language as the question\n\n"
+                f"QUESTION:\n{user_query}\n\n"
+                f"REFERENCE DOCUMENTS:\n{context_text}\n\n"
+                "REQUIREMENT: Write detailed, analytical answers with citations."
+            )
 
     @staticmethod
     def _extract_text(data: dict[str, Any]) -> str:

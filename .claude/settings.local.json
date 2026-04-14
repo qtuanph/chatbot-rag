@@ -33,7 +33,30 @@
       "Bash(find D:\\\\Dev\\\\MyProject\\\\chatbot-rag\\\\app:*)",
       "Bash(find \"D:\\\\Dev\\\\MyProject\\\\chatbot-rag\\\\app\" -type f -name \"*.py\" -exec grep -l \"app.view\" {} \\\\;)",
       "Bash(grep:*)",
-      "Bash(docker network:*)"
+      "Bash(docker network:*)",
+      "Bash(docker exec:*)",
+      "Bash(npx nuxi@latest init webapp --packageManager npm --gitInit false --yes)",
+      "Bash(pkill:*)",
+      "Bash(npm list:*)",
+      "Bash(node validate.js)",
+      "Bash(npm update:*)",
+      "Bash(npm install:*)",
+      "Bash(npm create:*)",
+      "mcp__nuxt-remote__get-documentation-page",
+      "mcp__nuxt-ui-remote__list-components",
+      "mcp__nuxt-ui-remote__list-composables",
+      "mcp__nuxt-ui-remote__list-documentation-pages",
+      "mcp__nuxt-ui-remote__get-component",
+      "Bash(npm run:*)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(python3 -m json.tool)",
+      "Bash(start http://localhost:3000)",
+      "mcp__nuxt-ui-remote__get-documentation-page",
+      "Bash(netstat -ano)",
+      "Bash(findstr :3000)",
+      "Bash(findstr :8000)",
+      "mcp__nuxt-ui-remote__get-component-metadata",
+      "WebSearch"
     ]
   }
 }

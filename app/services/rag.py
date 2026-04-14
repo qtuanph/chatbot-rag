@@ -66,7 +66,7 @@ def _get_query_cache() -> QueryEmbeddingCache:
     return QueryEmbeddingCache(client)
 
 
-def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext:
+def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContext:
     latest_doc_ids = _latest_document_ids(session)
     if not latest_doc_ids:
         return RagContext(nodes=[])
@@ -99,7 +99,7 @@ def retrieve_context(session: Session, query: str, limit: int = 5) -> RagContext
 
     retrieved = _get_vector_store().retrieve(
         query_vector=query_vector,
-        top_k=max(limit * 2, 10),   # Retrieve extra, then filter by score
+        top_k=50,   # Lấy nhiều context hơn để tổng hợp từ nhiều nguồn
         document_ids_filter=list(title_by_id.keys()),
     )
 
@@ -161,24 +161,40 @@ def _latest_document_ids(session: Session) -> set[str]:
 def build_answer(query: str, context: RagContext, history: list[dict[str, str]] | None = None) -> dict:
     if not context.nodes:
         return {
-            "answer": "Chưa có tài liệu nào được index để trả lời câu hỏi này.",
+            "answer": "Hiện tại tôi chưa có tài liệu nào để trả lời câu hỏi này. Vui lòng yêu cầu Admin upload thêm tài liệu vào hệ thống.",
             "citations": [],
             "context": [],
         }
 
-    intro = "Dựa trên tài liệu đã upload, mình tìm được các đoạn liên quan nhất:"
-    bullets = []
+    # Build rich context for LLM with inline citations
+    context_blocks = []
     citations = []
     for idx, node in enumerate(context.nodes, start=1):
-        excerpt = (node.summary or node.full_text[:280]).strip().replace("\n", " ")
-        bullets.append(f"{idx}. {node.document_title} - {node.heading}: {excerpt}")
+        # Use full text for LLM to synthesize from multiple sources
+        full_text = node.full_text or ""
+        context_blocks.append(f"[{idx}] {node.document_title} - {node.heading}:\n{full_text}")
+
         citations.append({
             "document_id": node.document_id,
             "node_id": node.node_id,
             "title": node.document_title,
             "heading": node.heading,
             "page_range": node.page_range,
+            "index": idx,
         })
 
-    answer = f"{intro}\n" + "\n".join(bullets)
+    context_text = "\n\n".join(context_blocks)
+
+    # Instructions for synthesis from multiple sources
+    answer = (
+        f"Câu hỏi: {query}\n\n"
+        f"Tài liệu tham khảo ({len(context.nodes)} nguồn):\n{context_text}\n\n"
+        f"Yêu cầu:\n"
+        f"1. Đọc TẤT CẢ các nguồn trên\n"
+        f"2. TỔNG HỢP thông tin từ nhiều nguồn nếu cần\n"
+        f"3. Viết câu trả lời hoàn chỉnh, có phân tích\n"
+        f"4. Dùng trích dẫn [1], [2], [3] khi cần thiết\n"
+        f"5. Trả lời ngôn ngữ của người dùng"
+    )
+
     return {"answer": answer, "citations": citations, "context": [node.__dict__ for node in context.nodes]}
