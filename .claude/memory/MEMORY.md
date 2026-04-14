@@ -24,10 +24,17 @@ Persistent memory for chatbot-rag project. Optimized for AI context quality.
   - Configuration rules (.env, not .env.example)
   - Common pitfalls and solutions
 
+### Rules & Updates
+- **[rules_and_updates.md](rules_and_updates.md)** (4.2KB)
+  - **CRITICAL**: Memory update rule (MANDATORY when changes occur)
+  - Recent updates: Chat LLM model, API key cleanup, frontend migration
+  - Upcoming: RAG v2 (multimodal + 2-stage retrieval)
+  - Implementation plan reference
+
 ## Memory Stats
 
-- **Total files:** 3 (down from 9)
-- **Total size:** ~15KB (down from 48KB)
+- **Total files:** 4 (down from 9)
+- **Total size:** ~19KB (down from 48KB)
 - **Redundancy:** 0% (all duplicates removed)
 
 ## Key Context for AI Agents
@@ -62,6 +69,11 @@ Persistent memory for chatbot-rag project. Optimized for AI context quality.
 **Delete when:** Outdated, duplicate, temporary notes
 
 ## Last Updated
+- 2026-04-14: **CRITICAL UPDATE** - Added memory update rule and recent changes
+  - Created: rules_and_updates.md (MANDATORY memory update rule)
+  - Updated: architecture_summary.md (RAG v2 info)
+  - Recent changes: gemma-4-26b-a4b-it model, API key cleanup, Nuxt.js frontend
+  - Upcoming: RAG v2 (multimodal + 2-stage retrieval)
 - 2026-04-13: **MAJOR CLEANUP** - Reduced from 9 files (48KB) to 3 files (15KB)
   - Removed: implementation_gaps.md, project_cleanup_2026_04_13.md, README.md
   - Removed: external_resources.md, project_context.md, architecture_clarifications.md

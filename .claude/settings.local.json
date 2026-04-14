@@ -56,7 +56,9 @@
       "Bash(findstr :3000)",
       "Bash(findstr :8000)",
       "mcp__nuxt-ui-remote__get-component-metadata",
-      "WebSearch"
+      "WebSearch",
+      "Bash(curl -s -X POST http://localhost:8000/api/v1/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"abc123\"}')",
+      "Read(//tmp/**)"
     ]
   }
 }

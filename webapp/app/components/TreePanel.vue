@@ -10,6 +10,18 @@ const treeData = ref<TreeDataResponse | null>(null)
 const searchQuery = ref('')
 const isLoading = ref(false)
 
+// Watch for route query params to auto-select document
+const route = useRoute()
+watch(() => route.query, (query) => {
+  if (query.tab === 'tree' && query.doc) {
+    const docId = query.doc as string
+    if (docId && documents.value.some(d => d.document_id === docId)) {
+      selectedDocument.value = docId
+      loadTree()
+    }
+  }
+}, { immediate: true })
+
 async function loadDocuments() {
   try {
     isLoading.value = true

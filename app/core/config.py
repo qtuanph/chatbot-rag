@@ -15,8 +15,7 @@ class Settings(BaseSettings):
 
     ai_provider: str = "google"
     google_api_key: str = ""
-    google_api_keys: str = ""
-    google_model: str = "gemini-2.5-flash"
+    google_model: str = "gemma-4-26b-a4b-it"
     vllm_base_url: str = "http://vllm:8000/v1"
     vllm_model: str = "Qwen/Qwen2.5-7B-Instruct-AWQ"  # On-prem model name for vLLM
 
@@ -90,21 +89,6 @@ class Settings(BaseSettings):
         self.qdrant_url = str(self.qdrant_url).strip() or "http://qdrant:6333"
         if self.qdrant_timeout < 1:
             raise ValueError("QDRANT_TIMEOUT must be >= 1")
-
-    def get_google_api_keys(self) -> list[str]:
-        keys: list[str] = []
-        if self.google_api_key.strip():
-            keys.append(self.google_api_key.strip())
-        if self.google_api_keys.strip():
-            keys.extend([item.strip() for item in self.google_api_keys.split(",") if item.strip()])
-
-        deduped: list[str] = []
-        seen: set[str] = set()
-        for key in keys:
-            if key not in seen:
-                deduped.append(key)
-                seen.add(key)
-        return deduped
 
 
 @lru_cache

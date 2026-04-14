@@ -3,6 +3,7 @@ import type { DocumentSummaryResponse, ApiError } from '../types/api'
 
 interface Document extends DocumentSummaryResponse {}
 
+const router = useRouter()
 const toast = useToast()
 const documents = ref<Document[]>([])
 const isLoading = ref(false)
@@ -82,8 +83,68 @@ async function deleteDocument(documentId: string) {
   }
 }
 
+function getStatusText(status: string, stage: string) {
+  const statusMap: Record<string, string> = {
+    'pending': '⏳ Chờ xử lý',
+    'processing': `🔄 ${stage || 'Đang xử lý'}`,
+    'ready': '✅ Hoàn thành',
+    'failed': '❌ Thất bại'
+  }
+  return statusMap[status] || status
+}
+
+function getStatusColor(status: string) {
+  const colorMap: Record<string, string> = {
+    'pending': 'yellow',
+    'processing': 'blue',
+    'ready': 'green',
+    'failed': 'red'
+  }
+  return colorMap[status] || 'gray'
+}
+
+function viewDetails(doc: Document) {
+  const details = `
+📄 THÔNG TIN TÀI LIỆU
+
+• Tiêu đề: ${doc.title || doc.file_name}
+• Trạng thái: ${getStatusText(doc.status, doc.stage)}
+• Kích thước: ${(doc.file_size / 1024).toFixed(2)} KB
+• Version: ${doc.version}
+• Giai đoạn: ${doc.stage}
+• Tiến độ: ${doc.progress_percent}%
+• Ngày tạo: ${new Date(doc.created_at).toLocaleString('vi-VN')}
+• Cập nhật: ${new Date(doc.updated_at).toLocaleString('vi-VN')}
+
+📋 Document ID:
+${doc.document_id}
+
+${doc.status_message ? `ℹ️ Trạng thái: ${doc.status_message}` : ''}
+  `
+  alert(details)
+}
+
+function viewTree(documentId: string) {
+  // Navigate to admin page with tree tab and document ID
+  router.push({ path: '/admin', query: { tab: 'tree', doc: documentId } })
+}
+
 onMounted(() => {
   loadDocuments()
+  // Auto-refresh every 3 seconds for processing documents
+  const refreshInterval = setInterval(() => {
+    const hasProcessing = documents.value.some(doc =>
+      doc.status === 'processing' || doc.status === 'pending' || doc.progress_percent < 100
+    )
+    if (hasProcessing) {
+      loadDocuments()
+    }
+  }, 3000)
+
+  // Cleanup on unmount
+  onUnmounted(() => {
+    clearInterval(refreshInterval)
+  })
 })
 </script>
 
@@ -159,32 +220,94 @@ onMounted(() => {
 
       <div
         v-else
-        class="space-y-2"
+        class="space-y-3"
       >
         <div
           v-for="doc in documents"
           :key="doc.document_id"
-          class="flex items-center justify-between rounded-lg border border-gray-200 p-4"
+          class="rounded-lg border border-gray-200 bg-white p-4"
         >
-          <div class="flex-1">
-            <p class="font-medium text-gray-900">
-              {{ doc.file_name }}
-            </p>
-            <div class="mt-1 flex items-center gap-4 text-sm text-gray-500">
-              <span>Trạng thái: {{ doc.status }}</span>
-              <span>Kích thước: {{ (doc.file_size / 1024).toFixed(2) }} KB</span>
-              <span v-if="doc.created_at">
-                {{ new Date(doc.created_at).toLocaleDateString('vi-VN') }}
-              </span>
+          <div class="flex items-start justify-between">
+            <div class="flex-1">
+              <!-- Title and status badge -->
+              <div class="flex items-center gap-2">
+                <h4 class="text-base font-semibold text-gray-900">
+                  {{ doc.title || doc.file_name }}
+                </h4>
+                <span
+                  class="inline-block px-2 py-0.5 rounded text-xs font-medium"
+                  :class="`bg-${getStatusColor(doc.status)}-100 text-${getStatusColor(doc.status)}-800`"
+                >
+                  {{ getStatusText(doc.status, doc.stage) }}
+                </span>
+              </div>
+
+              <!-- Metadata -->
+              <div class="mt-2 text-sm text-gray-600">
+                <p>
+                  📦 {{ (doc.file_size / 1024).toFixed(2) }} KB
+                  <span class="mx-2">•</span>
+                  📅 {{ new Date(doc.created_at).toLocaleDateString('vi-VN') }}
+                  <span class="mx-2">•</span>
+                  Version {{ doc.version }}
+                </p>
+              </div>
+
+              <!-- Progress bar for processing documents -->
+              <div v-if="doc.status === 'processing' || doc.progress_percent < 100" class="mt-3">
+                <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                  <span>⏳ Tiến độ xử lý</span>
+                  <span class="font-medium">{{ doc.progress_percent }}%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                  <div
+                    class="bg-blue-600 h-2.5 rounded-full transition-all duration-500 ease-out"
+                    :style="{ width: doc.progress_percent + '%' }"
+                  ></div>
+                </div>
+                <p v-if="doc.status_message" class="text-xs text-gray-500 mt-1.5">
+                  💬 {{ doc.status_message }}
+                </p>
+              </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="flex flex-col gap-2 ml-4">
+              <!-- View tree button (only for completed documents) -->
+              <UButton
+                v-if="doc.status === 'ready'"
+                icon="i-lucide-network"
+                color="green"
+                variant="soft"
+                size="xs"
+                @click="viewTree(doc.document_id)"
+              >
+                Xem cây
+              </UButton>
+
+              <!-- View details button -->
+              <UButton
+                icon="i-lucide-info"
+                color="blue"
+                variant="soft"
+                size="xs"
+                @click="viewDetails(doc)"
+              >
+                Chi tiết
+              </UButton>
+
+              <!-- Delete button -->
+              <UButton
+                icon="i-lucide-trash-2"
+                color="red"
+                variant="soft"
+                size="xs"
+                @click="deleteDocument(doc.document_id)"
+              >
+                Xóa
+              </UButton>
             </div>
           </div>
-          <UButton
-            icon="i-lucide-trash-2"
-            color="red"
-            variant="ghost"
-            size="sm"
-            @click="deleteDocument(doc.document_id)"
-          />
         </div>
       </div>
     </UCard>

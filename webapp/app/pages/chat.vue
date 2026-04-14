@@ -64,19 +64,84 @@ async function sendMessage() {
     content: userMessage
   })
 
+  // Add placeholder for assistant message
+  const assistantMessageIndex = messages.value.length
+  messages.value.push({
+    role: 'assistant',
+    content: '',
+    citations: []
+  })
+
   try {
     isLoading.value = true
 
-    // Call API
-    const response = await apiClient.chat.sendMessage(userMessage)
+    // Use streaming API
+    const config = useRuntimeConfig()
+    const token = localStorage.getItem('token')
 
-    messages.value.push({
-      role: 'assistant',
-      content: response.answer,
-      citations: response.citations || []
+    const response = await fetch(`${config.public.apiBase}/api/v1/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ query: userMessage })
     })
 
-    // Scroll to bottom
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    if (!reader) {
+      throw new Error('No response body')
+    }
+
+    let buffer = ''
+    let finalCitations: Citation[] = []
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      // Process SSE data: lines
+      const lines = buffer.split('\n\n')
+      buffer = lines.pop() || '' // Keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.substring(6))
+
+            if (data.error) {
+              throw new Error(data.error)
+            }
+
+            if (data.chunk) {
+              // Append chunk to current message
+              messages.value[assistantMessageIndex].content += data.chunk
+            }
+
+            if (data.done) {
+              // Stream complete
+              if (data.citations) {
+                finalCitations = data.citations
+                messages.value[assistantMessageIndex].citations = finalCitations
+              }
+              isLoading.value = false
+            }
+          } catch (e) {
+            console.error('Error parsing SSE data:', e)
+          }
+        }
+      }
+    }
+
+    // Scroll to bottom after each chunk
     nextTick(() => {
       window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
     })
@@ -84,13 +149,13 @@ async function sendMessage() {
     const apiError = error as ApiError
     toast.add({
       title: 'Lỗi',
-      description: apiError.response?.data?.detail || 'Không thể gửi tin nhắn',
+      description: apiError.response?.data?.detail || apiError.message || 'Không thể gửi tin nhắn',
       color: 'red',
       icon: 'i-lucide-x-circle'
     })
 
-    // Remove user message on error
-    messages.value.pop()
+    // Remove both user and assistant message on error
+    messages.value.splice(assistantMessageIndex - 1, 2)
   } finally {
     isLoading.value = false
   }
@@ -99,6 +164,19 @@ async function sendMessage() {
 function handleSuggestion(suggestion: string) {
   query.value = suggestion
   sendMessage()
+}
+
+// Get unique citations (deduplicate by title)
+function uniqueCitations(citations: Citation[]) {
+  const seen = new Set<string>()
+  return citations.filter(citation => {
+    const title = citation.title || 'Tài liệu'
+    if (seen.has(title)) {
+      return false
+    }
+    seen.add(title)
+    return true
+  })
 }
 
 async function logout() {
@@ -151,8 +229,8 @@ async function logout() {
             v-if="message.role === 'user'"
             class="flex justify-end"
           >
-            <div class="max-w-[80%] rounded-lg bg-blue-500 p-4 text-white">
-              <p class="whitespace-pre-wrap">
+            <div class="max-w-[80%] rounded-2xl rounded-br-md bg-gradient-to-br from-blue-500 to-blue-600 p-4 shadow-md text-white">
+              <p class="whitespace-pre-wrap leading-relaxed">
                 {{ message.content }}
               </p>
             </div>
@@ -163,10 +241,10 @@ async function logout() {
             v-else
             class="flex justify-start"
           >
-            <div class="max-w-[80%] rounded-lg bg-white p-4 shadow-sm">
+            <div class="max-w-[80%] rounded-2xl rounded-bl-md bg-white p-5 shadow-md border border-gray-100">
               <!-- Welcome message with suggestions -->
               <div v-if="message.suggestions">
-                <p class="whitespace-pre-wrap text-gray-900">
+                <p class="whitespace-pre-wrap text-gray-900 leading-relaxed">
                   {{ message.content }}
                 </p>
                 <div class="mt-4 flex flex-wrap gap-2">
@@ -185,31 +263,26 @@ async function logout() {
 
               <!-- Regular message -->
               <div v-else>
-                <p class="whitespace-pre-wrap text-gray-900">
+                <p class="whitespace-pre-wrap text-gray-900 leading-relaxed">
                   {{ message.content }}
                 </p>
 
-                <!-- Citations -->
+                <!-- Citations - List all unique sources used -->
                 <div
                   v-if="message.citations && message.citations.length > 0"
-                  class="mt-4 border-t border-gray-200 pt-4"
+                  class="mt-4 border-t border-gray-100 pt-3"
                 >
-                  <p class="mb-2 text-sm font-semibold text-gray-700">
-                    Nguồn:
+                  <p class="mb-2 text-xs font-medium text-gray-600">
+                    📚 Tài liệu tham khảo:
                   </p>
-                  <div class="space-y-2">
-                    <div
-                      v-for="(citation, idx) in message.citations"
+                  <div class="flex flex-wrap gap-2">
+                    <span
+                      v-for="(citation, idx) in uniqueCitations(message.citations)"
                       :key="idx"
-                      class="rounded bg-gray-50 p-3 text-sm"
+                      class="inline-flex items-center rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-100"
                     >
-                      <p class="font-medium text-gray-900">
-                        {{ citation.file_name || 'Tài liệu' }}
-                      </p>
-                      <p class="text-gray-600">
-                        {{ citation.node_header || 'Không có tiêu đề' }}
-                      </p>
-                    </div>
+                      {{ citation.title || 'Tài liệu' }}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -217,18 +290,19 @@ async function logout() {
           </div>
         </div>
 
-        <!-- Loading indicator -->
+        <!-- Loading indicator - Beautiful typing animation -->
         <div
           v-if="isLoading"
           class="mb-6 flex justify-start"
         >
-          <div class="rounded-lg bg-white p-4 shadow-sm">
-            <div class="flex items-center gap-2">
-              <UIcon
-                name="i-lucide-loader-2"
-                class="h-4 w-4 animate-spin text-blue-500"
-              />
-              <p class="text-sm text-gray-600">
+          <div class="rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 p-5 shadow-lg">
+            <div class="flex items-center gap-3">
+              <div class="flex gap-1">
+                <div class="h-2 w-2 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.3s]" />
+                <div class="h-2 w-2 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.15s]" />
+                <div class="h-2 w-2 animate-bounce rounded-full bg-blue-500" />
+              </div>
+              <p class="text-sm font-medium text-gray-700">
                 Đang suy nghĩ...
               </p>
             </div>

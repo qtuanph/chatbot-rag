@@ -2,6 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🚨 CRITICAL: Memory Update Rule
+
+**MANDATORY**: Khi có bất kỳ thay đổi hoặc tính năng mới được implement, **PHẢI CẬP NHẬT FILE NÀY NGAY LẬP TỨC** với:
+- Kiến thức mới nhất về architecture
+- Stack và dependencies mới nhất
+- Breaking changes và migration notes
+- Các pattern và practices mới được áp dụng
+
+Đặc biệt quan trọng khi:
+- ✅ Sắp implement RAG v2 (multimodal + 2-stage retrieval)
+- ✅ Thay đổi AI model, embedding model, hoặc parser
+- ✅ Thay đổi database schema
+- ✅ Thay đổi API contracts
+- ✅ Bổ sung features mới
+
+**ĐỪNG để file này trở thành legacy knowledge!** Claude Code luôn đọc file này đầu tiên, nên nó phải phản ánh state hiện tại của system.
+
+---
+
 ## Development Commands
 
 ### Running the Stack
@@ -56,7 +75,7 @@ docker exec chatbot-rag-worker-1 celery -A app.core.celery_app.celery_app inspec
 
 This is a **Docker-first RAG chatbot** for Vietnamese enterprise documents with hierarchical indexing and async ingestion.
 
-### Core Technology Stack
+### Core Technology Stack (Updated 2026-04-14)
 
 - **API Framework**: FastAPI with async endpoints
 - **Task Queue**: Celery with Redis broker (`acks_late=True`, `prefetch=1`, 25-min soft timeout)
@@ -68,8 +87,39 @@ This is a **Docker-first RAG chatbot** for Vietnamese enterprise documents with 
 - **Ingestion**: Docling → EasyOCR → LlamaIndex hierarchy → parallel embedding
 - **Embedding**: BAAI/bge-m3 LOCAL (sentence-transformers), 1024-dim vectors, parallel batch processing (32 nodes per batch)
 - **AI Refiner**: Rule-based heuristics (NOT Qwen/Gemini) - fixes OCR errors, detects headers, validates hierarchy
-- **LLM Providers**: Adapter-based (Google Gemini demo mode, vLLM on-premise production mode)
-- **OCR**: EasyOCR (vi+en), GPU auto-detected
+- **LLM Providers**: Adapter-based
+  - **Google AI**: `gemma-4-26b-a4b-it` (26B parameters, high quality)
+  - **vLLM**: On-premise mode (future)
+- **OCR**: EasyOCR (vi+en), GPU auto-detected, pre-downloaded in Docker image
+
+### Current AI Model Configuration
+
+**Chat LLM (Google AI):**
+- Model: `gemma-4-26b-a4b-it`
+- Provider: Google Generative AI (API key required)
+- Default in config: `gemma-4-26b-a4b-it`
+- Environment: `GOOGLE_API_KEY` (single key, no rotation)
+
+**Embedding Model:**
+- Model: `BAAI/bge-m3` (sentence-transformers)
+- Dimension: 1024
+- Max tokens: 8192
+- Languages: Multilingual (optimized for Vietnamese)
+- Deployment: LOCAL, offline, no external calls
+
+### Upcoming: RAG v2 Architecture (Planned)
+
+**Migration to RAG v2 will add:**
+- **Multimodal ingestion**: Extract text, images (→ EasyOCR), tables (→ markdown)
+- **2-stage retrieval**: Sections (Level 1, top 3) → Chunks (Level 2, top 5, 300-500 tokens)
+- **Enhanced storage**: `document_sections` table in PostgreSQL for fast section retrieval
+- **Performance targets**:
+  - Section retrieval: <0.5s
+  - Chunk retrieval: <1s
+  - Total query time: <2s
+  - Large documents (300-500 pages): 5-10 min ingestion
+
+**See implementation plan:** `C:\Users\qtuan\.claude\plans\replicated-singing-hopper.md`
 
 ### Adapter Pattern
 
@@ -142,7 +192,7 @@ All configuration is centralized in `app/core/config.py` with environment variab
 
 Key environment variables:
 
-- `AI_PROVIDER` — "google" (demo) or "vllm" (on-premise)
+- `AI_PROVIDER` — "google" (current) or "vllm" (on-premise, future)
 - `INGESTION_ENGINE` — "docling" (recommended) or "classic" (fallback)
 - `INGESTION_EMBEDDING_CHUNK_SIZE` — nodes per batch (default: 32)
 - `RETRIEVAL_MIN_SCORE` — cosine similarity threshold (default: 0.35)
@@ -150,8 +200,11 @@ Key environment variables:
 - `EMBEDDING_HF_MODEL` — "BAAI/bge-m3" (1024-dim, multilingual)
 - `AI_REFINER_TYPE` — "rule_based" (lightweight, no AI needed, 0GB VRAM)
 - `VECTOR_STORE` — "qdrant"
-- `GOOGLE_API_KEY` — Required for Gemini API (chat LLM only)
+- `GOOGLE_API_KEY` — Required for Google AI API (single key, no rotation)
+- `GOOGLE_MODEL` — Model name (default: `gemma-4-26b-a4b-it`)
 - `VLLM_BASE_URL` — Required for on-premise vLLM (future)
+
+**Note**: Google API key rotation has been REMOVED. Only use single `GOOGLE_API_KEY`.
 
 ## Database Initialization
 
@@ -300,26 +353,35 @@ When exploring the codebase, read these documents first:
 6. **`docs/06_DEPLOYMENT_AND_OBSERVABILITY.md`** — Deployment guide and monitoring
 7. **`docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md`** — Deep dive into RAG implementation
 
-## Project Status
+## Project Status (Updated 2026-04-14)
 
-**Current Phase:** Production Hardening (85% complete)
+**Current Phase:** Production Hardening → RAG v2 Migration (90% complete)
 
 **Completed:**
 - ✅ Hierarchical document indexing with BAAI/bge-m3 local embedding
 - ✅ Rule-based refiner (0GB VRAM, 500x faster than AI-based)
-- ✅ Streamlit tree visualizer with full feature set
+- ✅ Nuxt.js 4 frontend with Nuxt UI components (replaced Streamlit)
 - ✅ Async ingestion pipeline with Celery
 - ✅ Hard-delete workflow with proper ordering
 - ✅ Security hardened (strong passwords, CORS configured)
+- ✅ Qdrant client API fix (query_points method)
+- ✅ Google API key rotation removed (single key only)
+- ✅ AI model updated to `gemma-4-26b-a4b-it`
 
 **In Progress:**
-- ⏳ Docker image rebuild (code out of sync)
-- ⏳ Service health verification
-- ⏳ Testing verification
+- ⏳ RAG v2 planning (multimodal + 2-stage retrieval)
+- ⏳ Database schema optimization (init.sql cleanup)
+- ⏳ Documentation update (docs/)
+
+**Upcoming (RAG v2):**
+- 🔜 Multimodal ingestion (text + images via EasyOCR + tables)
+- 🔜 2-stage retrieval (Sections → Chunks)
+- 🔜 Enhanced storage (document_sections table)
+- 🔜 Performance optimization for large documents (300-500 pages)
 
 **Not Implemented:**
 - ❌ Structured logging
 - ❌ Monitoring/metrics collection
 - ❌ Backup procedures automation
 
-**Goal:** On-premise, hierarchical RAG chatbot for Vietnamese enterprise documents with local-first architecture (except temporary Gemini API for chat LLM)
+**Goal:** On-premise, hierarchical RAG chatbot for Vietnamese enterprise documents with multimodal capabilities and 2-stage retrieval for optimal performance on large documents.

@@ -159,13 +159,16 @@ export interface ChatRequest {
 }
 
 /**
- * Citation reference
+ * Citation reference - matches backend response format
  */
 export interface Citation {
-  file_name: string
-  node_header: string
+  title: string
+  heading: string
   content: string
   page_number: number | null
+  document_id: string
+  node_id: string
+  index: number
 }
 
 /**

@@ -13,10 +13,11 @@
 - **Redis 8.6** - Cache, queue, rate limiting
 
 ### AI & ML
-- **BAAI/bge-m3** - Local embedding model (1024-dim, offline)
-- **Rule-based refiner** - Fast text refinement (0GB VRAM)
-- **Google Gemini 2.5-flash** - Chat LLM (temporary, external)
-- **vLLM** - Local LLM inference (future, on-premise)
+- **Chat LLM**: Google AI `gemma-4-26b-a4b-it` (26B parameters, high quality)
+- **Embedding**: `BAAI/bge-m3` (1024-dim, offline, multilingual)
+- **AI Refiner**: Rule-based heuristics (0GB VRAM, ~1ms per node)
+- **OCR**: EasyOCR (vi+en), GPU auto-detected
+- **Future (vLLM)**: On-premise local LLM inference
 
 ### Document Processing
 - **Docling 2.85** - PDF/DOCX to Markdown conversion
@@ -29,7 +30,12 @@
 - **HuggingFace Transformers** - Model management
 
 ### Frontend
-- **Streamlit 1.56** - Tree visualizer
+- **Nuxt.js 4.4** - Modern web framework with Vue 3
+- **Nuxt UI 4.6** - UI component library
+- **TypeScript** - Full type safety
+- **Admin Dashboard** - Document management, user management, health monitoring
+- **Chat Interface** - Real-time RAG chat with citations
+- **Tree Viewer** - Interactive hierarchical document explorer
 
 ## System Architecture
 
@@ -37,7 +43,8 @@
 
 ```mermaid
 flowchart TD
-    U(["👤 User"]) --> API["🌐 FastAPI + JWT Auth"]
+    U(["👤 User"]) --> WEB["🌐 Nuxt.js 4 Frontend"]
+    WEB --> |JWT Auth| API["🌐 FastAPI Backend"]
 
     API --> |upload| UP["POST /upload"]
     API --> |chat| CH["POST /chat  SSE"]
@@ -62,7 +69,7 @@ flowchart TD
         1024-dim · offline · GPU fp16"]
         BGE --> |search score ≥ 0.35| QD
         QD --> |top-k chunks + citations| CH
-        CH --> |AI_PROVIDER=google| LLM1["Gemini API (demo)"]
+        CH --> |AI_PROVIDER=google| LLM1["Google AI gemma-4-26b-a4b-it"]
         CH --> |AI_PROVIDER=vllm| LLM2["vLLM Qwen2.5 (on-prem)"]
         CH --> |save history| PG
     end
@@ -87,7 +94,10 @@ flowchart TD
 ## What Exists
 
 - FastAPI backend with async ingestion pipeline and live progress reporting
-- **Streamlit Tree Visualizer** on port 8501 — Interactive hierarchical document explorer with zoom/pan, click-to-view, and search
+- **Nuxt.js 4 Frontend** on port 3000 — Modern web interface with:
+  - Admin dashboard (document management, user management, health monitoring)
+  - Chat interface with real-time RAG and citations
+  - Tree viewer for hierarchical document exploration
 - Celery worker with `acks_late`, `prefetch=1`, and 25-min soft time limit for reliability
 - PostgreSQL + Redis + RustFS + Qdrant via docker-compose
 - S3-compatible object storage (RustFS) for uploaded files
@@ -124,7 +134,7 @@ No Alembic migrations needed. Database is idempotent and initialized from a sing
 
 ```
 chatbot-rag/
-├── app/
+├── app/                    # FastAPI backend
 │   ├── adapters/           # External integrations (AI, parsers, embeddings)
 │   ├── api/                # FastAPI routes & endpoints
 │   │   └── routes/
@@ -136,8 +146,15 @@ chatbot-rag/
 │   ├── db/                 # PostgreSQL session management
 │   ├── models/             # SQLAlchemy ORM models
 │   ├── services/           # Business logic (RAG, ingestion, query cache)
-│   ├── view/               # Streamlit visualizer
 │   └── worker.py           # Celery task worker
+├── webapp/                 # Nuxt.js 4 frontend
+│   ├── app/
+│   │   ├── components/     # Vue components (ChatPanel, DocumentsPanel, etc.)
+│   │   ├── pages/          # Nuxt pages (index, chat, admin, etc.)
+│   │   ├── types/          # TypeScript type definitions
+│   │   └── utils/          # Utilities (API client, auth helpers)
+│   ├── nuxt.config.ts      # Nuxt configuration
+│   └── package.json        # Node.js dependencies
 ├── tests/                  # Test suite (pytest)
 │   ├── test_ingestion/     # Ingestion tests
 │   ├── test_api/           # API endpoint tests
@@ -149,8 +166,7 @@ chatbot-rag/
 │   ├── 04_API_CONTRACT_AND_SECURITY.md
 │   ├── 05_RESOURCE_OPTIMIZATION_AND_EDGE_CASES.md
 │   ├── 06_DEPLOYMENT_AND_OBSERVABILITY.md
-│   ├── 07_INGESTION_AND_RETRIEVAL_STRATEGY.md
-│   └── STREAMLIT_VISUALIZER.md
+│   └── 07_INGESTION_AND_RETRIEVAL_STRATEGY.md
 ├── ops/                    # Operations & infrastructure
 │   └── init.sql            # Database schema initialization
 ├── docker-compose.yml      # Docker services
@@ -169,9 +185,10 @@ chatbot-rag/
 
 ### Current Setup (Production Demo)
 - **AI Provider**: Google AI Studio (cloud-based)
-- **Model**: Gemini 2.5 Flash
+- **Model**: `gemma-4-26b-a4b-it` (26B parameters, high quality)
 - **Configuration**: `AI_PROVIDER=google` in `.env`
-- **Why**: Minimal resource requirements, immediate production-ready demonstration for stakeholders
+- **API Key**: Single `GOOGLE_API_KEY` (no rotation)
+- **Why**: High-quality responses, production-ready demonstration
 
 ### Future vLLM On-Premises Upgrade
 
@@ -268,9 +285,9 @@ curl http://localhost:8000/api/v1/health
 
 | Service | URL |
 |---------|-----|
-| **API** | `http://localhost:8000` |
+| **Frontend (Nuxt.js)** | `http://localhost:3000` |
+| **API (FastAPI)** | `http://localhost:8000` |
 | **OpenAPI Docs** | `http://localhost:8000/docs` |
-| **Streamlit Visualizer** | `http://localhost:8501` |
 | **RustFS S3 API** | `http://localhost:9000` |
 | **RustFS Web Console** | `http://localhost:9001` |
 | **Health Check** | `http://localhost:8000/api/v1/health` |
@@ -295,26 +312,26 @@ docker compose --profile onprem up --build
 
 This starts the `vllm` service with Qwen 2.5 7B (quantized). Set `AI_PROVIDER=vllm` in `.env`.
 
-### Streamlit Tree Visualizer
+### Nuxt.js Frontend
 
-The **Streamlit Tree Visualizer** is an interactive web-based tool for exploring hierarchical document structure:
+The **Nuxt.js 4 Frontend** is a modern web interface built with Vue 3 and TypeScript:
 
-- **URL**: `http://localhost:8501`
-- **Purpose**: Browse document hierarchy, view node content, search across documents
+- **URL**: `http://localhost:3000`
+- **Purpose**: Admin dashboard, chat interface, tree viewer
 - **Features**:
-  - Hierarchical tree view (chapters → sections → subsections)
-  - Color-coded levels (L1-L6) for visual depth
-  - Click any node to view full text content
-  - Search across all nodes by keyword
-  - Vietnamese text support
+  - **Login page**: JWT authentication
+  - **Chat interface**: Real-time RAG chat with citations
+  - **Document management**: Upload, list, delete, view progress
+  - **Tree viewer**: Interactive hierarchical document explorer
+  - **User management**: Admin-only user creation
+  - **Health dashboard**: System status monitoring
 
 **Usage**:
-1. Open `http://localhost:8501` in your browser
-2. Enter a Document ID (UUID from `/api/v1/documents`)
-3. Click "🔄 Load Tree" to visualize the document structure
-4. Click node titles to view content, use 📂 to expand/collapse
+1. Open `http://localhost:3000` in your browser
+2. Login with admin/abc123 or member/abc123
+3. Navigate to different sections via sidebar
 
-**Documentation**: See [`docs/STREAMLIT_VISUALIZER.md`](docs/STREAMLIT_VISUALIZER.md) for detailed usage guide.
+**Tech Stack**: Nuxt.js 4.4, Nuxt UI 4.6, TypeScript, full type safety
 
 ## Database
 
@@ -539,3 +556,28 @@ Protected routes:
 - `POST /api/v1/chat` requires a valid JWT
 
 Login uses the DB-backed project accounts plus username/password.
+
+---
+
+## Upcoming: RAG v2 (Multimodal + 2-Stage Retrieval)
+
+**Planned Upgrade**: Enhanced RAG system with multimodal capabilities and performance optimization.
+
+### New Features
+- **Multimodal ingestion**: Extract text, images (via EasyOCR), tables (to markdown)
+- **2-stage retrieval**: Sections (Level 1, top 3, <0.5s) → Chunks (Level 2, top 5, <1s)
+- **Enhanced storage**: `document_sections` table for fast section-level retrieval
+
+### Performance Targets
+- Section retrieval: <0.5s
+- Chunk retrieval: <1s
+- Total query time: <2s
+- Large documents (300-500 pages): 5-10 min ingestion
+
+### Implementation
+See plan: `C:\Users\qtuan\.claude\plans\replicated-singing-hopper.md`
+
+**Timeline**: 12-15 days
+- Week 1: Database + Multimodal ingestion
+- Week 2: 2-stage query + Testing
+- Week 3: Production rollout

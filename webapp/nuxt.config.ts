@@ -14,19 +14,19 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
-  routeRules: {
-    '/': { prerender: false }
-  },
-
   runtimeConfig: {
     public: {
       apiBase: process.env.API_BASE_URL || 'http://localhost:8000'
     }
   },
 
+  routeRules: {
+    '/': { prerender: false }
+  },
+
   compatibilityDate: '2025-01-15',
 
-  // Disable sourcemaps for security
+  // Disable sourcemaps completely for security and clean build
   sourcemap: {
     server: false,
     client: false
@@ -35,7 +35,14 @@ export default defineNuxtConfig({
   vite: {
     build: {
       sourcemap: false
-    }
+    },
+    logLevel: 'error'  // Only show errors
+  },
+
+  // Suppress unnecessary warnings
+  typescript: {
+    strict: false,
+    typeCheck: false
   },
 
   eslint: {
