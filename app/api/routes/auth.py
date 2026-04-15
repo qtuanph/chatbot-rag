@@ -106,6 +106,22 @@ def create_user(payload: CreateUserRequest, _auth=Depends(require_admin)) -> Cre
         )
         return CreateUserResponse(id=str(user.id), username=user.username, role=role.name)
 
+@router.get("/auth/me")
+def get_me(auth: AuthContext = Depends(get_auth_context)) -> dict:
+    """Return current user info from JWT token."""
+    with SessionLocal() as session:
+        user = session.get(User, auth.user_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        role = session.get(Role, user.role_id)
+        return {
+            "user_id": str(user.id),
+            "username": user.username,
+            "role": role.name if role else "unknown",
+            "is_active": user.is_active,
+        }
+
+
 @router.get("/auth/users", response_model=list[CreateUserResponse])
 def get_users(_auth=Depends(require_admin)) -> list[CreateUserResponse]:
     with SessionLocal() as session:

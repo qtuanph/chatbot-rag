@@ -138,6 +138,23 @@ services:
     networks:
       - internal
 
+  webapp:
+    build:
+      context: ./webapp
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-to-a-random-string-at-least-32-chars}
+      - NEXT_PUBLIC_API_URL=http://api:8000/api/v1
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - internal
+
 volumes:
   pgdata:
   redisdata:

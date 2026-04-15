@@ -93,7 +93,10 @@
       "Bash(timeout 30 tail -f \"C:\\\\Users\\\\qtuan\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--Dev-MyProject-chatbot-rag\\\\775d8832-ec9c-4d76-ac5b-412808f0de4a\\\\tasks\\\\b9mhr1bwp.output\")",
       "Bash(docker info:*)",
       "mcp__next-devtools__nextjs_index",
-      "mcp__shadcn__getComponents"
+      "mcp__shadcn__getComponents",
+      "Bash(npx shadcn@latest init -d)",
+      "Bash(npx shadcn@latest add card input label badge dialog dropdown-menu avatar separator sheet tabs table progress textarea scroll-area sonner skeleton tooltip sidebar select -y)",
+      "Bash(npx next:*)"
     ]
   }
 }
