@@ -22,7 +22,7 @@ def login(payload: LoginRequest, request: Request) -> TokenResponse:
     client_ip = request.client.host if request.client else "unknown"
     normalized_username = payload.username.lower().strip()
     throttle_key = f"throttle:login:{client_ip}:{normalized_username}"
-    if not throttle.allow(throttle_key, limit=10, window_seconds=300):
+    if not throttle.allow(throttle_key, limit=5, window_seconds=900):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many login attempts")
 
     with SessionLocal() as session:
@@ -114,3 +114,36 @@ def get_users(_auth=Depends(require_admin)) -> list[CreateUserResponse]:
             CreateUserResponse(id=str(u.id), username=u.username, role=r.name)
             for u, r in results
         ]
+
+
+@router.delete("/auth/users/{username}")
+def delete_user(username: str, _auth=Depends(require_admin)) -> dict[str, str]:
+    """Delete a user by username."""
+    with SessionLocal() as session:
+        # Normalize username for lookup
+        normalized_username = username.lower().strip()
+
+        # Find user
+        user = session.query(User).filter(User.username == normalized_username).one_or_none()
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        # Prevent deleting yourself
+        if str(user.id) == _auth.user_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete your own account")
+
+        # Delete user
+        session.delete(user)
+        session.commit()
+
+        safe_record_audit(
+            action="auth.user.delete",
+            actor_user_id=_auth.user_id,
+            subject_type="user",
+            subject_id=str(user.id),
+            ip_address=None,
+            user_agent=None,
+            details={"username": user.username},
+        )
+
+        return {"status": "deleted", "username": user.username}

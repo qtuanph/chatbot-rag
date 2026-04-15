@@ -8,7 +8,7 @@ from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.models.core import Document
+from app.models.core import Document, DocumentSection
 from app.services.registry import DocumentRegistry
 from app.services.storage import build_storage
 
@@ -83,6 +83,20 @@ def hard_delete_document(document_id: str) -> dict[str, bool]:
                 document_id, exc_info=True,
             )
 
+    # ── Step 3.5: Delete sections from PostgreSQL ──────────────────────────────
+    sections_deleted = False
+    try:
+        with SessionLocal() as session:
+            count = session.query(DocumentSection).filter(
+                DocumentSection.document_id == document_id
+            ).delete()
+            session.commit()
+            sections_deleted = True
+            if count > 0:
+                logger.info("Deleted %d sections for document %s", count, document_id)
+    except Exception:
+        logger.warning("Failed to delete sections for document %s", document_id, exc_info=True)
+
     # ── Step 4: Delete DB row ────────────────────────────────────────────────
     with SessionLocal() as session:
         document = session.get(Document, document_id)
@@ -106,6 +120,7 @@ def hard_delete_document(document_id: str) -> dict[str, bool]:
 
     return {
         "db_deleted": db_deleted,
+        "sections_deleted": sections_deleted,
         "storage_deleted": storage_deleted,
         "vectors_deleted": vectors_deleted,
         "registry_deleted": registry_deleted,

@@ -11,9 +11,9 @@ Status: authoritative architecture baseline — updated to reflect production im
 | OCR | EasyOCR (vi + en) — mandatory, deep-learning, GPU auto-detected |
 | Embedding | **BAAI/bge-m3 LOCAL** via sentence-transformers (1024-dim, fully offline) |
 | Vector Store | Qdrant for vectors and retrieval payload |
-| Metadata Store | PostgreSQL for users, documents, sessions, audit, connector metadata |
+| Metadata Store | PostgreSQL for users, documents, **sections**, sessions, audit, connector metadata |
 | Queue/Cache | Redis for Celery broker/result, query embedding cache, rate limiting |
-| Retrieval | Hierarchical RAG by default; preserve section-parent context |
+| Retrieval | **2-stage retrieval**: Sections (PostgreSQL) → Chunks (Qdrant with section_id) |
 | Query routing | Document RAG default; SQL route only when explicitly required and approved |
 | AI Provider | Google Gemini (demo); vLLM on-premise (production target) |
 
@@ -32,10 +32,11 @@ graph TD
     Redis --> Worker[Celery Worker]
 
     Worker --> Parser[Docling Parser + EasyOCR]
-    Parser --> NodeParser[LlamaIndex MarkdownNodeParser]
-    NodeParser --> Validator[Hierarchy Validator]
+    Parser --> SectionExtractor[Section + Chunk Extraction]
+    SectionExtractor --> Validator[Hierarchy Validator]
+    Validator --> SectionStore[SectionRepository → PostgreSQL]
     Validator --> Embedder[BAAI/bge-m3 Local — Parallel Batches]
-    Embedder --> Qdrant[(Qdrant)]
+    Embedder --> Qdrant[(Qdrant — chunks with section_id)]
     Validator --> PG[(PostgreSQL system DB)]
 
     Upload --> RustFS[(RustFS)]
@@ -43,7 +44,7 @@ graph TD
 
     Chat --> Throttle[Atomic Rate Limiter — Lua+Redis]
     Chat --> QueryCache[Query Embedding Cache — Redis]
-    Chat --> Retriever[Hierarchical Retriever + Score Filter]
+    Chat --> Retriever[2-Stage Retriever: Sections → Chunks]
     Retriever --> PG
     Retriever --> Qdrant
     Retriever -. planned -.-> SQLConnector[SQL Connector — Phase 2]
@@ -58,12 +59,13 @@ graph TD
 |-------|------|--------|
 | 1. Upload | Client → API → RustFS | File persisted, document row pending |
 | 2. Queue | API → Redis → Worker | Async task created, task_id returned |
-| 3. Parse | Worker → Docling + EasyOCR → LlamaIndex | Hierarchical nodes |
+| 3. Parse | Worker → Docling + EasyOCR → Section extraction → Chunk splitting | Sections + chunks |
 | 4. Validate | Worker → Hierarchy Validator | Parent-child consistency report |
-| 5. Embed | Worker → BAAI/bge-m3 (parallel batches of 32) | Dense vectors per node |
-| 6. Persist | Worker → PostgreSQL + Qdrant | Metadata in PG; vectors in Qdrant |
-| 7. Retrieve | Chat → QueryCache → Embedder → Qdrant → Score Filter | Top-k nodes, score ≥ 0.35 |
-| 8. Generate | Chat → AI Provider → JSON response | Grounded answer with citations |
+| 5. Store Sections | Worker → SectionRepository → PostgreSQL | document_sections rows |
+| 6. Embed | Worker → BAAI/bge-m3 (parallel batches of 32) | Dense vectors per chunk |
+| 7. Persist | Worker → Qdrant | Chunks with section_id metadata |
+| 8. Retrieve | Chat → QueryCache → Embedder → Stage 1 (sections) → Stage 2 (chunks) | Top sections + chunks |
+| 9. Generate | Chat → AI Provider → JSON response | Grounded answer with citations |
 
 ## Non-Negotiable Invariants
 

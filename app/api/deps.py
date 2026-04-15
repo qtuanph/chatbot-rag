@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from jose import JWTError, jwt
 
 from app.core.config import settings
@@ -16,7 +16,18 @@ class AuthContext:
     token_id: str
 
 
-def get_auth_context(authorization: str | None = Header(default=None)) -> AuthContext:
+def get_auth_context(
+    authorization: str | None = Header(default=None),
+    request_method: str | None = Header(default=None)
+) -> AuthContext | None:
+    """
+    Get authentication context from JWT token.
+    Returns None for OPTIONS requests to support CORS preflight.
+    """
+    # Skip auth for OPTIONS preflight requests (CORS)
+    if request_method == "OPTIONS":
+        return None
+
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
 
@@ -43,7 +54,18 @@ def get_auth_context(authorization: str | None = Header(default=None)) -> AuthCo
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from None
 
 
-def require_admin(auth: AuthContext = Depends(get_auth_context)) -> AuthContext:
+def require_admin(request: Request, auth: AuthContext | None = Depends(get_auth_context)) -> AuthContext:
+    """
+    Require admin role.
+    Allows OPTIONS requests to pass through for CORS preflight.
+    """
+    # Skip admin check for OPTIONS preflight requests (CORS)
+    if request.method == "OPTIONS":
+        return None  # type: ignore
+
+    if auth is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+
     if auth.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
     return auth

@@ -27,9 +27,6 @@ transformers>=4.45.0
 accelerate>=0.34.0
 # autoawq>=0.2.6
 # gptqmodel
-streamlit
-streamlit-agraph
-graphviz
 
 # Testing dependencies
 pytest==7.4.4

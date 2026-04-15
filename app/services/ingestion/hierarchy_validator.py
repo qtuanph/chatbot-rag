@@ -8,7 +8,6 @@ from typing import List, Dict, Optional, Set, Tuple
 from dataclasses import dataclass
 
 from app.adapters.base import IngestedNode
-from app.core.exceptions import HierarchyValidationException
 
 logger = logging.getLogger(__name__)
 
@@ -167,21 +166,3 @@ class HierarchyValidator:
         
         depths = [get_depth(nid) for nid in parent_map]
         return max(depths) if depths else 0
-
-    @staticmethod
-    def build_tree(nodes: List[IngestedNode]) -> Dict[Optional[str], List[IngestedNode]]:
-        """
-        Build tree structure: parent_id → List[children].
-        
-        Returns:
-            Dict mapping parent_id to child nodes
-        """
-        tree: Dict[Optional[str], List[IngestedNode]] = {}
-        
-        for node in nodes:
-            parent_id = node.parent_id
-            if parent_id not in tree:
-                tree[parent_id] = []
-            tree[parent_id].append(node)
-        
-        return tree

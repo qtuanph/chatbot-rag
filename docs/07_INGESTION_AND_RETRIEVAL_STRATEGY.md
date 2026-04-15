@@ -1,6 +1,6 @@
 # 07 — Ingestion and Retrieval Strategy
 
-Status: authoritative strategy — updated to reflect EasyOCR, BAAI/bge-m3 local embedding, query cache, and score filtering.
+Status: authoritative strategy — updated to reflect 2-stage retrieval, section extraction, and chunk splitting.
 
 ## Primary Principle
 
@@ -16,13 +16,15 @@ Use Qdrant for retrieval data path. Keep PostgreSQL as system metadata/state dat
 2. API enqueues `parse_document_task` to Redis queue `ingestion`.
 3. Worker downloads file bytes from RustFS.
 4. **Docling** converts file to Markdown. For scanned/image PDFs and image files: **EasyOCR** (`lang=["vi","en"]`) performs OCR — mandatory, not optional.
-5. **LlamaIndex MarkdownNodeParser** builds hierarchical nodes (section → subsection → paragraph).
-6. **HierarchyValidator** checks parent-child consistency.
-7. Sequential chunks of **32 nodes** are embedded using `embed_batch()` which delegates to the local **BAAI/bge-m3** model:
-   - GPU-native batching via sentence-transformers (no ThreadPoolExecutor needed — GPU handles parallelism internally)
-   - `vector_store.store()` upserts the chunk to Qdrant
+5. **Section extraction**: Markdown → split by headings (H1-H6) → sections (Level 1). Each section: title, content, level, breadcrumb.
+6. **Chunk splitting**: Each section → chunks of ~400 tokens with ~75 token overlap. Each chunk linked to section via `section_id` in metadata.
+7. **HierarchyValidator** checks parent-child consistency.
+8. **SectionRepository** stores sections in PostgreSQL `document_sections` table.
+9. Sequential chunks of **32 nodes** are embedded using `embed_batch()` which delegates to the local **BAAI/bge-m3** model:
+   - GPU-native batching via sentence-transformers
+   - `vector_store.store()` upserts chunks to Qdrant with `section_id` in payload
    - `progress_callback` updates `documents.progress_percent` in DB
-8. Worker persists ingestion artifact to `extra_metadata`. Sets `status=ready`.
+10. Worker persists ingestion artifact to `extra_metadata`. Sets `status=ready`.
 
 ### OCR Backend
 
@@ -57,15 +59,21 @@ BAAI/bge-m3 is pre-downloaded during Docker build (`RUN python -c "from sentence
 
 ## Retrieval Pipeline (Authoritative)
 
-### Steps
+### Steps — 2-Stage Retrieval
 
 1. **Rate limit check**: Atomic Lua script in Redis — 30 req/min per user.
 2. **Query embedding cache**: MD5-keyed lookup in Redis. Cache HIT → skip local model inference (TTL=1h).
-3. **Query embedding**: If cache MISS, call `embedding.embed(query, task_type=RETRIEVAL_QUERY)`, cache the result.
+3. **Query embedding**: If cache MISS, call local `BAAI/bge-m3`, cache the result.
 4. **Document scope filter**: SQL query to get latest active document IDs (no `deleted_at`, `status=ready`, max version per filename).
-5. **Qdrant search**: `top_k = max(limit * 2, 10)` — retrieve extra candidates for score filtering.
-6. **Score filter**: Drop nodes with `cosine_similarity < settings.retrieval_min_score` (default: **0.35**).
-7. **Return top-5** after filter with full text payload and citation metadata.
+5. **Stage 1 — Section search**: Qdrant search (top_k=50) → group results by `section_id` → pick top 3 sections (score ≥ 0.30). Load section details from PostgreSQL `document_sections` table.
+6. **Stage 2 — Chunk search**: Qdrant search within top sections → prioritize chunks with matching `section_id` → score filter (≥ 0.35).
+7. **Return** top sections + chunks with full text payload and citation metadata.
+
+### Why 2-Stage Retrieval
+
+- **Coarse → Fine**: Section search quickly narrows scope, then chunk search finds precise answers within those sections.
+- **Context preservation**: Each chunk carries its section context (title, breadcrumb), giving the LLM better understanding of where information comes from.
+- **Scalability**: For large documents (300+ pages), filtering by section first dramatically reduces the search space for Stage 2.
 
 ### Query Cache
 
@@ -99,8 +107,8 @@ Cache is particularly effective during demos and employee training sessions wher
 
 | Store | What belongs there |
 |-------|---------------------|
-| Qdrant | node text payload, vectors, retrieval metadata |
-| PostgreSQL | document status, file metadata, versions, audit, sessions |
+| Qdrant | chunk text payload, vectors, retrieval metadata (including `section_id`) |
+| PostgreSQL | document status, file metadata, versions, **sections**, audit, sessions |
 | RustFS | original file bytes |
 | Redis | Celery tasks, query embedding cache, rate limit counters |
 
@@ -123,11 +131,13 @@ Cache is particularly effective during demos and employee training sessions wher
 | Responsibility | Module |
 |----------------|--------|
 | OCR backend selection | `app/adapters/parsers/docling.py:_select_ocr_backend()` |
+| Section extraction + chunk splitting | `app/adapters/parsers/docling.py:_extract_sections_from_markdown()` |
 | Parser selection and fallback | `app/services/ingestion/parser_manager.py` |
-| Ingestion orchestration + chunked embed | `app/services/ingestion/pipeline.py` |
+| Ingestion orchestration + section storage | `app/services/ingestion/pipeline.py` |
 | Hierarchy checks | `app/services/ingestion/hierarchy_validator.py` |
+| Section storage (PostgreSQL) | `app/services/storage/document_store.py:SectionRepository` |
 | Parallel embedding | `app/adapters/embeddings/sentence_transformer.py:embed_batch()` |
 | Vector store adapter | `app/adapters/vector_stores/qdrant.py` |
-| Retrieval + score filter | `app/services/rag.py:retrieve_context()` |
+| 2-stage retrieval + score filter | `app/services/rag.py:retrieve_context()` |
 | Query embedding cache | `app/services/query_cache.py` |
 | Hardware auto-detection | `app/core/hardware.py` |

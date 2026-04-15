@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import logging
-import re
 from functools import lru_cache
 from dataclasses import dataclass
-from typing import Iterable
+from uuid import UUID
 
-from sqlalchemy import and_, func, or_, true
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
-from app.models.core import Document
+from app.models.core import Document, DocumentSection
 from app.core.config import settings
 from app.adapters.base import BaseEmbedding
 from app.adapters.embeddings import build_embedding_service
@@ -17,6 +16,23 @@ from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.services.query_cache import QueryEmbeddingCache
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_uuid(uuid_str: str) -> bool:
+    """Validate UUID string format."""
+    try:
+        UUID(uuid_str)
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+def _validate_uuid_list(uuid_list: list[str] | set[str]) -> list[str]:
+    """
+    Filter and validate UUID strings from a list.
+    Returns only valid UUIDs.
+    """
+    return [uid for uid in uuid_list if _validate_uuid(uid)]
 
 
 @dataclass(frozen=True)
@@ -29,17 +45,26 @@ class RagNode:
     summary: str | None
     full_text: str
     page_range: str | None
+    section_id: str | None = None
+
+
+@dataclass(frozen=True)
+class RagSection:
+    section_id: str
+    document_id: str
+    title: str
+    content: str
+    level: int
+    image_count: int
+    table_count: int
+    breadcrumb: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class RagContext:
     nodes: list[RagNode]
+    sections: list[RagSection] | None = None
 
-
-def _tokenize(query: str) -> list[str]:
-    tokens = [token.lower() for token in re.findall(r"[A-Za-zÀ-ỹ0-9_]+", query)]
-    stopwords = {"the", "and", "or", "la", "va", "cua", "cho", "voi", "theo", "to", "of", "a", "an", "is", "are"}
-    return [token for token in tokens if len(token) > 1 and token not in stopwords][:12]
 
 
 @lru_cache(maxsize=1)
@@ -67,8 +92,37 @@ def _get_query_cache() -> QueryEmbeddingCache:
 
 
 def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContext:
+    """
+    2-stage retrieval: Sections (coarse) → Chunks (fine) within matched sections.
+
+    Stage 1: Embed query → search Qdrant → group by section_id → pick top sections
+    Stage 2: Re-search within top sections for fine-grained chunks
+    Falls back to flat retrieval if no section data available.
+    """
+    """
+    Retrieve relevant document context for a query.
+
+    Performance optimizations:
+    - Single DB query for document titles (avoid N+1)
+    - Query embedding cache for repeated questions
+    - Efficient score filtering
+    - Early exit if no documents available
+    """
+    # Early exit if query is too short or empty
+    if not query or len(query.strip()) < 3:
+        logger.debug("Query too short, returning empty context")
+        return RagContext(nodes=[])
+
     latest_doc_ids = _latest_document_ids(session)
     if not latest_doc_ids:
+        logger.debug("No active documents found")
+        return RagContext(nodes=[])
+
+    # Single query to fetch all document titles (avoid N+1 problem)
+    # Validate all UUIDs before using in SQL query to prevent SQL injection
+    valid_doc_ids = _validate_uuid_list(list(latest_doc_ids))
+    if not valid_doc_ids:
+        logger.debug("No valid document IDs after validation")
         return RagContext(nodes=[])
 
     document_rows = (
@@ -76,19 +130,21 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
         .filter(
             Document.deleted_at.is_(None),
             Document.status == "ready",
-            Document.id.in_(latest_doc_ids),
+            Document.id.in_(valid_doc_ids),
         )
         .all()
     )
     title_by_id = {str(doc_id): title for doc_id, title in document_rows}
+
+    if not title_by_id:
+        logger.debug("No document titles found")
+        return RagContext(nodes=[])
 
     # Query embedding — check cache first to avoid re-computing on repeated questions
     cache = _get_query_cache()
     query_vector = cache.get(query)
     if query_vector is None:
         svc = _get_embedding_service()
-        # Use embed_query() to apply query_prefix (for E5-style models).
-        # Falls back to embed() for adapters that don't override it.
         embed_fn = getattr(svc, "embed_query", None) or svc.embed
         query_vector = embed_fn(query)
         cache.set(query, query_vector)
@@ -96,27 +152,99 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
     else:
         logger.debug("Query cache HIT — skipped embedding")
 
+    vs = _get_vector_store()
 
-    retrieved = _get_vector_store().retrieve(
+    # ── Stage 1: Coarse section retrieval ────────────────────────────────
+    # Search with larger top_k to find relevant sections
+    section_top_k = settings.retrieval_section_top_k
+    section_min_score = settings.retrieval_section_min_score
+
+    coarse_results = vs.retrieve(
         query_vector=query_vector,
-        top_k=50,   # Lấy nhiều context hơn để tổng hợp từ nhiều nguồn
+        top_k=50,
         document_ids_filter=list(title_by_id.keys()),
     )
 
-    # Drop low-relevance chunks — prevents LLM from being confused by noise
+    # Group by section_id to find top sections
+    section_scores: dict[str, float] = {}
+    section_doc_map: dict[str, str] = {}
+    for item in coarse_results:
+        if item.score < section_min_score:
+            continue
+        sec_id = item.metadata.get("custom", {}).get("section_id")
+        if sec_id:
+            if sec_id not in section_scores or item.score > section_scores[sec_id]:
+                section_scores[sec_id] = item.score
+                section_doc_map[sec_id] = item.document_id
+
+    # Pick top N sections
+    top_sections_ids = sorted(section_scores, key=section_scores.get, reverse=True)[:section_top_k]
+
+    # Load section details from PostgreSQL
+    rag_sections: list[RagSection] = []
+    if top_sections_ids:
+        section_rows = (
+            session.query(DocumentSection)
+            .filter(
+                DocumentSection.document_id.in_(valid_doc_ids),
+                DocumentSection.section_id.in_(top_sections_ids),
+            )
+            .all()
+        )
+        for row in section_rows:
+            rag_sections.append(
+                RagSection(
+                    section_id=row.section_id,
+                    document_id=str(row.document_id),
+                    title=row.title,
+                    content=row.content or "",
+                    level=row.level,
+                    image_count=row.image_count,
+                    table_count=row.table_count,
+                    breadcrumb=tuple(row.breadcrumb or []),
+                )
+            )
+
+    # ── Stage 2: Fine-grained chunk retrieval within sections ────────────
+    # If we have sections, do a targeted search within them
+    if top_sections_ids:
+        chunk_results = vs.retrieve(
+            query_vector=query_vector,
+            top_k=settings.retrieval_chunk_top_k * section_top_k,
+            document_ids_filter=list(title_by_id.keys()),
+        )
+    else:
+        # No sections found — fall back to flat retrieval
+        chunk_results = coarse_results
+
+    # Drop low-relevance chunks
     min_score = settings.retrieval_min_score
-    filtered = [item for item in retrieved if item.score >= min_score]
-    if len(filtered) < len(retrieved):
+    filtered = [item for item in chunk_results if item.score >= min_score]
+    if len(filtered) < len(chunk_results):
         logger.debug(
             "Score filter: kept %d/%d chunks (threshold=%.2f)",
-            len(filtered), len(retrieved), min_score,
+            len(filtered), len(chunk_results), min_score,
         )
+
+    # If we have sections, prefer chunks within those sections
+    if top_sections_ids and filtered:
+        in_section = []
+        out_section = []
+        for item in filtered:
+            sec_id = item.metadata.get("custom", {}).get("section_id")
+            if sec_id in top_sections_ids:
+                in_section.append(item)
+            else:
+                out_section.append(item)
+        # Prioritize in-section chunks, then fill with out-of-section
+        filtered = in_section + out_section
 
     nodes: list[RagNode] = []
     for item in filtered[:limit]:
         heading = item.metadata.get("section_title") or item.metadata.get("heading") or item.metadata.get("node_type") or "Nội dung"
         page_number = item.metadata.get("page_number")
         page_range = str(page_number) if page_number else None
+        sec_id = item.metadata.get("custom", {}).get("section_id")
         nodes.append(
             RagNode(
                 node_id=item.node_id,
@@ -127,10 +255,15 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
                 summary=(item.text[:280] if item.text else None),
                 full_text=item.text,
                 page_range=page_range,
+                section_id=sec_id,
             )
         )
 
-    return RagContext(nodes=nodes)
+    logger.debug(
+        "Retrieved %d nodes from %d sections for query (limit=%d)",
+        len(nodes), len(top_sections_ids), limit,
+    )
+    return RagContext(nodes=nodes, sections=rag_sections if rag_sections else None)
 
 
 def _latest_document_ids(session: Session) -> set[str]:

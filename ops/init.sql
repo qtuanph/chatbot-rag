@@ -206,6 +206,32 @@ CREATE INDEX IF NOT EXISTS idx_data_source_query_audit_source_time ON data_sourc
 CREATE INDEX IF NOT EXISTS idx_security_audit_actor ON security_audit(actor_user_id);
 CREATE INDEX IF NOT EXISTS idx_security_audit_created ON security_audit(created_at DESC);
 
+-- Document Sections: Level 1 hierarchical storage for 2-stage retrieval (RAG v2)
+CREATE TABLE IF NOT EXISTS document_sections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    section_id VARCHAR(255) NOT NULL,
+    parent_section_id VARCHAR(255),
+    title VARCHAR(1000) NOT NULL,
+    content TEXT,
+    section_type VARCHAR(50) DEFAULT 'section',
+    level INTEGER DEFAULT 1,
+    order_index INTEGER DEFAULT 0,
+    page_range VARCHAR(100),
+    image_count INTEGER DEFAULT 0,
+    table_count INTEGER DEFAULT 0,
+    chunk_count INTEGER DEFAULT 0,
+    breadcrumb JSONB DEFAULT '[]'::jsonb,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT uq_document_section UNIQUE (document_id, section_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sections_document_id ON document_sections(document_id);
+CREATE INDEX IF NOT EXISTS idx_sections_parent ON document_sections(parent_section_id);
+CREATE INDEX IF NOT EXISTS idx_sections_level ON document_sections(level);
+CREATE INDEX IF NOT EXISTS idx_sections_order ON document_sections(document_id, order_index);
+
 -- ============= TRIGGERS =============
 CREATE TRIGGER touch_roles_updated_at BEFORE UPDATE ON roles FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
@@ -215,6 +241,7 @@ CREATE TRIGGER touch_chat_messages_updated_at BEFORE UPDATE ON chat_messages FOR
 CREATE TRIGGER touch_data_sources_updated_at BEFORE UPDATE ON data_sources FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_data_source_schema_cache_updated_at BEFORE UPDATE ON data_source_schema_cache FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_data_source_query_audit_updated_at BEFORE UPDATE ON data_source_query_audit FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_document_sections_updated_at BEFORE UPDATE ON document_sections FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 -- ============= PERMISSIONS =============
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE roles TO app_rw;
@@ -226,6 +253,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_sources TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_source_schema_cache TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_source_query_audit TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE security_audit TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_sections TO app_rw;
 
 -- ============= SEED DATA =============
 -- Insert default roles (if not already present)

@@ -1,14 +1,14 @@
 from datetime import UTC, datetime
 import html
 from typing import Any
-import json
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 import httpx
 
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.core import Document
+from app.api.deps import get_auth_context, AuthContext
 from app.services.health import build_health_payload
 from app.services.storage import build_storage
 
@@ -202,19 +202,21 @@ def _build_snapshot(selected_document_id: str | None = None) -> dict[str, Any]:
 
 @router.get("/health")
 async def healthcheck(request: Request):
-    selected_document_id = request.query_params.get("document_id")
-    return _build_snapshot(selected_document_id=selected_document_id)
+    """Public health endpoint for load balancers and monitoring - no authentication required."""
+    payload = build_health_payload()
+    return {"status": payload.get("status", "unknown")}
 
 
 @router.get("/health/data")
-async def health_data(request: Request):
+async def health_data(request: Request, _auth: AuthContext = Depends(get_auth_context)):
+    """Detailed health data - authentication required."""
     selected_document_id = request.query_params.get("document_id")
     return _build_snapshot(selected_document_id=selected_document_id)
 
 
 @router.get("/health/nodes")
-async def health_nodes(request: Request):
-    """JSON-only: list Qdrant nodes for a document. HTML rendering moved to /view/nodes."""
+async def health_nodes(request: Request, _auth: AuthContext = Depends(get_auth_context)):
+    """JSON-only: list Qdrant nodes for a document. Authentication required. HTML rendering moved to /view/nodes."""
     document_id = request.query_params.get("document_id") or ""
     points = _fetch_qdrant_nodes(document_id=document_id, limit=300)
     return {
@@ -225,8 +227,8 @@ async def health_nodes(request: Request):
 
 
 @router.get("/health/node")
-async def health_node(request: Request):
-    """JSON-only: get a single Qdrant node. HTML rendering moved to /view/node."""
+async def health_node(request: Request, _auth: AuthContext = Depends(get_auth_context)):
+    """JSON-only: get a single Qdrant node. Authentication required. HTML rendering moved to /view/node."""
     document_id = request.query_params.get("document_id") or ""
     node_id = request.query_params.get("node_id") or ""
     point = _fetch_qdrant_node(document_id=document_id, node_id=node_id)

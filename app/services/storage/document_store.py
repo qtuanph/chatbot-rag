@@ -1,14 +1,14 @@
 """
-Document Store Repository: PostgreSQL wrapper for document metadata and status.
+Document Store Repository: PostgreSQL wrapper for document metadata, status, and sections.
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import DocumentStoreException
-from app.models.core import Document
+from app.models.core import Document, DocumentSection
 
 logger = logging.getLogger(__name__)
 
@@ -156,3 +156,107 @@ class DocumentRepository:
                 f"Failed to update status for {document_id}: {str(e)}",
                 error_code="DOCUMENT_STORE_UPDATE_FAILED",
             )
+
+
+class SectionRepository:
+    """Repository for document sections in PostgreSQL (RAG v2)."""
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def store_sections(self, document_id: str, sections: List[dict]) -> List[str]:
+        """Bulk insert sections for a document. Returns list of section DB IDs."""
+        try:
+            self.session.query(DocumentSection).filter(
+                DocumentSection.document_id == document_id
+            ).delete()
+
+            ids = []
+            for sec in sections:
+                db_section = DocumentSection(
+                    document_id=document_id,
+                    section_id=sec["section_id"],
+                    parent_section_id=sec.get("parent_section_id"),
+                    title=sec["title"],
+                    content=sec.get("content"),
+                    section_type=sec.get("section_type", "section"),
+                    level=sec.get("level", 1),
+                    order_index=sec.get("order_index", 0),
+                    page_range=sec.get("page_range"),
+                    image_count=sec.get("image_count", 0),
+                    table_count=sec.get("table_count", 0),
+                    chunk_count=sec.get("chunk_count", 0),
+                    breadcrumb=sec.get("breadcrumb", []),
+                    extra_metadata=sec.get("metadata", {}),
+                )
+                self.session.add(db_section)
+                self.session.flush()
+                ids.append(str(db_section.id))
+
+            self.session.commit()
+            logger.info("Stored %d sections for document %s", len(ids), document_id)
+            return ids
+        except Exception as e:
+            self.session.rollback()
+            raise DocumentStoreException(
+                f"Failed to store sections for {document_id}: {str(e)}",
+                error_code="SECTION_STORE_FAILED",
+            )
+
+    def get_sections_by_document(self, document_id: str) -> List[dict]:
+        """Get all sections for a document, ordered by order_index."""
+        rows = (
+            self.session.query(DocumentSection)
+            .filter(DocumentSection.document_id == document_id)
+            .order_by(DocumentSection.order_index)
+            .all()
+        )
+        return [self._section_to_dict(s) for s in rows]
+
+    def get_sections_by_ids(self, document_id: str, section_ids: List[str]) -> List[dict]:
+        """Get specific sections by section_id within a document."""
+        rows = (
+            self.session.query(DocumentSection)
+            .filter(
+                DocumentSection.document_id == document_id,
+                DocumentSection.section_id.in_(section_ids),
+            )
+            .order_by(DocumentSection.order_index)
+            .all()
+        )
+        return [self._section_to_dict(s) for s in rows]
+
+    def delete_sections(self, document_id: str) -> int:
+        """Delete all sections for a document."""
+        try:
+            count = self.session.query(DocumentSection).filter(
+                DocumentSection.document_id == document_id
+            ).delete()
+            self.session.commit()
+            logger.info("Deleted %d sections for document %s", count, document_id)
+            return count
+        except Exception as e:
+            self.session.rollback()
+            raise DocumentStoreException(
+                f"Failed to delete sections for {document_id}: {str(e)}",
+                error_code="SECTION_DELETE_FAILED",
+            )
+
+    def _section_to_dict(self, section: DocumentSection) -> dict:
+        return {
+            "id": str(section.id),
+            "document_id": str(section.document_id),
+            "section_id": section.section_id,
+            "parent_section_id": section.parent_section_id,
+            "title": section.title,
+            "content": section.content,
+            "section_type": section.section_type,
+            "level": section.level,
+            "order_index": section.order_index,
+            "page_range": section.page_range,
+            "image_count": section.image_count,
+            "table_count": section.table_count,
+            "chunk_count": section.chunk_count,
+            "breadcrumb": section.breadcrumb or [],
+            "metadata": section.extra_metadata or {},
+        }

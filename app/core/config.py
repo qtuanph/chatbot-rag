@@ -29,13 +29,20 @@ class Settings(BaseSettings):
     # Retrieval quality
     retrieval_min_score: float = 0.35          # Drop chunks below this cosine similarity
 
+    # 2-stage retrieval settings
+    retrieval_section_top_k: int = 3           # Stage 1: top sections to retrieve
+    retrieval_chunk_top_k: int = 5             # Stage 2: top chunks per section
+    retrieval_chunk_size: int = 400            # Target chunk size in tokens
+    retrieval_chunk_overlap: int = 75          # Overlap between chunks in tokens
+    retrieval_section_min_score: float = 0.30  # Lower threshold for sections (coarser search)
+
     database_url: str = "replace-me"
     redis_url: str = "redis://redis:6379/0"
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/1"
     jwt_secret: str = "replace-me"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 720
+    jwt_expire_minutes: int = 60
 
     max_upload_size_mb: int = 50
 
@@ -46,7 +53,7 @@ class Settings(BaseSettings):
     s3_bucket: str = "rag-documents"
     s3_secure: bool = False
     allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0"
-    cors_origins: str = "http://localhost:8000,http://localhost:8501,http://localhost:9001,http://localhost:3000"
+    cors_origins: str = "http://localhost:8000,http://localhost:9001"
 
     # Embedding — local/offline, on-premise
     embedding_model: str = "sentence-transformer"
@@ -62,8 +69,25 @@ class Settings(BaseSettings):
     qdrant_timeout: int = 30  # Seconds
 
     def model_post_init(self, __context) -> None:
+        # Security: Validate JWT secret meets minimum requirements
         if not self.jwt_secret or self.jwt_secret == "replace-me":
             raise ValueError("JWT_SECRET must be configured")
+        if len(self.jwt_secret) < 32:
+            raise ValueError("JWT_SECRET must be at least 32 characters for security")
+        # Check for sufficient entropy (at least 3 character types)
+        char_types = 0
+        if any(c.islower() for c in self.jwt_secret):
+            char_types += 1
+        if any(c.isupper() for c in self.jwt_secret):
+            char_types += 1
+        if any(c.isdigit() for c in self.jwt_secret):
+            char_types += 1
+        if any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in self.jwt_secret):
+            char_types += 1
+        if char_types < 3:
+            raise ValueError("JWT_SECRET must contain at least 3 of: lowercase, uppercase, digits, special characters")
+
+        # Security: Validate other secrets
         if not self.s3_secret_key or self.s3_secret_key == "replace-me":
             raise ValueError("S3_SECRET_KEY must be configured")
         if not self.database_url or self.database_url == "replace-me":
@@ -80,7 +104,6 @@ class Settings(BaseSettings):
             raise ValueError("INGESTION_MIN_TOTAL_TEXT_CHARS must be >= 1")
         
         # Embedding validation
-        self.embedding_model = "sentence-transformer"
         self.vector_store = str(self.vector_store).strip().lower() or "qdrant"
         if self.vector_store not in {"qdrant", "chroma", "weaviate"}:
             raise ValueError("VECTOR_STORE must be qdrant/chroma/weaviate")

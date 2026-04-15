@@ -29,25 +29,16 @@
 - **RustFS** - S3-compatible object storage
 - **HuggingFace Transformers** - Model management
 
-### Frontend
-- **Nuxt.js 4.4** - Modern web framework with Vue 3
-- **Nuxt UI 4.6** - UI component library
-- **TypeScript** - Full type safety
-- **Admin Dashboard** - Document management, user management, health monitoring
-- **Chat Interface** - Real-time RAG chat with citations
-- **Tree Viewer** - Interactive hierarchical document explorer
-
 ## System Architecture
 
 > Visual diagram: [`docs/architecture.drawio`](docs/architecture.drawio) — open with [draw.io](https://app.diagrams.net)
 
 ```mermaid
 flowchart TD
-    U(["👤 User"]) --> WEB["🌐 Nuxt.js 4 Frontend"]
-    WEB --> |JWT Auth| API["🌐 FastAPI Backend"]
+    U(["👤 User"]) --> API["🌐 FastAPI Backend"]
 
     API --> |upload| UP["POST /upload"]
-    API --> |chat| CH["POST /chat  SSE"]
+    API --> |chat| CH["POST /chat"]
     API --> |delete| DE["DELETE /documents/{id}"]
 
     subgraph Ingestion ["📤 Upload & Ingestion"]
@@ -57,18 +48,18 @@ flowchart TD
         QI --> W1["⚙️ parse_document_task
         ─────────────────────
         ① Download  ② Parse Docling+OCR
-        ③ Embed BAAI/bge-m3 fp16
-        ④ Verify  ⑤ Persist  ⑥ Unload VRAM"]
+        ③ Extract Sections  ④ Embed BAAI/bge-m3
+        ⑤ Verify  ⑥ Persist  ⑦ Unload VRAM"]
         W1 --> |upsert 1024-dim| QD[("🔷 Qdrant")]
         W1 --> |status=ready| PG
     end
 
-    subgraph ChatFlow ["💬 Chat & Retrieval"]
+    subgraph ChatFlow ["💬 Chat & Retrieval (2-Stage)"]
         CH --> |rate limit + cache| RE["⬛ Redis · Cache · Registry"]
         RE --> |cache miss → embed| BGE["🤖 BAAI/bge-m3
         1024-dim · offline · GPU fp16"]
-        BGE --> |search score ≥ 0.35| QD
-        QD --> |top-k chunks + citations| CH
+        BGE --> |Stage 1: sections ≥ 0.30| QD
+        QD --> |Stage 2: chunks ≥ 0.35| CH
         CH --> |AI_PROVIDER=google| LLM1["Google AI gemma-4-26b-a4b-it"]
         CH --> |AI_PROVIDER=vllm| LLM2["vLLM Qwen2.5 (on-prem)"]
         CH --> |save history| PG
@@ -78,9 +69,9 @@ flowchart TD
         DE --> |enqueue| QD2["⬛ Redis Queue · cleanup"]
         QD2 --> W2["⚙️ delete_document_task
         ─────────────────────
-        ① Registry mark  ② Del Vectors
-        ③ Del File  ④ Del DB row
-        ⑤ Registry purge  ⑥ Verify all clean"]
+        ① Registry mark  ② Del Vectors  ③ Del Sections
+        ④ Del File  ⑤ Del DB row
+        ⑥ Registry purge  ⑦ Verify all clean"]
         W2 --> |del vectors| QD
         W2 --> |del file| FS
         W2 --> |del row| PG
@@ -94,10 +85,6 @@ flowchart TD
 ## What Exists
 
 - FastAPI backend with async ingestion pipeline and live progress reporting
-- **Nuxt.js 4 Frontend** on port 3000 — Modern web interface with:
-  - Admin dashboard (document management, user management, health monitoring)
-  - Chat interface with real-time RAG and citations
-  - Tree viewer for hierarchical document exploration
 - Celery worker with `acks_late`, `prefetch=1`, and 25-min soft time limit for reliability
 - PostgreSQL + Redis + RustFS + Qdrant via docker-compose
 - S3-compatible object storage (RustFS) for uploaded files
@@ -105,14 +92,16 @@ flowchart TD
 - Multi-format ingestion: PDF, scanned PDF, images, DOCX, XLSX, Markdown, plain text
 - **EasyOCR** (`vi+en`, GPU auto-detected) as mandatory OCR backend — no Tesseract
 - Docling-first document extraction with ClassicParser fallback path
-- Hierarchical document indexing: document → chapters → sections → subsections
+- **2-stage retrieval**: Sections (coarse, ≥ 0.30) → Chunks (fine, ≥ 0.35)
+- **`document_sections` table** in PostgreSQL for section-level storage
 - **BAAI/bge-m3 local embedding**: 1024-dim, 8192-token context, fully offline — no API calls, no rate limits
 - **Rule-based AI refiner**: 0GB VRAM, ~1ms per node — fixes OCR errors, detects headers, validates hierarchy (NOT Qwen/Gemini)
 - **Query embedding cache**: Redis-backed, MD5-keyed, TTL=1h — skip re-inference on repeated questions
 - **Score threshold filter**: Drop retrieval results with cosine similarity < 0.35
 - **Atomic rate limiting**: Lua script in Redis — no INCR+EXPIRE race condition
-- **Hard-delete**: Full removal from vectors, file storage, and DB (with registry-first ordering)
+- **Hard-delete**: Full removal from vectors, sections, file storage, and DB (with registry-first ordering)
 - **Hardware auto-detection**: CPU/GPU count → embedding device selection (CUDA or CPU)
+- **Tree API**: Hierarchical document exploration endpoints
 
 ## Database Initialization
 
@@ -123,10 +112,10 @@ Database schema and seed data are initialized automatically at container startup
 - **Execution**: PostgreSQL automatically runs SQL files in `/docker-entrypoint-initdb.d/` on first startup
 - **What it creates**:
   - UUID extension (`pgcrypto`, `uuid-ossp`)
-   - 9 core tables: roles, users, documents, chat_sessions, chat_messages, data_sources, data_source_schema_cache, data_source_query_audit, security_audit
-   - Indexes on document/session/audit lookups
+  - Core tables: roles, users, documents, document_sections, chat_sessions, chat_messages, data_sources, data_source_schema_cache, data_source_query_audit, security_audit
+  - Indexes on document/session/audit/section lookups
   - Automatic `updated_at` triggers
-   - Seed users: admin/member (password: `abc123`)
+  - Seed users: admin/member (password: `abc123`)
 
 No Alembic migrations needed. Database is idempotent and initialized from a single `.sql` file.
 
@@ -147,14 +136,6 @@ chatbot-rag/
 │   ├── models/             # SQLAlchemy ORM models
 │   ├── services/           # Business logic (RAG, ingestion, query cache)
 │   └── worker.py           # Celery task worker
-├── webapp/                 # Nuxt.js 4 frontend
-│   ├── app/
-│   │   ├── components/     # Vue components (ChatPanel, DocumentsPanel, etc.)
-│   │   ├── pages/          # Nuxt pages (index, chat, admin, etc.)
-│   │   ├── types/          # TypeScript type definitions
-│   │   └── utils/          # Utilities (API client, auth helpers)
-│   ├── nuxt.config.ts      # Nuxt configuration
-│   └── package.json        # Node.js dependencies
 ├── tests/                  # Test suite (pytest)
 │   ├── test_ingestion/     # Ingestion tests
 │   ├── test_api/           # API endpoint tests
@@ -195,15 +176,8 @@ chatbot-rag/
 When you have GPU hardware available, enable local inference:
 
 #### Phase 1: Enable vLLM Service
-1. Uncomment the `vllm` service in `docker-compose.yml` (lines ~125-160)
-2. Optionally add HuggingFace model cache volume to persist downloaded models:
-   ```yaml
-   volumes:
-     - hf_cache:/root/.cache/huggingface
-   
-   volumes:
-     hf_cache:
-   ```
+1. Uncomment the `vllm` service in `docker-compose.yml`
+2. Optionally add HuggingFace model cache volume to persist downloaded models
 3. Change `.env`: `AI_PROVIDER=vllm` (or keep `google` as fallback)
 4. Start with profile: `docker compose --profile onprem up -d`
 
@@ -225,11 +199,6 @@ command: >
 - **Disk**: 8GB+ for model cache (persistent with volume)
 - **Startup**: 5-15 minutes first run (model download), ~30 seconds with cached volume
 
-#### Fallback Strategy
-- Configure both providers in `.env`: `AI_PROVIDER=google` (fallback)
-- App automatically routes to working provider if one fails
-- Healthcheck includes vLLM when service is active
-
 ## Local Paths and Access
 
 ### Connection Details
@@ -241,16 +210,21 @@ command: >
 | PostgreSQL admin user | `db-admin` (for schema management) |
 | PostgreSQL app user | `app_rw` (app runtime) |
 | PostgreSQL password | set `POSTGRES_PASSWORD` / `APP_DB_PASSWORD` in `.env` |
-| RedisHost | `localhost:6379` |
+| Redis Host | `localhost:6379` |
 | RustFS API | `localhost:9000` |
 | RustFS Console | `localhost:9001` |
 | RustFS credentials | `rustfs` / set `S3_SECRET_KEY` in `.env` |
 
-### Storage
+### Service Endpoints
 
-- **Uploaded files**: Stored in RustFS bucket `rag-documents` (not local disk)
-- **Object keys**: `s3://rag-documents/<document_id>/<filename>`
-- **Local test files**: Use any temp path on your machine, upload via `POST /api/v1/upload`
+| Service | URL |
+|---------|-----|
+| **API (FastAPI)** | `http://localhost:8000` |
+| **OpenAPI Docs** | `http://localhost:8000/docs` |
+| **RustFS S3 API** | `http://localhost:9000` |
+| **RustFS Web Console** | `http://localhost:9001` |
+| **Qdrant Dashboard** | `http://localhost:6333/dashboard` |
+| **Health Check** | `http://localhost:8000/api/v1/health` |
 
 ## Quick Start
 
@@ -269,9 +243,6 @@ cp .env.example .env
 # 2. Build and start (BuildKit cache: pip + EasyOCR models cached across rebuilds)
 DOCKER_BUILDKIT=1 docker compose up --build
 
-# docker compose v2 (Compose V2) has BuildKit enabled by default
-# On older versions: export DOCKER_BUILDKIT=1
-
 # 3. Wait for services to be healthy (first build ~5-10min for EasyOCR model download)
 
 # 4. Test API health
@@ -280,17 +251,6 @@ curl http://localhost:8000/api/v1/health
 
 > **Build optimization**: Dockerfile uses BuildKit `--mount=type=cache` for both pip packages
 > and EasyOCR models. Subsequent `docker build` runs reuse cached layers — no re-download.
-
-### Service Endpoints
-
-| Service | URL |
-|---------|-----|
-| **Frontend (Nuxt.js)** | `http://localhost:3000` |
-| **API (FastAPI)** | `http://localhost:8000` |
-| **OpenAPI Docs** | `http://localhost:8000/docs` |
-| **RustFS S3 API** | `http://localhost:9000` |
-| **RustFS Web Console** | `http://localhost:9001` |
-| **Health Check** | `http://localhost:8000/api/v1/health` |
 
 ### Default Login Credentials (Development)
 
@@ -312,32 +272,11 @@ docker compose --profile onprem up --build
 
 This starts the `vllm` service with Qwen 2.5 7B (quantized). Set `AI_PROVIDER=vllm` in `.env`.
 
-### Nuxt.js Frontend
-
-The **Nuxt.js 4 Frontend** is a modern web interface built with Vue 3 and TypeScript:
-
-- **URL**: `http://localhost:3000`
-- **Purpose**: Admin dashboard, chat interface, tree viewer
-- **Features**:
-  - **Login page**: JWT authentication
-  - **Chat interface**: Real-time RAG chat with citations
-  - **Document management**: Upload, list, delete, view progress
-  - **Tree viewer**: Interactive hierarchical document explorer
-  - **User management**: Admin-only user creation
-  - **Health dashboard**: System status monitoring
-
-**Usage**:
-1. Open `http://localhost:3000` in your browser
-2. Login with admin/abc123 or member/abc123
-3. Navigate to different sections via sidebar
-
-**Tech Stack**: Nuxt.js 4.4, Nuxt UI 4.6, TypeScript, full type safety
-
 ## Database
 
 The database is **automatically initialized** on first run via PostgreSQL's init hook:
 
-- **Initialization file**: `ops/init.sql` (comprehens single-file schema)
+- **Initialization file**: `ops/init.sql` (comprehensive single-file schema)
 - **Idempotent**: Safe to re-run; uses `CREATE IF NOT EXISTS` pattern
 - **Seed data**: Default admin/member users and roles
 - **No migrations needed**: Schema is complete at startup
@@ -361,17 +300,17 @@ docker compose up --build
 
 - **Database**: Single `.sql` file initialization (`ops/init.sql`). No Alembic, no runtime DDL patches.
 - **OCR**: EasyOCR (`vi+en`) is mandatory — pre-downloaded in Docker image, GPU auto-detected.
-- **Ingestion**: Docling-first → EasyOCR → LlamaIndex hierarchy → chunked parallel embedding.
+- **Ingestion**: Docling-first → EasyOCR → Section extraction → LlamaIndex hierarchy → chunked parallel embedding.
+- **Retrieval**: 2-stage pipeline — coarse section search (≥ 0.30) → fine chunk search (≥ 0.35).
 - **Embedding**: Parallel `ThreadPoolExecutor`, chunk size 32, configurable via `INGESTION_EMBEDDING_CHUNK_SIZE`.
-- **Retrieval**: Query vector cached in Redis (1h TTL). Score threshold filters low-relevance chunks.
 - **Rate limiting**: Atomic Lua script — safe under concurrent load, no key-expiry race condition.
-- **Delete**: Full hard-delete (vectors + file + DB row). Registry marked deleted first so /status updates instantly.
+- **Delete**: Full hard-delete (sections + vectors + file + DB row). Registry marked deleted first so /status updates instantly.
 - **vLLM model**: Configured via `VLLM_MODEL` env var — no longer hardcoded.
 - **Hardware detection**: CPU/GPU auto-detected at startup via `app/core/hardware.py`.
 - `/health` performs real dependency checks (PostgreSQL, Redis, RustFS, AI provider).
 - `AI_PROVIDER=google` for demo; `AI_PROVIDER=vllm` for production on-premise.
 
-## Implemented Endpoints (Scaffold → Production)
+## Implemented Endpoints
 
 | Endpoint | Method | Status | Notes |
 |----------|--------|--------|-------|
@@ -381,15 +320,13 @@ docker compose up --build
 | `/api/v1/auth/users` | POST | ✅ Working | Creates a user (admin only) |
 | `/api/v1/upload` | POST | ✅ Working | Enqueues Celery job; returns task_id |
 | `/api/v1/status/{task_id}` | GET | ✅ Working | Returns normalized task/document progress |
-| `/api/v1/chat` | POST | ✅ Working | Provider-driven chat (`vllm` on-prem default, `google` demo mode) |
+| `/api/v1/chat` | POST | ✅ Working | Provider-driven chat with 2-stage retrieval |
 | `/api/v1/documents` | GET | ✅ Working | Lists documents and current pipeline status |
 | `/api/v1/documents/{id}` | GET | ✅ Working | Returns full document metadata/status |
-- `DELETE /api/v1/documents/{document_id}` soft-deletes a document and removes the source object from storage.
-- Worker ingestion now extracts text from PDF, scanned PDF, images, DOCX, and XLSX.
-- Parsing uses the Docling-first pipeline with classic parser fallback.
-- Indexed output is stored as hierarchical nodes for later retrieval.
-- `POST /api/v1/chat` uses adapter-based provider selection from `AI_PROVIDER`.
-- Public API contract is served under `/api/v1/*`.
+| `/api/v1/documents/{id}` | DELETE | ✅ Working | Hard-deletes document + all related data |
+| `/api/v1/tree/{document_id}` | GET | ✅ Working | Hierarchical tree structure |
+| `/api/v1/tree/{document_id}/nodes/{node_id}` | GET | ✅ Working | Node details with full text |
+| `/api/v1/tree/{document_id}/search` | GET | ✅ Working | Search nodes by content |
 
 ## Upload Processing Workflow
 
@@ -418,14 +355,12 @@ When an admin uploads a file via `POST /api/v1/upload`, the system runs this pip
 5. **Worker parsing and indexing**
    - Download file from RustFS (`status_stage=download`, `progress_percent=10`).
    - Convert the file locally with Docling into Markdown (`status_stage=parse`, `progress_percent=40`).
-   - Use LlamaIndex `MarkdownNodeParser` to turn the Markdown into hierarchical nodes.
-   - Build hierarchical retrieval nodes for Qdrant (root + parent/child relationships).
+   - Extract sections from Markdown headings → store in `document_sections` table.
+   - Split sections into chunks (~400 tokens, ~75 overlap) → store vectors in Qdrant.
    - If Docling or LlamaIndex fails, fall back to the classic parser so upload still completes when possible.
-   - **Rule-based refiner** fixes OCR errors (e.g., "M Ụ C T I Ê U" → "MỤC TIÊU"), detects headers, validates hierarchy — 0GB VRAM, ~1ms per node.
-   - Validate extraction quality thresholds (`INGESTION_MIN_NON_EMPTY_NODES`, `INGESTION_MIN_TOTAL_TEXT_CHARS`).
-   - Save ingestion artifact into `documents.metadata.ingestion_artifact`.
-   - Persist metadata (`status_stage=persist`, `progress_percent=75`).
-   - Mark document `ready` on success (`progress_percent=100`) or `failed` + `parse_error` on failure.
+   - **Rule-based refiner** fixes OCR errors, detects headers, validates hierarchy — 0GB VRAM, ~1ms per node.
+   - Validate extraction quality thresholds.
+   - Mark document `ready` on success or `failed` on failure.
 
 6. **Client polling**
    - Use `GET /api/v1/status/{task_id}` until status is `ready` or `failed`.
@@ -435,39 +370,6 @@ When an admin uploads a file via `POST /api/v1/upload`, the system runs this pip
 - `status` (coarse): `pending | processing | ready | failed | deleted`
 - `status_stage` (detailed): `uploaded | queued | enqueue_failed | download | parse | persist | ready | failed | deleted`
 - `progress_percent`: `0..100`
-
-7. **Retrieval behavior after ready**
-   - Chat retrieval excludes soft-deleted documents.
-   - Retrieval prefers latest document version per filename.
-
-### Streamlit Tree Visualizer
-
-**NEW**: Interactive hierarchical document explorer on port 8501.
-
-#### Features
-- **Hierarchical tree display**: View complete document structure as expandable tree
-- **Click-to-view details**: Click any node to view full text content and metadata
-- **Search functionality**: Search nodes by title or content across entire document
-- **Color-coded levels**: Visual distinction by hierarchy depth (L1-L6)
-- **Zoom/pan support**: Navigate large documents with 100+ nodes efficiently
-- **Breadcrumb navigation**: See full path from root to current node
-- **Metadata display**: View page numbers, node types, character counts, token counts
-
-#### Usage
-1. Start all services: `docker compose up --build`
-2. Open browser: `http://localhost:8501`
-3. Enter Document ID (UUID from admin dashboard or `/api/v1/documents`)
-4. Click "Load Tree" to visualize document structure
-5. Click any node title to view full content
-6. Use Search tab to find specific text in document
-
-#### API Integration
-The visualizer uses new tree API endpoints:
-- `GET /api/v1/documents/{document_id}/tree` — Get complete hierarchical structure
-- `GET /api/v1/documents/{document_id}/nodes/{node_id}` — Get single node details
-- `GET /api/v1/documents/{document_id}/search` — Search nodes by content
-
-See [docs/STREAMLIT_VISUALIZER.md](docs/STREAMLIT_VISUALIZER.md) for detailed usage guide.
 
 ## Text Extraction And AI Usage
 
@@ -490,56 +392,6 @@ Short answer: **yes, extraction uses local AI/ML processing**, but **does not ca
 - Creating a new chat should clear the active session history.
 - Retain messages for 24h only if you need temporary debugging/audit.
 
-## Chat Storage Today
-
-- Active chat state is stored in Redis with per-user key scoping.
-- Session ownership is checked against `chat_sessions.user_id` to prevent cross-user access.
-- Messages are kept with short TTL in Redis for runtime context and persisted to DB as assistant replies.
-- This remains lightweight for local development and debugging.
-
-## Database Model
-
-The database keeps three main kinds of data:
-
-- `roles`: stores account permissions in DB
-- `documents`: one row per uploaded file, including file path, hash, size, and status
-- Qdrant: the extracted document tree and retrieval payload used for hierarchical RAG
-
-Simple flow:
-
-```text
-Upload file
-   |
-   v
-RustFS object
-   |
-   v
-documents row
-   |
-   v
-worker parse
-   |
-   v
-hierarchical nodes in Qdrant
-   |
-   v
-ready for RAG
-```
-
-1. Upload file to RustFS
-2. Create a `documents` row with `status=pending`
-3. Worker parses the file
-4. Worker writes hierarchical nodes to Qdrant
-5. `documents.status` becomes `ready`
-
-For deletes:
-
-- **Hard-delete** removes ALL traces: vectors from Qdrant, file from RustFS, DB row.
-- Deletion order: (1) `registry.delete()` → /status = 'deleted' immediately, (2) Qdrant vectors, (3) RustFS file, (4) DB row, (5) `registry.purge()`.
-- Historical chat messages referencing the document are preserved in DB for audit.
-
-The rest of the tables support auth, chat history, and future data connectors.
-
 ## Auth And Roles
 
 - No public self-signup.
@@ -556,28 +408,3 @@ Protected routes:
 - `POST /api/v1/chat` requires a valid JWT
 
 Login uses the DB-backed project accounts plus username/password.
-
----
-
-## Upcoming: RAG v2 (Multimodal + 2-Stage Retrieval)
-
-**Planned Upgrade**: Enhanced RAG system with multimodal capabilities and performance optimization.
-
-### New Features
-- **Multimodal ingestion**: Extract text, images (via EasyOCR), tables (to markdown)
-- **2-stage retrieval**: Sections (Level 1, top 3, <0.5s) → Chunks (Level 2, top 5, <1s)
-- **Enhanced storage**: `document_sections` table for fast section-level retrieval
-
-### Performance Targets
-- Section retrieval: <0.5s
-- Chunk retrieval: <1s
-- Total query time: <2s
-- Large documents (300-500 pages): 5-10 min ingestion
-
-### Implementation
-See plan: `C:\Users\qtuan\.claude\plans\replicated-singing-hopper.md`
-
-**Timeline**: 12-15 days
-- Week 1: Database + Multimodal ingestion
-- Week 2: 2-stage query + Testing
-- Week 3: Production rollout

@@ -12,6 +12,7 @@ from app.adapters.base import IngestedNode, ParsingMetadata
 from app.services.ingestion.parser_manager import ParserManager
 from app.services.ingestion.hierarchy_validator import HierarchyValidator, ValidationReport
 from app.core.config import settings
+from app.services.storage.document_store import SectionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,10 @@ class IngestionResult:
     parse_metadata: ParsingMetadata
     validation_report: ValidationReport
     storage_ids: List[str]
-    errors: List[str]
-    warnings: List[str]
-    duration_ms: float
+    section_count: int = 0  # Number of sections stored in PostgreSQL
+    errors: List[str] = None  # type: ignore[assignment]
+    warnings: List[str] = None  # type: ignore[assignment]
+    duration_ms: float = 0.0
 
 
 # Type alias for clarity
@@ -50,10 +52,12 @@ class IngestionPipeline:
         parser_manager: 'ParserManager',
         embedding_service: 'BaseEmbedding' = None,
         vector_store: 'BaseVectorStore' = None,
+        db_session: 'Session' = None,
     ):
         self.parser_manager = parser_manager
         self.embedding_service = embedding_service
         self.vector_store = vector_store
+        self.db_session = db_session
         self.validator = HierarchyValidator()
 
     async def ingest_async(
@@ -140,6 +144,26 @@ class IngestionPipeline:
             else:
                 logger.info("[%s] Hierarchy valid (depth=%s)", document_id, validation_report.depth)
 
+            # ── Step 2.5: Store Sections (if section data exists) ────────────
+            section_count = 0
+            sections_data = getattr(parse_metadata, 'sections_data', None) or []
+            if sections_data and self.db_session:
+                _cb("sections", 37, f"Storing {len(sections_data)} sections…")
+                try:
+                    section_repo = SectionRepository(self.db_session)
+                    section_ids = section_repo.store_sections(document_id, sections_data)
+                    section_count = len(section_ids)
+                    logger.info(
+                        "[%s] Stored %d sections in PostgreSQL",
+                        document_id, section_count,
+                    )
+                except Exception as sec_err:
+                    logger.warning(
+                        "[%s] Section storage failed (non-fatal): %s",
+                        document_id, sec_err,
+                    )
+                    warnings.append(f"Section storage skipped: {sec_err}")
+
             # ── Step 3: Embed + Store in chunks ──────────────────────────────
             if self.embedding_service and nodes:
                 chunk_size = settings.ingestion_embedding_chunk_size
@@ -193,6 +217,7 @@ class IngestionPipeline:
                 parse_metadata=parse_metadata,
                 validation_report=validation_report,
                 storage_ids=storage_ids,
+                section_count=section_count,
                 errors=errors,
                 warnings=warnings,
                 duration_ms=duration_ms,

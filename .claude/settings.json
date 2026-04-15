@@ -1,18 +1,20 @@
 {
   "mcpServers": {
-    "nuxt-ui": {
+    "next-devtools": {
       "command": "npx",
-      "args": [
-        "mcp-remote",
-        "https://ui.nuxt.com/mcp"
-      ]
-    },
-    "nuxt": {
-      "command": "npx",
-      "args": [
-        "mcp-remote",
-        "https://nuxt.com/mcp"
-      ]
+      "args": ["-y", "next-devtools-mcp@latest"]
     }
+
+  },
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "2fc0ba6873df4185ae3d7afb8f87c42d.0Zm6GXOvvTigxqOP",
+    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+    "API_TIMEOUT_MS": "3000000",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.7-air",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-5.1",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-5.1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+	  "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_USE_POWERSHELL_TOOL": "1" 
   }
 }

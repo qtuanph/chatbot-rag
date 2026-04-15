@@ -4,9 +4,8 @@ Handles graceful fallback if primary parser unavailable.
 """
 
 import logging
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from app.adapters.base import (
-    BaseParser,
     IngestedNode,
     ParsingMetadata,
 )

@@ -32,9 +32,11 @@ sequenceDiagram
     Pipeline->>DB: stage=parse, percent=5  [callback]
     Pipeline->>Pipeline: Docling + EasyOCR → Markdown
     Pipeline->>DB: stage=parse, percent=30 [callback]
-    Pipeline->>Pipeline: LlamaIndex → hierarchy nodes
+    Pipeline->>Pipeline: Section extraction + Chunk splitting (~400 tokens)
     Pipeline->>DB: stage=validate, percent=35 [callback]
     Pipeline->>Pipeline: Hierarchy Validator
+    Pipeline->>DB: stage=sections, percent=37 [callback]
+    Pipeline->>DB: Store sections in document_sections table
 
     loop For each chunk of 32 nodes
         Pipeline->>Pipeline: embed_batch (ThreadPoolExecutor parallel)
@@ -80,11 +82,16 @@ sequenceDiagram
         Embedder-->>API: query vector
         API->>Redis: cache.set(query, vector, TTL=1h)
     end
-    API->>Retriever: retrieve_context(query_vector, limit=5)
+    API->>Retriever: retrieve_context(query_vector, limit=20)
     Retriever->>DB: fetch latest active doc IDs
-    Retriever->>Qdrant: search top-10 by cosine similarity
-    Retriever->>Retriever: filter score < 0.35 (noise removal)
-    Retriever-->>API: top-5 relevant nodes with citations
+    Note over Retriever,Qdrant: Stage 1 — Coarse section search
+    Retriever->>Qdrant: search top-50 by cosine similarity
+    Retriever->>Retriever: group by section_id → pick top 3 sections (score ≥ 0.30)
+    Retriever->>DB: load section details from document_sections
+    Note over Retriever,Qdrant: Stage 2 — Fine chunk search within sections
+    Retriever->>Qdrant: search within top sections (score ≥ 0.35)
+    Retriever->>Retriever: prioritize in-section chunks
+    Retriever-->>API: top nodes with section context and citations
     API->>Provider: chat(history, context, citations)
     Provider-->>API: answer
     API->>DB: save ChatMessage
@@ -96,7 +103,7 @@ sequenceDiagram
 | Rule | Requirement |
 |------|-------------|
 | Cache first | Check Redis for query embedding before calling API |
-| Score threshold | Drop retrieval results with cosine similarity < 0.35 |
+| 2-stage retrieval | Stage 1: sections (≥ 0.30) → Stage 2: chunks within sections (≥ 0.35) |
 | Citation required | Return citation payload for every grounded answer |
 | Retrieval filters | Exclude deleted docs, prefer latest version |
 | Rate limiting | Atomic Lua script — 30 requests/min per user |
@@ -122,7 +129,8 @@ sequenceDiagram
     Registry->>Registry: registry.delete() → status='deleted'
     Note right of Registry: /status now returns 'deleted' immediately
     Registry->>Qdrant: delete all vectors for document_id
-    Qdrant->>RustFS: delete file object
+    Qdrant->>DB: delete sections from document_sections
+    DB->>RustFS: delete file object
     RustFS->>DB: DELETE document row
     DB->>Registry: registry.purge() → remove Redis keys
 ```

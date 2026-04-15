@@ -196,7 +196,7 @@ User re-uploads "policy.md" (same filename, different content)
 | `GET` | `/view/nodes` | HTML danh sách nodes (light theme) |
 | `GET` | `/view/node` | HTML chi tiết 1 node (mở tab mới) |
 
-### Tree API (Streamlit Visualizer Support)
+### Tree API
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|

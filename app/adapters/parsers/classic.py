@@ -6,7 +6,7 @@ Used when Docling/LlamaIndex parsers are unavailable or fail.
 import logging
 import uuid
 import os
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from io import BytesIO
 
 from app.adapters.base import (

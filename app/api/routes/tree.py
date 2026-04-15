@@ -1,5 +1,5 @@
 """
-Tree API endpoints for Streamlit Visualizer.
+Tree API endpoints for hierarchical document exploration.
 
 Provides hierarchical tree structure, node details, and search functionality.
 """
@@ -77,7 +77,7 @@ async def get_document_tree(
     """
     Get hierarchical tree structure for a document.
 
-    Returns complete tree with parent-child relationships for Streamlit visualizer.
+    Returns complete tree with parent-child relationships.
 
     Response format:
     {
@@ -176,7 +176,7 @@ async def get_node_details(
     """
     Get full details of a single node.
 
-    Returns header (title) + context (full text content) for Streamlit display.
+    Returns header (title) + context (full text content).
 
     Response format:
     {

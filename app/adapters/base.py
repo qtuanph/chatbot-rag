@@ -34,10 +34,13 @@ class ParsingMetadata:
     warnings: List[str] = None  # Non-fatal issues encountered
     node_count: int = 0  # Number of nodes extracted
     total_text_chars: int = 0  # Total character count in extracted text
+    sections_data: List[Dict[str, Any]] = None  # Section records for PostgreSQL (RAG v2)
 
     def __post_init__(self):
         if self.warnings is None:
             self.warnings = []
+        if self.sections_data is None:
+            self.sections_data = []
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""

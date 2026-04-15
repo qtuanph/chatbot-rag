@@ -5,7 +5,6 @@ Manages storage and retrieval of document embeddings.
 
 import logging
 from typing import List, Optional, Dict, Any
-import uuid
 
 from app.adapters.base import (
     BaseVectorStore,

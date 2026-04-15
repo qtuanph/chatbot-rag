@@ -11,7 +11,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Các pattern và practices mới được áp dụng
 
 Đặc biệt quan trọng khi:
-- ✅ Sắp implement RAG v2 (multimodal + 2-stage retrieval)
 - ✅ Thay đổi AI model, embedding model, hoặc parser
 - ✅ Thay đổi database schema
 - ✅ Thay đổi API contracts
@@ -75,18 +74,19 @@ docker exec chatbot-rag-worker-1 celery -A app.core.celery_app.celery_app inspec
 
 This is a **Docker-first RAG chatbot** for Vietnamese enterprise documents with hierarchical indexing and async ingestion.
 
-### Core Technology Stack (Updated 2026-04-14)
+### Core Technology Stack (Updated 2026-04-15)
 
 - **API Framework**: FastAPI with async endpoints
 - **Task Queue**: Celery with Redis broker (`acks_late=True`, `prefetch=1`, 25-min soft timeout)
 - **Databases**:
-  - PostgreSQL (users, documents, sessions, audit)
-  - Qdrant (vectors and retrieval payloads)
+  - PostgreSQL (users, documents, sections, sessions, audit)
+  - Qdrant (vectors and retrieval payloads with section_id metadata)
   - Redis (queue, cache, rate limiting, registry)
   - RustFS (S3-compatible object storage for uploaded files)
-- **Ingestion**: Docling → EasyOCR → LlamaIndex hierarchy → parallel embedding
+- **Ingestion**: Docling → Markdown → Section extraction → Chunk splitting → parallel embedding
 - **Embedding**: BAAI/bge-m3 LOCAL (sentence-transformers), 1024-dim vectors, parallel batch processing (32 nodes per batch)
 - **AI Refiner**: Rule-based heuristics (NOT Qwen/Gemini) - fixes OCR errors, detects headers, validates hierarchy
+- **Retrieval**: 2-stage (Sections → Chunks) with PostgreSQL section store + Qdrant vector search
 - **LLM Providers**: Adapter-based
   - **Google AI**: `gemma-4-26b-a4b-it` (26B parameters, high quality)
   - **vLLM**: On-premise mode (future)
@@ -107,19 +107,26 @@ This is a **Docker-first RAG chatbot** for Vietnamese enterprise documents with 
 - Languages: Multilingual (optimized for Vietnamese)
 - Deployment: LOCAL, offline, no external calls
 
-### Upcoming: RAG v2 Architecture (Planned)
+### 2-Stage Retrieval Architecture (Implemented)
 
-**Migration to RAG v2 will add:**
-- **Multimodal ingestion**: Extract text, images (→ EasyOCR), tables (→ markdown)
-- **2-stage retrieval**: Sections (Level 1, top 3) → Chunks (Level 2, top 5, 300-500 tokens)
-- **Enhanced storage**: `document_sections` table in PostgreSQL for fast section retrieval
-- **Performance targets**:
+**Architecture overview:**
+- **Section extraction**: Markdown → split by headings → sections (Level 1)
+- **Chunk splitting**: Each section → chunks (Level 2, ~400 tokens, ~75 token overlap)
+- **Dual storage**: Sections → PostgreSQL (`document_sections` table), Chunks → Qdrant (with `section_id` metadata)
+- **2-stage retrieval**: Query → Stage 1 (coarse section search, top 3) → Stage 2 (fine chunk search within sections, top 5)
+- **Fallback**: If no sections found, falls back to flat vector retrieval
+
+**Key components:**
+- `DoclingParser._extract_sections_from_markdown()` — Section + chunk extraction from Markdown
+- `SectionRepository` — PostgreSQL section storage/query
+- `IngestionPipeline` — Orchestrates section storage + vector indexing
+- `retrieve_context()` — 2-stage retrieval (sections → chunks)
+
+**Performance targets:**
   - Section retrieval: <0.5s
   - Chunk retrieval: <1s
   - Total query time: <2s
   - Large documents (300-500 pages): 5-10 min ingestion
-
-**See implementation plan:** `C:\Users\qtuan\.claude\plans\replicated-singing-hopper.md`
 
 ### Adapter Pattern
 
@@ -139,31 +146,38 @@ The ingestion workflow (`app/services/ingestion/pipeline.py`) is:
 1. **Upload**: API saves file to RustFS, creates `documents` row with `status=pending`
 2. **Queue**: Enqueues `parse_document_task` to Celery, returns `task_id` immediately
 3. **Download**: Worker downloads file from RustFS to RAM
-4. **Parse**: Docling converts to Markdown → LlamaIndex creates hierarchical nodes
+4. **Parse**: Docling converts to Markdown → section extraction → chunk splitting (with LlamaIndex fallback)
 5. **Validate**: Hierarchy validator ensures parent-child consistency
-6. **Embed**: Parallel batch embedding (32 nodes per batch) via `ThreadPoolExecutor`
-7. **Persist**: Vectors to Qdrant, metadata to PostgreSQL
-8. **Verify**: Post-ingestion verification confirms vectors indexed and file stored
-9. **Unload**: Embedding model unloaded from VRAM to free resources
+6. **Store Sections**: Sections persisted to PostgreSQL `document_sections` table via `SectionRepository`
+7. **Embed**: Parallel batch embedding (32 nodes per batch) via `ThreadPoolExecutor`
+8. **Persist**: Chunks (with `section_id` metadata) to Qdrant
+9. **Verify**: Post-ingestion verification confirms vectors indexed and file stored
+10. **Unload**: Embedding model unloaded from VRAM to free resources
 
 **Progress reporting** happens via callback after each chunk (not after each node). Status updates are written to DB in real-time.
 
-### Chat and Retrieval
+### Chat and Retrieval (2-Stage)
 
 1. **Rate Limiting**: Atomic Lua script in Redis (no INCR+EXPIRE race condition)
 2. **Query Cache**: Redis-backed, MD5-keyed, TTL=1h — skip re-embedding on repeated questions
 3. **Embed**: Query text → vector (via BAAI/bge-m3 local, 1024-dim, fully offline)
-4. **Retrieve**: Qdrant search → drop chunks with cosine similarity < 0.35
-5. **Generate**: AI provider produces grounded answer with citations
+4. **Stage 1 - Section Retrieval**: Qdrant search → group by section_id → pick top 3 sections (threshold ≥ 0.30)
+5. **Stage 2 - Chunk Retrieval**: Qdrant search within top sections → get detailed chunks (threshold ≥ 0.35)
+6. **Generate**: AI provider produces grounded answer with citations from sections + chunks
 
 ### Hierarchical Document Indexing
 
-Documents are indexed as **hierarchies**: document → chapters → sections → subsections
+Documents are indexed as **2-level hierarchies**: document → sections → chunks
 
-Each node preserves:
-- Parent/child relationships
-- Section context for better retrieval
-- Citation metadata (filename, page numbers, section path)
+**Sections (Level 1):** Stored in PostgreSQL `document_sections` table
+- Based on document headings (H1-H6)
+- Contains: title, content, level, breadcrumb, parent_section_id
+- Used for coarse-grained Stage 1 retrieval
+
+**Chunks (Level 2):** Stored in Qdrant with `section_id` metadata
+- ~400 tokens each, ~75 token overlap
+- Linked to parent section via `section_id` in metadata
+- Used for fine-grained Stage 2 retrieval
 
 This is **not naive chunking**. Do not replace with flat chunk retrieval.
 
@@ -195,7 +209,12 @@ Key environment variables:
 - `AI_PROVIDER` — "google" (current) or "vllm" (on-premise, future)
 - `INGESTION_ENGINE` — "docling" (recommended) or "classic" (fallback)
 - `INGESTION_EMBEDDING_CHUNK_SIZE` — nodes per batch (default: 32)
-- `RETRIEVAL_MIN_SCORE` — cosine similarity threshold (default: 0.35)
+- `RETRIEVAL_MIN_SCORE` — cosine similarity threshold for chunks (default: 0.35)
+- `RETRIEVAL_SECTION_TOP_K` — Stage 1: top sections to retrieve (default: 3)
+- `RETRIEVAL_CHUNK_TOP_K` — Stage 2: top chunks per section (default: 5)
+- `RETRIEVAL_CHUNK_SIZE` — target chunk size in tokens (default: 400)
+- `RETRIEVAL_CHUNK_OVERLAP` — overlap between chunks in tokens (default: 75)
+- `RETRIEVAL_SECTION_MIN_SCORE` — lower threshold for section search (default: 0.30)
 - `EMBEDDING_MODEL` — "sentence-transformer" (BAAI/bge-m3 local, offline)
 - `EMBEDDING_HF_MODEL` — "BAAI/bge-m3" (1024-dim, multilingual)
 - `AI_REFINER_TYPE` — "rule_based" (lightweight, no AI needed, 0GB VRAM)
@@ -229,10 +248,11 @@ If you need schema changes:
 |------|-------------------|
 | Async ingestion | Upload endpoint must return immediately with `task_id` |
 | Provider boundary | Route handlers must never call provider SDKs directly |
-| Hierarchical retrieval | Preserve document hierarchy during retrieval |
+| 2-stage retrieval | Section search (coarse) → Chunk search (fine) within sections |
+| Section storage | Sections stored in PostgreSQL, chunks in Qdrant with section_id |
 | Citation policy | Every grounded answer must include citations |
-| Hard-delete | Delete in order: registry → vectors → file → DB → purge |
-| Score threshold | Drop retrieval results with cosine similarity < 0.35 |
+| Hard-delete | Delete in order: registry → vectors → sections → file → DB → purge |
+| Score threshold | Sections ≥ 0.30, Chunks ≥ 0.35 |
 | Rate limiting | Use atomic Lua script, not INCR+EXPIRE |
 | Progress reporting | Update after each chunk (32 nodes), not each node |
 
@@ -242,7 +262,8 @@ If you need schema changes:
 - `app/worker.py` — Celery tasks: `parse_document_task`, `delete_document_task`
 - `app/core/celery_app.py` — Celery configuration with reliability settings
 - `app/services/ingestion/rule_based_refiner.py` — Rule-based text refinement (NO AI)
-- `app/services/rag.py` — Retrieval: cache → embed → Qdrant → score filter
+- `app/services/rag.py` — 2-stage retrieval: cache → embed → sections → chunks → score filter
+- `app/services/storage/document_store.py` — DocumentRepository + SectionRepository
 - `app/services/query_cache.py` — Redis query embedding cache
 - `app/services/throttle.py` — Atomic Lua rate limiter
 - `app/services/document_cleanup.py` — Hard-delete workflow
@@ -353,35 +374,34 @@ When exploring the codebase, read these documents first:
 6. **`docs/06_DEPLOYMENT_AND_OBSERVABILITY.md`** — Deployment guide and monitoring
 7. **`docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md`** — Deep dive into RAG implementation
 
-## Project Status (Updated 2026-04-14)
+## Project Status (Updated 2026-04-15)
 
-**Current Phase:** Production Hardening → RAG v2 Migration (90% complete)
+**Current Phase:** Production Hardening
 
 **Completed:**
 - ✅ Hierarchical document indexing with BAAI/bge-m3 local embedding
+- ✅ 2-stage retrieval architecture (Sections → Chunks)
+- ✅ `document_sections` table in PostgreSQL for section-level storage
+- ✅ Section extraction from Markdown (heading-based splitting)
+- ✅ Chunk splitting (~400 tokens, ~75 token overlap) with section_id linking
 - ✅ Rule-based refiner (0GB VRAM, 500x faster than AI-based)
-- ✅ Nuxt.js 4 frontend with Nuxt UI components (replaced Streamlit)
-- ✅ Async ingestion pipeline with Celery
+- ✅ Async ingestion pipeline with Celery + section storage
 - ✅ Hard-delete workflow with proper ordering
 - ✅ Security hardened (strong passwords, CORS configured)
-- ✅ Qdrant client API fix (query_points method)
 - ✅ Google API key rotation removed (single key only)
 - ✅ AI model updated to `gemma-4-26b-a4b-it`
 
 **In Progress:**
-- ⏳ RAG v2 planning (multimodal + 2-stage retrieval)
-- ⏳ Database schema optimization (init.sql cleanup)
+- ⏳ Docker build + integration testing
 - ⏳ Documentation update (docs/)
 
-**Upcoming (RAG v2):**
-- 🔜 Multimodal ingestion (text + images via EasyOCR + tables)
-- 🔜 2-stage retrieval (Sections → Chunks)
-- 🔜 Enhanced storage (document_sections table)
+**Upcoming:**
+- 🔜 Multimodal ingestion (images via EasyOCR + tables to markdown)
 - 🔜 Performance optimization for large documents (300-500 pages)
+- 🔜 Monitoring/metrics collection
 
 **Not Implemented:**
 - ❌ Structured logging
-- ❌ Monitoring/metrics collection
 - ❌ Backup procedures automation
 
-**Goal:** On-premise, hierarchical RAG chatbot for Vietnamese enterprise documents with multimodal capabilities and 2-stage retrieval for optimal performance on large documents.
+**Goal:** On-premise, hierarchical RAG chatbot for Vietnamese enterprise documents with 2-stage retrieval for optimal performance on large documents.

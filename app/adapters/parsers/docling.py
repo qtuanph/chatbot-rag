@@ -7,7 +7,6 @@ Falls back to classic parser if conversion/parsing fails.
 import logging
 import uuid
 from typing import List, Tuple, Optional
-from io import BytesIO
 import os
 import tempfile
 import re
@@ -18,10 +17,7 @@ from app.adapters.base import (
     ParsingMetadata,
     ParsedNodeType,
 )
-from app.core.exceptions import (
-    ParsingException,
-    ParsingFallbackException,
-)
+from app.core.exceptions import ParsingException
 from app.services.ingestion.rule_based_refiner import rule_based_refiner
 from app.core.hardware import hardware
 
@@ -156,9 +152,46 @@ class DoclingParser(BaseParser):
         try:
             # Step 1: Try Docling conversion
             markdown_content, docling_used = self._convert_with_docling(filename, content)
-            
+
             if markdown_content:
-                # Step 2: Try LlamaIndex hierarchical parsing
+                # Step 2: Try section-based extraction (2-stage retrieval)
+                nodes, sections_data, sections_ok = self._extract_sections_from_markdown(
+                    markdown_content=markdown_content,
+                    document_id=filename,
+                    source_format=source_format,
+                )
+
+                if sections_ok and nodes:
+                    quality_score = self._calculate_quality_score(nodes, len(markdown_content))
+                    parse_time_ms = (time.time() - start_time) * 1000
+
+                    metadata = ParsingMetadata(
+                        engine_used="docling+sections",
+                        source_format=source_format,
+                        docling_used=True,
+                        llamaindex_used=False,
+                        fallback_used=False,
+                        quality_score=quality_score,
+                        parse_time_ms=parse_time_ms,
+                        node_count=len(nodes),
+                        total_text_chars=sum(len(node.text) for node in nodes),
+                        warnings=[],
+                    )
+
+                    logger.info(
+                        "Parsed %s with Docling+Sections: %d nodes, %d sections",
+                        filename, len(nodes), len(sections_data),
+                    )
+
+                    # Run rule-based refiner on nodes
+                    nodes = self._refine_nodes(nodes)
+
+                    # Store sections_data in metadata for pipeline to persist to PostgreSQL
+                    metadata.sections_data = sections_data
+
+                    return nodes, metadata
+
+                # Step 2b: Fallback to LlamaIndex hierarchical parsing
                 nodes, llamaindex_used = self._parse_markdown_with_llamaindex(
                     markdown_content=markdown_content,
                     document_id=filename,
@@ -182,65 +215,15 @@ class DoclingParser(BaseParser):
                         warnings=[],
                     )
                     logger.info(f"Parsed {filename} with Docling+LlamaIndex: {len(nodes)} nodes")
-                    
-                    # Step 3: Local AI Structural Audit & Refinement
-                    try:
-                        logger.info(f"Starting AI Structural Audit for {len(nodes)} nodes...")
-                        
-                        # ID Map to fix Parent/Child relationships
-                        # LlamaIndex internal ID -> IngestedNode ID
-                        id_map = {node.metadata.get('llamaindex_id'): node.node_id for node in nodes if node.metadata.get('llamaindex_id')}
-                        
-                        # Heading Stack to track breadcrumbs
-                        # depth -> title
-                        heading_stack = {}
-                        
-                        for node in nodes:
-                            # 1. Structural Audit with AI
-                            # Rule-based refiner fixes OCR errors and detects headers
-                            original_text = node.text
-                            original_header = node.section_title
 
-                            cleaned_text, predicted_header = rule_based_refiner.refine_text(original_text, original_header)
-                            
-                            # Update node
-                            node.text = cleaned_text
-                            
-                            # 2. Hierarchy Preservation
-                            # If level is H1-H6, update the stack
-                            if node.node_type == ParsedNodeType.SECTION:
-                                # Try to detect level from text (# = 1, ## = 2)
-                                level_match = re.match(r'^(#+)', original_text)
-                                level = len(level_match.group(1)) if level_match else 1
-                                
-                                title = predicted_header or original_text.lstrip('#').strip()
-                                node.section_title = title
-                                heading_stack[level] = title
-                                # Clear deeper levels
-                                for l in list(heading_stack.keys()):
-                                    if l > level: del heading_stack[l]
-                            
-                            # 3. Breadcrumb Enrichment
-                            current_breadcrumb = [heading_stack[l] for l in sorted(heading_stack.keys())]
-                            node.metadata['breadcrumb'] = current_breadcrumb
-                            
-                            # 4. Fix Parent ID
-                            # If llama_id parent exists but points to old ID, remap it
-                            li_parent_id = node.metadata.get('llamaindex_metadata', {}).get('parent_id')
-                            if li_parent_id and li_parent_id in id_map:
-                                node.parent_id = id_map[li_parent_id]
-
-                        # No VRAM cleanup needed - rule-based refiner uses 0GB VRAM
-                    except Exception as refine_err:
-                        logger.error(f"AI Structural Audit failed: {refine_err}")
-                        import traceback
-                        logger.error(traceback.format_exc())
+                    # Run rule-based refiner
+                    nodes = self._refine_nodes(nodes)
 
                     return nodes, metadata
-        
+
         except Exception as e:
             logger.warning(f"Docling+LlamaIndex parsing failed for {filename}: {str(e)}")
-        
+
         # Step 3: Try fallback parser if configured
         if self.fallback_parser:
             try:
@@ -376,6 +359,275 @@ class DoclingParser(BaseParser):
         except Exception as e:
             logger.warning(f"LlamaIndex hierarchical parsing failed: {str(e)}")
             return [], False
+
+    def _refine_nodes(self, nodes: List[IngestedNode]) -> List[IngestedNode]:
+        """Run rule-based refiner on all nodes to fix OCR errors and enrich metadata."""
+        try:
+            id_map = {
+                node.metadata.get('llamaindex_id'): node.node_id
+                for node in nodes
+                if node.metadata.get('llamaindex_id')
+            }
+            heading_stack: dict[int, str] = {}
+
+            for node in nodes:
+                original_text = node.text
+                original_header = node.section_title
+
+                cleaned_text, predicted_header = rule_based_refiner.refine_text(
+                    original_text, original_header
+                )
+                node.text = cleaned_text
+
+                if node.node_type == ParsedNodeType.SECTION:
+                    level_match = re.match(r'^(#+)', original_text)
+                    level = len(level_match.group(1)) if level_match else 1
+                    title = predicted_header or original_text.lstrip('#').strip()
+                    node.section_title = title
+                    heading_stack[level] = title
+                    for l in list(heading_stack.keys()):
+                        if l > level:
+                            del heading_stack[l]
+
+                current_breadcrumb = [heading_stack[l] for l in sorted(heading_stack.keys())]
+                node.metadata['breadcrumb'] = current_breadcrumb
+
+                li_parent_id = node.metadata.get('llamaindex_metadata', {}).get('parent_id')
+                if li_parent_id and li_parent_id in id_map:
+                    node.parent_id = id_map[li_parent_id]
+
+        except Exception as refine_err:
+            logger.error("AI Structural Audit failed: %s", refine_err)
+
+        return nodes
+
+    def _extract_sections_from_markdown(
+        self,
+        markdown_content: str,
+        document_id: str,
+        source_format: str,
+    ) -> Tuple[List[IngestedNode], List[dict], bool]:
+        """
+        Split markdown into Sections (Level 1) → Chunks (Level 2) for 2-stage retrieval.
+
+        Returns:
+            (chunk_nodes, sections_data, success)
+            - chunk_nodes: IngestedNode list for Qdrant (with section_id in metadata)
+            - sections_data: dict list for PostgreSQL document_sections table
+            - success: bool
+        """
+        try:
+            from app.core.config import settings
+
+            chunk_size_tokens = settings.retrieval_chunk_size
+            chunk_overlap_tokens = settings.retrieval_chunk_overlap
+
+            # Split markdown into sections by headings (## or higher)
+            sections_raw = self._split_markdown_by_headings(markdown_content)
+
+            if not sections_raw:
+                return [], [], False
+
+            chunk_nodes: List[IngestedNode] = []
+            sections_data: List[dict] = []
+            global_order = 0
+
+            for sec_idx, section in enumerate(sections_raw):
+                section_id = f"sec_{sec_idx:04d}"
+                title = section["title"]
+                content = section["content"]
+                level = section["level"]
+                breadcrumb = section["breadcrumb"]
+
+                # Create section record for PostgreSQL
+                sections_data.append({
+                    "section_id": section_id,
+                    "parent_section_id": section.get("parent_section_id"),
+                    "title": title,
+                    "content": content[:5000] if content else None,  # Truncate for DB
+                    "section_type": "section",
+                    "level": level,
+                    "order_index": sec_idx,
+                    "page_range": section.get("page_range"),
+                    "image_count": section.get("image_count", 0),
+                    "table_count": section.get("table_count", 0),
+                    "chunk_count": 0,  # Updated below
+                    "breadcrumb": breadcrumb,
+                    "metadata": {},
+                })
+
+                # Split section content into chunks (~400 tokens, ~75 token overlap)
+                chunks = self._split_text_to_chunks(
+                    content, chunk_size_tokens, chunk_overlap_tokens
+                )
+
+                # Update chunk_count in section data
+                sections_data[-1]["chunk_count"] = len(chunks)
+
+                # Create IngestedNode for each chunk
+                for chunk_idx, chunk_text in enumerate(chunks):
+                    chunk_nodes.append(IngestedNode(
+                        node_id=str(uuid.uuid4()),
+                        document_id=document_id,
+                        text=chunk_text,
+                        node_type=ParsedNodeType.PARAGRAPH,
+                        page_number=section.get("page_number"),
+                        section_title=title,
+                        parent_id=None,
+                        order=global_order,
+                        metadata={
+                            "source_format": source_format,
+                            "section_id": section_id,
+                            "section_level": level,
+                            "chunk_index": chunk_idx,
+                            "breadcrumb": breadcrumb,
+                        },
+                    ))
+                    global_order += 1
+
+            logger.info(
+                "Extracted %d sections → %d chunks from %s",
+                len(sections_data), len(chunk_nodes), document_id,
+            )
+            return chunk_nodes, sections_data, True
+
+        except Exception as e:
+            logger.warning("Multimodal section extraction failed: %s", e)
+            return [], [], False
+
+    def _split_markdown_by_headings(self, markdown: str) -> List[dict]:
+        """
+        Split markdown content into sections based on heading levels (## or higher).
+        Returns list of dicts: {title, content, level, breadcrumb, ...}
+        """
+        lines = markdown.split("\n")
+        sections: List[dict] = []
+        current_section: dict | None = None
+        heading_stack: dict[int, str] = {}
+
+        for line in lines:
+            heading_match = re.match(r'^(#{1,6})\s+(.+)$', line)
+
+            if heading_match:
+                # Save previous section
+                if current_section and current_section["content"].strip():
+                    sections.append(current_section)
+
+                level = len(heading_match.group(1))
+                title = heading_match.group(2).strip()
+
+                # Update heading stack
+                heading_stack[level] = title
+                # Clear deeper levels
+                for l in list(heading_stack.keys()):
+                    if l > level:
+                        del heading_stack[l]
+
+                breadcrumb = [heading_stack[l] for l in sorted(heading_stack.keys())]
+
+                current_section = {
+                    "title": title,
+                    "content": "",
+                    "level": level,
+                    "breadcrumb": breadcrumb,
+                    "page_number": None,
+                    "image_count": 0,
+                    "table_count": 0,
+                    "parent_section_id": None,
+                }
+
+                # Set parent from heading stack
+                if level > 1:
+                    parent_level = level - 1
+                    if parent_level in heading_stack:
+                        # Find parent section index
+                        for prev_sec in reversed(sections):
+                            if prev_sec["level"] == parent_level:
+                                current_section["parent_section_id"] = f"sec_{sections.index(prev_sec):04d}"
+                                break
+
+            else:
+                if current_section is None:
+                    # Content before any heading → create a default section
+                    current_section = {
+                        "title": "Nội dung mở đầu",
+                        "content": "",
+                        "level": 1,
+                        "breadcrumb": [],
+                        "page_number": None,
+                        "image_count": 0,
+                        "table_count": 0,
+                        "parent_section_id": None,
+                    }
+                current_section["content"] += line + "\n"
+
+                # Detect tables
+                if "|" in line and "---" not in line:
+                    current_section["table_count"] += 1
+
+        # Don't forget the last section
+        if current_section and current_section["content"].strip():
+            sections.append(current_section)
+
+        return sections
+
+    def _split_text_to_chunks(
+        self,
+        text: str,
+        chunk_size: int = 400,
+        overlap: int = 75,
+    ) -> List[str]:
+        """
+        Split text into chunks of approximately chunk_size tokens.
+        Simple token estimation: ~1 token ≈ 4 chars (rough heuristic).
+        Respects sentence boundaries.
+        """
+        if not text or not text.strip():
+            return []
+
+        chars_per_chunk = chunk_size * 4  # Rough token→char conversion
+        overlap_chars = overlap * 4
+
+        # Split by sentences (period, question mark, exclamation, newline)
+        sentences = re.split(r'(?<=[.!?。！？])\s+|\n\n+', text)
+        sentences = [s.strip() for s in sentences if s.strip()]
+
+        if not sentences:
+            return [text.strip()] if text.strip() else []
+
+        chunks: List[str] = []
+        current_chunk: List[str] = []
+        current_length = 0
+
+        for sentence in sentences:
+            sentence_len = len(sentence)
+
+            if current_length + sentence_len > chars_per_chunk and current_chunk:
+                # Save current chunk
+                chunks.append(" ".join(current_chunk))
+
+                # Keep overlap sentences
+                overlap_len = 0
+                overlap_sentences: List[str] = []
+                for s in reversed(current_chunk):
+                    if overlap_len + len(s) > overlap_chars:
+                        break
+                    overlap_sentences.insert(0, s)
+                    overlap_len += len(s)
+
+                current_chunk = overlap_sentences
+                current_length = overlap_len
+
+            current_chunk.append(sentence)
+            current_length += sentence_len
+
+        # Don't forget the last chunk
+        if current_chunk:
+            chunk_text = " ".join(current_chunk)
+            if chunk_text.strip():
+                chunks.append(chunk_text)
+
+        return chunks
 
     def _infer_node_type(self, node) -> ParsedNodeType:
         """Infer node type from LlamaIndex node metadata."""

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from celery.result import AsyncResult
 from sqlalchemy import func
 
-from app.api.deps import AuthContext, get_auth_context, require_admin
+from app.api.deps import AuthContext, require_admin
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.models.core import Document
@@ -83,12 +83,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
         if duplicate is not None:
             raise HTTPException(
                 status_code=409,
-                detail={
-                    "status": "duplicate",
-                    "message": "Document already exists",
-                    "existing_document_id": str(duplicate.id),
-                    "existing_version": duplicate.version,
-                },
+                detail="Document already exists"
             )
 
         next_version = (
@@ -183,6 +178,9 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
 
 @router.get("/status/{task_id}", response_model=TaskStatusResponse)
 async def get_status(task_id: str, _auth=Depends(require_admin)) -> TaskStatusResponse:
+    if not throttle.allow(f"throttle:status:{_auth.user_id}", limit=60, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many status requests")
+
     record = registry.get_by_task_id(task_id)
     if record and record.deleted:
         return _to_status_response(
@@ -254,6 +252,9 @@ async def get_status(task_id: str, _auth=Depends(require_admin)) -> TaskStatusRe
 
 @router.get("/documents", response_model=DocumentListResponse)
 async def list_documents(_auth=Depends(require_admin)) -> DocumentListResponse:
+    if not throttle.allow(f"throttle:documents:{_auth.user_id}", limit=30, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many document list requests")
+
     with SessionLocal() as session:
         rows = (
             session.query(Document)

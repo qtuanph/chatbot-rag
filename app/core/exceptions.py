@@ -77,3 +77,33 @@ class ComponentNotFoundError(ComponentException):
 class ComponentConfigurationError(ComponentException):
     """Raised when component configuration is invalid."""
     pass
+
+
+class ChatException(ChatbotRAGException):
+    """Base exception for chat-related errors."""
+    pass
+
+
+class ChatStreamException(ChatException):
+    """Raised when streaming chat fails."""
+    pass
+
+
+class ChatProviderException(ChatException):
+    """Raised when AI provider fails (timeout, rate limit, etc.)."""
+    pass
+
+
+class ChatValidationException(ChatException):
+    """Raised when chat request validation fails."""
+    pass
+
+
+class RetrievalException(ChatbotRAGException):
+    """Raised when document retrieval fails."""
+    pass
+
+
+class RateLimitException(ChatbotRAGException):
+    """Raised when rate limit is exceeded."""
+    pass

@@ -108,6 +108,7 @@ def parse_document_task(
     content = b""
     embedding_service = None
     vector_store = None
+    db_session = None
 
     try:
         # ── Step 1: Download ─────────────────────────────────────────────────
@@ -141,10 +142,15 @@ def parse_document_task(
         # ── Step 3: Parse & embed ────────────────────────────────────────────
         logger.info("[%s] Parsing with pipeline...", document_id)
         parser_manager = ParserManager()
+
+        # Open a DB session for section storage during ingestion
+        db_session = SessionLocal()
+
         pipeline = IngestionPipeline(
             parser_manager=parser_manager,
             embedding_service=embedding_service,
             vector_store=vector_store,
+            db_session=db_session,
         )
 
         def _progress_callback(stage: str, percent: int, message: str = "") -> None:
@@ -277,6 +283,12 @@ def parse_document_task(
             unload_fn = getattr(embedding_service, "unload", None)
             if callable(unload_fn):
                 unload_fn()
+        # Close the DB session used for section storage
+        if db_session is not None:
+            try:
+                db_session.close()
+            except Exception:
+                pass
 
     return {
         "task_id": task_id,
