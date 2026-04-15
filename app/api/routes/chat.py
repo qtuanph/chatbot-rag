@@ -25,7 +25,7 @@ throttle = RequestThrottle()
 logger = logging.getLogger(__name__)
 
 
-def _deduplicate_citations(citations: list[dict]) -> list[dict]:
+def _deduplicate_citations(citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Deduplicate citations by document_id and node_id, keeping the most relevant one.
     Sorts by index (relevance order from retrieval).

@@ -106,6 +106,71 @@ class GoogleAIProvider(AIProvider):
         # Should not reach here, but just in case
         raise RuntimeError("Google AI request failed after retries")
 
+    async def refine_text(self, text: str, current_header: str | None = None) -> tuple[str, str | None]:
+        """
+        Refine text using Gemma-4 to fix OCR errors and detect headers.
+
+        Args:
+            text: Raw text to refine (often with OCR errors)
+            current_header: Current section header (optional)
+
+        Returns:
+            Tuple of (cleaned_text, detected_header)
+        """
+        if not text or not text.strip():
+            return text, current_header
+
+        # Build refinement prompt
+        prompt = (
+            "You are a text refinement tool for documents. Your tasks:\n"
+            "1. Fix common OCR errors (e.g., 'M Ụ C T I Ê U' → 'MỤC TIÊU')\n"
+            "2. Normalize whitespace\n"
+            "3. Detect if first line is a header/title\n\n"
+            f"Text to refine:\n{text[:2000]}\n\n"
+            "Return JSON: {\"cleaned_text\": \"...\", \"detected_header\": \"...\" or null}"
+        )
+
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.1,  # Low temp for consistency
+                "maxOutputTokens": 512,
+            },
+        }
+
+        url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0, limits=self.limits) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                data = response.json()
+
+                # Extract JSON response
+                response_text = self._extract_text(data)
+                if not response_text:
+                    return text, current_header
+
+                # Parse JSON
+                import json as json_lib
+                try:
+                    # Try to extract JSON from response (may have extra text)
+                    json_start = response_text.find('{')
+                    json_end = response_text.rfind('}') + 1
+                    if json_start >= 0 and json_end > json_start:
+                        json_str = response_text[json_start:json_end]
+                        result = json_lib.loads(json_str)
+                        cleaned = result.get("cleaned_text", text).strip()
+                        header = result.get("detected_header") or current_header
+                        return cleaned, header
+                except Exception as e:
+                    logger.warning("Failed to parse refinement JSON: %s", e)
+                    return text, current_header
+
+        except Exception as e:
+            logger.warning("Text refinement failed, using fallback: %s", e)
+            return text, current_header
+
     async def chat_stream(self, messages: list[dict[str, Any]], **kwargs: Any) -> AsyncGenerator[str, None]:
         """
         Stream chat responses from Google Gemini API.

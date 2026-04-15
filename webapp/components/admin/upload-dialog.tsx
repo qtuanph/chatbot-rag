@@ -7,7 +7,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -25,7 +24,6 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState("");
-  const [taskId, setTaskId] = useState<string | null>(null);
 
   const pollProgress = useCallback(
     async (id: string, token: string) => {
@@ -40,7 +38,6 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
             setStatusMessage("Hoàn tất!");
             setTimeout(() => {
               setOpen(false);
-              setTaskId(null);
               setProgress(0);
               setStatusMessage("");
               onUploaded();
@@ -77,26 +74,23 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
 
       try {
         const result = await documentsApi.upload(file, session.accessToken);
-        setTaskId(result.task_id);
         setProgress(10);
         setStatusMessage("Đang xử lý...");
         pollProgress(result.task_id, session.accessToken);
-      } catch (err) {
+      } catch {
         toast.error("Tải lên thất bại. Vui lòng thử lại.");
         setUploading(false);
       }
     },
-    [session?.accessToken, pollProgress],
+    [session, pollProgress],
   );
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className="gap-2">
-          <Upload className="h-4 w-4" />
-          Tải tài liệu lên
-        </Button>
-      </DialogTrigger>
+      <Button className="gap-2" onClick={() => setOpen(true)}>
+        <Upload className="h-4 w-4" />
+        Tải tài liệu lên
+      </Button>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Tải tài liệu lên</DialogTitle>

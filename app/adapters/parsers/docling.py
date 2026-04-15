@@ -18,7 +18,6 @@ from app.adapters.base import (
     ParsedNodeType,
 )
 from app.core.exceptions import ParsingException
-from app.services.ingestion.rule_based_refiner import rule_based_refiner
 from app.core.hardware import hardware
 
 logger = logging.getLogger(__name__)
@@ -37,7 +36,7 @@ class DoclingParser(BaseParser):
     ):
         """
         Initialize DoclingParser.
-        
+
         Args:
             fallback_parser: Optional fallback parser for when Docling/LlamaIndex fail
             min_quality_score: Minimum quality score to accept parse result
@@ -46,7 +45,7 @@ class DoclingParser(BaseParser):
         self.min_quality_score = min_quality_score
         self.docling_converter = None
         self.llamaindex_parser = None
-        
+
         self._initialize_docling()
         self._initialize_llamaindex()
 
@@ -361,43 +360,64 @@ class DoclingParser(BaseParser):
             return [], False
 
     def _refine_nodes(self, nodes: List[IngestedNode]) -> List[IngestedNode]:
-        """Run rule-based refiner on all nodes to fix OCR errors and enrich metadata."""
-        try:
-            id_map = {
-                node.metadata.get('llamaindex_id'): node.node_id
-                for node in nodes
-                if node.metadata.get('llamaindex_id')
-            }
-            heading_stack: dict[int, str] = {}
+        """
+        Refine nodes to fix OCR errors and enrich metadata using RULE-BASED approach only.
 
-            for node in nodes:
-                original_text = node.text
-                original_header = node.section_title
+        Uses rule_based_refiner (regex + heuristics):
+        - Fix Vietnamese OCR spacing errors (e.g., "M Ụ C   T I Ê U" → "MỤC TIÊU")
+        - Detect headers from Markdown patterns (#{1,6})
+        - Normalize whitespace
+        - Build breadcrumb from heading hierarchy
 
+        Benefits:
+        - 0GB VRAM (no AI model loaded)
+        - ~1ms per node (vs 500ms for AI)
+        - Works offline without API keys
+        - No API costs
+
+        AI-based refinement was removed to avoid token costs and latency.
+        """
+        from app.services.ingestion.rule_based_refiner import rule_based_refiner
+
+        id_map = {
+            node.metadata.get('llamaindex_id'): node.node_id
+            for node in nodes
+            if node.metadata.get('llamaindex_id')
+        }
+        heading_stack: dict[int, str] = {}
+
+        # Use rule-based refinement (fast, reliable, offline, no API required)
+        for idx, node in enumerate(nodes):
+            original_text = node.text
+            current_header = node.section_title
+
+            # Rule-based text refinement using regex + heuristics
+            try:
                 cleaned_text, predicted_header = rule_based_refiner.refine_text(
-                    original_text, original_header
+                    original_text, current_header
                 )
-                node.text = cleaned_text
+            except Exception as e:
+                logger.warning("Rule-based refinement failed for node %d: %s", idx, e)
+                cleaned_text, predicted_header = original_text, current_header
 
-                if node.node_type == ParsedNodeType.SECTION:
-                    level_match = re.match(r'^(#+)', original_text)
-                    level = len(level_match.group(1)) if level_match else 1
-                    title = predicted_header or original_text.lstrip('#').strip()
-                    node.section_title = title
-                    heading_stack[level] = title
-                    for l in list(heading_stack.keys()):
-                        if l > level:
-                            del heading_stack[l]
+            node.text = cleaned_text
 
-                current_breadcrumb = [heading_stack[l] for l in sorted(heading_stack.keys())]
-                node.metadata['breadcrumb'] = current_breadcrumb
+            if node.node_type == ParsedNodeType.SECTION:
+                level_match = re.match(r'^(#+)', original_text)
+                level = len(level_match.group(1)) if level_match else 1
+                title = predicted_header or original_text.lstrip('#').strip()
+                node.section_title = title
+                heading_stack[level] = title
+                for l in list(heading_stack.keys()):
+                    if l > level:
+                        del heading_stack[l]
 
-                li_parent_id = node.metadata.get('llamaindex_metadata', {}).get('parent_id')
-                if li_parent_id and li_parent_id in id_map:
-                    node.parent_id = id_map[li_parent_id]
+            current_breadcrumb = [heading_stack[l] for l in sorted(heading_stack.keys())]
+            node.metadata['breadcrumb'] = current_breadcrumb
 
-        except Exception as refine_err:
-            logger.error("AI Structural Audit failed: %s", refine_err)
+            li_parent_id = node.metadata.get('llamaindex_metadata', {}).get('parent_id')
+            if li_parent_id and li_parent_id in id_map:
+                node.parent_id = id_map[li_parent_id]
 
         return nodes
 

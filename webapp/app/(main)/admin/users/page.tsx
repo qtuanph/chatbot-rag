@@ -19,7 +19,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -36,7 +35,6 @@ import type { UserItem } from "@/types/api";
 export default function UsersPage() {
   const { data: session } = useSession();
   const [users, setUsers] = useState<UserItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
@@ -47,10 +45,8 @@ export default function UsersPage() {
       setUsers(data);
     } catch {
       toast.error("Không thể tải danh sách người dùng");
-    } finally {
-      setLoading(false);
     }
-  }, [session?.accessToken]);
+  }, [session]);
 
   useEffect(() => {
     fetchUsers();
@@ -75,7 +71,7 @@ export default function UsersPage() {
         toast.error("Tạo người dùng thất bại");
       }
     },
-    [session?.accessToken, fetchUsers],
+    [session, fetchUsers],
   );
 
   const handleDelete = useCallback(
@@ -90,7 +86,7 @@ export default function UsersPage() {
         toast.error("Xóa thất bại");
       }
     },
-    [session?.accessToken, fetchUsers],
+    [session, fetchUsers],
   );
 
   return (
@@ -102,12 +98,10 @@ export default function UsersPage() {
         </div>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              Thêm người dùng
-            </Button>
-          </DialogTrigger>
+          <Button className="gap-2" onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Thêm người dùng
+          </Button>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Thêm người dùng mới</DialogTitle>

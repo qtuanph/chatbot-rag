@@ -78,12 +78,4 @@ declare module "next-auth" {
   }
 }
 
-declare module "next-auth/jwt" {
-  interface JWT {
-    accessToken: string;
-    role: string;
-    userId: string;
-  }
-}
-
 export const authOptions = { providers: [Credentials] };

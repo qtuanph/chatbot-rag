@@ -7,7 +7,6 @@ export interface LoginRequest {
 
 export interface TokenResponse {
   access_token: string;
-  token_type: string;
   role: string;
 }
 
@@ -65,14 +64,14 @@ export interface ChatStreamChunk {
 }
 
 export interface ChatStreamDone {
-  chunk: "";
+  chunk: string;
   done: true;
   session_id: string;
   citations: Citation[];
 }
 
 export interface ChatStreamError {
-  chunk: "";
+  chunk: string;
   done: true;
   error: string;
 }
@@ -180,6 +179,12 @@ export interface TreeSearchResult {
 }
 
 // Health
+export interface HealthCheck {
+  status: "up" | "down" | "degraded";
+  latency_ms?: number;
+  [key: string]: unknown;
+}
+
 export interface HealthData {
   status: string;
   timestamp: string;
@@ -187,5 +192,5 @@ export interface HealthData {
   total_docs: number;
   latest_document_id: string;
   target_document_id: string;
-  checks: Record<string, { status: string }>;
+  checks: Record<string, HealthCheck>;
 }

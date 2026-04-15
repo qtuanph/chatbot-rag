@@ -1,6 +1,7 @@
 "use client";
 
 import { signOut, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,11 +11,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, Settings, User } from "lucide-react";
-import Link from "next/link";
+import { LogOut, Settings } from "lucide-react";
 
 export function UserNav() {
   const { data: session } = useSession();
+  const router = useRouter();
 
   if (!session) return null;
 
@@ -34,11 +35,9 @@ export function UserNav() {
         </div>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuItem asChild>
-          <Link href="/settings">
-            <Settings className="mr-2 h-4 w-4" />
-            Cài đặt
-          </Link>
+        <DropdownMenuItem onClick={() => router.push("/settings")}>
+          <Settings className="mr-2 h-4 w-4" />
+          Cài đặt
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

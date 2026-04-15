@@ -1,6 +1,6 @@
 # 04 — API Contract and Security
 
-Status: stable API and security baseline.
+Status: stable API and security baseline — updated to reflect Next.js 16 frontend and new endpoints.
 
 ## Contract Stability Rules
 
@@ -161,6 +161,9 @@ User re-uploads "policy.md" (same filename, different content)
 | `POST` | `/api/v1/auth/login` | ❌ Public | `{username, password}` → `{access_token, token_type, role}` |
 | `POST` | `/api/v1/auth/logout` | ✅ Bearer | Vô hiệu hoá token hiện tại |
 | `POST` | `/api/v1/auth/users` | 🔒 Admin | `{username, password, role}` → tạo user mới |
+| `GET` | `/api/v1/auth/me` | ✅ Bearer | Trả về thông tin user hiện tại |
+| `GET` | `/api/v1/auth/users` | 🔒 Admin | Danh sách tất cả users |
+| `DELETE` | `/api/v1/auth/users/{username}` | 🔒 Admin | Xóa user (không thể tự xóa) |
 
 ### Documents & Ingestion
 
@@ -176,16 +179,18 @@ User re-uploads "policy.md" (same filename, different content)
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `POST` | `/api/v1/chat` | ✅ Bearer | `{query, session_id?}` → `{answer, citations, session_id}` |
+| `POST` | `/api/v1/chat` | ✅ Bearer | `{query, session_id?}` → `{answer, citations, session_id}` (non-streaming) |
+| `POST` | `/api/v1/chat/stream` | ✅ Bearer | `{query, session_id?}` → SSE stream với chunks real-time |
+| `GET` | `/api/v1/chat/sessions` | ✅ Bearer | Danh sách chat sessions của user hiện tại |
 
 ### Health / Monitoring (JSON)
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET` | `/api/v1/health` | ❌ Public | Health HTML + JSON snapshot |
-| `GET` | `/api/v1/health/data` | ❌ Public | JSON snapshot phục vụ auto-refresh |
-| `GET` | `/api/v1/health/nodes` | ❌ Public | `?document_id=` → JSON danh sách Qdrant nodes |
-| `GET` | `/api/v1/health/node` | ❌ Public | `?document_id=&node_id=` → JSON chi tiết 1 node |
+| `GET` | `/api/v1/health` | ❌ Public | Health status đơn giản |
+| `GET` | `/api/v1/health/data` | ✅ Bearer | JSON snapshot chi tiết với checks |
+| `GET` | `/api/v1/health/nodes` | ✅ Bearer | `?document_id=` → JSON danh sách Qdrant nodes |
+| `GET` | `/api/v1/health/node` | ✅ Bearer | `?document_id=&node_id=` → JSON chi tiết 1 node |
 
 ### Demo UI (app/view/ — có thể xóa khi go-live)
 

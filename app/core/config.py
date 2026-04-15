@@ -16,8 +16,6 @@ class Settings(BaseSettings):
     ai_provider: str = "google"
     google_api_key: str = ""
     google_model: str = "gemma-4-26b-a4b-it"
-    vllm_base_url: str = "http://vllm:8000/v1"
-    vllm_model: str = "Qwen/Qwen2.5-7B-Instruct-AWQ"  # On-prem model name for vLLM
 
     ingestion_engine: str = "docling"
     ingestion_min_non_empty_nodes: int = 1

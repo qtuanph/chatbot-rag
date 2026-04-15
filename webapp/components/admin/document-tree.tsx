@@ -14,9 +14,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { treeNodeTypes } from "@/components/admin/tree-node";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Search } from "lucide-react";
 import type { TreeNode as TreeNodeType } from "@/types/api";
 
@@ -115,7 +113,6 @@ function buildFlowData(treeNodes: TreeNodeType[]) {
 
 export function DocumentTree({
   nodes,
-  documentTitle,
   maxDepth,
   onNodeClick,
 }: DocumentTreeProps) {

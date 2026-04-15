@@ -1,26 +1,27 @@
 # 03 — Core Workflows
 
-Status: implementation workflow baseline — updated to reflect chunked pipeline, progress reporting, and hard-delete.
+Status: implementation workflow baseline — updated to reflect Next.js 16, SSE streaming, and rule-based refiner.
 
 ## Workflow 1: Upload → Queue → Parse → Index → Ready
 
 ```mermaid
 sequenceDiagram
-    participant Client
+    participant Browser
     participant API as FastAPI
     participant RustFS
     participant DB as PostgreSQL
     participant Redis
     participant Worker as Celery Worker
     participant Pipeline as IngestionPipeline
+    participant Refiner as Rule-Based Refiner
     participant Qdrant
 
-    Client->>API: POST /api/v1/upload
+    Browser->>API: POST /api/v1/upload
     API->>API: validate auth and size
     API->>RustFS: store file
     API->>DB: INSERT document (status=pending)
     API->>Redis: enqueue parse_document_task (queue=ingestion)
-    API-->>Client: 202 { task_id }
+    API-->>Browser: 202 { task_id }
 
     Redis->>Worker: dequeue (ack_late=True)
     Worker->>DB: status=processing, stage=download, percent=10
@@ -35,6 +36,8 @@ sequenceDiagram
     Pipeline->>Pipeline: Section extraction + Chunk splitting (~400 tokens)
     Pipeline->>DB: stage=validate, percent=35 [callback]
     Pipeline->>Pipeline: Hierarchy Validator
+    Pipeline->>Refiner: refine_text (0GB VRAM, ~1ms)
+    Refiner->>Refiner: Fix OCR errors, detect headers
     Pipeline->>DB: stage=sections, percent=37 [callback]
     Pipeline->>DB: Store sections in document_sections table
 
@@ -62,7 +65,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Client
+    participant Browser
     participant API
     participant Redis
     participant Embedder as BAAI/bge-m3 Local
@@ -71,7 +74,7 @@ sequenceDiagram
     participant Qdrant
     participant Provider as AI Provider
 
-    Client->>API: POST /api/v1/chat
+    Browser->>API: POST /api/v1/chat/stream (SSE)
     API->>API: validate auth and payload
     API->>Redis: check rate limit (atomic Lua script)
     API->>Redis: query embedding cache lookup (MD5 key)
@@ -92,10 +95,14 @@ sequenceDiagram
     Retriever->>Qdrant: search within top sections (score ≥ 0.35)
     Retriever->>Retriever: prioritize in-section chunks
     Retriever-->>API: top nodes with section context and citations
-    API->>Provider: chat(history, context, citations)
-    Provider-->>API: answer
+
+    loop For each chunk of response
+        API->>Provider: chat_stream (generate next chunk)
+        Provider-->>API: text chunk
+        API-->>Browser: SSE data: {"chunk": "...", "done": false}
+    end
     API->>DB: save ChatMessage
-    API-->>Client: { session_id, answer, citations }
+    API-->>Browser: SSE data: {"done": true, "session_id": "...", "citations": [...]}
 ```
 
 ### Chat Invariants

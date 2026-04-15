@@ -96,7 +96,13 @@
       "mcp__shadcn__getComponents",
       "Bash(npx shadcn@latest init -d)",
       "Bash(npx shadcn@latest add card input label badge dialog dropdown-menu avatar separator sheet tabs table progress textarea scroll-area sonner skeleton tooltip sidebar select -y)",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "Bash(docker buildx:*)",
+      "Bash(pip index:*)",
+      "Bash(pip install:*)",
+      "mcp__ide__getDiagnostics",
+      "mcp__shadcn__getComponent",
+      "mcp__next-devtools__init"
     ]
   }
 }

@@ -130,7 +130,7 @@ export function ChatPanel() {
             }
           }
         }
-      } catch (err) {
+      } catch {
         toast.error("Lỗi kết nối. Vui lòng thử lại.");
         setMessages((prev) =>
           prev.map((m) =>

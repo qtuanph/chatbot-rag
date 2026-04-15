@@ -1,6 +1,6 @@
 # 02 — Database and Project
 
-Status: single-project data model with role-based authorization.
+Status: single-project data model with role-based authorization — updated to reflect Next.js 16 frontend.
 
 ## Storage Split (Source of Truth)
 
@@ -14,10 +14,11 @@ Status: single-project data model with role-based authorization.
 ## Core PostgreSQL Tables
 
 | Table | Purpose |
-|------|---------| 
+|------|---------|
 | `roles` | role definitions (admin, member) |
 | `users` | authenticated accounts with bcrypt password hash |
 | `documents` | uploaded file metadata, status, version, ingestion state |
+| `document_sections` | section-level storage for hierarchical retrieval |
 | `chat_sessions` | conversation sessions per user |
 | `chat_messages` | message history and citations payload |
 | `security_audit` | audit trail for sensitive actions |
@@ -86,9 +87,11 @@ Retrieval uses `Document.deleted_at.is_(None)` and `Document.status == 'ready'` 
 
 1. Save upload to RustFS.
 2. Insert `documents` row with `status=pending`.
-3. Celery worker: parse with Docling + EasyOCR → LlamaIndex.
-4. Worker fires `progress_callback` at each stage → `progress_percent` updates live.
-5. Embed nodes in parallel batches of 32 via `ThreadPoolExecutor`.
-6. Upsert vectors and payload in Qdrant per chunk.
-7. Save ingestion artifact metadata (`extra_metadata`) in the document row.
-8. Set `status=ready` or `status=failed` with `parse_error`.
+3. Celery worker: parse with Docling + EasyOCR → section extraction → chunk splitting.
+4. Rule-based refiner fixes OCR errors (0GB VRAM, ~1ms per node).
+5. Worker fires `progress_callback` at each stage → `progress_percent` updates live.
+6. Store sections in PostgreSQL `document_sections` table.
+7. Embed nodes in parallel batches of 32 via `ThreadPoolExecutor`.
+8. Upsert vectors and payload in Qdrant per chunk (with `section_id` metadata).
+9. Save ingestion artifact metadata (`extra_metadata`) in the document row.
+10. Set `status=ready` or `status=failed` with `parse_error`.

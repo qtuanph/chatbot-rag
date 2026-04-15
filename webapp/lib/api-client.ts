@@ -18,13 +18,6 @@ import type {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
-async function getToken(): Promise<string | null> {
-  const { getServerSession } = await import("next-auth");
-  const { authOptions } = await import("@/lib/auth");
-  const session = await getServerSession(authOptions);
-  return (session as { token?: string })?.token ?? null;
-}
-
 class ApiError extends Error {
   status: number;
   detail: string;
@@ -39,10 +32,8 @@ class ApiError extends Error {
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
-  tokenOverride?: string,
+  token?: string,
 ): Promise<T> {
-  const token = tokenOverride ?? (typeof window === "undefined" ? await getToken() : null);
-
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),

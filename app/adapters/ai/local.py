@@ -23,3 +23,7 @@ class LocalAIProvider(AIProvider):
             "answer": f"Dựa trên tài liệu đã index, câu hỏi '{query}' có liên quan đến {len(context)} đoạn nội dung.",
             "citations": citations,
         }
+
+    async def refine_text(self, text: str, current_header: str | None = None, **kwargs: Any) -> tuple[str, str | None]:
+        """Local fallback: return text unchanged."""
+        return text, current_header

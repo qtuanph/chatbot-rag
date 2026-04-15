@@ -1,6 +1,6 @@
 # 05 — Resource Optimization and Edge Cases
 
-Status: operational optimization baseline for the new architecture.
+Status: operational optimization baseline — updated to reflect rule-based refiner (0GB VRAM).
 
 ## Constraint -> Response Matrix
 
@@ -20,6 +20,7 @@ Status: operational optimization baseline for the new architecture.
 | Hierarchy quality | validate parent links before persistence |
 | Artifact quality | persist parse metadata and warnings for audit |
 | Duplicate control | run SHA-256 duplicate checks before enqueue |
+| Refiner type | **Rule-based only** — 0GB VRAM, ~1ms per node (NO AI in ingestion) |
 
 ## Retrieval Optimization Rules
 

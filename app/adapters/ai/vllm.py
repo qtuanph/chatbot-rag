@@ -38,6 +38,10 @@ class VLLMAIProvider(AIProvider):
             "citations": kwargs.get("citations") or [],
         }
 
+    async def refine_text(self, text: str, current_header: str | None = None, **kwargs: Any) -> tuple[str, str | None]:
+        """vLLM does not support text refinement by default."""
+        return text, current_header
+
     def _build_messages(self, messages: list[dict[str, Any]], kwargs: dict[str, Any]) -> list[dict[str, str]]:
         context_nodes = kwargs.get("context") or []
         context_lines: list[str] = []
