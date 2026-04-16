@@ -1,0 +1,65 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - heading "RAG Chatbot" [level=2] [ref=e7]
+        - paragraph [ref=e8]: Hệ thống hỏi đáp tài liệu
+      - generic [ref=e10]:
+        - generic [ref=e11]: Menu
+        - list [ref=e13]:
+          - listitem [ref=e45]:
+            - button "Dashboard" [ref=e46]:
+              - img [ref=e47]
+              - generic [ref=e52]: Dashboard
+          - listitem [ref=e53]:
+            - button "Tài liệu" [ref=e54]:
+              - img [ref=e55]
+              - generic [ref=e58]: Tài liệu
+          - listitem [ref=e59]:
+            - button "Người dùng" [ref=e60]:
+              - img [ref=e61]
+              - generic [ref=e66]: Người dùng
+          - listitem [ref=e14]:
+            - button "Chat" [ref=e15]:
+              - img [ref=e16]
+              - generic [ref=e18]: Chat
+          - listitem [ref=e19]:
+            - button "Cài đặt" [ref=e20]:
+              - img [ref=e21]
+              - generic [ref=e24]: Cài đặt
+      - button "AD admin admin" [ref=e67]:
+        - generic [ref=e69]: AD
+        - generic [ref=e70]:
+          - generic [ref=e71]: admin
+          - generic [ref=e72]: admin
+    - main [ref=e26]:
+      - generic [ref=e27]:
+        - button "Toggle Sidebar" [ref=e28]:
+          - img
+          - generic [ref=e29]: Toggle Sidebar
+        - separator [ref=e30]
+      - main [ref=e31]:
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - heading "Phiên chat" [level=2] [ref=e88]
+            - button "Chat mới" [ref=e36]:
+              - img
+              - text: Chat mới
+          - generic [ref=e38]:
+            - generic [ref=e73]:
+              - generic [ref=e75]: Xin chào!
+              - generic [ref=e77]: You
+            - generic [ref=e78]:
+              - generic [ref=e80]: AI
+              - generic [ref=e89]:
+                - button "Suy nghĩ" [active] [ref=e90]:
+                  - img
+                  - text: Suy nghĩ
+                  - img
+                - generic [ref=e91]: "` tag. * The user justsaid \"Hello!\". * There are no documents to analyze. * The goal is to respondnaturally and politely while acknowledging the role. * Acknowledge the greeting. * Introduce myselfas the AI assistant ready to help. * Mention that I am ready to process documents and answer questions oncethey are provided. * Maintain a professional yet friendly tone. * *Greeting:* Chàobạn! * *Status:* Tôi đã sẵn sàng. * *Instruction to user:* Bạnhãy gửi tài liệu và câu hỏi, tôi sẽ phân tích và trả lời chi tiết theo đúng yêu cầu.* Since there are no documents, I can't \"analyze\" or \"synthesize\" anything specific yet.* I will simply respond to the greeting and invite the user to provide the content. *\"Chào bạn! Rất vui được gặp bạn. Tôi đã sẵn sàng để hỗ trợ bạn với vai trò là mộttrợ lý AI thông minh. Vì hiện tại chưa có tài liệu nào được cung cấp, nên tôi đang ở trạng tháichờ. Bạn hãy gửi cho tôi các tài liệu cần thiết cùng với câu hỏi của bạn. Tôi sẽ đọc kỹ,phân tích, tổng hợp thông tin từ tất cả các nguồn và đưa ra câu trả lời chi tiết, logic và tựnhiên nhất cho bạn. Tôi đang đợi yêu cầu từ bạn đây!\"Chào bạn! Rất vui được gặp bạn. Tôi đã sẵn sàng để thực hiện nhiệm vụ của mình. Vì hiện tại bạn chưa cung cấp tài liệu nào, nên tôi đang ở trạng thái chờ để tiếp nhận thông tin từ bạn. Để tôi có thể hỗ trợ bạnmột cách tốt nhất theo đúng các quy tắc đã đề ra, bạn hãy gửi cho tôi: 1. **Cáctài liệu tham khảo** (văn bản, nội dung, dữ liệu...) mà bạn muốn tôi nghiên cứu.2. **Câu hỏi hoặc yêu cầu cụ thể** liên quan đến các tài liệu đó. Ngay khi nhậnđược, tôi sẽ tiến hành đọc kỹ, phân tích sâu, tổng hợp thông tin từ tất cả các nguồn và đưara cho bạn một câu trả lời logic, chi tiết và tự nhiên nhất. Tôi đang đợi yêu cầu từ bạnđây!Không thể tạo câu trả lời từ model Google ở thời điểm này."
+          - generic [ref=e42]:
+            - textbox "Nhập câu hỏi về tài liệu..." [ref=e43]
+            - button [disabled]:
+              - img
+  - region "Notifications alt+T"
+  - alert [ref=e44]

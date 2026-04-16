@@ -1,0 +1,65 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - heading "RAG Chatbot" [level=2] [ref=e7]
+        - paragraph [ref=e8]: Hệ thống hỏi đáp tài liệu
+      - generic [ref=e10]:
+        - generic [ref=e11]: Menu
+        - list [ref=e13]:
+          - listitem [ref=e45]:
+            - button "Dashboard" [ref=e46]:
+              - img [ref=e47]
+              - generic [ref=e52]: Dashboard
+          - listitem [ref=e53]:
+            - button "Tài liệu" [ref=e54]:
+              - img [ref=e55]
+              - generic [ref=e58]: Tài liệu
+          - listitem [ref=e59]:
+            - button "Người dùng" [ref=e60]:
+              - img [ref=e61]
+              - generic [ref=e66]: Người dùng
+          - listitem [ref=e14]:
+            - button "Chat" [ref=e15]:
+              - img [ref=e16]
+              - generic [ref=e18]: Chat
+          - listitem [ref=e19]:
+            - button "Cài đặt" [ref=e20]:
+              - img [ref=e21]
+              - generic [ref=e24]: Cài đặt
+      - button "AD admin admin" [ref=e67]:
+        - generic [ref=e69]: AD
+        - generic [ref=e70]:
+          - generic [ref=e71]: admin
+          - generic [ref=e72]: admin
+    - main [ref=e26]:
+      - generic [ref=e27]:
+        - button "Toggle Sidebar" [ref=e28]:
+          - img
+          - generic [ref=e29]: Toggle Sidebar
+        - separator [ref=e30]
+      - main [ref=e31]:
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - heading "Phiên chat" [level=2] [ref=e88]
+            - button "Chat mới" [ref=e36]:
+              - img
+              - text: Chat mới
+          - generic [ref=e38]:
+            - generic [ref=e73]:
+              - generic [ref=e75]: Xin chào, bạn có thể giúp gì cho tôi?
+              - generic [ref=e77]: You
+            - generic [ref=e78]:
+              - generic [ref=e80]: AI
+              - generic [ref=e89]:
+                - button "Suy nghĩ" [ref=e90]:
+                  - img
+                  - text: Suy nghĩ
+                  - img
+                - generic [ref=e91]: "` tag for reasoning. 9. Final answer outside thetag. * Reference Documents: \"NO DOCUMENTS\". * The user is asking a general introductoryquestion: \"What can you do for me?\" * Since there are no specific documents provided, I cannotsynthesize specific information from external sources. * I must rely on my general capabilities as an AI assistant to explainhow I can help. * *Information Processing:* Summarizing, analyzing, extracting key points from text/documents. * *Content Creation:* Writing essays, emails, stories, poems, code, reports.* *Problem Solving:* Math, logic, coding, debugging. * *Language Services:* Translation, grammar correction, style adjustment. * *Knowledge/Learning:* Explaining complex concepts, answering general knowledgequestions, tutoring. * *Organization/Planning:* Creating schedules, outlines, brainstorming ideas. **Introduction:* Friendly greeting. * *Core Capabilities (Categorized):* * Group1: Processing & Analyzing Information (Reading, summarizing, synthesizing - directly related to the prompt's instructions).* Group 2: Content Creation & Writing (Creative and professional writing). * Group 3: Problem Solving & Technical Tasks (Math, coding, logic). * Group 4: Learning & Knowledge(Explaining, translating). * *Conclusion:* Encouragement to start a task. **Greeting:* \"Chào bạn! Rất vui được gặp bạn. Với vai trò là một trợ lý AI thông minh, mình có thể hỗ trợ bạn trong rất nhiều lĩnh vực khác nhau...\" * *Analysis of capabilities:** *Xử lý thông tin:* Thay vì chỉ đọc, mình có thể phân tích sâu, tổnghợp từ nhiều nguồn để đưa ra cái nhìn toàn diện. (Connect to the prompt's specific rules).* *Sáng tạo nội dung:* Viết lách, soạn thảo email, lên ý tưởng.* *Giải quyết vấn đề:* Lập trình, toán học, logic. * *Họctập & Ngôn ngữ:* Dịch thuật, giải thích khái niệm khó. * *Tone:* Helpful, professional yet approachable. * Did I use `<thinking>`? Yes. * Is itin Vietnamese? Yes. * Is it structured? Yes. * Did I avoid [1], [2]? Yes. * Did I analyze/synthesize? Yes (by categorizing my ownfunctions).<thinking> Người dùng đang gửi một lời chào và hỏi về khả năng hỗ trợ của tôi (\"Xin chào, bạn có thể giúp gì cho tôi?\"). Mặc dù phần \"TÀI LIỆU THAM KHẢO\" ghi là \"NO DOCUMENTS\", nhưng dựa trên các quy tắc (rules) mà ngườidùng đã thiết lập ở phần đầu, tôi hiểu rằng vai trò chính của tôi trong ngữ cảnh này là một trợ lýcó khả năng: 1. Đọc và tổng hợp thông tin từ tài liệu. 2. Phân tíchsâu thay vì chỉ liệt kê. 3. Trả lời một cách logic, có cấu trúc và tự nhiên.Vì hiện tại chưa có tài liệu cụ thể nào được cung cấp, tôi sẽ trả lời bằng cách giới thiệu cácnhóm năng lực chính của mình dựa trên những gì tôi có thể làm (đặc biệt là khả năng xử lý tàiliệu mà người dùng vừa yêu cầu). Các nhóm năng lực chính cần trình bày: - **Xử lývà phân tích tài liệu:** Đây là thế mạnh được nhấn mạnh trong yêu cầu (tổng hợp, phân tích,không chỉ liệt kê). - **Sáng tạo nội dung:** Viết lách, soạn thảo, lên ýtưởng. - **Giải quyết vấn đề và kỹ thuật:** Toán học, lập trình, logic. - **Hỗ trợ học tập và ngôn ngữ:** Giải thích kiến thức, dịch thuật. Tôi sẽ trình bày theo phong"
+          - generic [ref=e42]:
+            - textbox "Nhập câu hỏi về tài liệu..." [ref=e43]
+            - button [disabled]:
+              - img
+  - region "Notifications alt+T"
+  - alert [ref=e44]

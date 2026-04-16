@@ -70,7 +70,7 @@ class GoogleAIProvider(AIProvider):
                     response = await client.post(url, json=payload)
                     response.raise_for_status()
                     data = response.json()
-                    answer = self._extract_text(data)
+                    answer = self._extract_text(data) or "Không thể tạo câu trả lời lúc này. Vui lòng thử lại."
                     citations = kwargs.get("citations") or []
                     return {"answer": answer, "citations": citations}
 
@@ -334,7 +334,7 @@ class GoogleAIProvider(AIProvider):
     def _extract_text(data: dict[str, Any]) -> str:
         """
         Extract text from Google AI response.
-        Handles various response formats and errors gracefully.
+        Returns empty string when no text is found (for streaming compatibility).
         """
         try:
             candidates = data.get("candidates") or []
@@ -345,18 +345,10 @@ class GoogleAIProvider(AIProvider):
                     text = part.get("text")
                     if text and text.strip():
                         return text.strip()
+            return ""
 
-            # Check for finishReason to detect safety blocks
-            if candidates:
-                finish_reason = candidates[0].get("finishReason", "")
-                if finish_reason == "SAFETY":
-                    return "Nội dung này không được phép tạo ra do chính sách an toàn."
-
-            return "Không thể tạo câu trả lời từ model Google ở thời điểm này."
-
-        except Exception as e:
-            logger.warning("Error extracting text from AI response: %s", e)
-            return "Lỗi khi xử lý phản hồi từ AI."
+        except Exception:
+            return ""
 
     @staticmethod
     def _safe_json_parse(response: httpx.Response) -> dict[str, Any]:
