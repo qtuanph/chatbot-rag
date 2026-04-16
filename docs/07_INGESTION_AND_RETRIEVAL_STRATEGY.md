@@ -1,6 +1,6 @@
 # 07 — Ingestion and Retrieval Strategy
 
-Status: authoritative strategy — updated to reflect 2-stage retrieval, section extraction, and chunk splitting.
+Status: authoritative strategy — updated to reflect 2-stage retrieval, section extraction, and rule-based refiner.
 
 ## Primary Principle
 
@@ -19,12 +19,13 @@ Use Qdrant for retrieval data path. Keep PostgreSQL as system metadata/state dat
 5. **Section extraction**: Markdown → split by headings (H1-H6) → sections (Level 1). Each section: title, content, level, breadcrumb.
 6. **Chunk splitting**: Each section → chunks of ~400 tokens with ~75 token overlap. Each chunk linked to section via `section_id` in metadata.
 7. **HierarchyValidator** checks parent-child consistency.
-8. **SectionRepository** stores sections in PostgreSQL `document_sections` table.
-9. Sequential chunks of **32 nodes** are embedded using `embed_batch()` which delegates to the local **BAAI/bge-m3** model:
+8. **RuleBasedRefiner** fixes OCR errors, detects headers (0GB VRAM, ~1ms per node).
+9. **SectionRepository** stores sections in PostgreSQL `document_sections` table.
+10. Sequential chunks of **32 nodes** are embedded using `embed_batch()` which delegates to the local **BAAI/bge-m3** model:
    - GPU-native batching via sentence-transformers
    - `vector_store.store()` upserts chunks to Qdrant with `section_id` in payload
    - `progress_callback` updates `documents.progress_percent` in DB
-10. Worker persists ingestion artifact to `extra_metadata`. Sets `status=ready`.
+11. Worker persists ingestion artifact to `extra_metadata`. Sets `status=ready`.
 
 ### OCR Backend
 
@@ -34,6 +35,20 @@ Use Qdrant for retrieval data path. Keep PostgreSQL as system metadata/state dat
 | Tesseract | **Not used** | Removed — EasyOCR is the only supported backend |
 
 EasyOCR models are pre-downloaded during Docker build using BuildKit cache mount. No runtime download.
+
+### AI Refiner (Rule-Based)
+
+**Important**: The ingestion pipeline does NOT use any AI model for text refinement. All text processing is done via rule-based heuristics.
+
+| Parameter | Value |
+|-----------|-------|
+| **Type** | Rule-based (regex + pattern matching) |
+| **VRAM Usage** | 0GB (no model loaded) |
+| **Speed** | ~1ms per node |
+| **Purpose** | Fix OCR errors, detect headers, validate hierarchy |
+| **Fallback** | N/A — always available |
+
+Rule-based refiner is **500x faster** than AI-based refiner and uses **0GB VRAM**, making ingestion lightweight and scalable.
 
 ### Embedding Model
 

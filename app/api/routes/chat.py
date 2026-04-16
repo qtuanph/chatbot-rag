@@ -211,7 +211,7 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                 try:
                     session.add(
                         ChatMessage(
-                            session_id=chat_session.id,
+                            session_id=session_id,
                             role="assistant",
                             content=full_answer,
                             citations=citations,

@@ -76,6 +76,7 @@ This is a **Docker-first RAG chatbot** for Vietnamese enterprise documents with 
 
 ### Core Technology Stack (Updated 2026-04-15)
 
+- **Frontend**: Next.js 16 with shadcn/ui v4, next-auth v5 (JWT), SSE streaming
 - **API Framework**: FastAPI with async endpoints
 - **Task Queue**: Celery with Redis broker (`acks_late=True`, `prefetch=1`, 25-min soft timeout)
 - **Databases**:
@@ -85,7 +86,7 @@ This is a **Docker-first RAG chatbot** for Vietnamese enterprise documents with 
   - RustFS (S3-compatible object storage for uploaded files)
 - **Ingestion**: Docling → Markdown → Section extraction → Chunk splitting → parallel embedding
 - **Embedding**: BAAI/bge-m3 LOCAL (sentence-transformers), 1024-dim vectors, parallel batch processing (32 nodes per batch)
-- **AI Refiner**: Rule-based heuristics (NOT Qwen/Gemini) - fixes OCR errors, detects headers, validates hierarchy
+- **AI Refiner**: Rule-based heuristics (NOT Qwen/Gemini) - 0GB VRAM, ~1ms per node
 - **Retrieval**: 2-stage (Sections → Chunks) with PostgreSQL section store + Qdrant vector search
 - **LLM Providers**: Adapter-based
   - **Google AI**: `gemma-4-26b-a4b-it` (26B parameters, high quality)
@@ -148,11 +149,12 @@ The ingestion workflow (`app/services/ingestion/pipeline.py`) is:
 3. **Download**: Worker downloads file from RustFS to RAM
 4. **Parse**: Docling converts to Markdown → section extraction → chunk splitting (with LlamaIndex fallback)
 5. **Validate**: Hierarchy validator ensures parent-child consistency
-6. **Store Sections**: Sections persisted to PostgreSQL `document_sections` table via `SectionRepository`
-7. **Embed**: Parallel batch embedding (32 nodes per batch) via `ThreadPoolExecutor`
-8. **Persist**: Chunks (with `section_id` metadata) to Qdrant
-9. **Verify**: Post-ingestion verification confirms vectors indexed and file stored
-10. **Unload**: Embedding model unloaded from VRAM to free resources
+6. **Refine**: Rule-based refiner fixes OCR errors, detects headers (0GB VRAM, ~1ms per node)
+7. **Store Sections**: Sections persisted to PostgreSQL `document_sections` table via `SectionRepository`
+8. **Embed**: Parallel batch embedding (32 nodes per batch) via `ThreadPoolExecutor`
+9. **Persist**: Chunks (with `section_id` metadata) to Qdrant
+10. **Verify**: Post-ingestion verification confirms vectors indexed and file stored
+11. **Unload**: Embedding model unloaded from VRAM to free resources
 
 **Progress reporting** happens via callback after each chunk (not after each node). Status updates are written to DB in real-time.
 
@@ -274,14 +276,36 @@ If you need schema changes:
 
 All endpoints are under `/api/v1/`:
 
+### Auth
 - `POST /api/v1/auth/login` — JWT authentication
 - `POST /api/v1/auth/logout` — Revoke token
+- `GET /api/v1/auth/me` — Get current user info
+- `POST /api/v1/auth/users` — Create user (admin only)
+- `GET /api/v1/auth/users` — List users (admin only)
+- `DELETE /api/v1/auth/users/{username}` — Delete user (admin only)
+
+### Documents & Ingestion
 - `POST /api/v1/upload` — Upload document (admin only), enqueues Celery task
 - `GET /api/v1/status/{task_id}` — Poll ingestion progress
-- `POST /api/v1/chat` — Chat with RAG, returns answer + citations
 - `GET /api/v1/documents` — List documents
+- `GET /api/v1/documents/{id}` — Get document details
 - `DELETE /api/v1/documents/{id}` — Hard-delete document
+
+### Chat
+- `POST /api/v1/chat` — Chat with RAG, returns answer + citations (non-streaming)
+- `POST /api/v1/chat/stream` — SSE streaming chat endpoint
+- `GET /api/v1/chat/sessions` — List user's chat sessions
+
+### Tree API
+- `GET /api/v1/tree/{document_id}` — Get document tree structure
+- `GET /api/v1/tree/{document_id}/nodes/{node_id}` — Get node details
+- `GET /api/v1/tree/{document_id}/search` — Search nodes in tree
+
+### Health & Monitoring
 - `GET /api/v1/health` — Health check with dependency status
+- `GET /api/v1/health/data` — Detailed health data with checks
+- `GET /api/v1/health/nodes` — List Qdrant nodes for a document
+- `GET /api/v1/health/node` — Get single Qdrant node details
 
 ## Default Credentials
 
@@ -295,6 +319,8 @@ Password: abc123
 
 ## Storage Access
 
+- **Webapp**: `http://localhost:3000` (Next.js 16 frontend)
+- **API**: `http://localhost:8000` (FastAPI backend)
 - **RustFS API**: `http://localhost:9000` (S3-compatible)
 - **RustFS Console**: `http://localhost:9001` (web UI)
 - **Qdrant Console**: `http://localhost:6333/dashboard`
@@ -306,11 +332,13 @@ Password: abc123
 - **Embedding model is loaded fresh per task** and unloaded after completion to free VRAM
 - **Docling is the primary parser**; classic parser is fallback only
 - **EasyOCR models are pre-downloaded** in Docker image via BuildKit cache
-- **AI Refiner uses rule-based heuristics** (regex + pattern matching) - 0GB VRAM, ~1ms per node
+- **AI Refiner uses rule-based heuristics** (regex + pattern matching) - 0GB VRAM, ~1ms per node — NO AI in ingestion pipeline
 - **HuggingFace cache is persisted** via volume mount (`hf-cache`)
 - **Progress callbacks translate English messages to Vietnamese** for user-facing status
 - **Score threshold filtering** removes low-relevance chunks before LLM generation
 - **Query embedding cache** significantly reduces API calls for repeated questions
+- **SSE streaming** for real-time chat responses via `/api/v1/chat/stream`
+- **Next.js 16 frontend** with shadcn/ui v4 components and next-auth v5 (JWT strategy)
 
 ## Development Guidelines
 
@@ -384,16 +412,23 @@ When exploring the codebase, read these documents first:
 - ✅ `document_sections` table in PostgreSQL for section-level storage
 - ✅ Section extraction from Markdown (heading-based splitting)
 - ✅ Chunk splitting (~400 tokens, ~75 token overlap) with section_id linking
-- ✅ Rule-based refiner (0GB VRAM, 500x faster than AI-based)
+- ✅ Rule-based refiner (0GB VRAM, 500x faster than AI-based) — restored as default
 - ✅ Async ingestion pipeline with Celery + section storage
 - ✅ Hard-delete workflow with proper ordering
 - ✅ Security hardened (strong passwords, CORS configured)
 - ✅ Google API key rotation removed (single key only)
 - ✅ AI model updated to `gemma-4-26b-a4b-it`
+- ✅ Next.js 16 frontend with shadcn/ui v4
+- ✅ next-auth v5 with JWT strategy and Credentials provider
+- ✅ SSE streaming chat with thinking tags parsing
+- ✅ Admin dashboard (health monitoring, document management, user management)
+- ✅ Role-based routing (admin vs member)
+- ✅ Tree API for hierarchical document exploration
+- ✅ User CRUD operations (admin only)
+- ✅ Document detail page with react-flow tree visualization
 
 **In Progress:**
 - ⏳ Docker build + integration testing
-- ⏳ Documentation update (docs/)
 
 **Upcoming:**
 - 🔜 Multimodal ingestion (images via EasyOCR + tables to markdown)

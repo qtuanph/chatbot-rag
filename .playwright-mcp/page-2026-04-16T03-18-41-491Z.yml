@@ -1,0 +1,27 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - heading "RAG Chatbot" [level=2] [ref=e7]
+        - paragraph [ref=e8]: Hệ thống hỏi đáp tài liệu
+      - generic [ref=e10]:
+        - generic [ref=e11]: Menu
+        - list [ref=e13]:
+          - listitem [ref=e14]:
+            - button "Chat" [ref=e15]:
+              - img [ref=e16]
+              - generic [ref=e18]: Chat
+          - listitem [ref=e19]:
+            - button "Cài đặt" [ref=e20]:
+              - img [ref=e21]
+              - generic [ref=e24]: Cài đặt
+    - main [ref=e26]:
+      - generic [ref=e27]:
+        - button "Toggle Sidebar" [ref=e28]:
+          - img
+          - generic [ref=e29]: Toggle Sidebar
+        - separator [ref=e30]
+      - main [ref=e31]:
+        - heading "Dashboard" [level=1] [ref=e33]
+  - region "Notifications alt+T"
+  - alert [ref=e40]

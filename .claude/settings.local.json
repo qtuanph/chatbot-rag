@@ -102,7 +102,18 @@
       "Bash(pip install:*)",
       "mcp__ide__getDiagnostics",
       "mcp__shadcn__getComponent",
-      "mcp__next-devtools__init"
+      "mcp__next-devtools__init",
+      "Bash(ls -la node_modules/shadcn/)",
+      "Bash(ls -la node_modules/@shadcn/)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_network_requests"
     ]
   }
 }

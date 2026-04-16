@@ -195,7 +195,7 @@ class GoogleAIProvider(AIProvider):
             },
         }
 
-        url = f"{self.base_url}/models/{self.model}:streamGenerateContent?key={self.api_key}"
+        url = f"{self.base_url}/models/{self.model}:streamGenerateContent?alt=sse&key={self.api_key}"
 
         # Retry logic for streaming
         for attempt in range(2):

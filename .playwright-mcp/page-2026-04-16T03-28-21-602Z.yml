@@ -1,0 +1,65 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - heading "RAG Chatbot" [level=2] [ref=e7]
+        - paragraph [ref=e8]: Hệ thống hỏi đáp tài liệu
+      - generic [ref=e10]:
+        - generic [ref=e11]: Menu
+        - list [ref=e13]:
+          - listitem [ref=e45]:
+            - button "Dashboard" [ref=e46]:
+              - img [ref=e47]
+              - generic [ref=e52]: Dashboard
+          - listitem [ref=e53]:
+            - button "Tài liệu" [ref=e54]:
+              - img [ref=e55]
+              - generic [ref=e58]: Tài liệu
+          - listitem [ref=e59]:
+            - button "Người dùng" [ref=e60]:
+              - img [ref=e61]
+              - generic [ref=e66]: Người dùng
+          - listitem [ref=e14]:
+            - button "Chat" [ref=e15]:
+              - img [ref=e16]
+              - generic [ref=e18]: Chat
+          - listitem [ref=e19]:
+            - button "Cài đặt" [ref=e20]:
+              - img [ref=e21]
+              - generic [ref=e24]: Cài đặt
+      - button "AD admin admin" [ref=e67]:
+        - generic [ref=e69]: AD
+        - generic [ref=e70]:
+          - generic [ref=e71]: admin
+          - generic [ref=e72]: admin
+    - main [ref=e26]:
+      - generic [ref=e27]:
+        - button "Toggle Sidebar" [ref=e28]:
+          - img
+          - generic [ref=e29]: Toggle Sidebar
+        - separator [ref=e30]
+      - main [ref=e31]:
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - heading "Chat mới" [level=2] [ref=e35]
+            - button "Chat mới" [disabled]:
+              - img
+              - text: Chat mới
+          - generic [ref=e38]:
+            - generic [ref=e73]:
+              - generic [ref=e75]: Xin chào, bạn có thể làm gì?
+              - generic [ref=e77]: You
+            - generic [ref=e78]:
+              - generic [ref=e80]: AI
+              - generic [ref=e82]: ...
+            - generic [ref=e83]:
+              - generic [ref=e84]: AI
+              - generic [ref=e85]:
+                - img [ref=e86]
+                - text: Đang suy nghĩ...
+          - generic [ref=e42]:
+            - textbox "Nhập câu hỏi về tài liệu..." [disabled] [ref=e43]
+            - button [disabled]:
+              - img
+  - region "Notifications alt+T"
+  - alert [ref=e44]

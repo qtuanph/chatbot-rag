@@ -16,7 +16,15 @@ import type {
   HealthData,
 } from "@/types/api";
 
+// Client-side: browser needs localhost (outside Docker)
+// Server-side: inside Docker needs internal hostname
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_INTERNAL = process.env.API_INTERNAL_URL || API_BASE;
+
+function getBaseUrl(): string {
+  // On server (Node.js), use internal Docker URL; on client (browser), use public URL
+  return typeof window === "undefined" ? API_INTERNAL : API_BASE;
+}
 
 class ApiError extends Error {
   status: number;
@@ -42,7 +50,7 @@ async function apiFetch<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${getBaseUrl()}${path}`, {
     ...options,
     headers,
   });
@@ -108,7 +116,7 @@ export const documentsApi = {
     const formData = new FormData();
     formData.append("file", file);
 
-    const res = await fetch(`${API_BASE}/upload`, {
+    const res = await fetch(`${getBaseUrl()}/upload`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData,

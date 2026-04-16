@@ -1,10 +1,17 @@
 # chatbot-rag
 
-**Docker-first, single-project hierarchical RAG chatbot** for Vietnamese enterprise documents.
+**Docker-first, single-project hierarchical RAG chatbot** for Vietnamese enterprise documents with Next.js 16 frontend.
 
 > Deployment: Pure Docker. Self-hosted on your infrastructure. One project, shared document library, role-based access (admin / member).
 
 ## Tech Stack
+
+### Frontend
+- **Next.js 16** - React framework with App Router
+- **shadcn/ui v4** - UI component library
+- **next-auth v5** - Authentication with JWT strategy
+- **@xyflow/react** - Document tree visualization
+- **Tailwind CSS v4** - Styling
 
 ### Core Framework
 - **FastAPI 0.135** - Async API framework
@@ -15,12 +22,12 @@
 ### AI & ML
 - **Chat LLM**: Google AI `gemma-4-26b-a4b-it` (26B parameters, high quality)
 - **Embedding**: `BAAI/bge-m3` (1024-dim, offline, multilingual)
-- **AI Refiner**: Rule-based heuristics (0GB VRAM, ~1ms per node)
+- **AI Refiner**: Rule-based heuristics (0GB VRAM, ~1ms per node) — NO AI in ingestion
 - **OCR**: EasyOCR (vi+en), GPU auto-detected
 - **Future (vLLM)**: On-premise local LLM inference
 
 ### Document Processing
-- **Docling 2.85** - PDF/DOCX to Markdown conversion
+- **Docling 2.88** - PDF/DOCX to Markdown conversion
 - **EasyOCR** - Vietnamese + English OCR
 - **LlamaIndex** - Hierarchical node parsing
 
@@ -84,7 +91,17 @@ flowchart TD
 
 ## What Exists
 
-- FastAPI backend with async ingestion pipeline and live progress reporting
+### Frontend (Next.js 16)
+- Modern web interface with shadcn/ui v4 components
+- JWT authentication via next-auth v5 with Credentials provider
+- SSE streaming chat for real-time AI responses
+- Admin dashboard with health monitoring
+- Document management (upload, list, detail with react-flow tree)
+- User management (CRUD operations for admins)
+- Role-based routing (admin vs member access)
+
+### Backend (FastAPI)
+- Async ingestion pipeline with live progress reporting
 - Celery worker with `acks_late`, `prefetch=1`, and 25-min soft time limit for reliability
 - PostgreSQL + Redis + RustFS + Qdrant via docker-compose
 - S3-compatible object storage (RustFS) for uploaded files
@@ -95,7 +112,7 @@ flowchart TD
 - **2-stage retrieval**: Sections (coarse, ≥ 0.30) → Chunks (fine, ≥ 0.35)
 - **`document_sections` table** in PostgreSQL for section-level storage
 - **BAAI/bge-m3 local embedding**: 1024-dim, 8192-token context, fully offline — no API calls, no rate limits
-- **Rule-based AI refiner**: 0GB VRAM, ~1ms per node — fixes OCR errors, detects headers, validates hierarchy (NOT Qwen/Gemini)
+- **Rule-based refiner**: 0GB VRAM, ~1ms per node — fixes OCR errors, detects headers, validates hierarchy (NO AI in ingestion)
 - **Query embedding cache**: Redis-backed, MD5-keyed, TTL=1h — skip re-inference on repeated questions
 - **Score threshold filter**: Drop retrieval results with cosine similarity < 0.35
 - **Atomic rate limiting**: Lua script in Redis — no INCR+EXPIRE race condition
@@ -128,14 +145,28 @@ chatbot-rag/
 │   ├── api/                # FastAPI routes & endpoints
 │   │   └── routes/
 │   │       ├── auth.py     # JWT authentication
-│   │       ├── chat.py     # RAG chat endpoint
+│   │       ├── chat.py     # RAG chat endpoint (SSE streaming)
 │   │       ├── documents.py # Document management
-│   │       └── tree.py     # Hierarchical tree API
+│   │       ├── tree.py     # Hierarchical tree API
+│   │       └── health.py   # Health monitoring endpoints
 │   ├── core/               # Configuration, exceptions, hardware
 │   ├── db/                 # PostgreSQL session management
 │   ├── models/             # SQLAlchemy ORM models
 │   ├── services/           # Business logic (RAG, ingestion, query cache)
 │   └── worker.py           # Celery task worker
+├── webapp/                 # Next.js 16 frontend
+│   ├── app/                # Next.js App Router
+│   │   ├── (auth)/         # Auth routes (login)
+│   │   ├── (main)/         # Main app routes (chat, admin, settings)
+│   │   │   ├── admin/      # Admin dashboard
+│   │   │   │   ├── documents/ # Document management
+│   │   │   │   └── users/     # User management
+│   │   │   └── chat/       # Chat interface
+│   │   └── layout.tsx      # Root layout
+│   ├── components/         # React components
+│   │   ├── admin/          # Admin components
+│   │   └── ui/             # shadcn/ui components
+│   └── lib/                # Utilities (auth, API client)
 ├── tests/                  # Test suite (pytest)
 │   ├── test_ingestion/     # Ingestion tests
 │   ├── test_api/           # API endpoint tests
@@ -219,6 +250,7 @@ command: >
 
 | Service | URL |
 |---------|-----|
+| **Webapp (Next.js)** | `http://localhost:3000` |
 | **API (FastAPI)** | `http://localhost:8000` |
 | **OpenAPI Docs** | `http://localhost:8000/docs` |
 | **RustFS S3 API** | `http://localhost:9000` |
@@ -298,14 +330,15 @@ docker compose up --build
 
 ## Notes
 
+- **Frontend**: Next.js 16 with shadcn/ui v4, next-auth v5 (JWT), SSE streaming for real-time chat.
 - **Database**: Single `.sql` file initialization (`ops/init.sql`). No Alembic, no runtime DDL patches.
 - **OCR**: EasyOCR (`vi+en`) is mandatory — pre-downloaded in Docker image, GPU auto-detected.
-- **Ingestion**: Docling-first → EasyOCR → Section extraction → LlamaIndex hierarchy → chunked parallel embedding.
+- **Ingestion**: Docling-first → EasyOCR → Section extraction → Rule-based refiner → chunked parallel embedding.
 - **Retrieval**: 2-stage pipeline — coarse section search (≥ 0.30) → fine chunk search (≥ 0.35).
 - **Embedding**: Parallel `ThreadPoolExecutor`, chunk size 32, configurable via `INGESTION_EMBEDDING_CHUNK_SIZE`.
+- **Refiner**: Rule-based only — 0GB VRAM, ~1ms per node. NO AI in ingestion pipeline.
 - **Rate limiting**: Atomic Lua script — safe under concurrent load, no key-expiry race condition.
 - **Delete**: Full hard-delete (sections + vectors + file + DB row). Registry marked deleted first so /status updates instantly.
-- **vLLM model**: Configured via `VLLM_MODEL` env var — no longer hardcoded.
 - **Hardware detection**: CPU/GPU auto-detected at startup via `app/core/hardware.py`.
 - `/health` performs real dependency checks (PostgreSQL, Redis, RustFS, AI provider).
 - `AI_PROVIDER=google` for demo; `AI_PROVIDER=vllm` for production on-premise.
@@ -315,12 +348,20 @@ docker compose up --build
 | Endpoint | Method | Status | Notes |
 |----------|--------|--------|-------|
 | `/api/v1/health` | GET | ✅ Working | Real dependency checks |
+| `/api/v1/health/data` | GET | ✅ Working | Detailed health data with checks |
+| `/api/v1/health/nodes` | GET | ✅ Working | List Qdrant nodes |
+| `/api/v1/health/node` | GET | ✅ Working | Get single Qdrant node |
 | `/api/v1/auth/login` | POST | ✅ Working | Returns bearer access token |
 | `/api/v1/auth/logout` | POST | ✅ Working | Revokes active token |
+| `/api/v1/auth/me` | GET | ✅ Working | Get current user info |
 | `/api/v1/auth/users` | POST | ✅ Working | Creates a user (admin only) |
+| `/api/v1/auth/users` | GET | ✅ Working | List users (admin only) |
+| `/api/v1/auth/users/{username}` | DELETE | ✅ Working | Delete user (admin only) |
 | `/api/v1/upload` | POST | ✅ Working | Enqueues Celery job; returns task_id |
 | `/api/v1/status/{task_id}` | GET | ✅ Working | Returns normalized task/document progress |
 | `/api/v1/chat` | POST | ✅ Working | Provider-driven chat with 2-stage retrieval |
+| `/api/v1/chat/stream` | POST | ✅ Working | SSE streaming chat |
+| `/api/v1/chat/sessions` | GET | ✅ Working | List user's chat sessions |
 | `/api/v1/documents` | GET | ✅ Working | Lists documents and current pipeline status |
 | `/api/v1/documents/{id}` | GET | ✅ Working | Returns full document metadata/status |
 | `/api/v1/documents/{id}` | DELETE | ✅ Working | Hard-deletes document + all related data |
@@ -358,7 +399,7 @@ When an admin uploads a file via `POST /api/v1/upload`, the system runs this pip
    - Extract sections from Markdown headings → store in `document_sections` table.
    - Split sections into chunks (~400 tokens, ~75 overlap) → store vectors in Qdrant.
    - If Docling or LlamaIndex fails, fall back to the classic parser so upload still completes when possible.
-   - **Rule-based refiner** fixes OCR errors, detects headers, validates hierarchy — 0GB VRAM, ~1ms per node.
+   - **Rule-based refiner** fixes OCR errors, detects headers, validates hierarchy — 0GB VRAM, ~1ms per node (NO AI in ingestion).
    - Validate extraction quality thresholds.
    - Mark document `ready` on success or `failed` on failure.
 
@@ -373,16 +414,18 @@ When an admin uploads a file via `POST /api/v1/upload`, the system runs this pip
 
 ## Text Extraction And AI Usage
 
-Short answer: **yes, extraction uses local AI/ML processing**, but **does not call the chat LLM provider during upload**.
+Short answer: **extraction uses local ML processing (EasyOCR + embeddings)**, but **does NOT use any AI LLM for text refinement**.
 
 1. **During upload ingestion**
    - Docling is the primary local parser for upload.
-   - LlamaIndex turns the Docling Markdown output into hierarchical nodes.
-   - The classic parser path is fallback only.
-   - No call to `AI_PROVIDER` (`google`/`vllm`) in the upload pipeline.
+   - EasyOCR performs OCR for scanned/image PDFs (vi+en).
+   - Section extraction and chunk splitting are done via regex and heuristics.
+   - **Rule-based refiner** fixes OCR errors — 0GB VRAM, ~1ms per node.
+   - BAAI/bge-m3 embedding model creates vectors locally (offline).
+   - **No call to `AI_PROVIDER` (`google`/`vllm`) in the upload pipeline.**
 
 2. **During chat answering**
-   - `AI_PROVIDER` is used in `POST /api/v1/chat` to generate final answer from retrieved context.
+   - `AI_PROVIDER` is used in `POST /api/v1/chat` or `POST /api/v1/chat/stream` to generate final answer from retrieved context.
    - Citations come from indexed hierarchical nodes stored in Qdrant.
 
 ## Chat Behavior Target

@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+.DS_Store
+Thumbs.db

@@ -1,14 +1,15 @@
 # 06 — Deployment and Observability
 
-Status: deployment and operations baseline for the current architecture.
+Status: deployment and operations baseline — updated to reflect Next.js 16 frontend.
 
 ## Deployment Topology
 
 Primary runtime uses Docker Compose with the following services:
 
-- api (FastAPI)
+- api (FastAPI) — port 8000
+- webapp (Next.js 16) — port 3000
 - worker (Celery)
-- db (PostgreSQL)
+- db (PostgreSQL 18)
 - redis (broker/result/cache)
 - rustfs (object storage)
 - qdrant (vector retrieval store)
@@ -51,6 +52,7 @@ Provider changes must not require API contract changes.
 | Service | Probe |
 |---------|-------|
 | API | /api/v1/health |
+| Webapp | http://localhost:3000 |
 | Worker | celery inspect ping |
 | PostgreSQL | pg_isready |
 | Redis | redis-cli ping |
