@@ -87,11 +87,20 @@ Retrieval uses `Document.deleted_at.is_(None)` and `Document.status == 'ready'` 
 
 1. Save upload to RustFS.
 2. Insert `documents` row with `status=pending`.
-3. Celery worker: parse with Docling + EasyOCR → section extraction → chunk splitting.
+3. Upload-pipeline worker: parse with Docling `iterate_items()` (Method D) + Smart OCR (2-pass) → section extraction → chunk splitting.
 4. Rule-based refiner fixes OCR errors (0GB VRAM, ~1ms per node).
 5. Worker fires `progress_callback` at each stage → `progress_percent` updates live.
-6. Store sections in PostgreSQL `document_sections` table.
+6. Store sections in PostgreSQL `document_sections` table (with page numbers from Docling provenance).
 7. Embed nodes in parallel batches of 32 via `ThreadPoolExecutor`.
 8. Upsert vectors and payload in Qdrant per chunk (with `section_id` metadata).
 9. Save ingestion artifact metadata (`extra_metadata`) in the document row.
 10. Set `status=ready` or `status=failed` with `parse_error`.
+
+## Chat Session Lifecycle
+
+| Policy | Detail |
+|--------|--------|
+| Auto-delete TTL | `CHAT_SESSION_TTL_DAYS` (default: 1 day) |
+| Cleanup mechanism | Celery beat task in `cleanup-pipeline` worker (daily) |
+| Delete behavior | CASCADE delete on associated messages |
+| Config | `app/core/config.py: chat_session_ttl_days` |

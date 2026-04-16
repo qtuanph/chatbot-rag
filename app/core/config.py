@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     qdrant_collection: str = "documents_vectors"
     qdrant_timeout: int = 30  # Seconds
 
+    # Chat history auto-delete
+    chat_session_ttl_days: int = 1  # Sessions older than 1 day are auto-deleted
+
     def model_post_init(self, __context) -> None:
         # Security: Validate JWT secret meets minimum requirements
         if not self.jwt_secret or self.jwt_secret == "replace-me":

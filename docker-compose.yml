@@ -25,14 +25,14 @@ services:
     networks:
       - internal
 
-  worker:
+  upload-pipeline:
     image: chatbot-rag-app:local
     env_file:
       - .env
     command: >
       celery -A app.core.celery_app.celery_app worker
       --loglevel=INFO
-      --queues=ingestion,cleanup,default
+      --queues=ingestion,default
       --max-tasks-per-child=50
     depends_on:
       db:
@@ -59,6 +59,24 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu, utility, compute]
+    networks:
+      - internal
+
+  cleanup-pipeline:
+    image: chatbot-rag-app:local
+    env_file:
+      - .env
+    command: >
+      celery -A app.core.celery_app.celery_app worker
+      --loglevel=INFO
+      --queues=cleanup,default
+      -B
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
     networks:
       - internal
 

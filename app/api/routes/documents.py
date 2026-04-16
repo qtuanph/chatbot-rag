@@ -135,7 +135,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
             )
         )
         celery_app.send_task(
-            "app.worker.parse_document_task",
+            "app.workers.upload_pipeline.parse_document_task",
             kwargs={
                 "task_id": task_id,
                 "document_id": document_id,
@@ -322,7 +322,7 @@ async def delete_document(request: Request, document_id: str, _auth=Depends(requ
 
     try:
         celery_app.send_task(
-            "app.worker.delete_document_task",
+            "app.workers.cleanup_pipeline.delete_document_task",
             kwargs={
                 "task_id": delete_task_id,
                 "document_id": document_id,

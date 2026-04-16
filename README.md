@@ -52,10 +52,10 @@ flowchart TD
         UP --> |save file| FS[("🗄️ RustFS")]
         UP --> |insert pending| PG[("🐘 PostgreSQL")]
         UP --> |enqueue| QI["⬛ Redis Queue · ingestion"]
-        QI --> W1["⚙️ parse_document_task
+        QI --> W1["⚙️ upload-pipeline
         ─────────────────────
-        ① Download  ② Parse Docling+OCR
-        ③ Extract Sections  ④ Embed BAAI/bge-m3
+        ① Download  ② Parse Docling iterate_items()
+        ③ Smart OCR (2-pass)  ④ Embed BAAI/bge-m3
         ⑤ Verify  ⑥ Persist  ⑦ Unload VRAM"]
         W1 --> |upsert 1024-dim| QD[("🔷 Qdrant")]
         W1 --> |status=ready| PG
@@ -74,7 +74,7 @@ flowchart TD
 
     subgraph Deletion ["🗑️ Delete Pipeline"]
         DE --> |enqueue| QD2["⬛ Redis Queue · cleanup"]
-        QD2 --> W2["⚙️ delete_document_task
+        QD2 --> W2["⚙️ cleanup-pipeline
         ─────────────────────
         ① Registry mark  ② Del Vectors  ③ Del Sections
         ④ Del File  ⑤ Del DB row
@@ -108,7 +108,9 @@ flowchart TD
 - Optional `vllm` service (onprem profile) for local LLM inference
 - Multi-format ingestion: PDF, scanned PDF, images, DOCX, XLSX, Markdown, plain text
 - **EasyOCR** (`vi+en`, GPU auto-detected) as mandatory OCR backend — no Tesseract
-- Docling-first document extraction with ClassicParser fallback path
+- Docling-first document extraction with `iterate_items()` (Method D) for 100% metadata preservation
+- **Smart OCR Strategy**: 2-pass — fast no-OCR for native PDFs, OCR fallback only for scanned PDFs
+- ClassicParser fallback path if Docling fails
 - **2-stage retrieval**: Sections (coarse, ≥ 0.30) → Chunks (fine, ≥ 0.35)
 - **`document_sections` table** in PostgreSQL for section-level storage
 - **BAAI/bge-m3 local embedding**: 1024-dim, 8192-token context, fully offline — no API calls, no rate limits
@@ -153,7 +155,9 @@ chatbot-rag/
 │   ├── db/                 # PostgreSQL session management
 │   ├── models/             # SQLAlchemy ORM models
 │   ├── services/           # Business logic (RAG, ingestion, query cache)
-│   └── worker.py           # Celery task worker
+│   ├── workers/            # Celery task workers
+│   │   ├── upload_pipeline.py    # Ingestion tasks (GPU)
+│   │   └── cleanup_pipeline.py   # Delete + chat session cleanup + beat
 ├── webapp/                 # Next.js 16 frontend
 │   ├── app/                # Next.js App Router
 │   │   ├── (auth)/         # Auth routes (login)
@@ -333,12 +337,13 @@ docker compose up --build
 - **Frontend**: Next.js 16 with shadcn/ui v4, next-auth v5 (JWT), SSE streaming for real-time chat.
 - **Database**: Single `.sql` file initialization (`ops/init.sql`). No Alembic, no runtime DDL patches.
 - **OCR**: EasyOCR (`vi+en`) is mandatory — pre-downloaded in Docker image, GPU auto-detected.
-- **Ingestion**: Docling-first → EasyOCR → Section extraction → Rule-based refiner → chunked parallel embedding.
+- **Ingestion**: Docling `iterate_items()` (Method D) → Smart OCR (2-pass) → Section extraction → Rule-based refiner → chunked parallel embedding.
 - **Retrieval**: 2-stage pipeline — coarse section search (≥ 0.30) → fine chunk search (≥ 0.35).
 - **Embedding**: Parallel `ThreadPoolExecutor`, chunk size 32, configurable via `INGESTION_EMBEDDING_CHUNK_SIZE`.
 - **Refiner**: Rule-based only — 0GB VRAM, ~1ms per node. NO AI in ingestion pipeline.
 - **Rate limiting**: Atomic Lua script — safe under concurrent load, no key-expiry race condition.
-- **Delete**: Full hard-delete (sections + vectors + file + DB row). Registry marked deleted first so /status updates instantly.
+- **Delete**: Full hard-delete (sections + vectors + file + DB row). Registry marked deleted first so /status updates instantly. Deletion via `cleanup-pipeline` worker.
+- **Chat session cleanup**: Auto-delete sessions older than 1 day via Celery beat (`cleanup-pipeline` worker).
 - **Hardware detection**: CPU/GPU auto-detected at startup via `app/core/hardware.py`.
 - `/health` performs real dependency checks (PostgreSQL, Redis, RustFS, AI provider).
 - `AI_PROVIDER=google` for demo; `AI_PROVIDER=vllm` for production on-premise.
@@ -389,16 +394,17 @@ When an admin uploads a file via `POST /api/v1/upload`, the system runs this pip
 
 4. **Queue asynchronous ingestion**
    - Register `document_id <-> task_id` in Redis.
-   - Enqueue Celery task `app.worker.parse_document_task`.
+   - Enqueue Celery task `app.workers.upload_pipeline.parse_document_task`.
    - Update `documents` progress to `status_stage=queued`, `progress_percent=5`.
    - Return `202 Accepted` immediately with `task_id`, `document_id`, `status=queued`.
 
 5. **Worker parsing and indexing**
    - Download file from RustFS (`status_stage=download`, `progress_percent=10`).
-   - Convert the file locally with Docling into Markdown (`status_stage=parse`, `progress_percent=40`).
-   - Extract sections from Markdown headings → store in `document_sections` table.
+   - **Smart OCR Strategy**: Try fast extraction first (no OCR for native PDFs), fallback to OCR only for scanned PDFs.
+   - **Method D**: Extract directly from Docling `iterate_items()` — preserves page numbers, heading levels, table structures with 100% metadata fidelity.
+   - Build sections with exact page numbers from provenance data → store in `document_sections` table.
    - Split sections into chunks (~400 tokens, ~75 overlap) → store vectors in Qdrant.
-   - If Docling or LlamaIndex fails, fall back to the classic parser so upload still completes when possible.
+   - If Docling fails, fall back to the classic parser so upload still completes when possible.
    - **Rule-based refiner** fixes OCR errors, detects headers, validates hierarchy — 0GB VRAM, ~1ms per node (NO AI in ingestion).
    - Validate extraction quality thresholds.
    - Mark document `ready` on success or `failed` on failure.
@@ -417,9 +423,9 @@ When an admin uploads a file via `POST /api/v1/upload`, the system runs this pip
 Short answer: **extraction uses local ML processing (EasyOCR + embeddings)**, but **does NOT use any AI LLM for text refinement**.
 
 1. **During upload ingestion**
-   - Docling is the primary local parser for upload.
-   - EasyOCR performs OCR for scanned/image PDFs (vi+en).
-   - Section extraction and chunk splitting are done via regex and heuristics.
+   - Docling is the primary local parser using `iterate_items()` for direct item extraction (Method D).
+   - **Smart OCR Strategy**: Fast pass (no OCR) for native PDFs → OCR fallback only for scanned PDFs. Images always use OCR.
+   - Page numbers, heading levels, and table structures are preserved directly from Docling provenance data.
    - **Rule-based refiner** fixes OCR errors — 0GB VRAM, ~1ms per node.
    - BAAI/bge-m3 embedding model creates vectors locally (offline).
    - **No call to `AI_PROVIDER` (`google`/`vllm`) in the upload pipeline.**
@@ -433,7 +439,8 @@ Short answer: **extraction uses local ML processing (EasyOCR + embeddings)**, bu
 - Keep chat history minimal.
 - Use one active chat session at a time for the project.
 - Creating a new chat should clear the active session history.
-- Retain messages for 24h only if you need temporary debugging/audit.
+- Chat sessions auto-delete after 1 day (`CHAT_SESSION_TTL_DAYS`).
+- `cleanup-pipeline` worker runs daily Celery beat task to purge expired sessions.
 
 ## Auth And Roles
 

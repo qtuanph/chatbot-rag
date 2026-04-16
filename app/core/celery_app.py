@@ -24,7 +24,7 @@ celery_app = Celery(
     "chatbot_rag",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.worker"],
+    include=["app.workers.upload_pipeline", "app.workers.cleanup_pipeline"],
 )
 
 celery_app.conf.update(
@@ -41,8 +41,8 @@ celery_app.conf.update(
 
     # ── Queue routing ─────────────────────────────────────────────────────────
     task_routes={
-        "app.worker.parse_document_task":   {"queue": "ingestion"},
-        "app.worker.delete_document_task":  {"queue": "cleanup"},
+        "app.workers.upload_pipeline.parse_document_task":   {"queue": "ingestion"},
+        "app.workers.cleanup_pipeline.delete_document_task": {"queue": "cleanup"},
     },
     task_default_queue="default",
 
@@ -50,4 +50,12 @@ celery_app.conf.update(
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],
+
+    # ── Beat schedule (periodic tasks) ────────────────────────────────────────
+    beat_schedule={
+        "cleanup-old-chat-sessions": {
+            "task": "app.workers.cleanup_pipeline.cleanup_old_chat_sessions_task",
+            "schedule": 86400.0,  # Every 24 hours
+        },
+    },
 )

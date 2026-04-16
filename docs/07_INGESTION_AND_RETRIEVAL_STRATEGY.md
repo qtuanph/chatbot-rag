@@ -1,6 +1,6 @@
 # 07 — Ingestion and Retrieval Strategy
 
-Status: authoritative strategy — updated to reflect 2-stage retrieval, section extraction, and rule-based refiner.
+Status: authoritative strategy — updated to reflect Method D, Smart OCR Strategy, and worker architecture refactor.
 
 ## Primary Principle
 
@@ -14,25 +14,42 @@ Use Qdrant for retrieval data path. Keep PostgreSQL as system metadata/state dat
 
 1. Client uploads file → API saves to RustFS → inserts `documents` row (`status=pending`).
 2. API enqueues `parse_document_task` to Redis queue `ingestion`.
-3. Worker downloads file bytes from RustFS.
-4. **Docling** converts file to Markdown. For scanned/image PDFs and image files: **EasyOCR** (`lang=["vi","en"]`) performs OCR — mandatory, not optional.
-5. **Section extraction**: Markdown → split by headings (H1-H6) → sections (Level 1). Each section: title, content, level, breadcrumb.
-6. **Chunk splitting**: Each section → chunks of ~400 tokens with ~75 token overlap. Each chunk linked to section via `section_id` in metadata.
-7. **HierarchyValidator** checks parent-child consistency.
-8. **RuleBasedRefiner** fixes OCR errors, detects headers (0GB VRAM, ~1ms per node).
-9. **SectionRepository** stores sections in PostgreSQL `document_sections` table.
-10. Sequential chunks of **32 nodes** are embedded using `embed_batch()` which delegates to the local **BAAI/bge-m3** model:
+3. Upload-pipeline worker downloads file bytes from RustFS.
+4. **Smart OCR Strategy** (2-pass):
+   - **Pass 1**: Fast extraction with `do_ocr=False` → extract embedded text directly. Works perfectly for native PDFs.
+   - **Scanned detection**: If total text / page count < threshold → likely scanned PDF.
+   - **Pass 2 (fallback)**: Re-convert with `do_ocr=True` + EasyOCR (`lang=["vi","en"]`) → OCR only for scanned PDFs.
+   - **Images (PNG/JPG)**: Always use OCR pipeline.
+   - **DOCX**: Docling native parsing, no OCR needed.
+5. **Method D**: Extract directly from `iterate_items()` — preserves page numbers, heading levels, table structures with 100% metadata fidelity:
+   - `SectionHeaderItem` → section boundary (level from `item.level`, page_no from provenance)
+   - `TitleItem` → document title (level 0)
+   - `TextItem` → content text (page_no from provenance)
+   - `TableItem` → convert cells to markdown table (page_no from provenance)
+   - `ListItem` → bullet/numbered text
+   - `PictureItem` → skip (future: image captioning)
+6. **Section extraction**: Items → sections with exact page numbers → breadcrumbs from heading stack.
+7. **Chunk splitting**: Each section → chunks of ~400 tokens with ~75 token overlap. Each chunk linked to section via `section_id` in metadata.
+8. **HierarchyValidator** checks parent-child consistency.
+9. **RuleBasedRefiner** fixes OCR errors, detects headers (0GB VRAM, ~1ms per node).
+10. **SectionRepository** stores sections in PostgreSQL `document_sections` table.
+11. Sequential chunks of **32 nodes** are embedded using `embed_batch()` which delegates to the local **BAAI/bge-m3** model:
    - GPU-native batching via sentence-transformers
    - `vector_store.store()` upserts chunks to Qdrant with `section_id` in payload
    - `progress_callback` updates `documents.progress_percent` in DB
-11. Worker persists ingestion artifact to `extra_metadata`. Sets `status=ready`.
+12. Worker persists ingestion artifact to `extra_metadata`. Sets `status=ready`.
 
-### OCR Backend
+### OCR Backend — Smart OCR Strategy
 
-| Backend | When used | Config |
-|---------|-----------|--------|
-| EasyOCR | Always (mandatory) | `lang=["vi","en"]`, `use_gpu=hardware.gpu_count > 0` |
-| Tesseract | **Not used** | Removed — EasyOCR is the only supported backend |
+| Strategy | When used | Config |
+|----------|-----------|--------|
+| Fast extraction (`do_ocr=False`) | Native PDFs (copy-pasteable text), DOCX | `pipeline_pdf_fast` converter |
+| OCR fallback (`do_ocr=True`) | Scanned PDFs, images (PNG/JPG) | `pipeline_pdf_ocr` converter + EasyOCR |
+| Smart detection | After Pass 1: text_density < threshold → re-run with OCR | `converter_fast` + `converter_ocr` |
+
+Two converters initialized in `_initialize_docling()`:
+- **converter_fast**: PDF pipeline with `do_ocr=False`, `do_table_structure=True`
+- **converter_ocr**: PDF pipeline with `do_ocr=True`, EasyOCR (`vi+en`), `do_table_structure=True`
 
 EasyOCR models are pre-downloaded during Docker build using BuildKit cache mount. No runtime download.
 
@@ -145,8 +162,13 @@ Cache is particularly effective during demos and employee training sessions wher
 
 | Responsibility | Module |
 |----------------|--------|
-| OCR backend selection | `app/adapters/parsers/docling.py:_select_ocr_backend()` |
-| Section extraction + chunk splitting | `app/adapters/parsers/docling.py:_extract_sections_from_markdown()` |
+| Smart OCR strategy (2-pass) | `app/adapters/parsers/docling.py:_convert_with_docling()` |
+| Method D item extraction | `app/adapters/parsers/docling.py:_extract_from_docling_items()` |
+| Table conversion | `app/adapters/parsers/docling.py:_table_item_to_markdown()` |
+| Page number extraction | `app/adapters/parsers/docling.py:_get_page_number()` |
+| Scanned PDF detection | `app/adapters/parsers/docling.py:_is_scanned()` |
+| Section extraction + chunk splitting | `app/adapters/parsers/docling.py:_extract_from_docling_items()` |
+| Markdown fallback path | `app/adapters/parsers/docling.py:_extract_sections_from_markdown()` |
 | Parser selection and fallback | `app/services/ingestion/parser_manager.py` |
 | Ingestion orchestration + section storage | `app/services/ingestion/pipeline.py` |
 | Hierarchy checks | `app/services/ingestion/hierarchy_validator.py` |
@@ -156,3 +178,5 @@ Cache is particularly effective during demos and employee training sessions wher
 | 2-stage retrieval + score filter | `app/services/rag.py:retrieve_context()` |
 | Query embedding cache | `app/services/query_cache.py` |
 | Hardware auto-detection | `app/core/hardware.py` |
+| Ingestion tasks | `app/workers/upload_pipeline.py` |
+| Cleanup tasks + beat | `app/workers/cleanup_pipeline.py` |

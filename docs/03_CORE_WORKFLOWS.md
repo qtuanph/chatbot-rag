@@ -1,6 +1,6 @@
 # 03 — Core Workflows
 
-Status: implementation workflow baseline — updated to reflect Next.js 16, SSE streaming, and rule-based refiner.
+Status: implementation workflow baseline — updated to reflect Method D, Smart OCR Strategy, and worker architecture refactor.
 
 ## Workflow 1: Upload → Queue → Parse → Index → Ready
 
@@ -11,7 +11,7 @@ sequenceDiagram
     participant RustFS
     participant DB as PostgreSQL
     participant Redis
-    participant Worker as Celery Worker
+    participant Worker as upload-pipeline (GPU)
     participant Pipeline as IngestionPipeline
     participant Refiner as Rule-Based Refiner
     participant Qdrant
@@ -31,9 +31,12 @@ sequenceDiagram
     Worker->>Pipeline: ingest(filename, bytes, progress_callback)
 
     Pipeline->>DB: stage=parse, percent=5  [callback]
-    Pipeline->>Pipeline: Docling + EasyOCR → Markdown
+    Pipeline->>Pipeline: Docling iterate_items() — Method D
+    Note over Pipeline: Smart OCR: Pass 1 fast (no OCR)
+    Note over Pipeline: If scanned detected → Pass 2 with OCR
+    Pipeline->>Pipeline: Extract items: SectionHeader, Text, Table, ListItem...
     Pipeline->>DB: stage=parse, percent=30 [callback]
-    Pipeline->>Pipeline: Section extraction + Chunk splitting (~400 tokens)
+    Pipeline->>Pipeline: Section + Chunk extraction with page numbers
     Pipeline->>DB: stage=validate, percent=35 [callback]
     Pipeline->>Pipeline: Hierarchy Validator
     Pipeline->>Refiner: refine_text (0GB VRAM, ~1ms)
@@ -123,6 +126,7 @@ sequenceDiagram
     participant Client
     participant API
     participant Registry as Redis Registry
+    participant Cleanup as cleanup-pipeline
     participant Qdrant
     participant RustFS
     participant DB
@@ -132,14 +136,14 @@ sequenceDiagram
     API->>Redis: enqueue delete_document_task (queue=cleanup)
     API-->>Client: 202 accepted
 
-    Note over Registry,DB: Hard-delete sequence (order matters)
-    Registry->>Registry: registry.delete() → status='deleted'
+    Note over Cleanup,DB: Hard-delete sequence (order matters)
+    Cleanup->>Registry: registry.delete() → status='deleted'
     Note right of Registry: /status now returns 'deleted' immediately
-    Registry->>Qdrant: delete all vectors for document_id
-    Qdrant->>DB: delete sections from document_sections
-    DB->>RustFS: delete file object
-    RustFS->>DB: DELETE document row
-    DB->>Registry: registry.purge() → remove Redis keys
+    Cleanup->>Qdrant: delete all vectors for document_id
+    Cleanup->>DB: delete sections from document_sections
+    Cleanup->>RustFS: delete file object
+    Cleanup->>DB: DELETE document row
+    Cleanup->>Registry: registry.purge() → remove Redis keys
 ```
 
 ### Delete Invariants
@@ -165,6 +169,28 @@ Implementation notes when building:
 - LLM generates **SELECT only** SQL — no DDL/DML
 - Policy-check against approved table whitelist
 - Log every query to `data_source_query_audit`
+
+## Workflow 5: Chat Session Auto-Delete
+
+```mermaid
+sequenceDiagram
+    participant Beat as Celery Beat (cleanup-pipeline)
+    participant DB as PostgreSQL
+
+    Note over Beat: Runs daily (every 86400s)
+    Beat->>Beat: cleanup_old_chat_sessions_task
+    Beat->>DB: DELETE chat_sessions WHERE created_at < NOW() - TTL
+    DB->>DB: CASCADE DELETE associated chat_messages
+```
+
+### Chat Session TTL Invariants
+
+| Rule | Requirement |
+|------|-------------|
+| TTL | `CHAT_SESSION_TTL_DAYS` (default: 1 day) |
+| Cleanup | Celery beat task in `cleanup-pipeline` worker |
+| Delete behavior | CASCADE — messages deleted automatically with session |
+| Config | `app/core/config.py` → `chat_session_ttl_days` |
 
 ## Error Handling Baseline
 

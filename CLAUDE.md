@@ -36,10 +36,12 @@ docker compose down
 
 # View logs for specific service
 docker compose logs -f api
-docker compose logs -f worker
+docker compose logs -f upload-pipeline
+docker compose logs -f cleanup-pipeline
 
 # Rebuild specific service after code changes
 docker compose up --build api
+docker compose up --build upload-pipeline
 ```
 
 ### Database Management
@@ -68,6 +70,7 @@ curl http://localhost:8000/api/v1/health
 
 # Check Celery worker status
 docker exec chatbot-rag-worker-1 celery -A app.core.celery_app.celery_app inspect ping
+docker exec chatbot-rag-cleanup-pipeline-1 celery -A app.core.celery_app.celery_app inspect ping
 ```
 
 ## High-Level Architecture
@@ -84,7 +87,7 @@ This is a **Docker-first RAG chatbot** for Vietnamese enterprise documents with 
   - Qdrant (vectors and retrieval payloads with section_id metadata)
   - Redis (queue, cache, rate limiting, registry)
   - RustFS (S3-compatible object storage for uploaded files)
-- **Ingestion**: Docling → Markdown → Section extraction → Chunk splitting → parallel embedding
+- **Ingestion**: Docling `iterate_items()` (Method D) → Smart OCR (2-pass) → Section extraction → Chunk splitting → parallel embedding
 - **Embedding**: BAAI/bge-m3 LOCAL (sentence-transformers), 1024-dim vectors, parallel batch processing (32 nodes per batch)
 - **AI Refiner**: Rule-based heuristics (NOT Qwen/Gemini) - 0GB VRAM, ~1ms per node
 - **Retrieval**: 2-stage (Sections → Chunks) with PostgreSQL section store + Qdrant vector search
@@ -145,16 +148,17 @@ All external integrations use adapters under `app/adapters/`:
 The ingestion workflow (`app/services/ingestion/pipeline.py`) is:
 
 1. **Upload**: API saves file to RustFS, creates `documents` row with `status=pending`
-2. **Queue**: Enqueues `parse_document_task` to Celery, returns `task_id` immediately
+2. **Queue**: Enqueues `parse_document_task` to Celery (upload-pipeline worker), returns `task_id` immediately
 3. **Download**: Worker downloads file from RustFS to RAM
-4. **Parse**: Docling converts to Markdown → section extraction → chunk splitting (with LlamaIndex fallback)
-5. **Validate**: Hierarchy validator ensures parent-child consistency
-6. **Refine**: Rule-based refiner fixes OCR errors, detects headers (0GB VRAM, ~1ms per node)
-7. **Store Sections**: Sections persisted to PostgreSQL `document_sections` table via `SectionRepository`
-8. **Embed**: Parallel batch embedding (32 nodes per batch) via `ThreadPoolExecutor`
-9. **Persist**: Chunks (with `section_id` metadata) to Qdrant
-10. **Verify**: Post-ingestion verification confirms vectors indexed and file stored
-11. **Unload**: Embedding model unloaded from VRAM to free resources
+4. **Parse**: Docling `iterate_items()` (Method D) extracts items directly with 100% metadata fidelity (page numbers, heading levels, table structures)
+5. **Smart OCR**: 2-pass strategy — fast extraction first (no OCR for native PDFs), OCR fallback only for scanned PDFs
+6. **Validate**: Hierarchy validator ensures parent-child consistency
+7. **Refine**: Rule-based refiner fixes OCR errors, detects headers (0GB VRAM, ~1ms per node)
+8. **Store Sections**: Sections persisted to PostgreSQL `document_sections` table via `SectionRepository`
+9. **Embed**: Parallel batch embedding (32 nodes per batch) via `ThreadPoolExecutor`
+10. **Persist**: Chunks (with `section_id` metadata) to Qdrant
+11. **Verify**: Post-ingestion verification confirms vectors indexed and file stored
+12. **Unload**: Embedding model unloaded from VRAM to free resources
 
 **Progress reporting** happens via callback after each chunk (not after each node). Status updates are written to DB in real-time.
 
@@ -261,7 +265,8 @@ If you need schema changes:
 ## Project Structure Notes
 
 - `app/main.py` — FastAPI app, no DDL at startup
-- `app/worker.py` — Celery tasks: `parse_document_task`, `delete_document_task`
+- `app/workers/upload_pipeline.py` — Celery ingestion tasks (GPU worker): `parse_document_task`
+- `app/workers/cleanup_pipeline.py` — Celery cleanup tasks (lightweight worker + beat): `delete_document_task`, `cleanup_old_chat_sessions_task`
 - `app/core/celery_app.py` — Celery configuration with reliability settings
 - `app/services/ingestion/rule_based_refiner.py` — Rule-based text refinement (NO AI)
 - `app/services/rag.py` — 2-stage retrieval: cache → embed → sections → chunks → score filter
@@ -330,7 +335,9 @@ Password: abc123
 ## Important Implementation Notes
 
 - **Embedding model is loaded fresh per task** and unloaded after completion to free VRAM
-- **Docling is the primary parser**; classic parser is fallback only
+- **Docling is the primary parser** using `iterate_items()` (Method D) — extracts page numbers, heading levels, table structures directly from document items
+- **Smart OCR**: 2-pass strategy — fast no-OCR first, OCR fallback only when scanned PDF detected (images always OCR)
+- **Classic parser** is fallback only
 - **EasyOCR models are pre-downloaded** in Docker image via BuildKit cache
 - **AI Refiner uses rule-based heuristics** (regex + pattern matching) - 0GB VRAM, ~1ms per node — NO AI in ingestion pipeline
 - **HuggingFace cache is persisted** via volume mount (`hf-cache`)
@@ -410,10 +417,13 @@ When exploring the codebase, read these documents first:
 - ✅ Hierarchical document indexing with BAAI/bge-m3 local embedding
 - ✅ 2-stage retrieval architecture (Sections → Chunks)
 - ✅ `document_sections` table in PostgreSQL for section-level storage
-- ✅ Section extraction from Markdown (heading-based splitting)
+- ✅ **Method D**: Docling `iterate_items()` for direct item extraction — preserves page numbers, heading levels, table structures with 100% metadata fidelity
+- ✅ **Smart OCR Strategy**: 2-pass — fast no-OCR for native PDFs, OCR fallback only for scanned PDFs
 - ✅ Chunk splitting (~400 tokens, ~75 token overlap) with section_id linking
 - ✅ Rule-based refiner (0GB VRAM, 500x faster than AI-based) — restored as default
 - ✅ Async ingestion pipeline with Celery + section storage
+- ✅ **Worker architecture refactor**: `upload-pipeline` (GPU) + `cleanup-pipeline` (lightweight + beat)
+- ✅ **Chat session auto-delete**: TTL=1 day via Celery beat daily cleanup
 - ✅ Hard-delete workflow with proper ordering
 - ✅ Security hardened (strong passwords, CORS configured)
 - ✅ Google API key rotation removed (single key only)
@@ -428,10 +438,9 @@ When exploring the codebase, read these documents first:
 - ✅ Document detail page with react-flow tree visualization
 
 **In Progress:**
-- ⏳ Docker build + integration testing
+- ⏳ Docker build + integration testing of Method D + Smart OCR
 
 **Upcoming:**
-- 🔜 Multimodal ingestion (images via EasyOCR + tables to markdown)
 - 🔜 Performance optimization for large documents (300-500 pages)
 - 🔜 Monitoring/metrics collection
 

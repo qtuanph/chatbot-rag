@@ -83,7 +83,8 @@ export default function DocumentDetailPage() {
         .search(docId, searchQuery, session.accessToken)
         .then((data) => {
           // Convert search results to display format
-          const searchNodes: TreeNode[] = (data.results || []).map((r: { node_id: string; title: string; preview: string }) => ({
+          const results = ((data.results || []) as Array<{ node_id: string; title: string; preview?: string }>);
+          const searchNodes: TreeNode[] = results.map((r) => ({
             node_id: r.node_id,
             title: r.title,
             level: 0,

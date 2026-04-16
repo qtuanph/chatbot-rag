@@ -1,6 +1,6 @@
 # 01 — System Architecture
 
-Status: authoritative architecture baseline — updated to reflect Next.js 16 frontend and rule-based refiner.
+Status: authoritative architecture baseline — updated to reflect Method D, Smart OCR Strategy, and worker architecture refactor.
 
 ## Core Direction
 
@@ -9,8 +9,8 @@ Status: authoritative architecture baseline — updated to reflect Next.js 16 fr
 | Deployment | Docker-first, self-hosted, single-project deployment |
 | Frontend | **Next.js 16** with shadcn/ui v4, next-auth v5 (JWT), SSE streaming |
 | Backend | FastAPI with async endpoints |
-| Ingestion | Docling-first conversion to Markdown, then LlamaIndex hierarchy parsing |
-| OCR | EasyOCR (vi + en) — mandatory, deep-learning, GPU auto-detected |
+| Ingestion | Docling `iterate_items()` (Method D) for direct item extraction — preserves page numbers, heading levels, table structures |
+| OCR | **Smart OCR Strategy**: fast no-OCR first, OCR fallback only for scanned PDFs. EasyOCR (vi + en) backend. |
 | Embedding | **BAAI/bge-m3 LOCAL** via sentence-transformers (1024-dim, fully offline) |
 | AI Refiner | **Rule-based heuristics** (0GB VRAM, ~1ms per node) — NO AI in ingestion |
 | Vector Store | Qdrant for vectors and retrieval payload |
@@ -19,6 +19,8 @@ Status: authoritative architecture baseline — updated to reflect Next.js 16 fr
 | Retrieval | **2-stage retrieval**: Sections (PostgreSQL) → Chunks (Qdrant with section_id) |
 | Query routing | Document RAG default; SQL route only when explicitly required and approved |
 | AI Provider | Google AI gemma-4-26b-a4b-it (demo); vLLM on-premise (production target) |
+| Workers | `upload-pipeline` (GPU, ingestion) + `cleanup-pipeline` (lightweight, deletion + beat) |
+| Chat sessions | Auto-delete after 1 day (`CHAT_SESSION_TTL_DAYS`) via Celery beat |
 
 PostgreSQL is the system database for metadata, status, auth, audit, and connector state. Qdrant is the retrieval store for node vectors and payload. Redis is used for task queue, cache, and atomic rate limiting.
 
@@ -37,10 +39,12 @@ graph TD
     API --> Chat[Chat Endpoint]
 
     Upload --> Redis[(Redis broker)]
-    Redis --> Worker[Celery Worker]
+    Redis --> UploadPipeline[upload-pipeline · GPU Worker]
+    Redis --> CleanupPipeline[cleanup-pipeline · Lightweight + Beat]
 
-    Worker --> Parser[Docling Parser + EasyOCR]
-    Parser --> SectionExtractor[Section + Chunk Extraction]
+    UploadPipeline --> Parser[Docling iterate_items · Method D]
+    Parser --> SmartOCR[Smart OCR · 2-Pass Strategy]
+    SmartOCR --> SectionExtractor[Section + Chunk Extraction]
     SectionExtractor --> Validator[Hierarchy Validator]
     Validator --> SectionStore[SectionRepository → PostgreSQL]
     Validator --> Refiner[Rule-Based Refiner]
@@ -50,7 +54,12 @@ graph TD
     Validator --> PG[(PostgreSQL system DB)]
 
     Upload --> RustFS[(RustFS)]
-    Worker --> RustFS
+    UploadPipeline --> RustFS
+
+    CleanupPipeline --> |hard delete| Qdrant
+    CleanupPipeline --> |hard delete| RustFS
+    CleanupPipeline --> |hard delete| PG
+    CleanupPipeline --> |beat: daily| TTL[Chat Session TTL Cleanup]
 
     Chat --> Throttle[Atomic Rate Limiter — Lua+Redis]
     Chat --> QueryCache[Query Embedding Cache — Redis]
@@ -69,7 +78,7 @@ graph TD
 |-------|------|--------|
 | 1. Upload | Browser → Next.js → API → RustFS | File persisted, document row pending |
 | 2. Queue | API → Redis → Worker | Async task created, task_id returned |
-| 3. Parse | Worker → Docling + EasyOCR → Section extraction → Chunk splitting | Sections + chunks |
+| 3. Parse | Worker → Docling `iterate_items()` (Method D) + Smart OCR → Section extraction → Chunk splitting | Sections + chunks with page numbers, heading levels |
 | 4. Validate | Worker → Hierarchy Validator | Parent-child consistency report |
 | 5. Refine | Worker → Rule-Based Refiner (0GB VRAM, ~1ms) | Cleaned text, fixed OCR errors |
 | 6. Store Sections | Worker → SectionRepository → PostgreSQL | document_sections rows |
@@ -125,3 +134,8 @@ See: Pinterest Text-to-SQL, Swiggy Hermes, Uber QueryGPT for reference patterns.
 | Nuxt.js frontend | Replaced by Next.js 16 with shadcn/ui v4 |
 | Streamlit frontend | Removed — replaced by Next.js app |
 | Google API key rotation | Removed — single key only |
+| `export_to_markdown()` path | Replaced by Method D (`iterate_items()`) — preserves page numbers, heading levels, table structures |
+| `_build_page_map()` / `_find_page_for_section()` | Removed — page numbers now extracted directly from Docling provenance data |
+| `app/worker.py` (single worker) | Refactored to `app/workers/upload_pipeline.py` + `app/workers/cleanup_pipeline.py` |
+| `app/workflows/` directory | Removed — was empty, tasks moved to `app/workers/` |
+| `do_ocr=True` on all PDFs | Replaced by Smart OCR Strategy — fast no-OCR first, OCR fallback only for scanned PDFs |

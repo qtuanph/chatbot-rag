@@ -1,6 +1,30 @@
 # Changelog
 
-## [Unreleased] - 2026-04-15
+## [Unreleased] - 2026-04-16
+
+### Added
+- **Method D**: Docling `iterate_items()` for direct item extraction — preserves page numbers, heading levels, table structures with 100% metadata fidelity
+- **Smart OCR Strategy**: 2-pass approach — fast no-OCR first (native PDFs), OCR fallback only for scanned PDFs
+- **Worker architecture refactor**: `app/worker.py` → `app/workers/upload_pipeline.py` + `app/workers/cleanup_pipeline.py`
+- **Chat session auto-delete**: TTL=1 day via Celery beat daily cleanup task in `cleanup-pipeline`
+- **Table extraction**: `TableItem` → markdown table conversion with cell grid structure
+- **Page number extraction**: Direct from Docling provenance (`prov[0].page_no`) — no more heuristic guessing
+- **Scanned PDF detection**: Automatic detection after fast pass → OCR fallback
+
+### Changed
+- Worker services renamed: `worker` → `upload-pipeline` (GPU) + `cleanup-pipeline` (lightweight + beat)
+- Task names updated: `app.worker.*` → `app.workers.upload_pipeline.*` / `app.workers.cleanup_pipeline.*`
+- Docling parser: `_convert_with_docling()` now returns `ConversionResult` instead of markdown string
+- Smart OCR: `do_ocr=False` first → detect scanned → `do_ocr=True` fallback (instead of always-OCR)
+- Removed `_build_page_map()` and `_find_page_for_section()` — no longer needed with Method D
+
+### Removed
+- `app/worker.py` — split into `app/workers/upload_pipeline.py` and `app/workers/cleanup_pipeline.py`
+- `app/workflows/` directory — was empty, removed
+- `_build_page_map()` — page info now from Docling provenance directly
+- `_find_page_for_section()` — heuristic no longer needed
+
+## [0.1.0] - 2026-04-15
 
 ### Added
 - **Next.js 16 frontend** with shadcn/ui v4 components

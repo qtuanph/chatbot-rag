@@ -1,12 +1,13 @@
 # 05 — Resource Optimization and Edge Cases
 
-Status: operational optimization baseline — updated to reflect rule-based refiner (0GB VRAM).
+Status: operational optimization baseline — updated to reflect Method D, Smart OCR Strategy, and worker architecture refactor.
 
 ## Constraint -> Response Matrix
 
 | Constraint | Impact | Recommended response |
 |-----------|--------|----------------------|
 | Large PDFs and DOCX | long parse duration | keep async queue, track status, avoid request-thread parsing |
+| Native PDF OCR overhead | garbled text, duplication | Smart OCR: fast no-OCR first, OCR only for scanned |
 | Embedding pressure | memory spikes | embed in batches, configurable batch size |
 | Vector write latency | queue slowdown | upsert in bounded chunks, retry idempotently |
 | Provider latency | delayed chat | reduced-context retry, then explicit failure |
@@ -16,7 +17,8 @@ Status: operational optimization baseline — updated to reflect rule-based refi
 
 | Rule | Requirement |
 |------|-------------|
-| Parser path | Docling-first, deterministic fallback only when needed |
+| Parser path | Docling `iterate_items()` (Method D), fallback to classic parser |
+| Smart OCR | Fast no-OCR pass first → OCR fallback only when scanned PDF detected |
 | Hierarchy quality | validate parent links before persistence |
 | Artifact quality | persist parse metadata and warnings for audit |
 | Duplicate control | run SHA-256 duplicate checks before enqueue |
