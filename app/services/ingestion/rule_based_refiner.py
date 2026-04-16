@@ -57,10 +57,17 @@ class RuleBasedRefiner:
         - "M Ụ C T I Ê U" → "MỤC TIÊU"
         - "T R Ờ N G   C H Ủ" → "TRỌNG CHỦ"
 
-        Pattern: Single Vietnamese/Latin characters followed by spaces
+        Pattern: sequences of single chars separated by spaces (3+ consecutive).
+        Only targets OCR-style spaced letters, NOT normal word spacing.
         """
-        # Fix Vietnamese letters with spaces: "M Ụ C" → "MỤC"
-        text = re.sub(r'([A-Za-zÀ-ỹ])\s+', r'\1', text)
+        # Fix sequences of single chars separated by spaces (OCR artifact)
+        # Pattern: 3+ single characters each followed by a space
+        # e.g., "M Ụ C T I Ê U" → "MỤCTIÊU"
+        text = re.sub(
+            r'(?<=[A-Za-zÀ-ỹ])\s+(?=[A-Za-zÀ-ỹ]\s+[A-Za-zÀ-ỹ])',
+            '',
+            text,
+        )
 
         # Fix multiple spaces (common OCR error)
         text = re.sub(r' {3,}', ' ', text)

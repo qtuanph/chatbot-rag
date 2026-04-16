@@ -140,8 +140,8 @@ export const documentsApi = {
 
 // --- Tree ---
 export const treeApi = {
-  get: (documentId: string, token: string): Promise<TreeResponse> =>
-    apiFetch<TreeResponse>(`/tree/${documentId}`, {}, token),
+  get: (documentId: string, token: string, offset: number = 0, limit: number = 20): Promise<TreeResponse> =>
+    apiFetch<TreeResponse>(`/tree/${documentId}?offset=${offset}&limit=${limit}`, {}, token),
 
   getNode: (documentId: string, nodeId: string, token: string): Promise<NodeDetail> =>
     apiFetch<NodeDetail>(`/tree/${documentId}/nodes/${nodeId}`, {}, token),

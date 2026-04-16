@@ -135,7 +135,7 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
         data: {"chunk": "", "done": true, "error": "..."}
     """
     # Rate limiting
-    if not throttle.allow(f"throttle:chat:{auth.user_id}", limit=30, window_seconds=60):
+    if not throttle.allow(f"throttle:chat:{auth.user_id}", limit=100, window_seconds=60):
         raise HTTPException(
             status_code=429,
             detail="Too many chat requests. Please wait a moment before trying again."
@@ -199,30 +199,52 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                 full_answer += chunk
 
                 # Send SSE event with proper format
-                # Note: double newline is required for SSE
                 event_data = json.dumps({
                     'chunk': chunk,
                     'done': False
                 }, ensure_ascii=False)
                 yield f"data: {event_data}\n\n"
 
-            # Stream completed successfully - save to database
+            # Extract clean content from tags for DB storage
+            clean_answer = full_answer
+            final_match = None
+            for m in __import__('re').finditer(r'<final>([\s\S]*?)</final>', full_answer):
+                final_match = m
+            if final_match:
+                clean_answer = final_match.group(1).strip()
+            else:
+                # Fallback: try to find content after last </thinking>
+                for m in __import__('re').finditer(r'</thinking>([\s\S]*?)$', full_answer):
+                    clean_answer = m.group(1).strip()
+                    # Remove any trailing self-review
+                    if '</final>' in clean_answer:
+                        pass  # Already handled above
+                    break
+
+            # Extract thinking for DB (optional, brief)
+            clean_thinking = None
+            thinking_matches = list(__import__('re').finditer(r'<thinking>([\s\S]*?)</thinking>', full_answer))
+            if thinking_matches:
+                raw_thinking = thinking_matches[-1].group(1).strip()
+                # Keep only last 500 chars if too long
+                clean_thinking = raw_thinking[-500:] if len(raw_thinking) > 500 else raw_thinking
+
+            # Stream completed successfully - save CLEAN content to database
             with SessionLocal() as session:
                 try:
                     session.add(
                         ChatMessage(
                             session_id=session_id,
                             role="assistant",
-                            content=full_answer,
+                            content=clean_answer,
                             citations=citations,
                         )
                     )
                     session.commit()
                 except Exception as e:
                     logger.error("Failed to save chat message: %s", e, exc_info=True)
-                    # Continue anyway - user already got the answer
 
-            store.append_message(scope_id, session_id, "assistant", full_answer)
+            store.append_message(scope_id, session_id, "assistant", clean_answer)
 
             # Send final event with session info and citations
             final_data = json.dumps({
@@ -308,7 +330,7 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
     Returns complete answer with citations in single response.
     """
     # Rate limiting
-    if not throttle.allow(f"throttle:chat:{auth.user_id}", limit=30, window_seconds=60):
+    if not throttle.allow(f"throttle:chat:{auth.user_id}", limit=100, window_seconds=60):
         raise HTTPException(
             status_code=429,
             detail="Too many chat requests. Please wait a moment before trying again."

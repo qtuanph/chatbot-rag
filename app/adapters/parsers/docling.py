@@ -266,14 +266,14 @@ class DoclingParser(BaseParser):
     ) -> Tuple[Optional[str], bool]:
         """
         Convert document to Markdown using Docling.
-        
+
         Returns:
             Tuple of (markdown_string or None, docling_used boolean)
         """
         if not self.docling_converter:
             logger.debug("Docling not available; skipping Docling conversion")
             return None, False
-        
+
         try:
             # Write content to temp file for Docling processing
             with tempfile.NamedTemporaryFile(
@@ -282,22 +282,68 @@ class DoclingParser(BaseParser):
             ) as tmp:
                 tmp.write(content)
                 tmp_path = tmp.name
-            
+
             try:
                 # Convert to DocumentVM
                 result = self.docling_converter.convert(tmp_path)
-                
+
+                # Extract page map from Docling document items BEFORE markdown export
+                self._page_map = self._build_page_map(result.document)
+
                 # Export as Markdown
                 markdown_content = result.document.export_to_markdown()
-                
+
                 logger.debug(f"Docling converted {filename} to {len(markdown_content)} chars of Markdown")
                 return markdown_content, True
             finally:
                 os.unlink(tmp_path)
-        
+
         except Exception as e:
             logger.warning(f"Docling conversion failed for {filename}: {str(e)}")
             return None, False
+
+    def _build_page_map(self, document) -> dict[str, int]:
+        """
+        Build a mapping from text snippets to page numbers using Docling's
+        document items. Each item has provenance (prov) with page info.
+
+        Returns:
+            dict mapping first 80 chars of text → page number
+        """
+        page_map: dict[str, int] = {}
+        try:
+            for item, _level in document.iterate_items():
+                text = ""
+                if hasattr(item, 'text') and item.text:
+                    text = item.text
+                elif hasattr(item, 'label') and item.label:
+                    text = str(item.label)
+
+                if not text or len(text.strip()) < 5:
+                    continue
+
+                # Get page number from provenance
+                page_num = None
+                if hasattr(item, 'prov') and item.prov:
+                    for prov in item.prov:
+                        if hasattr(prov, 'page_no') and prov.page_no is not None:
+                            page_num = prov.page_no
+                            break
+                        elif isinstance(prov, dict) and prov.get('page_no') is not None:
+                            page_num = prov['page_no']
+                            break
+
+                if page_num is not None:
+                    # Use first 80 chars as key (unique enough for matching)
+                    key = text.strip()[:80]
+                    if key not in page_map:
+                        page_map[key] = int(page_num)
+
+            logger.info(f"Built page map with {len(page_map)} entries")
+        except Exception as e:
+            logger.warning(f"Failed to build page map: {e}")
+
+        return page_map
 
     def _parse_markdown_with_llamaindex(
         self,
@@ -452,12 +498,18 @@ class DoclingParser(BaseParser):
             sections_data: List[dict] = []
             global_order = 0
 
+            # Page map from Docling (built during _convert_with_docling)
+            page_map = getattr(self, '_page_map', {})
+
             for sec_idx, section in enumerate(sections_raw):
                 section_id = f"sec_{sec_idx:04d}"
                 title = section["title"]
                 content = section["content"]
                 level = section["level"]
                 breadcrumb = section["breadcrumb"]
+
+                # Look up page number from Docling page_map
+                page_number = self._find_page_for_section(title, content, page_map)
 
                 # Create section record for PostgreSQL
                 sections_data.append({
@@ -468,7 +520,7 @@ class DoclingParser(BaseParser):
                     "section_type": "section",
                     "level": level,
                     "order_index": sec_idx,
-                    "page_range": section.get("page_range"),
+                    "page_range": str(page_number) if page_number else None,
                     "image_count": section.get("image_count", 0),
                     "table_count": section.get("table_count", 0),
                     "chunk_count": 0,  # Updated below
@@ -491,7 +543,7 @@ class DoclingParser(BaseParser):
                         document_id=document_id,
                         text=chunk_text,
                         node_type=ParsedNodeType.PARAGRAPH,
-                        page_number=section.get("page_number"),
+                        page_number=page_number,
                         section_title=title,
                         parent_id=None,
                         order=global_order,
@@ -501,6 +553,7 @@ class DoclingParser(BaseParser):
                             "section_level": level,
                             "chunk_index": chunk_idx,
                             "breadcrumb": breadcrumb,
+                            "page_number": page_number,
                         },
                     ))
                     global_order += 1
@@ -514,6 +567,31 @@ class DoclingParser(BaseParser):
         except Exception as e:
             logger.warning("Multimodal section extraction failed: %s", e)
             return [], [], False
+
+    def _find_page_for_section(self, title: str, content: str, page_map: dict[str, int]) -> Optional[int]:
+        """
+        Find page number for a section using the Docling page map.
+        Tries matching by title first, then by content snippets.
+        """
+        if not page_map:
+            return None
+
+        # Try title match
+        title_key = title.strip()[:80]
+        if title_key in page_map:
+            return page_map[title_key]
+
+        # Try matching content snippets
+        content_lines = content.strip().split('\n')
+        for line in content_lines[:5]:  # Check first 5 lines
+            line = line.strip()
+            if len(line) < 5:
+                continue
+            key = line[:80]
+            if key in page_map:
+                return page_map[key]
+
+        return None
 
     def _split_markdown_by_headings(self, markdown: str) -> List[dict]:
         """

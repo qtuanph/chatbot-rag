@@ -318,16 +318,11 @@ def build_answer(query: str, context: RagContext, history: list[dict[str, str]] 
 
     context_text = "\n\n".join(context_blocks)
 
-    # Instructions for synthesis from multiple sources
+    # Simple format — the AI provider's _build_prompt already handles
+    # instruction formatting. Just pass the query + context.
     answer = (
         f"Câu hỏi: {query}\n\n"
-        f"Tài liệu tham khảo ({len(context.nodes)} nguồn):\n{context_text}\n\n"
-        f"Yêu cầu:\n"
-        f"1. Đọc TẤT CẢ các nguồn trên\n"
-        f"2. TỔNG HỢP thông tin từ nhiều nguồn nếu cần\n"
-        f"3. Viết câu trả lời hoàn chỉnh, có phân tích\n"
-        f"4. Dùng trích dẫn [1], [2], [3] khi cần thiết\n"
-        f"5. Trả lời ngôn ngữ của người dùng"
+        f"Tài liệu tham khảo ({len(context.nodes)} nguồn):\n{context_text}"
     )
 
     return {"answer": answer, "citations": citations, "context": [node.__dict__ for node in context.nodes]}

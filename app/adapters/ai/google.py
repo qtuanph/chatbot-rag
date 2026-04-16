@@ -55,9 +55,19 @@ class GoogleAIProvider(AIProvider):
         prompt = self._build_prompt(messages, kwargs)
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
+            "systemInstruction": {
+                "parts": [{"text": (
+                    "Bạn là trợ lý AI. TUÂN THỦ TUYỆT ĐỐI: "
+                    "Phản hồi BẮT ĐẦU ngay bằng <thinking>. "
+                    "Phần thinking chỉ 2-3 câu. "
+                    "Sau đó là <final>với câu trả lời Markdown. "
+                    "Sau </final> KHÔNG VIẾT GÌ THÊM. "
+                    "KHÔNG phân tích ràng buộc, KHÔNG tự kiểm tra, KHÔNG viết nháp."
+                )}]
+            },
             "generationConfig": {
                 "temperature": 0.2,
-                "maxOutputTokens": 1024,
+                "maxOutputTokens": 2048,
             },
         }
 
@@ -189,9 +199,19 @@ class GoogleAIProvider(AIProvider):
         prompt = self._build_prompt(messages, kwargs)
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
+            "systemInstruction": {
+                "parts": [{"text": (
+                    "Bạn là trợ lý AI. TUÂN THỦ TUYỆT ĐỐI: "
+                    "Phản hồi BẮT ĐẦU ngay bằng <thinking>. "
+                    "Phần thinking chỉ 2-3 câu. "
+                    "Sau đó là <final>với câu trả lời Markdown. "
+                    "Sau </final> KHÔNG VIẾT GÌ THÊM. "
+                    "KHÔNG phân tích ràng buộc, KHÔNG tự kiểm tra, KHÔNG viết nháp."
+                )}]
+            },
             "generationConfig": {
                 "temperature": 0.2,
-                "maxOutputTokens": 1024,
+                "maxOutputTokens": 2048,
             },
         }
 
@@ -264,10 +284,6 @@ class GoogleAIProvider(AIProvider):
         raise RuntimeError("Google AI streaming failed after retries")
 
     def _build_prompt(self, messages: list[dict[str, Any]], kwargs: dict[str, Any]) -> str:
-        """
-        Build prompt from message history and context.
-        Detects language (Vietnamese/English) and formats context with citations.
-        """
         user_query = ""
         for message in reversed(messages):
             if message.get("role") == "user":
@@ -275,60 +291,56 @@ class GoogleAIProvider(AIProvider):
                 break
 
         if not user_query:
-            return "Vui lòng đặt câu hỏi về tài liệu."
-
-        # Detect language from query (simple heuristic)
-        vietnamese_chars = set('àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳỹỷỵĐđABCDEFGHIJKLMNOPQRSTUVWXYZ')
-        is_vietnamese = any(char in vietnamese_chars for char in user_query)
+            return "Vui lòng đặt câu hỏi."
 
         context_nodes = kwargs.get("context") or []
-
-        # Build rich context with inline citation markers
         context_blocks: list[str] = []
         for idx, node in enumerate(context_nodes, start=1):
             title = node.get("document_title") or "Untitled"
             heading = node.get("heading") or "Section"
-            text = (node.get("full_text") or "")[:2000]  # Balanced context
+            text = (node.get("full_text") or "")[:2000]
             context_blocks.append(f"[{idx}] {title} | {heading}\n{text}")
 
-        context_text = "\n\n".join(context_blocks) if context_blocks else "NO DOCUMENTS"
+        context_text = "\n\n".join(context_blocks) if context_blocks else "NO_DOCUMENTS"
 
-        if is_vietnamese:
-            return (
-                "Bạn là trợ lý AI thông minh. Nhiệm vụ: Đọc TẤT CẢ tài liệu và trả lời câu hỏi.\n\n"
-                "QUY TẮC:\n"
-                "1. Đọc và TỔNG HỢP thông tin từ TẤT CẢ tài liệu\n"
-                "2. Viết câu trả lời hoàn chỉnh, có logic, có cấu trúc\n"
-                "3. Trả lời tự nhiên như đang trò chuyện\n"
-                "4. KHÔNG cần trích dẫn số [1], [2] trong câu trả lời\n"
-                "5. Đừng chỉ liệt kê, hãy PHÂN TÍCH và TỔNG HỢP\n"
-                "6. Nếu nhiều tài liệu nói về cùng chủ đề, tổng hợp lại\n"
-                f"7. Trả lời bằng TIẾNG VIỆT (người dùng hỏi tiếng Việt)\n"
-                "8. TRƯỚC KHI TRẢ LỜI: Hãy suy luận và phân tích trong thẻ <thinking>...</thinking>\n"
-                "9. SAU ĐÓ: Đưa ra câu trả lời cuối cùng bên ngoài thẻ thinking\n\n"
-                f"CÂU HỎI:\n{user_query}\n\n"
-                f"TÀI LIỆU THAM KHẢO:\n{context_text}\n\n"
-                "YÊU CẦU: Viết câu trả lời chi tiết, có phân tích. "
-                "BẮT BUỘC phải có thẻ <thinking> trước khi trả lời."
+        if context_text == "NO_DOCUMENTS":
+            context_instruction = (
+                "Không có tài liệu nào được cung cấp. "
+                "Hãy nói rõ với người dùng rằng chưa có tài liệu và khuyên họ yêu cầu Admin tải tài liệu lên."
             )
         else:
-            return (
-                "You are an intelligent AI assistant. Task: Read ALL documents and answer questions.\n\n"
-                "RULES:\n"
-                "1. Read and SYNTHESIZE information from ALL documents\n"
-                "2. Write complete, logical, structured answers\n"
-                "3. Answer naturally like in a conversation\n"
-                "4. NO need for citations [1], [2] in the answer\n"
-                "5. Don't just list, ANALYZE and SYNTHESIZE\n"
-                "6. If multiple documents cover same topic, combine them\n"
-                f"7. Answer in the same language as the question\n"
-                "8. BEFORE ANSWERING: Think and reason inside <thinking>...</thinking> tags\n"
-                "9. AFTER: Provide your final answer outside the thinking tags\n\n"
-                f"QUESTION:\n{user_query}\n\n"
-                f"REFERENCE DOCUMENTS:\n{context_text}\n\n"
-                "REQUIREMENT: Write detailed, analytical answers. "
-                "MUST include <thinking> tags before your final answer."
+            context_instruction = (
+                "Dưới đây là tài liệu tham khảo. Chỉ trả lời dựa trên tài liệu. "
+                "Tổng hợp từ nhiều nguồn nếu cần. Không bịa đặt."
             )
+
+        # Direct, authoritative format — no XML-like wrapper tags that the model
+        # might interpret as content to reason about. The model MUST start its
+        # output with <thinking> immediately.
+        return (
+            "SYSTEM: Bạn là trợ lý AI thông minh. "
+            "Trả lời câu hỏi dựa trên tài liệu cung cấp.\n\n"
+
+            "QUY TẮC ĐỊNH DẠNG PHẢN HỒI (TUÂN THỦ TUYỆT ĐỐI):\n"
+            "1. Phản hồi PHẢI bắt đầu ngay bằng <thinking> (không viết gì trước đó)\n"
+            "2. Phần <thinking> chỉ chứa 2-3 câu phân tích ngắn\n"
+            "3. Sau </thinking> PHẢI là <final>\n"
+            "4. Phần <final> chứa câu trả lời Markdown\n"
+            "5. Sau </final> KHÔNG VIẾT GÌ THÊM\n"
+            "6. KHÔNG phân tích ràng buộc, KHÔNG tự kiểm tra, KHÔNG viết nháp\n"
+            "7. Viết bằng ngôn ngữ của câu hỏi\n"
+            "8. Trong <final> dùng Markdown: ## headings, **bold**, - lists\n\n"
+
+            f"VĂN BẢN MẪU:\n"
+            f"<thinking>Phân tích ý chính.</thinking>\n"
+            f"<final>Câu trả lời.</final>\n\n"
+
+            f"{context_instruction}\n\n"
+
+            f"Câu hỏi: {user_query}\n\n"
+
+            f"Tài liệu:\n{context_text}"
+        )
 
     @staticmethod
     def _extract_text(data: dict[str, Any]) -> str:

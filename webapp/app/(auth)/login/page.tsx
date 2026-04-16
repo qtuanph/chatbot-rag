@@ -3,6 +3,7 @@
 import { useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +27,7 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/chat";
+  const callbackUrl = searchParams.get("callbackUrl");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -49,7 +50,19 @@ function LoginForm() {
         return;
       }
 
-      router.push(callbackUrl);
+      // If there's a callback URL, use it; otherwise redirect based on role
+      if (callbackUrl) {
+        router.push(callbackUrl);
+      } else {
+        // Fetch session to get role
+        const res = await fetch("/api/auth/session");
+        const session = await res.json();
+        if (session?.role === "admin") {
+          router.push("/admin");
+        } else {
+          router.push("/chat");
+        }
+      }
       router.refresh();
     } catch {
       toast.error("Lỗi kết nối. Vui lòng thử lại.");

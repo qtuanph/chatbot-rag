@@ -72,67 +72,77 @@ def _create_preview(text: str, query_lower: str) -> str:
 @router.get("/tree/{document_id}")
 async def get_document_tree(
     document_id: str,
+    offset: int = 0,
+    limit: int = 20,
     auth: AuthContext = Depends(get_auth_context)
 ):
     """
-    Get hierarchical tree structure for a document.
+    Get hierarchical tree structure for a document with pagination.
 
-    Returns complete tree with parent-child relationships.
+    Query params:
+        offset: Starting index (default 0)
+        limit: Number of nodes per page (default 20, max 100)
 
     Response format:
     {
         "document_id": "uuid",
         "document_title": "Document.pdf",
-        "total_nodes": 45,
+        "total_nodes": 189,
         "max_depth": 3,
-        "nodes": [
-            {
-                "node_id": "uuid",
-                "title": "Chapter 1",
-                "level": 1,
-                "breadcrumb": "Document > Chapter 1",
-                "parent_id": null,
-                "child_count": 5,
-                "text_length": 2500,
-                "page_number": 1
-            },
-            ...
-        ]
+        "offset": 0,
+        "limit": 20,
+        "nodes": [...]
     }
     """
     _validate_uuid(document_id, "document ID")
+
+    # Clamp limit
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
 
     try:
         doc = _verify_document_exists(document_id)
         vector_store = build_vector_store()
 
-        limit = _get_max_nodes_limit()
-        nodes_data = vector_store.scroll(
+        # First: get total count with a small scroll
+        count_data = vector_store.scroll(
             filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
-            with_payload=True,
+            with_payload=False,
             with_vector=False,
-            limit=limit
+            limit=10000,  # Qdrant scroll limit for counting
         )
+        total_nodes = len(count_data)
 
-        if not nodes_data:
+        if total_nodes == 0:
             return {
                 "document_id": document_id,
                 "document_title": doc.file_name,
                 "total_nodes": 0,
                 "max_depth": 0,
+                "offset": 0,
+                "limit": limit,
                 "nodes": []
             }
 
-        # Build tree structure
-        nodes_list = []
-        node_map = {}
+        # Now get paginated nodes (offset + limit from the full set)
+        all_nodes_data = vector_store.scroll(
+            filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
+            with_payload=True,
+            with_vector=False,
+            limit=10000,
+        )
 
-        for point in nodes_data:
+        # Apply pagination
+        paginated = all_nodes_data[offset:offset + limit]
+
+        # Build node list
+        nodes_list = []
+        for point in paginated:
             payload = point.get("payload", {})
             node_id = payload.get("node_id", "")
             breadcrumb = payload.get("metadata", {}).get("breadcrumb", [])
 
-            node_map[node_id] = {
+            nodes_list.append({
                 "node_id": node_id,
                 "title": payload.get("section_title", ""),
                 "level": payload.get("metadata", {}).get("level", 0),
@@ -141,22 +151,20 @@ async def get_document_tree(
                 "child_count": 0,
                 "text_length": len(payload.get("text", "")),
                 "page_number": payload.get("metadata", {}).get("page_number", "?"),
-            }
-            nodes_list.append(node_map[node_id])
+            })
 
-        # Calculate child counts
-        for node in nodes_list:
-            parent_id = node["parent_id"]
-            if parent_id and parent_id in node_map:
-                node_map[parent_id]["child_count"] += 1
-
-        max_depth = max((n["level"] for n in nodes_list), default=0)
+        max_depth = max(
+            (len(point.get("payload", {}).get("metadata", {}).get("breadcrumb", [])) for point in all_nodes_data),
+            default=0,
+        )
 
         return {
             "document_id": document_id,
             "document_title": doc.file_name,
-            "total_nodes": len(nodes_list),
+            "total_nodes": total_nodes,
             "max_depth": max_depth,
+            "offset": offset,
+            "limit": limit,
             "nodes": nodes_list
         }
 
