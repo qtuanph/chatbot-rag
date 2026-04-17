@@ -9,7 +9,7 @@ from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.core import Document, DocumentSection
-from app.services.registry import DocumentRegistry
+from app.services.documents.registry import DocumentRegistry
 from app.services.storage import build_storage
 
 

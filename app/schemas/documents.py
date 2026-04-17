@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class UploadAcceptedResponse(BaseModel):
@@ -46,6 +46,8 @@ class DocumentSummaryResponse(BaseModel):
 class DocumentListResponse(BaseModel):
     items: list[DocumentSummaryResponse]
     total: int
+    offset: int = 0
+    limit: int = Field(default=20, ge=1, le=100)
 
 
 class DocumentDetailResponse(BaseModel):

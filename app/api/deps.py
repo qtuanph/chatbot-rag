@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.core import Role, User
-from app.services.token_blacklist import TokenBlacklist
+from app.services.auth.token_blacklist import TokenBlacklist
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,7 @@ class AuthContext:
     user_id: str
     role: str
     token_id: str
+    request_id: str = ""
 
 
 def get_auth_context(
@@ -33,6 +34,9 @@ def get_auth_context(
         raise http_errors.unauthorized("Missing bearer token")
 
     token = authorization.removeprefix("Bearer ").strip()
+    # Get correlation ID from request state (set by CorrelationIDMiddleware)
+    request_id = getattr(request.state, "correlation_id", "unknown")
+    
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         token_id = str(payload["jti"])
@@ -50,6 +54,7 @@ def get_auth_context(
             user_id=str(payload["sub"]),
             role=role_name,
             token_id=token_id,
+            request_id=request_id,
         )
     except (JWTError, KeyError, TypeError, ValueError):
         raise http_errors.unauthorized("Invalid token") from None

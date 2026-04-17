@@ -8,7 +8,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 
 from app.api.routes import auth, chat, documents, health, tree
-from app.api.middleware import SecurityHeadersMiddleware, RequestLoggingMiddleware, RateLimitMiddleware
+from app.api.middleware import SecurityHeadersMiddleware, RequestLoggingMiddleware, RateLimitMiddleware, CorrelationIDMiddleware
 from app.core.config import settings
 from app.core.error_response import build_error_response
 
@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 app = FastAPI(title=settings.app_name, docs_url=None, redoc_url=None)
+
+# Security: Correlation ID middleware (must be early to set request.state.correlation_id)
+app.add_middleware(CorrelationIDMiddleware)
 
 # Security: HTTPS redirect in production (disable for local development)
 if settings.app_env == "production":

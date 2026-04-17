@@ -16,7 +16,7 @@ from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.core import Document
 from app.adapters.vector_stores import build_vector_store
-from app.services.throttle import RequestThrottle
+from app.services.auth.throttle import RequestThrottle
 
 
 router = APIRouter(tags=["tree"])

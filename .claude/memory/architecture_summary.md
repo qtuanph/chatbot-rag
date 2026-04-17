@@ -43,6 +43,9 @@ type: project
 | Error handling | Route-level HTTP errors are centralized via app/core/http_errors.py |
 | CI guardrail | Status code policy also forbids direct raise HTTPException in API layer |
 | Error envelope | Global exception handlers return unified JSON error payload with backward-compatible detail |
+| Webapp runtime image | Uses Next standalone artifacts; avoids full builder node_modules copy |
+| Production config | app/core/config.py blocks wildcard hosts, localhost CORS, relaxed rate limits, insecure S3 in production |
+| Compose exposure | Published service ports are bound to 127.0.0.1 by default for local/dev safety |
 
 ## Last Updated
-- 2026-04-17: Synced Batch 4 unified error envelope and client compatibility parsing
+- 2026-04-17: Synced production config guardrails and dev-only env template clarification

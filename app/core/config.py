@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60
 
     max_upload_size_mb: int = 50
+    
+    # Allowed file types for upload (MIME types)
+    allowed_file_types: str = "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,application/vnd.ms-excel,application/msword"
+    max_filename_length: int = 255
 
     # Rate limiting behavior
     # In non-production environments, limits can be relaxed for integration testing.
@@ -118,8 +122,23 @@ class Settings(BaseSettings):
         self.qdrant_url = str(self.qdrant_url).strip() or "http://qdrant:6333"
         if self.qdrant_timeout < 1:
             raise ValueError("QDRANT_TIMEOUT must be >= 1")
-        if self.rate_limit_relaxed_floor < 1:
-            raise ValueError("RATE_LIMIT_RELAXED_FLOOR must be >= 1")
+        if self.max_upload_size_mb < 1 or self.max_upload_size_mb > 500:
+            raise ValueError("MAX_UPLOAD_SIZE_MB must be between 1 and 500")
+        if self.max_filename_length < 20 or self.max_filename_length > 512:
+            raise ValueError("MAX_FILENAME_LENGTH must be between 20 and 512")
+        if not self.allowed_file_types:
+            raise ValueError("ALLOWED_FILE_TYPES must not be empty")
+
+        # Production-only constraints: fail fast on unsafe defaults.
+        if self.app_env == "production":
+            if "*" in self.allowed_hosts:
+                raise ValueError("ALLOWED_HOSTS must not contain wildcard in production")
+            if not self.cors_origins or "http://localhost" in self.cors_origins:
+                raise ValueError("CORS_ORIGINS must be production-safe in production")
+            if self.rate_limit_relaxed_mode:
+                raise ValueError("RATE_LIMIT_RELAXED_MODE must be false in production")
+            if self.s3_secure is False:
+                raise ValueError("S3_SECURE must be true in production")
 
     def effective_rate_limit(self, base_limit: int) -> int:
         """
@@ -135,6 +154,10 @@ class Settings(BaseSettings):
         if self.rate_limit_relaxed_mode:
             return max(base_limit, self.rate_limit_relaxed_floor)
         return base_limit
+
+    def get_allowed_file_types(self) -> set[str]:
+        """Parse ALLOWED_FILE_TYPES string into a set of MIME types."""
+        return set(t.strip() for t in self.allowed_file_types.split(",") if t.strip())
 
 
 @lru_cache

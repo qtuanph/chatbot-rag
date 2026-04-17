@@ -33,6 +33,12 @@
 - Status-code CI job now validates both HTTP status expressions and API-layer helper semantics.
 - Webapp API client now parses both legacy `detail` and new `error.message` formats.
 - Global fallback rate-limit middleware now uses Redis atomic throttle (no in-memory counters).
+- Webapp runtime Docker image now ships only Next.js standalone output (no full builder `node_modules` copy).
+- Added `requirements-dev.txt` for local test/dev dependencies, separated from Docker runtime install set.
+- Added focused backend tests for unified error envelope contract (`tests/test_error_response_contract.py`).
+- Added expanded API error contract tests for FastAPI handlers and middleware rate-limit response (`tests/test_api_error_contracts.py`).
+- Added production-only config guardrails in `app/core/config.py` to block wildcard hosts, relaxed rate limits, insecure S3, and localhost CORS in production.
+- Restricted published Docker Compose ports to `127.0.0.1` for safer local/dev defaults.
 
 ## [0.1.0] - 2026-04-15
 

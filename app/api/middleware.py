@@ -4,6 +4,7 @@ Security Middleware for FastAPI Application
 This module provides additional security middleware for production deployments.
 """
 import logging
+import uuid
 from typing import Callable
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
@@ -69,6 +70,34 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class CorrelationIDMiddleware(BaseHTTPMiddleware):
+    """
+    Add correlation ID (X-Request-ID) to all requests and responses.
+    
+    - If X-Request-ID header is present, use it
+    - Otherwise, generate a new UUID
+    - Store correlation ID in request state for logging/audit trail
+    - Echo back in response headers
+    """
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # Get or generate correlation ID
+        correlation_id = request.headers.get("X-Request-ID")
+        if not correlation_id:
+            correlation_id = str(uuid.uuid4())
+        
+        # Store in request state for access in route handlers
+        request.state.correlation_id = correlation_id
+        
+        # Process request
+        response = await call_next(request)
+        
+        # Echo correlation ID in response
+        response.headers["X-Request-ID"] = correlation_id
+        
+        return response
+
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
     Log all requests with security-relevant information.
@@ -79,12 +108,16 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     - User agent
     - Response status
     - Request duration
+    - Correlation ID
     """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         import time
 
         start_time = time.time()
+
+        # Get correlation ID (set by CorrelationIDMiddleware)
+        correlation_id = getattr(request.state, "correlation_id", "unknown")
 
         # Sanitize client IP (log only first 3 octets for IPv4, first 3 groups for IPv6)
         client_ip = request.client.host if request.client else "unknown"
@@ -103,17 +136,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if not path.startswith("/api/v1/auth"):  # Don't log auth endpoints in detail
             logger.info(
-                "Request: %s %s status=%d ip=%s duration=%.3fs",
+                "Request: %s %s status=%d ip=%s duration=%.3fs correlation_id=%s",
                 request.method,
                 path,
                 response.status_code,
                 sanitized_ip,
                 duration,
+                correlation_id,
             )
-
-        # Add security headers (except for auth endpoints which have their own)
-        if not path.startswith("/api/v1/auth"):
-            response.headers["X-Request-ID"] = f"{id(request)}"
 
         return response
 

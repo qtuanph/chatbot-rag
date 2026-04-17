@@ -10,9 +10,9 @@ from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.core import Document
 from app.api.deps import get_auth_context, AuthContext
-from app.services.health import build_health_payload
+from app.services.system.health import build_health_payload
 from app.services.storage import build_storage
-from app.services.throttle import RequestThrottle
+from app.services.auth.throttle import RequestThrottle
 
 router = APIRouter(tags=["health"])
 throttle = RequestThrottle()

@@ -7,11 +7,11 @@ from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.core import Role, User
 from app.schemas.auth import CreateUserRequest, CreateUserResponse, LoginRequest, LogoutResponse, TokenResponse
-from app.services.auth import create_access_token, hash_password, verify_password
-from app.services.audit import safe_record_audit
+from app.services.auth.service import create_access_token, hash_password, verify_password
+from app.services.system.audit import safe_record_audit
 from app.api.deps import AuthContext, get_auth_context, require_admin
-from app.services.token_blacklist import TokenBlacklist
-from app.services.throttle import RequestThrottle
+from app.services.auth.token_blacklist import TokenBlacklist
+from app.services.auth.throttle import RequestThrottle
 
 
 router = APIRouter(tags=["auth"])

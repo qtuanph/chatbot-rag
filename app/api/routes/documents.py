@@ -22,10 +22,10 @@ from app.schemas.documents import (
     TaskStatusResponse,
     UploadAcceptedResponse,
 )
-from app.services.registry import DocumentRecord, DocumentRegistry
+from app.services.documents.registry import DocumentRecord, DocumentRegistry
 from app.services.storage import build_storage
-from app.services.audit import safe_record_audit
-from app.services.throttle import RequestThrottle
+from app.services.system.audit import safe_record_audit
+from app.services.auth.throttle import RequestThrottle
 
 
 router = APIRouter(tags=["documents"])
@@ -69,10 +69,39 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
     if not file.filename:
         raise http_errors.bad_request("Filename is required")
 
+    # Validate filename length
+    if len(file.filename) > settings.max_filename_length:
+        raise http_errors.bad_request(f"Filename exceeds maximum length of {settings.max_filename_length} characters")
+    
+    # Reject path traversal attempts
+    if "/" in file.filename or "\\" in file.filename or ".." in file.filename:
+        raise http_errors.bad_request("Filename contains invalid path characters")
+
+    # Validate file type (MIME type whitelist)
+    file_type = file.content_type or "application/octet-stream"
+    allowed_types = settings.get_allowed_file_types()
+    if file_type not in allowed_types:
+        raise http_errors.bad_request(f"File type '{file_type}' is not allowed. Allowed types: {', '.join(sorted(allowed_types))}")
+
+    # Early Content-Length check before reading entire file
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            content_length_int = int(content_length)
+            max_size = settings.max_upload_size_mb * 1024 * 1024
+            if content_length_int > max_size:
+                raise http_errors.payload_too_large(f"File size exceeds maximum of {settings.max_upload_size_mb} MB")
+        except ValueError:
+            pass  # Invalid header, will validate actual content size below
+
     max_size = settings.max_upload_size_mb * 1024 * 1024
     content = await file.read()
     if len(content) > max_size:
-        raise http_errors.payload_too_large("File too large")
+        raise http_errors.payload_too_large(f"File size exceeds maximum of {settings.max_upload_size_mb} MB")
+    
+    # Reject empty files
+    if len(content) == 0:
+        raise http_errors.bad_request("File cannot be empty")
 
     document_id = str(uuid4())
     task_id = str(uuid4())
@@ -106,7 +135,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
                 file_name=file.filename,
                 file_path=object_uri,
                 sha256=sha256,
-                file_type=file.content_type or "application/octet-stream",
+                file_type=file_type,
                 file_size=len(content),
                 version=next_version,
                 status="pending",
@@ -123,7 +152,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
             subject_id=document_id,
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
-            details={"filename": file.filename, "size": len(content)},
+            details={"filename": file.filename, "size": len(content), "file_type": file_type},
         )
 
     try:
@@ -259,7 +288,11 @@ async def get_status(task_id: str, _auth=Depends(require_admin)) -> TaskStatusRe
 
 
 @router.get("/documents", response_model=DocumentListResponse)
-async def list_documents(_auth=Depends(require_admin)) -> DocumentListResponse:
+async def list_documents(offset: int = 0, limit: int = 20, _auth=Depends(require_admin)) -> DocumentListResponse:
+    # Validate pagination bounds
+    offset = max(0, offset)
+    limit = max(1, min(limit, 100))  # Clamp limit to 1-100
+    
     if not throttle.allow(
         f"throttle:documents:{_auth.user_id}",
         limit=settings.effective_rate_limit(30),
@@ -268,10 +301,16 @@ async def list_documents(_auth=Depends(require_admin)) -> DocumentListResponse:
         raise http_errors.too_many_requests("Too many document list requests")
 
     with SessionLocal() as session:
+        # Get total count
+        total = session.query(func.count(Document.id)).filter(Document.deleted_at.is_(None)).scalar()
+        
+        # Get paginated rows
         rows = (
             session.query(Document)
             .filter(Document.deleted_at.is_(None))
             .order_by(Document.created_at.desc())
+            .offset(offset)
+            .limit(limit)
             .all()
         )
 
@@ -292,7 +331,7 @@ async def list_documents(_auth=Depends(require_admin)) -> DocumentListResponse:
         )
         for row in rows
     ]
-    return DocumentListResponse(items=items, total=len(items))
+    return DocumentListResponse(items=items, total=total, offset=offset, limit=limit)
 
 
 @router.get("/documents/{document_id}", response_model=DocumentDetailResponse)

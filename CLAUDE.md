@@ -255,6 +255,8 @@ Key environment variables:
 - `GOOGLE_MODEL` — Model name (default: `gemma-4-26b-a4b-it`)
 - `VLLM_BASE_URL` — Required for on-premise vLLM (future)
 
+**Production-only guardrails**: `app/core/config.py` rejects wildcard `ALLOWED_HOSTS`, localhost `CORS_ORIGINS`, `RATE_LIMIT_RELAXED_MODE=true`, and `S3_SECURE=false` when `APP_ENV=production`.
+
 **Note**: Google API key rotation has been REMOVED. Only use single `GOOGLE_API_KEY`.
 
 ## Database Initialization
@@ -291,19 +293,50 @@ If you need schema changes:
 
 ## Project Structure Notes
 
+### Core Application
 - `app/main.py` — FastAPI app, no DDL at startup
-- `app/workers/upload_pipeline.py` — Celery ingestion tasks (GPU worker): `parse_document_task`
-- `app/workers/cleanup_pipeline.py` — Celery cleanup tasks (lightweight worker + beat): `delete_document_task`, `cleanup_old_chat_sessions_task`
 - `app/core/celery_app.py` — Celery configuration with reliability settings
 - `app/core/http_errors.py` — Centralized HTTPException helper functions (status-consistent API errors)
-- `app/services/ingestion/rule_based_refiner.py` — Rule-based text refinement (NO AI)
-- `app/services/rag.py` — 2-stage retrieval: cache → embed → sections → chunks → score filter
-- `app/services/storage/document_store.py` — DocumentRepository + SectionRepository
-- `app/services/query_cache.py` — Redis query embedding cache
-- `app/services/throttle.py` — Atomic Lua rate limiter
-- `app/services/document_cleanup.py` — Hard-delete workflow
-- `app/services/registry.py` — Redis registry for task/document tracking
-- `docs/` — Comprehensive architecture documentation (7 detailed MD files)
+- `app/core/config.py` — Pydantic Settings with production guardrails
+
+### Workers & Tasks
+- `app/workers/upload_pipeline.py` — Celery ingestion tasks (GPU worker): `parse_document_task`
+- `app/workers/cleanup_pipeline.py` — Celery cleanup tasks (lightweight worker + beat): `delete_document_task`, `cleanup_old_chat_sessions_task`
+
+### Services (Reorganized into 6 subpackages for clarity)
+- `app/services/auth/` — Authentication & rate limiting
+  - `service.py` — JWT creation, password hashing
+  - `token_blacklist.py` — Redis-backed JWT revocation
+  - `throttle.py` — Atomic Lua-based rate limiter (prevents race conditions)
+- `app/services/documents/` — Document lifecycle
+  - `registry.py` — Redis registry for task/document tracking
+  - `cleanup.py` — Hard-delete workflow (5-step ordered deletion)
+- `app/services/retrieval/` — RAG engine
+  - `rag.py` — 2-stage retrieval: sections → chunks, with soft-delete & version filtering
+  - `cache.py` — Redis query embedding cache (MD5-keyed, 1h TTL)
+- `app/services/chat/` — Chat sessions
+  - `store.py` — Redis-backed chat history
+- `app/services/system/` — System & monitoring
+  - `health.py` — Dependency health checks (database, Redis, storage, AI provider)
+  - `audit.py` — Security audit logging
+- `app/services/ingestion/` — Document processing pipeline
+  - `pipeline.py` — Orchestrates full ingestion workflow
+  - `parser_manager.py` — Docling (primary) + classic (fallback) parsers
+  - `hierarchy_validator.py` — Validates section hierarchy
+  - `rule_based_refiner.py` — Rule-based text refinement (0GB VRAM, ~1ms per node)
+  - `recovery.py` — Pipeline recovery: stuck detection, orphan cleanup, consistency validation
+- `app/services/storage/` — Object storage abstraction
+  - `document_store.py` — S3-compatible interface (RustFS/MinIO)
+
+### Documentation
+- `docs/01_SYSTEM_ARCHITECTURE.md` — Overall system design
+- `docs/02_DATABASE_AND_PROJECT.md` — Database schema
+- `docs/03_CORE_WORKFLOWS.md` — Ingestion, retrieval, chat workflows
+- `docs/04_API_CONTRACT_AND_SECURITY.md` — API endpoints & security
+- `docs/05_RESOURCE_OPTIMIZATION_AND_EDGE_CASES.md` — Performance & edge cases
+- `docs/06_DEPLOYMENT_AND_OBSERVABILITY.md` — Deployment guide
+- `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md` — 2-stage RAG implementation
+- `docs/08_SERVICES_ARCHITECTURE.md` — Services module organization (NEW)
 
 ## API Endpoints
 
@@ -374,6 +407,8 @@ Password: abc123
 - **Query embedding cache** significantly reduces API calls for repeated questions
 - **SSE streaming** for real-time chat responses via `/api/v1/chat/stream`
 - **Next.js 16 frontend** with shadcn/ui v4 components and next-auth v5 (JWT strategy)
+- **Webapp Docker runtime** uses Next.js standalone artifacts only (no full dev `node_modules` in runner image)
+- **Docker Compose published ports** default to `127.0.0.1` bindings for safer local/dev exposure; production should still sit behind an ingress/proxy
 
 ## Development Guidelines
 
@@ -465,6 +500,7 @@ When exploring the codebase, read these documents first:
 - ✅ User CRUD operations (admin only)
 - ✅ Document detail page with react-flow tree visualization
 - ✅ Dead-code cleanup: removed unused `app/adapters/embeddings/gemini.py` adapter
+- ✅ **Services reorganization**: Refactored flat `app/services/` into 6 logical subpackages (auth/, documents/, retrieval/, chat/, system/, ingestion/) for improved team development velocity and code discoverability — backward-compatible re-exports maintained
 
 **In Progress:**
 - ⏳ Docker build + integration testing of Method D + Smart OCR
@@ -472,6 +508,7 @@ When exploring the codebase, read these documents first:
 **Upcoming:**
 - 🔜 Performance optimization for large documents (300-500 pages)
 - 🔜 Monitoring/metrics collection
+- 🔜 Phase 3 pipeline recovery test suite completion
 
 **Not Implemented:**
 - ❌ Structured logging

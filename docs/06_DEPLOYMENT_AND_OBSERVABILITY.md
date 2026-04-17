@@ -6,14 +6,14 @@ Status: deployment and operations baseline — updated to reflect worker archite
 
 Primary runtime uses Docker Compose with the following services:
 
-- api (FastAPI) — port 8000
-- webapp (Next.js 16) — port 3000
+- api (FastAPI) — published on localhost only
+- webapp (Next.js 16) — published on localhost only
 - upload-pipeline (Celery GPU worker) — queues: ingestion, default
 - cleanup-pipeline (Celery lightweight worker + beat) — queues: cleanup, default
-- db (PostgreSQL 18)
-- redis (broker/result/cache)
-- rustfs (object storage)
-- qdrant (vector retrieval store)
+- db (PostgreSQL 18) — published on localhost only
+- redis (broker/result/cache) — published on localhost only
+- rustfs (object storage) — published on localhost only
+- qdrant (vector retrieval store) — published on localhost only
 - vllm (optional on-prem profile)
 
 ## Storage Responsibilities
@@ -47,6 +47,8 @@ PostgreSQL is not the primary retrieval context store in the new direction.
 | On-prem mode | vllm profile |
 
 Provider changes must not require API contract changes.
+
+Compose defaults bind published ports to 127.0.0.1 so local dev works without exposing services to the wider network. Production deployments should still front services with an ingress/reverse proxy and explicit network policy.
 
 ## Health and Readiness
 

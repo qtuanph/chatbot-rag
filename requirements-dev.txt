@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Test/development-only dependencies (do not install in runtime Docker image)
+pytest==8.4.2

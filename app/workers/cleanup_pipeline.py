@@ -12,7 +12,7 @@ from app.models.chat import ChatSession
 from app.models.core import Document
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.services.storage import build_storage
-from app.services.document_cleanup import hard_delete_document
+from app.services.documents.cleanup import hard_delete_document
 
 logger = logging.getLogger(__name__)
 

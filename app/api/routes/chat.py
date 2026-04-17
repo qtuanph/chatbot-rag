@@ -15,9 +15,9 @@ from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.chat import ChatMessage, ChatSession
 from app.schemas.chat import ChatRequest
-from app.services.chat_store import ChatStore
-from app.services.rag import build_answer, retrieve_context
-from app.services.throttle import RequestThrottle
+from app.services.chat.store import ChatStore
+from app.services.retrieval.rag import build_answer, retrieve_context
+from app.services.auth.throttle import RequestThrottle
 
 
 router = APIRouter(tags=["chat"])

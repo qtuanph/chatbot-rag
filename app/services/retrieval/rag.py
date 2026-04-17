@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.adapters.base import BaseEmbedding
 from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
-from app.services.query_cache import QueryEmbeddingCache
+from app.services.retrieval.cache import QueryEmbeddingCache
 
 logger = logging.getLogger(__name__)
 
