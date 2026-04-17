@@ -2,9 +2,10 @@ from datetime import UTC, datetime
 import html
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request
 import httpx
 
+from app.core import http_errors
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.core import Document
@@ -217,10 +218,7 @@ async def health_data(request: Request, _auth: AuthContext = Depends(get_auth_co
         limit=settings.effective_rate_limit(60),
         window_seconds=60,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many health data requests",
-        )
+        raise http_errors.too_many_requests("Too many health data requests")
 
     selected_document_id = request.query_params.get("document_id")
     return _build_snapshot(selected_document_id=selected_document_id)
@@ -234,10 +232,7 @@ async def health_nodes(request: Request, _auth: AuthContext = Depends(get_auth_c
         limit=settings.effective_rate_limit(60),
         window_seconds=60,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many health node list requests",
-        )
+        raise http_errors.too_many_requests("Too many health node list requests")
 
     document_id = request.query_params.get("document_id") or ""
     points = _fetch_qdrant_nodes(document_id=document_id, limit=300)
@@ -256,10 +251,7 @@ async def health_node(request: Request, _auth: AuthContext = Depends(get_auth_co
         limit=settings.effective_rate_limit(60),
         window_seconds=60,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many health node detail requests",
-        )
+        raise http_errors.too_many_requests("Too many health node detail requests")
 
     document_id = request.query_params.get("document_id") or ""
     node_id = request.query_params.get("node_id") or ""

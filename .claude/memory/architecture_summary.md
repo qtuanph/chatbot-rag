@@ -40,6 +40,9 @@ type: project
 | Route throttling | Sensitive auth routes include health/tree throttling with 429 on limit |
 | Auth validation | Username normalized + bounded, role strict enum admin/member |
 | Middleware fallback | Production enables coarse global rate-limit middleware as safety net |
+| Error handling | Route-level HTTP errors are centralized via app/core/http_errors.py |
+| CI guardrail | Status code policy also forbids direct raise HTTPException in API layer |
+| Error envelope | Global exception handlers return unified JSON error payload with backward-compatible detail |
 
 ## Last Updated
-- 2026-04-17: Synced Batch 2 API hardening (auth validation, route status constants, fallback rate-limit middleware)
+- 2026-04-17: Synced Batch 4 unified error envelope and client compatibility parsing

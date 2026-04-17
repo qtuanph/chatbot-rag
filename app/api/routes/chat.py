@@ -5,12 +5,13 @@ import logging
 from uuid import UUID, uuid4
 from typing import Any, AsyncGenerator
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import AuthContext, get_auth_context
 from app.adapters.ai import build_ai_provider
 from app.core.config import settings
+from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.chat import ChatMessage, ChatSession
 from app.schemas.chat import ChatRequest
@@ -79,22 +80,16 @@ def _validate_query(query: str) -> None:
         HTTPException: If query is invalid
     """
     if not query or not query.strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Query cannot be empty")
+        raise http_errors.bad_request("Query cannot be empty")
 
     if len(query) > 5000:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Query too long (max 5000 characters)",
-        )
+        raise http_errors.bad_request("Query too long (max 5000 characters)")
 
     # Check for potential injection patterns (basic sanitization)
     dangerous_patterns = ["<script>", "javascript:", "onerror=", "onload="]
     query_lower = query.lower()
     if any(pattern in query_lower for pattern in dangerous_patterns):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Query contains invalid characters",
-        )
+        raise http_errors.bad_request("Query contains invalid characters")
 
 
 def _build_user_friendly_error(error: Exception) -> str:
@@ -147,9 +142,8 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
         limit=settings.effective_rate_limit(100),
         window_seconds=60,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many chat requests. Please wait a moment before trying again."
+        raise http_errors.too_many_requests(
+            "Too many chat requests. Please wait a moment before trying again."
         )
 
     # Validate query input
@@ -163,10 +157,7 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
     try:
         UUID(session_id)
     except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid session ID format",
-        )
+        raise http_errors.bad_request("Invalid session ID format")
 
     with SessionLocal() as session:
         chat_session = session.get(ChatSession, session_id)
@@ -175,10 +166,7 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
             session.add(chat_session)
             session.commit()
         elif str(chat_session.user_id) != auth.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Chat session does not belong to this user",
-            )
+            raise http_errors.forbidden("Chat session does not belong to this user")
 
         store.append_message(scope_id, session_id, "user", request.query)
 
@@ -193,9 +181,8 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
 
         except Exception as e:
             logger.error("Error preparing chat context: %s", e, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to prepare chat context. Please try again."
+            raise http_errors.internal_server_error(
+                "Failed to prepare chat context. Please try again."
             ) from None
 
     async def generate() -> AsyncGenerator[str, None]:
@@ -352,9 +339,8 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
         limit=settings.effective_rate_limit(100),
         window_seconds=60,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many chat requests. Please wait a moment before trying again."
+        raise http_errors.too_many_requests(
+            "Too many chat requests. Please wait a moment before trying again."
         )
 
     # Validate query input
@@ -368,10 +354,7 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
     try:
         UUID(session_id)
     except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid session ID format",
-        )
+        raise http_errors.bad_request("Invalid session ID format")
 
     with SessionLocal() as session:
         chat_session = session.get(ChatSession, session_id)
@@ -380,10 +363,7 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
             session.add(chat_session)
             session.commit()
         elif str(chat_session.user_id) != auth.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Chat session does not belong to this user",
-            )
+            raise http_errors.forbidden("Chat session does not belong to this user")
 
         store.append_message(scope_id, session_id, "user", request.query)
 
@@ -398,9 +378,8 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
 
         except Exception as e:
             logger.error("Error preparing chat context: %s", e, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to prepare chat context. Please try again."
+            raise http_errors.internal_server_error(
+                "Failed to prepare chat context. Please try again."
             ) from None
 
         try:
@@ -414,7 +393,7 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
 
             # Provide user-friendly error message
             error_detail = _build_user_friendly_error(e)
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error_detail) from None
+            raise http_errors.service_unavailable(error_detail) from None
 
         answer = response.get("answer") or assistant_seed["answer"]
         citations = response.get("citations") or citations

@@ -74,6 +74,26 @@ Response shape:
 }
 ```
 
+## Error Response Envelope
+
+All JSON error responses follow a unified envelope:
+
+```json
+{
+  "error": {
+    "code": "bad_request",
+    "message": "Query cannot be empty",
+    "status": 400,
+    "path": "/api/v1/chat"
+  },
+  "detail": "Query cannot be empty"
+}
+```
+
+Notes:
+- `detail` is retained for backward compatibility with existing clients.
+- Validation errors (`422`) include `error.details` with FastAPI validation entries.
+
 ## Security Baseline
 
 | Concern | Policy |
@@ -90,6 +110,13 @@ Response shape:
 - Non-production environments can relax limits via `RATE_LIMIT_RELAXED_MODE` + `RATE_LIMIT_RELAXED_FLOOR`.
 - When throttled, endpoints return `429 Too Many Requests` with a clear `detail` message.
 - Production includes a coarse global fallback middleware rate limit (in addition to endpoint-level throttles).
+
+### HTTP Status Code Policy
+
+- `HTTPException` must use FastAPI constants (`status.HTTP_*`) instead of raw numeric literals.
+- Policy is enforced by CI workflow: `.github/workflows/status-code-guardrail.yml`.
+- API layer (`app/api/routes/*`, `app/api/deps.py`) must raise route-level HTTP errors via `app/core/http_errors.py` helpers.
+- Direct `raise HTTPException(...)` in API layer is forbidden by guardrail script.
 
 ## Routing Guardrails
 

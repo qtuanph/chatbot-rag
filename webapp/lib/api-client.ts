@@ -38,6 +38,28 @@ class ApiError extends Error {
   }
 }
 
+function extractErrorMessage(body: unknown, fallback: string): string {
+  if (!body || typeof body !== "object") {
+    return fallback;
+  }
+
+  const record = body as Record<string, unknown>;
+  const detail = record.detail;
+  if (typeof detail === "string" && detail.trim().length > 0) {
+    return detail;
+  }
+
+  const error = record.error;
+  if (error && typeof error === "object") {
+    const message = (error as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message;
+    }
+  }
+
+  return fallback;
+}
+
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
@@ -58,7 +80,7 @@ async function apiFetch<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, body.detail || res.statusText);
+    throw new ApiError(res.status, extractErrorMessage(body, res.statusText));
   }
 
   return res.json();
@@ -125,7 +147,7 @@ export const documentsApi = {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new ApiError(res.status, body.detail || res.statusText);
+      throw new ApiError(res.status, extractErrorMessage(body, res.statusText));
     }
     return res.json();
   },

@@ -1,6 +1,8 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
@@ -8,6 +10,7 @@ from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from app.api.routes import auth, chat, documents, health, tree
 from app.api.middleware import SecurityHeadersMiddleware, RequestLoggingMiddleware, RateLimitMiddleware
 from app.core.config import settings
+from app.core.error_response import build_error_response
 
 
 logger = logging.getLogger(__name__)
@@ -49,6 +52,49 @@ routers = [auth.router, health.router, documents.router, chat.router, tree.route
 
 for router in routers:
     app.include_router(router, prefix=settings.api_v1_prefix)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    if isinstance(exc.detail, (list, dict)):
+        message = "Validation or processing error"
+        details = exc.detail
+    else:
+        message = str(exc.detail) if exc.detail else "Request failed"
+        details = None
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=build_error_response(request, exc.status_code, message, details=details),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=build_error_response(
+            request,
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Validation error",
+            details=exc.errors(),
+        ),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, _exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled API exception on %s", request.url.path)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=build_error_response(
+            request,
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "Internal server error",
+        ),
+    )
 
 
 @app.on_event("startup")

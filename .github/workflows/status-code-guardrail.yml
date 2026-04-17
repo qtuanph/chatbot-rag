@@ -1,0 +1,24 @@
+name: Status Code Guardrail
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main, master]
+
+jobs:
+  http_status_policy:
+    name: Enforce HTTP status and helper policy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check HTTP status and API helper policy
+        run: python .github/scripts/check_http_status_policy.py

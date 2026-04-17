@@ -29,3 +29,4 @@ Describe what changed and why.
 
 - [ ] I ran relevant checks for changed areas.
 - [ ] I reviewed API/contract impact (if any) and updated frontend/contracts accordingly.
+- [ ] I verified HTTPException status codes follow policy (`status.HTTP_*`, no raw numeric literals).

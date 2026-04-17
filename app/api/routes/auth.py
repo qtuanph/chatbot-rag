@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, Request
 from jose import JWTError, jwt
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
+from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.core import Role, User
 from app.schemas.auth import CreateUserRequest, CreateUserResponse, LoginRequest, LogoutResponse, TokenResponse
@@ -23,15 +24,15 @@ def login(payload: LoginRequest, request: Request) -> TokenResponse:
     normalized_username = payload.username.lower().strip()
     throttle_key = f"throttle:login:{client_ip}:{normalized_username}"
     if not throttle.allow(throttle_key, limit=settings.effective_rate_limit(50), window_seconds=60):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many login attempts")
+        raise http_errors.too_many_requests("Too many login attempts")
 
     with SessionLocal() as session:
         user = session.query(User).filter(User.username == normalized_username).one_or_none()
         if user is None or not verify_password(payload.password, user.password_hash):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+            raise http_errors.unauthorized("Invalid credentials")
         role = session.get(Role, user.role_id)
         if role is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+            raise http_errors.unauthorized("Invalid credentials")
 
         token = create_access_token(subject=str(user.id))
         safe_record_audit(
@@ -49,7 +50,7 @@ def login(payload: LoginRequest, request: Request) -> TokenResponse:
 @router.post("/auth/logout", response_model=LogoutResponse)
 def logout(request: Request, authorization: str | None = Header(default=None)) -> LogoutResponse:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+        raise http_errors.unauthorized("Missing bearer token")
 
     token = authorization.removeprefix("Bearer ").strip()
     try:
@@ -68,7 +69,7 @@ def logout(request: Request, authorization: str | None = Header(default=None)) -
         )
         return LogoutResponse(status="logged_out")
     except (JWTError, KeyError, TypeError, ValueError):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from None
+        raise http_errors.unauthorized("Invalid token") from None
 
 
 @router.post("/auth/users", response_model=CreateUserResponse)
@@ -77,14 +78,11 @@ def create_user(payload: CreateUserRequest, _auth=Depends(require_admin)) -> Cre
         normalized_username = payload.username.lower().strip()
         existing_user = session.query(User).filter(User.username == normalized_username).one_or_none()
         if existing_user is not None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+            raise http_errors.conflict("Username already exists")
 
         role = session.query(Role).filter(Role.name == payload.role).one_or_none()
         if role is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid role",
-            )
+            raise http_errors.bad_request("Invalid role")
 
         user = User(
             role_id=role.id,
@@ -97,7 +95,7 @@ def create_user(payload: CreateUserRequest, _auth=Depends(require_admin)) -> Cre
             session.refresh(user)
         except IntegrityError:
             session.rollback()
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists") from None
+            raise http_errors.conflict("Username already exists") from None
         safe_record_audit(
             action="auth.user.create",
             actor_user_id=_auth.user_id,
@@ -115,7 +113,7 @@ def get_me(auth: AuthContext = Depends(get_auth_context)) -> dict:
     with SessionLocal() as session:
         user = session.get(User, auth.user_id)
         if user is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+            raise http_errors.unauthorized("User not found")
         role = session.get(Role, user.role_id)
         return {
             "user_id": str(user.id),
@@ -145,11 +143,11 @@ def delete_user(username: str, _auth=Depends(require_admin)) -> dict[str, str]:
         # Find user
         user = session.query(User).filter(User.username == normalized_username).one_or_none()
         if user is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            raise http_errors.not_found("User not found")
 
         # Prevent deleting yourself
         if str(user.id) == _auth.user_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete your own account")
+            raise http_errors.bad_request("Cannot delete your own account")
 
         # Delete user
         session.delete(user)

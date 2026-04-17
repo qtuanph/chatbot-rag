@@ -14,6 +14,10 @@
 - Added production fallback global rate-limit middleware (coarse safety net)
 - Tightened auth schema validation: normalized username, bounded password length, strict role enum
 - Frontend API client synced for tree query params and typed search results
+- Added CI status-code guardrail (`.github/workflows/status-code-guardrail.yml`) to enforce `status.HTTP_*` usage in `HTTPException`
+- Added centralized HTTP error helper module: `app/core/http_errors.py`
+- Extended status-code guardrail script to enforce API-layer helper usage (`http_errors.*`) and forbid direct `raise HTTPException(...)` in routes/deps
+- Added unified JSON error envelope via global FastAPI exception handlers (`error.code`, `error.message`, `error.status`, `error.path`) with backward-compatible `detail`
 
 ### Removed
 - `app/worker.py` — split into `app/workers/upload_pipeline.py` and `app/workers/cleanup_pipeline.py`
@@ -25,6 +29,10 @@
 ### Changed
 - Standardized status code constants across chat/documents routes (`status.HTTP_*`) for consistency.
 - Auth dependency now checks preflight by actual request method (`Request.method`) instead of custom header.
+- Auth/deps/chat/documents/health/tree routes now use shared HTTP error helper for consistent status mapping.
+- Status-code CI job now validates both HTTP status expressions and API-layer helper semantics.
+- Webapp API client now parses both legacy `detail` and new `error.message` formats.
+- Global fallback rate-limit middleware now uses Redis atomic throttle (no in-memory counters).
 
 ## [0.1.0] - 2026-04-15
 

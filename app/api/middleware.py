@@ -11,6 +11,8 @@ from fastapi import status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
+from app.core.error_response import build_error_response
+
 
 logger = logging.getLogger(__name__)
 
@@ -127,32 +129,33 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, requests_per_minute: int = 60):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
-        self.request_counts = {}
+        from app.services.throttle import RequestThrottle
+
+        self.throttle = RequestThrottle()
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        import time
-
         client_ip = request.client.host if request.client else "unknown"
-        current_time = int(time.time())
+        throttle_key = f"throttle:global:{client_ip}"
 
-        # Clean old entries (older than 1 minute)
-        cutoff_time = current_time - 60
-        self.request_counts = {
-            ip: times for ip, times in self.request_counts.items()
-            if any(t > cutoff_time for t in times)
-        }
+        try:
+            allowed = self.throttle.allow(
+                throttle_key,
+                limit=self.requests_per_minute,
+                window_seconds=60,
+            )
+        except Exception as exc:  # pragma: no cover - defensive fallback path
+            logger.warning("Global rate-limit fallback skipped (throttle unavailable): %s", exc)
+            allowed = True
 
-        # Check rate limit
-        if client_ip in self.request_counts:
-            recent_requests = [t for t in self.request_counts[client_ip] if t > cutoff_time]
-            if len(recent_requests) >= self.requests_per_minute:
-                logger.warning("Rate limit exceeded for IP: %s", client_ip)
-                return JSONResponse(
-                    content={"detail": "Rate limit exceeded. Please try again later."},
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                )
-            self.request_counts[client_ip] = recent_requests + [current_time]
-        else:
-            self.request_counts[client_ip] = [current_time]
+        if not allowed:
+            logger.warning("Rate limit exceeded for IP: %s", client_ip)
+            return JSONResponse(
+                content=build_error_response(
+                    request,
+                    status.HTTP_429_TOO_MANY_REQUESTS,
+                    "Rate limit exceeded. Please try again later.",
+                ),
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
 
         return await call_next(request)

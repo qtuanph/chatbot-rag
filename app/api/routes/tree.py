@@ -8,10 +8,11 @@ import logging
 import os
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import AuthContext, get_auth_context
 from app.core.config import settings
+from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.core import Document
 from app.adapters.vector_stores import build_vector_store
@@ -36,10 +37,7 @@ def _validate_uuid(uuid_str: str, field_name: str = "ID") -> None:
     try:
         UUID(uuid_str)
     except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid {field_name} format",
-        ) from None
+        raise http_errors.bad_request(f"Invalid {field_name} format") from None
 
 
 def _verify_document_exists(document_id: str) -> Document:
@@ -47,10 +45,7 @@ def _verify_document_exists(document_id: str) -> Document:
     with SessionLocal() as session:
         doc = session.get(Document, document_id)
         if not doc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Document not found",
-            )
+            raise http_errors.not_found("Document not found")
         return doc
 
 
@@ -109,10 +104,7 @@ async def get_document_tree(
         limit=settings.effective_rate_limit(60),
         window_seconds=60,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many tree requests",
-        )
+        raise http_errors.too_many_requests("Too many tree requests")
 
     # Clamp limit
     limit = max(1, min(limit, 100))
@@ -190,10 +182,7 @@ async def get_document_tree(
         raise
     except Exception as e:
         logger.error(f"Error getting tree for {document_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve document tree",
-        ) from None
+        raise http_errors.internal_server_error("Failed to retrieve document tree") from None
 
 
 @router.get("/tree/{document_id}/nodes/{node_id}")
@@ -230,10 +219,7 @@ async def get_node_details(
         limit=settings.effective_rate_limit(120),
         window_seconds=60,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many node detail requests",
-        )
+        raise http_errors.too_many_requests("Too many node detail requests")
 
     try:
         _verify_document_exists(document_id)
@@ -252,10 +238,7 @@ async def get_node_details(
         )
 
         if not nodes_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Node not found",
-            )
+            raise http_errors.not_found("Node not found")
 
         point = nodes_data[0]
         payload = point.get("payload", {})
@@ -281,10 +264,7 @@ async def get_node_details(
         raise
     except Exception as e:
         logger.error(f"Error getting node {node_id} for {document_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve node details",
-        ) from None
+        raise http_errors.internal_server_error("Failed to retrieve node details") from None
 
 
 @router.get("/tree/{document_id}/search")
@@ -316,10 +296,7 @@ async def search_nodes(
         limit=settings.effective_rate_limit(60),
         window_seconds=60,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many tree search requests",
-        )
+        raise http_errors.too_many_requests("Too many tree search requests")
 
     try:
         _verify_document_exists(document_id)
@@ -357,7 +334,4 @@ async def search_nodes(
         raise
     except Exception as e:
         logger.error(f"Error searching nodes in {document_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to search nodes",
-        ) from None
+        raise http_errors.internal_server_error("Failed to search nodes") from None

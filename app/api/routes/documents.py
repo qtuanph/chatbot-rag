@@ -3,13 +3,14 @@ import hashlib
 from datetime import datetime, timezone
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Request, UploadFile, status
 from celery.result import AsyncResult
 from sqlalchemy import func
 
 from app.api.deps import AuthContext, require_admin
 from app.core.celery_app import celery_app
 from app.core.config import settings
+from app.core import http_errors
 from app.models.core import Document
 from app.db.session import SessionLocal
 from app.schemas.documents import (
@@ -63,24 +64,15 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
         limit=settings.effective_rate_limit(5),
         window_seconds=300,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many upload requests",
-        )
+        raise http_errors.too_many_requests("Too many upload requests")
 
     if not file.filename:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Filename is required",
-        )
+        raise http_errors.bad_request("Filename is required")
 
     max_size = settings.max_upload_size_mb * 1024 * 1024
     content = await file.read()
     if len(content) > max_size:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File too large",
-        )
+        raise http_errors.payload_too_large("File too large")
 
     document_id = str(uuid4())
     task_id = str(uuid4())
@@ -94,10 +86,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
             .first()
         )
         if duplicate is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Document already exists"
-            )
+            raise http_errors.conflict("Document already exists")
 
         next_version = (
             session.query(func.coalesce(func.max(Document.version), 0))
@@ -184,9 +173,8 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
             session.commit()
         if hasattr(storage, "delete_object"):
             storage.delete_object(object_uri)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Failed to enqueue document task. Please try again later.",
+        raise http_errors.service_unavailable(
+            "Failed to enqueue document task. Please try again later."
         ) from exc
 
     return UploadAcceptedResponse(task_id=task_id, status="queued", document_id=document_id)
@@ -199,10 +187,7 @@ async def get_status(task_id: str, _auth=Depends(require_admin)) -> TaskStatusRe
         limit=settings.effective_rate_limit(60),
         window_seconds=60,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many status requests",
-        )
+        raise http_errors.too_many_requests("Too many status requests")
 
     record = registry.get_by_task_id(task_id)
     if record and record.deleted:
@@ -280,10 +265,7 @@ async def list_documents(_auth=Depends(require_admin)) -> DocumentListResponse:
         limit=settings.effective_rate_limit(30),
         window_seconds=60,
     ):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many document list requests",
-        )
+        raise http_errors.too_many_requests("Too many document list requests")
 
     with SessionLocal() as session:
         rows = (
@@ -318,10 +300,7 @@ async def get_document_detail(document_id: str, _auth=Depends(require_admin)) ->
     with SessionLocal() as session:
         document = session.get(Document, document_id)
         if document is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Document not found",
-            )
+            raise http_errors.not_found("Document not found")
 
         return DocumentDetailResponse(
             document_id=str(document.id),
@@ -349,10 +328,7 @@ async def delete_document(request: Request, document_id: str, _auth=Depends(requ
     with SessionLocal() as session:
         document = session.get(Document, document_id)
         if document is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Document not found",
-            )
+            raise http_errors.not_found("Document not found")
 
     delete_task_id = str(uuid4())
 
@@ -373,9 +349,8 @@ async def delete_document(request: Request, document_id: str, _auth=Depends(requ
         )
     except Exception as exc:
         logger.error(f"Failed to enqueue delete task for {document_id}: {exc}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Failed to enqueue delete task. Please try again later.",
+        raise http_errors.service_unavailable(
+            "Failed to enqueue delete task. Please try again later."
         ) from exc
 
     safe_record_audit(

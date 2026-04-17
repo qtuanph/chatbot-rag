@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, Header, Request
 from jose import JWTError, jwt
 
 from app.core.config import settings
+from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.core import Role, User
 from app.services.token_blacklist import TokenBlacklist
@@ -29,21 +30,21 @@ def get_auth_context(
         return None
 
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+        raise http_errors.unauthorized("Missing bearer token")
 
     token = authorization.removeprefix("Bearer ").strip()
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         token_id = str(payload["jti"])
         if TokenBlacklist().is_revoked(token_id):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked")
+            raise http_errors.unauthorized("Token revoked")
         with SessionLocal() as session:
             user = session.get(User, str(payload["sub"]))
             if user is None or not user.is_active:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+                raise http_errors.unauthorized("Invalid token")
             role = session.get(Role, user.role_id)
             if role is None:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+                raise http_errors.unauthorized("Invalid token")
             role_name = role.name
         return AuthContext(
             user_id=str(payload["sub"]),
@@ -51,7 +52,7 @@ def get_auth_context(
             token_id=token_id,
         )
     except (JWTError, KeyError, TypeError, ValueError):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from None
+        raise http_errors.unauthorized("Invalid token") from None
 
 
 def require_admin(request: Request, auth: AuthContext | None = Depends(get_auth_context)) -> AuthContext:
@@ -64,8 +65,8 @@ def require_admin(request: Request, auth: AuthContext | None = Depends(get_auth_
         return None  # type: ignore
 
     if auth is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+        raise http_errors.unauthorized("Authentication required")
 
     if auth.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+        raise http_errors.forbidden("Admin only")
     return auth

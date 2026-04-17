@@ -44,6 +44,7 @@ If any answer is unclear, stop and re-read docs before coding.
 
 Enforcement in repository:
 - CI guardrail: `.github/workflows/docs-first-guardrail.yml` (PR fails if code changes without docs/memory updates)
+- CI guardrail: `.github/workflows/status-code-guardrail.yml` (fails on numeric status codes and direct `raise HTTPException(...)` in API layer)
 - PR template: `.github/pull_request_template.md` (mandatory Docs-First confirmations)
 
 ---
@@ -286,6 +287,7 @@ If you need schema changes:
 | Score threshold | Sections ≥ 0.30, Chunks ≥ 0.35 |
 | Rate limiting | Use atomic Lua script, not INCR+EXPIRE |
 | Progress reporting | Update after each chunk (32 nodes), not each node |
+| Error contract | JSON errors use unified envelope (`error.*`) and keep `detail` for compatibility |
 
 ## Project Structure Notes
 
@@ -293,6 +295,7 @@ If you need schema changes:
 - `app/workers/upload_pipeline.py` — Celery ingestion tasks (GPU worker): `parse_document_task`
 - `app/workers/cleanup_pipeline.py` — Celery cleanup tasks (lightweight worker + beat): `delete_document_task`, `cleanup_old_chat_sessions_task`
 - `app/core/celery_app.py` — Celery configuration with reliability settings
+- `app/core/http_errors.py` — Centralized HTTPException helper functions (status-consistent API errors)
 - `app/services/ingestion/rule_based_refiner.py` — Rule-based text refinement (NO AI)
 - `app/services/rag.py` — 2-stage retrieval: cache → embed → sections → chunks → score filter
 - `app/services/storage/document_store.py` — DocumentRepository + SectionRepository
