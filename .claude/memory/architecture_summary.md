@@ -15,19 +15,18 @@ type: project
 ## Core Stack
 - FastAPI + Celery + Redis + PostgreSQL + Qdrant + RustFS
 - BAAI/bge-m3 local embedding (1024-dim, offline)
-- Google AI gemma-4-26b-a4b-it (chat LLM, temporary)
+- Google AI gemma-4-26b-a4b-it (chat LLM)
 - Rule-based refiner (0GB VRAM)
 - EasyOCR (vi+en)
 
 ## Key Design Decisions
-- **Inline modifications**: No new files during dev, modify existing ones
 - **Sections in PostgreSQL**: Fast section-level lookup for Stage 1
 - **Chunks in Qdrant**: Fine-grained vector search with section_id for Stage 2
 - **Worker needs db_session**: IngestionPipeline accepts db_session for SectionRepository
 
 ## Implementation Status
-- ✅ 2-stage retrieval, section storage, rule-based refiner, hard-delete, Tree API
-- 🔜 Next.js frontend (new), multimodal ingestion, monitoring
+- ✅ 2-stage retrieval, section storage, rule-based refiner, hard-delete, Tree API, Next.js frontend
+- 🔜 Performance tuning for large documents, monitoring hardening
 - ❌ Structured logging, backup automation
 
 ## Important Invariants
@@ -38,6 +37,9 @@ type: project
 | 2-stage retrieval | Section search (coarse) → Chunk search (fine) |
 | Hard-delete order | registry → vectors → sections → file → DB → purge |
 | Score threshold | Sections ≥ 0.30, Chunks ≥ 0.35 |
+| Route throttling | Sensitive auth routes include health/tree throttling with 429 on limit |
+| Auth validation | Username normalized + bounded, role strict enum admin/member |
+| Middleware fallback | Production enables coarse global rate-limit middleware as safety net |
 
 ## Last Updated
-- 2026-04-15: Removed webapp/Nuxt references, frontend will be Next.js
+- 2026-04-17: Synced Batch 2 API hardening (auth validation, route status constants, fallback rate-limit middleware)

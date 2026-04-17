@@ -1,0 +1,67 @@
+name: Docs-First Guardrail
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  docs_memory_guard:
+    name: Require docs or memory updates when code changes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate docs-first update policy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          echo "Comparing changes: ${BASE_SHA}..${HEAD_SHA}"
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No changed files detected."
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          CODE_CHANGED=0
+          DOCS_OR_MEMORY_CHANGED=0
+
+          # Consider these as code/behavior changes requiring docs-memory sync
+          CODE_PATTERNS='^(app/|webapp/|ops/init\.sql$|docker-compose\.yml$|Dockerfile$|requirements\.txt$|\.env\.example$)'
+
+          # Accept any of these as docs/memory updates
+          DOCS_MEMORY_PATTERNS='^(docs/|CLAUDE\.md$|AGENTS\.md$|\.claude/|README\.md$|webapp/README\.md$)'
+
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+
+            if [[ "$file" =~ $CODE_PATTERNS ]]; then
+              CODE_CHANGED=1
+            fi
+
+            if [[ "$file" =~ $DOCS_MEMORY_PATTERNS ]]; then
+              DOCS_OR_MEMORY_CHANGED=1
+            fi
+          done <<< "$CHANGED_FILES"
+
+          echo "CODE_CHANGED=$CODE_CHANGED"
+          echo "DOCS_OR_MEMORY_CHANGED=$DOCS_OR_MEMORY_CHANGED"
+
+          if [ "$CODE_CHANGED" -eq 1 ] && [ "$DOCS_OR_MEMORY_CHANGED" -eq 0 ]; then
+            echo "::error::This PR changes code/runtime behavior but does not update docs or memory."
+            echo "::error::Please update at least one: docs/*, CLAUDE.md, AGENTS.md, .claude/*, README.md, or webapp/README.md"
+            exit 1
+          fi
+
+          echo "Guardrail check passed."

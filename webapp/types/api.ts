@@ -7,6 +7,7 @@ export interface LoginRequest {
 
 export interface TokenResponse {
   access_token: string;
+  token_type: string;
   role: string;
 }
 
@@ -26,7 +27,7 @@ export interface UserItem {
 export interface CreateUserRequest {
   username: string;
   password: string;
-  role?: string;
+  role?: "admin" | "member";
 }
 
 // Chat

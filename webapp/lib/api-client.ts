@@ -12,6 +12,7 @@ import type {
   UploadResponse,
   TaskStatus,
   TreeResponse,
+  TreeSearchResult,
   NodeDetail,
   HealthData,
 } from "@/types/api";
@@ -140,14 +141,21 @@ export const documentsApi = {
 
 // --- Tree ---
 export const treeApi = {
-  get: (documentId: string, token: string, offset: number = 0, limit: number = 20): Promise<TreeResponse> =>
-    apiFetch<TreeResponse>(`/tree/${documentId}?offset=${offset}&limit=${limit}`, {}, token),
+  get: (documentId: string, token: string, offset: number = 0, limit: number = 20): Promise<TreeResponse> => {
+    const params = new URLSearchParams({
+      offset: String(offset),
+      limit: String(limit),
+    });
+    return apiFetch<TreeResponse>(`/tree/${documentId}?${params.toString()}`, {}, token);
+  },
 
   getNode: (documentId: string, nodeId: string, token: string): Promise<NodeDetail> =>
     apiFetch<NodeDetail>(`/tree/${documentId}/nodes/${nodeId}`, {}, token),
 
-  search: (documentId: string, query: string, token: string) =>
-    apiFetch<{ results: unknown[] }>(`/tree/${documentId}/search?query=${encodeURIComponent(query)}`, {}, token),
+  search: (documentId: string, query: string, token: string): Promise<{ results: TreeSearchResult[] }> => {
+    const params = new URLSearchParams({ query });
+    return apiFetch<{ results: TreeSearchResult[] }>(`/tree/${documentId}/search?${params.toString()}`, {}, token);
+  },
 };
 
 // --- Health ---

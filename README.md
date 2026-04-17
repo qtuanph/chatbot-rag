@@ -171,10 +171,6 @@ chatbot-rag/
 │   │   ├── admin/          # Admin components
 │   │   └── ui/             # shadcn/ui components
 │   └── lib/                # Utilities (auth, API client)
-├── tests/                  # Test suite (pytest)
-│   ├── test_ingestion/     # Ingestion tests
-│   ├── test_api/           # API endpoint tests
-│   └── integration/        # End-to-end tests
 ├── docs/                   # Comprehensive documentation
 │   ├── 01_SYSTEM_ARCHITECTURE.md
 │   ├── 02_DATABASE_AND_PROJECT.md

@@ -22,7 +22,7 @@ def login(payload: LoginRequest, request: Request) -> TokenResponse:
     client_ip = request.client.host if request.client else "unknown"
     normalized_username = payload.username.lower().strip()
     throttle_key = f"throttle:login:{client_ip}:{normalized_username}"
-    if not throttle.allow(throttle_key, limit=50, window_seconds=60):
+    if not throttle.allow(throttle_key, limit=settings.effective_rate_limit(50), window_seconds=60):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many login attempts")
 
     with SessionLocal() as session:
@@ -81,7 +81,10 @@ def create_user(payload: CreateUserRequest, _auth=Depends(require_admin)) -> Cre
 
         role = session.query(Role).filter(Role.name == payload.role).one_or_none()
         if role is None:
-            raise HTTPException(status_code=400, detail="Invalid role")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid role",
+            )
 
         user = User(
             role_id=role.id,

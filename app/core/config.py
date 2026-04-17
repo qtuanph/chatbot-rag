@@ -44,6 +44,11 @@ class Settings(BaseSettings):
 
     max_upload_size_mb: int = 50
 
+    # Rate limiting behavior
+    # In non-production environments, limits can be relaxed for integration testing.
+    rate_limit_relaxed_mode: bool = True
+    rate_limit_relaxed_floor: int = 10000
+
     storage_backend: str = "s3"
     s3_endpoint: str = "rustfs:9000"
     s3_access_key: str = "rustfs"
@@ -113,6 +118,23 @@ class Settings(BaseSettings):
         self.qdrant_url = str(self.qdrant_url).strip() or "http://qdrant:6333"
         if self.qdrant_timeout < 1:
             raise ValueError("QDRANT_TIMEOUT must be >= 1")
+        if self.rate_limit_relaxed_floor < 1:
+            raise ValueError("RATE_LIMIT_RELAXED_FLOOR must be >= 1")
+
+    def effective_rate_limit(self, base_limit: int) -> int:
+        """
+        Return the effective rate-limit threshold.
+
+        - Production: keep strict configured limits.
+        - Non-production: optionally relax to a high floor for testing.
+        """
+        if base_limit < 1:
+            raise ValueError("base_limit must be >= 1")
+        if self.app_env == "production":
+            return base_limit
+        if self.rate_limit_relaxed_mode:
+            return max(base_limit, self.rate_limit_relaxed_floor)
+        return base_limit
 
 
 @lru_cache

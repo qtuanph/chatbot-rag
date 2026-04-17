@@ -85,6 +85,12 @@ Response shape:
 | Audit logging | log privileged actions and failures |
 | Soft-delete safety | deletion excludes docs from new retrieval, preserves history |
 
+### Rate-Limit Notes
+
+- Non-production environments can relax limits via `RATE_LIMIT_RELAXED_MODE` + `RATE_LIMIT_RELAXED_FLOOR`.
+- When throttled, endpoints return `429 Too Many Requests` with a clear `detail` message.
+- Production includes a coarse global fallback middleware rate limit (in addition to endpoint-level throttles).
+
 ## Routing Guardrails
 
 | Scenario | Required behavior |
@@ -165,6 +171,11 @@ User re-uploads "policy.md" (same filename, different content)
 | `GET` | `/api/v1/auth/users` | 🔒 Admin | Danh sách tất cả users |
 | `DELETE` | `/api/v1/auth/users/{username}` | 🔒 Admin | Xóa user (không thể tự xóa) |
 
+Auth request validation:
+- `username`: 3-64 ký tự, được normalize lowercase + trim.
+- `create user password`: 8-256 ký tự.
+- `role`: chỉ chấp nhận `admin` hoặc `member`.
+
 ### Documents & Ingestion
 
 | Method | Path | Auth | Notes |
@@ -188,9 +199,9 @@ User re-uploads "policy.md" (same filename, different content)
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET` | `/api/v1/health` | ❌ Public | Health status đơn giản |
-| `GET` | `/api/v1/health/data` | ✅ Bearer | JSON snapshot chi tiết với checks |
-| `GET` | `/api/v1/health/nodes` | ✅ Bearer | `?document_id=` → JSON danh sách Qdrant nodes |
-| `GET` | `/api/v1/health/node` | ✅ Bearer | `?document_id=&node_id=` → JSON chi tiết 1 node |
+| `GET` | `/api/v1/health/data` | ✅ Bearer | JSON snapshot chi tiết với checks, throttled |
+| `GET` | `/api/v1/health/nodes` | ✅ Bearer | `?document_id=` → JSON danh sách Qdrant nodes, throttled |
+| `GET` | `/api/v1/health/node` | ✅ Bearer | `?document_id=&node_id=` → JSON chi tiết 1 node, throttled |
 
 ### Demo UI (app/view/ — có thể xóa khi go-live)
 
@@ -205,9 +216,17 @@ User re-uploads "policy.md" (same filename, different content)
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET` | `/api/v1/tree/{document_id}` | 🔒 Bearer | Trả về cấu trúc phân cấp hoàn chỉnh của tài liệu |
-| `GET` | `/api/v1/tree/{document_id}/nodes/{node_id}` | 🔒 Bearer | Chi tiết một node với đầy đủ nội dung và metadata |
-| `GET` | `/api/v1/tree/{document_id}/search?query=` | 🔒 Bearer | Tìm kiếm node theo tiêu đề hoặc nội dung |
+| `GET` | `/api/v1/tree/{document_id}` | 🔒 Bearer | Trả về cấu trúc phân cấp hoàn chỉnh của tài liệu, throttled |
+| `GET` | `/api/v1/tree/{document_id}/nodes/{node_id}` | 🔒 Bearer | Chi tiết một node với đầy đủ nội dung và metadata, throttled |
+| `GET` | `/api/v1/tree/{document_id}/search?query=` | 🔒 Bearer | Tìm kiếm node theo tiêu đề hoặc nội dung, throttled, `query` 1-500 ký tự |
+
+Common throttling response:
+
+```json
+{
+  "detail": "Too many ... requests"
+}
+```
 
 **Tree API Response Examples**:
 

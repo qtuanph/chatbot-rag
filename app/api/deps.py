@@ -17,15 +17,15 @@ class AuthContext:
 
 
 def get_auth_context(
+    request: Request,
     authorization: str | None = Header(default=None),
-    request_method: str | None = Header(default=None)
 ) -> AuthContext | None:
     """
     Get authentication context from JWT token.
     Returns None for OPTIONS requests to support CORS preflight.
     """
     # Skip auth for OPTIONS preflight requests (CORS)
-    if request_method == "OPTIONS":
+    if request.method == "OPTIONS":
         return None
 
     if not authorization or not authorization.startswith("Bearer "):

@@ -6,6 +6,8 @@ This module provides additional security middleware for production deployments.
 import logging
 from typing import Callable
 from fastapi import Request, Response
+from fastapi.responses import JSONResponse
+from fastapi import status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
@@ -145,10 +147,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             recent_requests = [t for t in self.request_counts[client_ip] if t > cutoff_time]
             if len(recent_requests) >= self.requests_per_minute:
                 logger.warning("Rate limit exceeded for IP: %s", client_ip)
-                return Response(
+                return JSONResponse(
                     content={"detail": "Rate limit exceeded. Please try again later."},
-                    status_code=429,
-                    media_type="application/json"
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 )
             self.request_counts[client_ip] = recent_requests + [current_time]
         else:

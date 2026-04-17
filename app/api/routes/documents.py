@@ -58,16 +58,29 @@ def _to_status_response(
 
 @router.post("/upload", response_model=UploadAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(request: Request, file: UploadFile = File(...), auth: AuthContext = Depends(require_admin)) -> UploadAcceptedResponse:
-    if not throttle.allow(f"throttle:upload:{auth.user_id}", limit=5, window_seconds=300):
-        raise HTTPException(status_code=429, detail="Too many upload requests")
+    if not throttle.allow(
+        f"throttle:upload:{auth.user_id}",
+        limit=settings.effective_rate_limit(5),
+        window_seconds=300,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many upload requests",
+        )
 
     if not file.filename:
-        raise HTTPException(status_code=400, detail="Filename is required")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename is required",
+        )
 
     max_size = settings.max_upload_size_mb * 1024 * 1024
     content = await file.read()
     if len(content) > max_size:
-        raise HTTPException(status_code=413, detail="File too large")
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File too large",
+        )
 
     document_id = str(uuid4())
     task_id = str(uuid4())
@@ -82,7 +95,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
         )
         if duplicate is not None:
             raise HTTPException(
-                status_code=409,
+                status_code=status.HTTP_409_CONFLICT,
                 detail="Document already exists"
             )
 
@@ -171,15 +184,25 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
             session.commit()
         if hasattr(storage, "delete_object"):
             storage.delete_object(object_uri)
-        raise HTTPException(status_code=503, detail="Failed to enqueue document task. Please try again later.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to enqueue document task. Please try again later.",
+        ) from exc
 
     return UploadAcceptedResponse(task_id=task_id, status="queued", document_id=document_id)
 
 
 @router.get("/status/{task_id}", response_model=TaskStatusResponse)
 async def get_status(task_id: str, _auth=Depends(require_admin)) -> TaskStatusResponse:
-    if not throttle.allow(f"throttle:status:{_auth.user_id}", limit=60, window_seconds=60):
-        raise HTTPException(status_code=429, detail="Too many status requests")
+    if not throttle.allow(
+        f"throttle:status:{_auth.user_id}",
+        limit=settings.effective_rate_limit(60),
+        window_seconds=60,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many status requests",
+        )
 
     record = registry.get_by_task_id(task_id)
     if record and record.deleted:
@@ -252,8 +275,15 @@ async def get_status(task_id: str, _auth=Depends(require_admin)) -> TaskStatusRe
 
 @router.get("/documents", response_model=DocumentListResponse)
 async def list_documents(_auth=Depends(require_admin)) -> DocumentListResponse:
-    if not throttle.allow(f"throttle:documents:{_auth.user_id}", limit=30, window_seconds=60):
-        raise HTTPException(status_code=429, detail="Too many document list requests")
+    if not throttle.allow(
+        f"throttle:documents:{_auth.user_id}",
+        limit=settings.effective_rate_limit(30),
+        window_seconds=60,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many document list requests",
+        )
 
     with SessionLocal() as session:
         rows = (
@@ -288,7 +318,10 @@ async def get_document_detail(document_id: str, _auth=Depends(require_admin)) ->
     with SessionLocal() as session:
         document = session.get(Document, document_id)
         if document is None:
-            raise HTTPException(status_code=404, detail="Document not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            )
 
         return DocumentDetailResponse(
             document_id=str(document.id),
@@ -316,7 +349,10 @@ async def delete_document(request: Request, document_id: str, _auth=Depends(requ
     with SessionLocal() as session:
         document = session.get(Document, document_id)
         if document is None:
-            raise HTTPException(status_code=404, detail="Document not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            )
 
     delete_task_id = str(uuid4())
 
@@ -337,7 +373,10 @@ async def delete_document(request: Request, document_id: str, _auth=Depends(requ
         )
     except Exception as exc:
         logger.error(f"Failed to enqueue delete task for {document_id}: {exc}", exc_info=True)
-        raise HTTPException(status_code=503, detail="Failed to enqueue delete task. Please try again later.") from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to enqueue delete task. Please try again later.",
+        ) from exc
 
     safe_record_audit(
         action="document.delete",

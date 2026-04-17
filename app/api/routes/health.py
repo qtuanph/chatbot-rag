@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 import html
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 import httpx
 
 from app.core.config import settings
@@ -11,8 +11,10 @@ from app.models.core import Document
 from app.api.deps import get_auth_context, AuthContext
 from app.services.health import build_health_payload
 from app.services.storage import build_storage
+from app.services.throttle import RequestThrottle
 
 router = APIRouter(tags=["health"])
+throttle = RequestThrottle()
 
 
 def _fetch_documents(limit: int = 100) -> list[Document]:
@@ -210,6 +212,16 @@ async def healthcheck(request: Request):
 @router.get("/health/data")
 async def health_data(request: Request, _auth: AuthContext = Depends(get_auth_context)):
     """Detailed health data - authentication required."""
+    if not throttle.allow(
+        f"throttle:health:data:{_auth.user_id}",
+        limit=settings.effective_rate_limit(60),
+        window_seconds=60,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many health data requests",
+        )
+
     selected_document_id = request.query_params.get("document_id")
     return _build_snapshot(selected_document_id=selected_document_id)
 
@@ -217,6 +229,16 @@ async def health_data(request: Request, _auth: AuthContext = Depends(get_auth_co
 @router.get("/health/nodes")
 async def health_nodes(request: Request, _auth: AuthContext = Depends(get_auth_context)):
     """JSON-only: list Qdrant nodes for a document. Authentication required. HTML rendering moved to /view/nodes."""
+    if not throttle.allow(
+        f"throttle:health:nodes:{_auth.user_id}",
+        limit=settings.effective_rate_limit(60),
+        window_seconds=60,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many health node list requests",
+        )
+
     document_id = request.query_params.get("document_id") or ""
     points = _fetch_qdrant_nodes(document_id=document_id, limit=300)
     return {
@@ -229,6 +251,16 @@ async def health_nodes(request: Request, _auth: AuthContext = Depends(get_auth_c
 @router.get("/health/node")
 async def health_node(request: Request, _auth: AuthContext = Depends(get_auth_context)):
     """JSON-only: get a single Qdrant node. Authentication required. HTML rendering moved to /view/node."""
+    if not throttle.allow(
+        f"throttle:health:node:{_auth.user_id}",
+        limit=settings.effective_rate_limit(60),
+        window_seconds=60,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many health node detail requests",
+        )
+
     document_id = request.query_params.get("document_id") or ""
     node_id = request.query_params.get("node_id") or ""
     point = _fetch_qdrant_node(document_id=document_id, node_id=node_id)

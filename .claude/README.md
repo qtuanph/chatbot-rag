@@ -2,6 +2,18 @@
 
 Thư mục này chứa cấu hình và memory riêng cho project này.
 
+## Mandatory Docs-First Guardrail
+
+Trước khi Claude/AI sửa code, phải đọc theo thứ tự:
+
+1. `../CLAUDE.md`
+2. `MEMORY.md`
+3. `../docs/01_SYSTEM_ARCHITECTURE.md`
+4. `../docs/03_CORE_WORKFLOWS.md`
+5. `../docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md`
+
+Nếu chưa trả lời được các câu hỏi preflight trong `.claude/hooks/on_load.md`, không được bắt đầu chỉnh sửa code.
+
 ## 📁 Cấu trúc
 
 ```

@@ -23,7 +23,7 @@ type: user
 
 ## Development Environment
 - **OS**: Windows 11
-- **Shell**: bash
+- **Shell**: PowerShell
 - **Docker**: Installed and running
 - **GPU**: NVIDIA (for local models)
 
@@ -40,8 +40,10 @@ type: user
 
 ## Working Style
 - Modify existing files directly, no v1/v2 separation during dev
+- Prefer in-place overwrite for documentation updates (single canonical doc set)
+- Prefer incremental batches (small changes per batch, easy review/rollback)
 - Docker reset (`docker volume rm`) is acceptable for schema changes
 - Concise updates, no unnecessary backward compatibility in dev
 
 ## Last Updated
-- 2026-04-15: Removed Streamlit/Nuxt references, updated for Next.js frontend plan
+- 2026-04-17: Synced shell/tooling and implementation preferences

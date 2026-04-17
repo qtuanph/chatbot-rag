@@ -77,10 +77,12 @@ export default function DocumentDetailPage() {
 
   // Search — load all matching (server-side search)
   useEffect(() => {
-    if (!searchQuery || !session?.accessToken || !docId) return;
+    const normalizedQuery = searchQuery.trim();
+    if (!normalizedQuery || !session?.accessToken || !docId) return;
+
     const timer = setTimeout(() => {
       treeApi
-        .search(docId, searchQuery, session.accessToken)
+        .search(docId, normalizedQuery.slice(0, 500), session.accessToken)
         .then((data) => {
           // Convert search results to display format
           const results = ((data.results || []) as Array<{ node_id: string; title: string; preview?: string }>);

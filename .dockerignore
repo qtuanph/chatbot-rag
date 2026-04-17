@@ -14,3 +14,17 @@ FILEUPLOADTEST
 !README.md
 .python-version
 MEMORY.md
+tests
+ops
+.gitattributes
+.mcp.json
+CLAUDE.md
+LICENSE
+node_modules
+.next
+dist
+build
+.vscode
+.idea
+*.swp
+*.swo

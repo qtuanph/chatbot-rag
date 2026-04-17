@@ -20,6 +20,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## AI Docs-First Protocol (Mandatory)
+
+Mọi AI agent (Claude/Copilot/automation) phải đọc tài liệu theo thứ tự này trước khi sửa code:
+
+1. `CLAUDE.md` (source of truth)
+2. `docs/01_SYSTEM_ARCHITECTURE.md`
+3. `docs/03_CORE_WORKFLOWS.md`
+4. `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md`
+5. Task-specific docs:
+  - API/Security: `docs/04_API_CONTRACT_AND_SECURITY.md`
+  - Database/Schema: `docs/02_DATABASE_AND_PROJECT.md` + `ops/init.sql`
+  - Deployment/Monitoring: `docs/06_DEPLOYMENT_AND_OBSERVABILITY.md`
+  - Performance/Edge cases: `docs/05_RESOURCE_OPTIMIZATION_AND_EDGE_CASES.md`
+
+Before implementation, agent must verify it can answer:
+- Retrieval strategy currently used?
+- Where sections and chunks are stored?
+- Current embedding model and dimension?
+- Hard-delete ordering and why it exists?
+
+If any answer is unclear, stop and re-read docs before coding.
+
+Enforcement in repository:
+- CI guardrail: `.github/workflows/docs-first-guardrail.yml` (PR fails if code changes without docs/memory updates)
+- PR template: `.github/pull_request_template.md` (mandatory Docs-First confirmations)
+
+---
+
 ## Development Commands
 
 ### Running the Stack
@@ -59,12 +87,9 @@ docker compose up --build
 # No manual migration scripts needed
 ```
 
-### Testing and Linting
+### Health and Validation
 
 ```bash
-# Run tests (if pytest is configured in future)
-docker exec chatbot-rag-api-1 pytest
-
 # Check service health
 curl http://localhost:8000/api/v1/health
 
@@ -409,7 +434,7 @@ When exploring the codebase, read these documents first:
 6. **`docs/06_DEPLOYMENT_AND_OBSERVABILITY.md`** — Deployment guide and monitoring
 7. **`docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md`** — Deep dive into RAG implementation
 
-## Project Status (Updated 2026-04-15)
+## Project Status (Updated 2026-04-17)
 
 **Current Phase:** Production Hardening
 
@@ -436,6 +461,7 @@ When exploring the codebase, read these documents first:
 - ✅ Tree API for hierarchical document exploration
 - ✅ User CRUD operations (admin only)
 - ✅ Document detail page with react-flow tree visualization
+- ✅ Dead-code cleanup: removed unused `app/adapters/embeddings/gemini.py` adapter
 
 **In Progress:**
 - ⏳ Docker build + integration testing of Method D + Smart OCR
@@ -447,5 +473,6 @@ When exploring the codebase, read these documents first:
 **Not Implemented:**
 - ❌ Structured logging
 - ❌ Backup procedures automation
+- ❌ Automated pytest suite (removed from runtime repo)
 
 **Goal:** On-premise, hierarchical RAG chatbot for Vietnamese enterprise documents with 2-stage retrieval for optimal performance on large documents.

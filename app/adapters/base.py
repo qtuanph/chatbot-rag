@@ -134,7 +134,7 @@ class EmbeddingResult:
 class BaseEmbedding(ABC):
     """
     Abstract base class for text embedding implementations.
-    Implementations: GeminiEmbedding, OpenAIEmbedding, etc.
+    Implementations: SentenceTransformerEmbedding, provider-specific adapters, etc.
     """
 
     @abstractmethod

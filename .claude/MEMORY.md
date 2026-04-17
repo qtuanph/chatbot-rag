@@ -1,66 +1,41 @@
 # Memory Index
 
-This file indexes all memories for this project. Memories are stored in the `memory/` subdirectory.
+Project memory index for `.claude/memory/`.
 
-## User Memories
-- ✅ **user_profile.md** - Your role, goals, coding preferences, and working style
-- ⏳ **user_feedback.md** - What to avoid/repeat when working with you (NOT CREATED YET)
+## Read Order (Docs-First)
 
-## Project Memories
-- ✅ **project_context.md** - Project goals, CORRECT architecture (BGE-m3 LOCAL, Qwen LOCAL, Gemini external for chat only)
-- ✅ **implementation_gaps.md** - Critical gaps including documentation errors and security issues
-- ✅ **streamlit_visualizer_requirements.md** - Streamlit tree visualizer feature requirements
-- ✅ **architecture_clarifications.md** - NEW: Detailed architecture Q&A and common misconceptions
+1. `../CLAUDE.md` (authoritative source)
+2. `../docs/01_SYSTEM_ARCHITECTURE.md`
+3. `../docs/03_CORE_WORKFLOWS.md`
+4. `../docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md`
+5. Then use memory files below as condensed context.
 
-## Reference Memories
-- ✅ **external_resources.md** - External systems, APIs (local vs external), documentation links
+If any memory conflicts with `CLAUDE.md`, follow `CLAUDE.md` and update memory immediately.
 
-## Recent Updates (2026-04-13)
+## Active Memory Files
 
-### CRITICAL: Architecture Documentation Fixed
-All memory files have been updated to reflect **CORRECT** architecture:
+### User Context
+- `memory/user_profile.md` - Developer preferences and working style
 
-**❌ WRONG (old docs):**
-- Embedding: Google Gemini Embedding API
-- Local Embedding: Future migration path
+### Project Context
+- `memory/architecture_summary.md` - Condensed architecture and invariants
+- `memory/database_credentials_structure.md` - DB credential structure notes
 
-**✅ CORRECT (actual implementation):**
-- **Embedding: BAAI/bge-m3 LOCAL** (sentence-transformers) ✅
-- **Refiner: Qwen LOCAL** (vLLM) ✅
-- **Chat LLM: Gemini external** (temporary only) ⚠️
+### Memory Meta
+- `memory/MEMORY.md` - Internal memory index for subfolder
 
-### Key Clarifications Added
-1. **project_context.md** - Added "Architecture Clarifications" section
-2. **implementation_gaps.md** - Added "Documentation Incorrect" as critical blocker
-3. **external_resources.md** - Separated local models from external APIs
-4. **user_profile.md** - Added architecture philosophy and technology choices
+## Update Protocol
 
-### Memory Files Now Accurately Reflect:
-- ✅ BAAI/bge-m3 is LOCAL (not external)
-- ✅ Qwen refiner is LOCAL (not external)
-- ✅ Only chat LLM uses external API (temporary)
-- ✅ Documentation issues identified as critical blockers
-- ✅ Streamlit visualizer requirements documented
-- ✅ User preferences for local-first architecture
+Update memory files when there are changes in:
+- Architecture or retrieval strategy
+- API contracts or route behavior
+- Database schema (`ops/init.sql`)
+- Provider/model settings
 
-## Memory File Usage
+Every update should include:
+- What changed
+- Why it changed
+- Last updated date
 
-When I learn something new about you or this project, I'll create/update memory files and add them to this index. You can also manually edit memories in the `memory/` directory.
-
-### Viewing Memories
-You can view these memories using:
-- **VS Code** (recommended): `code .claude/memory/`
-- **Obsidian** (optional): Open `.claude/memory/` as vault
-- **Any text editor**: Open files directly
-
-### Memory Types
-- **user**: Information about you (role, preferences, knowledge, working style)
-- **feedback**: Lessons learned from working together (what to avoid/repeat)
-- **project**: Project context, goals, constraints, current status, architecture
-- **reference**: External resources, APIs, links, documentation
-
-### Current Memory Health
-- **Accuracy**: ✅ All architecture info now CORRECT
-- **Completeness**: ✅ All critical aspects documented
-- **Clarity**: ✅ Local vs external clearly distinguished
-- **Actionability**: ✅ Gaps and blockers clearly identified
+## Last Updated
+- 2026-04-17: Synced index with actual memory files and Docs-First policy

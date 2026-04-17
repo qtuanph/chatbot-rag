@@ -6,7 +6,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 
 from app.api.routes import auth, chat, documents, health, tree
-from app.api.middleware import SecurityHeadersMiddleware, RequestLoggingMiddleware
+from app.api.middleware import SecurityHeadersMiddleware, RequestLoggingMiddleware, RateLimitMiddleware
 from app.core.config import settings
 
 
@@ -39,6 +39,11 @@ app.add_middleware(SecurityHeadersMiddleware, enable_hsts=settings.app_env == "p
 
 # Security: Request logging with IP sanitization
 app.add_middleware(RequestLoggingMiddleware)
+
+# Security: coarse global rate-limit fallback (production only).
+# Fine-grained limits remain at route level.
+if settings.app_env == "production":
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=300)
 
 routers = [auth.router, health.router, documents.router, chat.router, tree.router]
 
