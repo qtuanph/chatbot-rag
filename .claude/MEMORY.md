@@ -1,41 +1,41 @@
 # Memory Index
 
-Project memory index for `.claude/memory/`.
+**Primary source**: `docs/` folder (authoritative).
+Memory files below are minimal quick-reference only.
 
-## Read Order (Docs-First)
+## 📄 Start Here
 
-1. `../CLAUDE.md` (authoritative source)
-2. `../docs/01_SYSTEM_ARCHITECTURE.md`
-3. `../docs/03_CORE_WORKFLOWS.md`
-4. `../docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md`
-5. Then use memory files below as condensed context.
+| Task | Read This |
+|------|-----------|
+| **Quick rules & patterns** | `docs/00_QUICK_REFERENCE.md` |
+| **Need specific answer?** | Find in `docs/` folder (all topics covered) |
+| **Building for AI agents?** | See `AGENTS.md` (guardrails for all agents) |
 
-If any memory conflicts with `CLAUDE.md`, follow `CLAUDE.md` and update memory immediately.
+## 🚀 Quick Navigation (By Topic)
 
-## Active Memory Files
+- **Architecture & design** → `docs/01_SYSTEM_ARCHITECTURE.md`
+- **2-stage retrieval** → `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md`
+- **API endpoints** → `docs/04_API_CONTRACT_AND_SECURITY.md`
+- **Database schema** → `docs/02_DATABASE_AND_PROJECT.md`
+- **Workflows** → `docs/03_CORE_WORKFLOWS.md`
+- **Deployment** → `docs/06_DEPLOYMENT_AND_OBSERVABILITY.md`
+- **All rules & patterns** → `docs/00_QUICK_REFERENCE.md` (cheat sheet)
 
-### User Context
-- `memory/user_profile.md` - Developer preferences and working style
+## 📚 Memory Files (Optional, Minimal)
 
-### Project Context
-- `memory/architecture_summary.md` - Condensed architecture and invariants
-- `memory/database_credentials_structure.md` - DB credential structure notes
-
-### Memory Meta
-- `memory/MEMORY.md` - Internal memory index for subfolder
+- `.claude/memory/user_profile.md` — Developer preferences (optional)
+- `.claude/memory/architecture_summary.md` — Quick features table (links to docs/)
 
 ## Update Protocol
 
-Update memory files when there are changes in:
-- Architecture or retrieval strategy
-- API contracts or route behavior
-- Database schema (`ops/init.sql`)
-- Provider/model settings
+When code changes:
+- Update corresponding doc in `docs/` (source of truth)
+- Memory files update only if needed for quick reference
 
-Every update should include:
-- What changed
-- Why it changed
-- Last updated date
+---
 
-## Last Updated
-- 2026-04-17: Synced index with actual memory files and Docs-First policy
+**Golden Rule**: If conflict between memory and docs/, follow docs/.
+Last synced: 2026-04-17
+
+
+

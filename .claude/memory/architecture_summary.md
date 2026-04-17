@@ -1,51 +1,62 @@
 ---
 name: project
-description: Core architecture and key decisions for chatbot-rag (condensed)
+description: Core architecture (condensed) — see docs/ for details
 type: project
 ---
 
 # Architecture Summary - chatbot-rag
 
-## 2-Stage Retrieval Architecture
+**Single source of truth**: See `docs/` folder. This file is a quick reference only.
 
-- **Section extraction**: Markdown → split by headings → sections (Level 1, stored in PostgreSQL)
-- **Chunk splitting**: Each section → chunks (Level 2, ~400 tokens, ~75 overlap, stored in Qdrant)
-- **Retrieval**: Query → Stage 1 (coarse section search, top 3, threshold ≥ 0.30) → Stage 2 (fine chunk search, top 5, threshold ≥ 0.35) → fallback to flat retrieval
+## 🎯 Core Stack (One-liner)
+- FastAPI + Celery + PostgreSQL + Qdrant + BAAI/bge-m3 (local) + Google AI (chat)
 
-## Core Stack
-- FastAPI + Celery + Redis + PostgreSQL + Qdrant + RustFS
-- BAAI/bge-m3 local embedding (1024-dim, offline)
-- Google AI gemma-4-26b-a4b-it (chat LLM)
-- Rule-based refiner (0GB VRAM)
-- EasyOCR (vi+en)
+## ✨ Key Features
 
-## Key Design Decisions
-- **Sections in PostgreSQL**: Fast section-level lookup for Stage 1
-- **Chunks in Qdrant**: Fine-grained vector search with section_id for Stage 2
-- **Worker needs db_session**: IngestionPipeline accepts db_session for SectionRepository
+| Feature | Status | Link |
+|---------|--------|------|
+| **Hierarchical indexing** (docs → sections → chunks) | ✅ | `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md` |
+| **2-stage retrieval** (coarse section → fine chunk) | ✅ | `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md` |
+| **Smart OCR** (2-pass: no-OCR for native PDFs) | ✅ | `docs/03_CORE_WORKFLOWS.md` |
+| **PostgreSQL section store** | ✅ | `docs/02_DATABASE_AND_PROJECT.md` |
+| **Qdrant vectors with section_id** | ✅ | `docs/02_DATABASE_AND_PROJECT.md` |
+| **Async ingestion + pipeline recovery** | ✅ | `docs/03_CORE_WORKFLOWS.md` |
+| **Rule-based AI Refiner** (0GB VRAM) | ✅ | `docs/03_CORE_WORKFLOWS.md` |
+| **Query embedding cache** (1h TTL) | ✅ | `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md` |
+| **Production hardening** (5 phases) | ✅ | See `CHANGELOG.md` in root |
+| **Next.js 16 + SSE chat + admin dashboard** | ✅ | `README.md` |
+| **Service reorganization** (6 subpackages) | ✅ | `docs/08_SERVICES_ARCHITECTURE.md` |
 
-## Implementation Status
-- ✅ 2-stage retrieval, section storage, rule-based refiner, hard-delete, Tree API, Next.js frontend
-- 🔜 Performance tuning for large documents, monitoring hardening
-- ❌ Structured logging, backup automation
+## 🚀 Quick Commands
 
-## Important Invariants
+```bash
+docker compose up --build          # Start all services
+docker compose logs -f api         # View API logs
+curl http://localhost:8000/api/v1/health  # Health check
+```
 
-| Rule | Required Behavior |
-|------|-------------------|
-| Async ingestion | Upload must return immediately with task_id |
-| 2-stage retrieval | Section search (coarse) → Chunk search (fine) |
-| Hard-delete order | registry → vectors → sections → file → DB → purge |
-| Score threshold | Sections ≥ 0.30, Chunks ≥ 0.35 |
-| Route throttling | Sensitive auth routes include health/tree throttling with 429 on limit |
-| Auth validation | Username normalized + bounded, role strict enum admin/member |
-| Middleware fallback | Production enables coarse global rate-limit middleware as safety net |
-| Error handling | Route-level HTTP errors are centralized via app/core/http_errors.py |
-| CI guardrail | Status code policy also forbids direct raise HTTPException in API layer |
-| Error envelope | Global exception handlers return unified JSON error payload with backward-compatible detail |
-| Webapp runtime image | Uses Next standalone artifacts; avoids full builder node_modules copy |
-| Production config | app/core/config.py blocks wildcard hosts, localhost CORS, relaxed rate limits, insecure S3 in production |
-| Compose exposure | Published service ports are bound to 127.0.0.1 by default for local/dev safety |
+## 📚 Documentation Map
+
+| Topic | File |
+|-------|------|
+| **Rules & patterns cheat sheet** | `docs/00_QUICK_REFERENCE.md` |
+| **System design** | `docs/01_SYSTEM_ARCHITECTURE.md` |
+| **Database schema** | `docs/02_DATABASE_AND_PROJECT.md` |
+| **Workflows** (ingestion, chat, retrieval) | `docs/03_CORE_WORKFLOWS.md` |
+| **API contracts & security** | `docs/04_API_CONTRACT_AND_SECURITY.md` |
+| **Performance & edge cases** | `docs/05_RESOURCE_OPTIMIZATION_AND_EDGE_CASES.md` |
+| **Deployment & monitoring** | `docs/06_DEPLOYMENT_AND_OBSERVABILITY.md` |
+| **2-stage RAG deep dive** | `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md` |
+| **Service architecture** | `docs/08_SERVICES_ARCHITECTURE.md` |
+| **AI guidance** (detailed) | `CLAUDE.md` |
+
+## 🔑 Three Invariants (Never break these)
+
+1. **Async Ingestion** — Upload returns `task_id`, parsing async via Celery
+2. **2-Stage Retrieval** — Query → Stage 1 (sections, ≥0.30) → Stage 2 (chunks, ≥0.35)
+3. **Hard-Delete Ordering** — registry → vectors → file → DB → purge
 
 ## Last Updated
+- 2026-04-17: Simplified to reference docs/ folder only
+
 - 2026-04-17: Synced production config guardrails and dev-only env template clarification

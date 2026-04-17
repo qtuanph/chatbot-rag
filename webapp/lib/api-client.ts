@@ -4,6 +4,7 @@ import type {
   UserInfo,
   UserItem,
   CreateUserRequest,
+  RoleItem,
   ChatRequest,
   ChatResponse,
   ChatSession,
@@ -102,6 +103,9 @@ export const authApi = {
 
   getUsers: (token: string): Promise<UserItem[]> =>
     apiFetch<UserItem[]>("/auth/users", {}, token),
+
+  getRoles: (token: string): Promise<RoleItem[]> =>
+    apiFetch<RoleItem[]>("/auth/roles", {}, token),
 
   createUser: (data: CreateUserRequest, token: string): Promise<UserItem> =>
     apiFetch<UserItem>("/auth/users", {

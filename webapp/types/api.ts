@@ -27,7 +27,13 @@ export interface UserItem {
 export interface CreateUserRequest {
   username: string;
   password: string;
-  role?: "admin" | "member";
+  role?: string;
+}
+
+export interface RoleItem {
+  id: string;
+  name: string;
+  description: string | null;
 }
 
 // Chat

@@ -9,7 +9,7 @@ Status: stable API and security baseline — updated to reflect Next.js 16 front
 | Endpoint stability | Keep public routes stable while internals evolve |
 | Provider abstraction | Do not expose provider-specific payloads in public API |
 | Grounding | Document route is default; return citations for grounded answers |
-| Authorization | RBAC is mandatory (admin/member) |
+| Authorization | RBAC is mandatory; role values come from the `roles` table |
 
 
 
@@ -193,6 +193,7 @@ User re-uploads "policy.md" (same filename, different content)
 |--------|------|------|--------------|
 | `POST` | `/api/v1/auth/login` | ❌ Public | `{username, password}` → `{access_token, token_type, role}` |
 | `POST` | `/api/v1/auth/logout` | ✅ Bearer | Vô hiệu hoá token hiện tại |
+| `GET` | `/api/v1/auth/roles` | 🔒 Admin | Danh sách role lấy từ bảng `roles` |
 | `POST` | `/api/v1/auth/users` | 🔒 Admin | `{username, password, role}` → tạo user mới |
 | `GET` | `/api/v1/auth/me` | ✅ Bearer | Trả về thông tin user hiện tại |
 | `GET` | `/api/v1/auth/users` | 🔒 Admin | Danh sách tất cả users |
@@ -201,7 +202,7 @@ User re-uploads "policy.md" (same filename, different content)
 Auth request validation:
 - `username`: 3-64 ký tự, được normalize lowercase + trim.
 - `create user password`: 8-256 ký tự.
-- `role`: chỉ chấp nhận `admin` hoặc `member`.
+- `role`: phải khớp với `name` của một dòng trong bảng `roles`.
 
 ### Documents & Ingestion
 

@@ -6,7 +6,7 @@ from app.core.config import settings
 from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.core import Role, User
-from app.schemas.auth import CreateUserRequest, CreateUserResponse, LoginRequest, LogoutResponse, TokenResponse
+from app.schemas.auth import CreateUserRequest, CreateUserResponse, LoginRequest, LogoutResponse, RoleResponse, TokenResponse
 from app.services.auth.service import create_access_token, hash_password, verify_password
 from app.services.system.audit import safe_record_audit
 from app.api.deps import AuthContext, get_auth_context, require_admin
@@ -106,6 +106,16 @@ def create_user(payload: CreateUserRequest, _auth=Depends(require_admin)) -> Cre
             details={"username": user.username, "role": role.name},
         )
         return CreateUserResponse(id=str(user.id), username=user.username, role=role.name)
+
+
+@router.get("/auth/roles", response_model=list[RoleResponse])
+def get_roles(_auth=Depends(require_admin)) -> list[RoleResponse]:
+    with SessionLocal() as session:
+        roles = session.query(Role).order_by(Role.name.asc()).all()
+        return [
+            RoleResponse(id=str(role.id), name=role.name, description=role.description)
+            for role in roles
+        ]
 
 @router.get("/auth/me")
 def get_me(auth: AuthContext = Depends(get_auth_context)) -> dict:

@@ -30,11 +30,12 @@ import {
 import { Plus, Trash2, Users } from "lucide-react";
 import { authApi } from "@/lib/api-client";
 import { toast } from "sonner";
-import type { UserItem } from "@/types/api";
+import type { CreateUserRequest, RoleItem, UserItem } from "@/types/api";
 
 export default function UsersPage() {
   const { data: session } = useSession();
   const [users, setUsers] = useState<UserItem[]>([]);
+  const [roles, setRoles] = useState<RoleItem[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
@@ -48,9 +49,20 @@ export default function UsersPage() {
     }
   }, [session]);
 
+  const fetchRoles = useCallback(async () => {
+    if (!session?.accessToken) return;
+    try {
+      const data = await authApi.getRoles(session.accessToken);
+      setRoles(data);
+    } catch {
+      toast.error("Không thể tải danh sách vai trò");
+    }
+  }, [session]);
+
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers]);
+    fetchRoles();
+  }, [fetchUsers, fetchRoles]);
 
   const handleCreate = useCallback(
     async (e: React.FormEvent<HTMLFormElement>) => {
@@ -60,7 +72,7 @@ export default function UsersPage() {
       const formData = new FormData(e.currentTarget);
       const username = formData.get("username") as string;
       const password = formData.get("password") as string;
-      const role = formData.get("role") as string;
+      const role = (formData.get("role") as CreateUserRequest["role"]) ?? "member";
 
       try {
         await authApi.createUser({ username, password, role }, session.accessToken);
@@ -117,13 +129,20 @@ export default function UsersPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="role">Vai trò</Label>
-                <Select name="role" defaultValue="member">
+                <Select name="role" defaultValue={roles[0]?.name ?? "member"}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="member">Member</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    {roles.length === 0 ? (
+                      <SelectItem value="member">member</SelectItem>
+                    ) : (
+                      roles.map((role) => (
+                        <SelectItem key={role.id} value={role.name}>
+                          {role.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
