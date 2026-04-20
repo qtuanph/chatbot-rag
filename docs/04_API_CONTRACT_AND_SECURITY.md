@@ -227,7 +227,7 @@ Auth request validation:
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET` | `/api/v1/health` | ❌ Public | Health status đơn giản |
-| `GET` | `/api/v1/health/data` | ✅ Bearer | JSON snapshot chi tiết với checks, throttled |
+| `GET` | `/api/v1/health/data` | ✅ Bearer | JSON snapshot chi tiết với checks chạy song song, cache ngắn, throttled |
 | `GET` | `/api/v1/health/nodes` | ✅ Bearer | `?document_id=` → JSON danh sách Qdrant nodes, throttled |
 | `GET` | `/api/v1/health/node` | ✅ Bearer | `?document_id=&node_id=` → JSON chi tiết 1 node, throttled |
 

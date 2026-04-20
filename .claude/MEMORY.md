@@ -1,26 +1,26 @@
 # Memory Index
 
-**Primary source**: `docs/` folder (authoritative).
+**Primary source**: `AGENTS.md` first, then `docs/` folder (authoritative).
 Memory files below are minimal quick-reference only.
 
 ## 📄 Start Here
 
 | Task | Read This |
 |------|-----------|
-| **Quick rules & patterns** | `docs/00_QUICK_REFERENCE.md` |
+| **Quick rules & patterns** | `AGENTS.md` → `docs/00_QUICK_REFERENCE.json` |
 | **Need specific answer?** | Find in `docs/` folder (all topics covered) |
 | **Building for AI agents?** | See `AGENTS.md` (guardrails for all agents) |
 
 ## 🚀 Quick Navigation (By Topic)
 
 - **Architecture & design** → `docs/01_SYSTEM_ARCHITECTURE.md`
-- **2-stage retrieval + canonical tree order** → `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md`
+- **2-stage retrieval + canonical tree order** → `docs/06_INGESTION_AND_RETRIEVAL_STRATEGY.md`
 - **Shared parser format detection** → `app/core/file_formats.py`
 - **API endpoints** → `docs/04_API_CONTRACT_AND_SECURITY.md`
 - **Database schema** → `docs/02_DATABASE_AND_PROJECT.md`
 - **Workflows** → `docs/03_CORE_WORKFLOWS.md`
-- **Deployment** → `docs/06_DEPLOYMENT_AND_OBSERVABILITY.md`
-- **All rules & patterns** → `docs/00_QUICK_REFERENCE.md` (cheat sheet)
+- **Deployment** → `docs/05_DEPLOYMENT_AND_OBSERVABILITY.md`
+- **All rules & patterns** → `AGENTS.md` → `docs/00_QUICK_REFERENCE.json` (cheat sheet)
 
 ## 📚 Memory Files (Optional, Minimal)
 

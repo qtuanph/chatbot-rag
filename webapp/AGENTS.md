@@ -5,9 +5,9 @@
 This is not a standalone Next.js app. Before making changes, understand the backend architecture.
 
 **MUST READ** (in order):
-1. `../CLAUDE.md` (backend mandatory rules)
-2. `../docs/00_QUICK_REFERENCE.md` (rules & patterns)
-3. `../docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md` (2-stage RAG)
+1. `../AGENTS.md` (repo guardrails and docs-first flow)
+2. `../docs/00_QUICK_REFERENCE.json` (rules & patterns)
+3. `../docs/06_INGESTION_AND_RETRIEVAL_STRATEGY.md` (2-stage RAG)
 4. `../docs/04_API_CONTRACT_AND_SECURITY.md` (API contracts this app uses)
 
 ## 🚨 Critical Coupling Points

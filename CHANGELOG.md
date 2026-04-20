@@ -23,7 +23,7 @@ All notable changes to this project are documented here.
   - PostgreSQL: `127.0.0.1:5432:5432`
   - Redis: `127.0.0.1:6379:6379`
   - Qdrant: `127.0.0.1:6333:6333`
-- Updated `docs/06_DEPLOYMENT_AND_OBSERVABILITY.md` with ingress requirement for production
+- Updated deployment and observability docs with ingress requirement for production
 
 #### Phase 2: API Surface Hardening & Contract Closure
 - File type whitelist validation in upload endpoint
@@ -76,7 +76,7 @@ All notable changes to this project are documented here.
 - Backward-compatible re-exports in `app/services/__init__.py` (all old imports still work)
 - Deleted 11 old flat service files from root `app/services/`
 - Updated imports in 8 files across routes, workers, and tests
-- New documentation: `docs/08_SERVICES_ARCHITECTURE.md`
+- New documentation: services architecture notes
 
 #### Phase 4: Route Coverage Tests (Created, skipped for now)
 - New test suite: `tests/test_phase4_route_coverage.py` (48 tests)
@@ -96,7 +96,7 @@ All notable changes to this project are documented here.
   - Services architecture documented
 - **README.md** updated with:
   - Services subpackage structure
-  - Reference to new `docs/08_SERVICES_ARCHITECTURE.md`
+  - Reference to new services architecture notes
 - Configuration validation now fail-fast in production for unsafe patterns
 - All service files organized into logical groups for better code discoverability
 
@@ -118,10 +118,10 @@ All notable changes to this project are documented here.
 
 ### Documentation
 
-- New: `docs/08_SERVICES_ARCHITECTURE.md` (150+ lines, comprehensive services guide)
+- New: services architecture guide (later removed)
 - Updated: `CLAUDE.md` (Project Structure Notes, Project Status)
 - Updated: `README.md` (services subpackage structure, docs reference)
-- Updated: `docs/06_DEPLOYMENT_AND_OBSERVABILITY.md` (ingress requirement notes)
+- Updated: deployment and observability docs (ingress requirement notes)
 
 ### Testing
 

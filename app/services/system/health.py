@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 from time import perf_counter
 from typing import Any
 
@@ -12,6 +14,11 @@ from botocore.exceptions import ClientError
 
 from app.core.celery_app import celery_app
 from app.core.config import settings
+
+
+_HEALTH_CACHE_TTL_SECONDS = 5.0
+_HEALTH_CACHE_LOCK = Lock()
+_HEALTH_CACHE: tuple[float, dict[str, Any]] | None = None
 
 
 def _latency_ms(start: float) -> int:
@@ -136,7 +143,7 @@ def check_ai_provider() -> dict[str, Any]:
 def check_workers() -> dict[str, Any]:
     start = perf_counter()
     try:
-        inspector = celery_app.control.inspect(timeout=2.0)
+        inspector = celery_app.control.inspect(timeout=0.75)
         replies = inspector.ping() if inspector is not None else None
         worker_names = sorted(replies.keys()) if isinstance(replies, dict) else []
         status = "up" if worker_names else "down"
@@ -157,13 +164,32 @@ def check_workers() -> dict[str, Any]:
 
 
 def build_health_payload() -> dict[str, Any]:
-    checks = {
-        "database": check_database(),
-        "redis": check_redis(),
-        "storage": check_storage(),
-        "ai_provider": check_ai_provider(),
-        "workers": check_workers(),
+    global _HEALTH_CACHE
+
+    now = perf_counter()
+    with _HEALTH_CACHE_LOCK:
+        cached = _HEALTH_CACHE
+        if cached is not None and now - cached[0] < _HEALTH_CACHE_TTL_SECONDS:
+            return cached[1]
+
+    checkers = {
+        "database": check_database,
+        "redis": check_redis,
+        "storage": check_storage,
+        "ai_provider": check_ai_provider,
+        "workers": check_workers,
     }
+    checks: dict[str, dict[str, Any]] = {}
+
+    with ThreadPoolExecutor(max_workers=len(checkers)) as executor:
+        futures = {executor.submit(checker): name for name, checker in checkers.items()}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                checks[name] = future.result()
+            except Exception:
+                checks[name] = {"status": "down", "error": f"{name}_check_failed"}
+
     overall = "healthy"
     if any(check["status"] == "down" for check in checks.values()):
         overall = "unhealthy"
@@ -174,4 +200,9 @@ def build_health_payload() -> dict[str, Any]:
         name: {"status": check["status"]}
         for name, check in checks.items()
     }
-    return {"status": overall, "checks": public_checks}
+    payload = {"status": overall, "checks": public_checks}
+
+    with _HEALTH_CACHE_LOCK:
+        _HEALTH_CACHE = (perf_counter(), payload)
+
+    return payload

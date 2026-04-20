@@ -2,6 +2,8 @@
 Ingestion Pipeline: Main orchestration for document parsing → hierarchy → embedding → storage.
 """
 
+from __future__ import annotations
+
 import logging
 import math
 import time

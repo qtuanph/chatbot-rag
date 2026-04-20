@@ -29,13 +29,13 @@
 
 ## Documentation
 
-**Start here**: Read `CLAUDE.md` for mandatory rules, then explore `docs/` folder.
+**Start here**: Read `AGENTS.md` first, then the JSON quick reference and task docs in `docs/`.
 
 | Topic | Read | Time |
 |-------|------|------|
-| **Rules & patterns** | `docs/00_QUICK_REFERENCE.md` | 5 min |
+| **Rules & patterns** | `docs/00_QUICK_REFERENCE.json` | 5 min |
 | **System architecture** | `docs/01_SYSTEM_ARCHITECTURE.md` | 10 min |
-| **2-stage retrieval deep dive** | `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md` | 15 min |
+| **2-stage retrieval deep dive** | `docs/06_INGESTION_AND_RETRIEVAL_STRATEGY.md` | 15 min |
 | **All topics by category** | See index in `docs/` folder | varies |
 
 ## Quick Start
@@ -111,13 +111,13 @@ flowchart TD
 
 Everything you need to know is in `docs/`:
 
-- **[docs/00_QUICK_REFERENCE.md](docs/00_QUICK_REFERENCE.md)** — Rules & patterns cheat sheet
+- **[docs/00_QUICK_REFERENCE.json](docs/00_QUICK_REFERENCE.json)** — Rules & patterns cheat sheet
 - **[docs/01_SYSTEM_ARCHITECTURE.md](docs/01_SYSTEM_ARCHITECTURE.md)** — System design
-- **[docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md](docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md)** — How 2-stage retrieval works
+- **[docs/06_INGESTION_AND_RETRIEVAL_STRATEGY.md](docs/06_INGESTION_AND_RETRIEVAL_STRATEGY.md)** — How 2-stage retrieval works
 - **[docs/02_DATABASE_AND_PROJECT.md](docs/02_DATABASE_AND_PROJECT.md)** — Database schema
 - **[docs/03_CORE_WORKFLOWS.md](docs/03_CORE_WORKFLOWS.md)** — Ingestion, chat, retrieval workflows
 - **[docs/04_API_CONTRACT_AND_SECURITY.md](docs/04_API_CONTRACT_AND_SECURITY.md)** — All endpoints & security patterns
-- **[docs/06_DEPLOYMENT_AND_OBSERVABILITY.md](docs/06_DEPLOYMENT_AND_OBSERVABILITY.md)** — Production deployment guide
+- **[docs/05_DEPLOYMENT_AND_OBSERVABILITY.md](docs/05_DEPLOYMENT_AND_OBSERVABILITY.md)** — Production deployment guide
 
 For any question, the answer is in `docs/`.
 
@@ -193,7 +193,7 @@ CORS_ORIGINS=specific_origin    # Not localhost
 S3_SECURE=true                  # Not false
 ```
 
-See `docs/06_DEPLOYMENT_AND_OBSERVABILITY.md` for production deployment.
+See `docs/05_DEPLOYMENT_AND_OBSERVABILITY.md` for production deployment.
 
 ## Deployment
 
@@ -209,7 +209,7 @@ Same Docker Compose, but:
 3. Sit behind a reverse proxy (nginx/Caddy)
 4. Use real TLS certificates
 
-See `docs/06_DEPLOYMENT_AND_OBSERVABILITY.md` for details.
+See `docs/05_DEPLOYMENT_AND_OBSERVABILITY.md` for details.
 
 ## Status
 

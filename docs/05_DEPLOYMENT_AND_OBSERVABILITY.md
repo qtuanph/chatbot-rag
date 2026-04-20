@@ -1,4 +1,4 @@
-# 06 — Deployment and Observability
+# 05 — Deployment and Observability
 
 Status: deployment and operations baseline — updated to reflect worker architecture refactor.
 
@@ -84,7 +84,7 @@ Compose defaults bind published ports to 127.0.0.1 so local dev works without ex
 | Qdrant | /health |
 | vLLM (optional) | /health |
 
-Compose default probe cadence for `api` is 5 minutes to avoid noisy `/api/v1/health` access-log spam while still keeping container health monitoring enabled.
+Compose default probe cadence for `api` is 30 seconds to keep readiness updates responsive while still limiting `/api/v1/health` access-log spam.
 
 ## Observability Baseline
 

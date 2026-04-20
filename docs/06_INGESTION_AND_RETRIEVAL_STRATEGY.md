@@ -1,4 +1,4 @@
-# 07 — Ingestion and Retrieval Strategy
+# 06 — Ingestion and Retrieval Strategy
 
 Status: authoritative strategy — updated to reflect Method D, Smart OCR Strategy, and worker architecture refactor.
 

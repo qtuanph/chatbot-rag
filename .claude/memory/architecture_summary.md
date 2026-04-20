@@ -6,7 +6,7 @@ type: project
 
 # Architecture Summary - chatbot-rag
 
-**Single source of truth**: See `docs/` folder. This file is a quick reference only.
+**Single source of truth**: Start with `AGENTS.md`, then use `docs/` folder. This file is a quick reference only.
 
 ## 🎯 Core Stack (One-liner)
 - FastAPI + Celery + PostgreSQL + Qdrant + BAAI/bge-m3 (local) + Google AI (chat)
@@ -15,8 +15,8 @@ type: project
 
 | Feature | Status | Link |
 |---------|--------|------|
-| **Hierarchical indexing** (docs → sections → chunks) | ✅ | `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md` |
-| **2-stage retrieval** (coarse section → fine chunk) | ✅ | `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md` |
+| **Hierarchical indexing** (docs → sections → chunks) | ✅ | `docs/06_INGESTION_AND_RETRIEVAL_STRATEGY.md` |
+| **2-stage retrieval** (coarse section → fine chunk) | ✅ | `docs/06_INGESTION_AND_RETRIEVAL_STRATEGY.md` |
 | **Smart OCR** (2-pass: no-OCR for native PDFs) | ✅ | `docs/03_CORE_WORKFLOWS.md` |
 | **PostgreSQL section store** | ✅ | `docs/02_DATABASE_AND_PROJECT.md` |
 | **Canonical tree order** (`order_index` + page spans) | ✅ | `docs/02_DATABASE_AND_PROJECT.md` |
@@ -25,10 +25,9 @@ type: project
 | **Admin document detail table view** | ✅ | `webapp/app/(main)/admin/documents/[id]/page.tsx` |
 | **Async ingestion + pipeline recovery** | ✅ | `docs/03_CORE_WORKFLOWS.md` |
 | **Rule-based AI Refiner** (0GB VRAM) | ✅ | `docs/03_CORE_WORKFLOWS.md` |
-| **Query embedding cache** (1h TTL) | ✅ | `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md` |
+| **Query embedding cache** (1h TTL) | ✅ | `docs/06_INGESTION_AND_RETRIEVAL_STRATEGY.md` |
 | **Production hardening** (5 phases) | ✅ | See `CHANGELOG.md` in root |
 | **Next.js 16 + SSE chat + admin dashboard** | ✅ | `README.md` |
-| **Service reorganization** (6 subpackages) | ✅ | `docs/08_SERVICES_ARCHITECTURE.md` |
 
 ## 🚀 Quick Commands
 
@@ -42,16 +41,14 @@ curl http://localhost:8000/api/v1/health  # Health check
 
 | Topic | File |
 |-------|------|
-| **Rules & patterns cheat sheet** | `docs/00_QUICK_REFERENCE.md` |
+| **Rules & patterns cheat sheet** | `AGENTS.md` → `docs/00_QUICK_REFERENCE.json` |
 | **System design** | `docs/01_SYSTEM_ARCHITECTURE.md` |
 | **Database schema** | `docs/02_DATABASE_AND_PROJECT.md` |
 | **Workflows** (ingestion, chat, retrieval) | `docs/03_CORE_WORKFLOWS.md` |
 | **API contracts & security** | `docs/04_API_CONTRACT_AND_SECURITY.md` |
-| **Performance & edge cases** | `docs/05_RESOURCE_OPTIMIZATION_AND_EDGE_CASES.md` |
-| **Deployment & monitoring** | `docs/06_DEPLOYMENT_AND_OBSERVABILITY.md` |
-| **2-stage RAG deep dive** | `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md` |
-| **Service architecture** | `docs/08_SERVICES_ARCHITECTURE.md` |
-| **AI guidance** (detailed) | `CLAUDE.md` |
+| **Deployment & monitoring** | `docs/05_DEPLOYMENT_AND_OBSERVABILITY.md` |
+| **2-stage RAG deep dive** | `docs/06_INGESTION_AND_RETRIEVAL_STRATEGY.md` |
+| **AI guidance** (detailed) | `AGENTS.md` |
 
 ## 🔑 Three Invariants (Never break these)
 
