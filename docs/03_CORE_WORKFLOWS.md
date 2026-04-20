@@ -36,7 +36,7 @@ sequenceDiagram
     Note over Pipeline: If scanned detected → Pass 2 with OCR
     Pipeline->>Pipeline: Extract items: SectionHeader, Text, Table, ListItem...
     Pipeline->>DB: stage=parse, percent=30 [callback]
-    Pipeline->>Pipeline: Section + Chunk extraction with page numbers
+    Pipeline->>Pipeline: Section + Chunk extraction with page spans
     Pipeline->>DB: stage=validate, percent=35 [callback]
     Pipeline->>Pipeline: Hierarchy Validator
     Pipeline->>Refiner: refine_text (0GB VRAM, ~1ms)
@@ -63,6 +63,15 @@ sequenceDiagram
 | Progress live | `progress_percent` updates after each chunk via callback |
 | Reliability | `task_acks_late=True` — task requeued if worker crashes |
 | Timeout | `SoftTimeLimitExceeded` at 25 min → status=failed, not silent hang |
+
+### Ordering Invariants
+
+| Rule | Requirement |
+|------|-------------|
+| Canonical order | `document_sections.order_index` defines document order |
+| Page grouping | Sections may span multiple pages; store page span, not only the first page |
+| Tree rendering | Tree/list views must render the ordered PostgreSQL slice, not Qdrant scroll order |
+| Full text | Section content is preserved during extraction; tree summaries may show truncated previews, but chunk payloads keep the full indexed text |
 
 ## Workflow 2: Chat → Retrieve → Generate → JSON Response
 

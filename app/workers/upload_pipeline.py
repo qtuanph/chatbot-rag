@@ -48,7 +48,7 @@ def _build_vector_store(embedding_service) -> QdrantVectorStore:
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key or None,
         collection_name=settings.qdrant_collection,
-        vector_size=embedding_service.get_dimension(),
+        vector_size=settings.embedding_vector_size,
         timeout=settings.qdrant_timeout,
     )
 

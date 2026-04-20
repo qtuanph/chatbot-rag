@@ -19,8 +19,13 @@ class LocalAIProvider(AIProvider):
                 "answer": "Chưa có dữ liệu tài liệu phù hợp để trả lời.",
                 "citations": [],
             }
+        context_blocks = self._build_context_blocks(context, max_context_chars=6000)
+        context_text = "\n\n".join(context_blocks)
         return {
-            "answer": f"Dựa trên tài liệu đã index, câu hỏi '{query}' có liên quan đến {len(context)} đoạn nội dung.",
+            "answer": (
+                f"Dựa trên tài liệu đã index, câu hỏi '{query}' có liên quan đến {len(context)} đoạn nội dung.\n\n"
+                f"Trích đoạn tham chiếu:\n{context_text}"
+            ),
             "citations": citations,
         }
 

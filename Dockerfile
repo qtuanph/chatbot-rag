@@ -28,7 +28,7 @@ FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    HF_HOME=/home/appuser/.cache/huggingface
+    HF_HOME=/home/qtuanph/.cache/huggingface
 
 WORKDIR /app
 
@@ -42,16 +42,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m -u 1000 appuser
+RUN useradd -m -u 1000 -s /bin/bash qtuanph
 
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
-COPY --chown=appuser:appuser . .
+COPY --chown=qtuanph:qtuanph . .
 
-RUN mkdir -p /home/appuser/.cache/huggingface /home/appuser/.EasyOCR && \
-    chown -R appuser:appuser /home/appuser /app
+RUN mkdir -p /home/qtuanph/.cache/huggingface /home/qtuanph/.EasyOCR && \
+    chown -R qtuanph:qtuanph /home/qtuanph /app
 
-USER appuser
+USER qtuanph
 
 EXPOSE 8000
 

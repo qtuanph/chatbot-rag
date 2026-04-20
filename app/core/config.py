@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     # Embedding — local/offline, on-premise
     embedding_model: str = "sentence-transformer"
     embedding_hf_model: str = "BAAI/bge-m3"          # 1024-dim, 8192 tokens, multilingual
+    embedding_vector_size: int = 1024
     embedding_query_prefix: str = ""
     embedding_passage_prefix: str = ""
     embedding_batch_size: int = 32
@@ -119,6 +120,8 @@ class Settings(BaseSettings):
             raise ValueError("VECTOR_STORE must be qdrant/chroma/weaviate")
         if self.embedding_batch_size < 1:
             raise ValueError("EMBEDDING_BATCH_SIZE must be >= 1")
+        if self.embedding_vector_size < 1:
+            raise ValueError("EMBEDDING_VECTOR_SIZE must be >= 1")
         self.qdrant_url = str(self.qdrant_url).strip() or "http://qdrant:6333"
         if self.qdrant_timeout < 1:
             raise ValueError("QDRANT_TIMEOUT must be >= 1")

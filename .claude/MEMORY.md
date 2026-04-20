@@ -14,7 +14,8 @@ Memory files below are minimal quick-reference only.
 ## 🚀 Quick Navigation (By Topic)
 
 - **Architecture & design** → `docs/01_SYSTEM_ARCHITECTURE.md`
-- **2-stage retrieval** → `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md`
+- **2-stage retrieval + canonical tree order** → `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md`
+- **Shared parser format detection** → `app/core/file_formats.py`
 - **API endpoints** → `docs/04_API_CONTRACT_AND_SECURITY.md`
 - **Database schema** → `docs/02_DATABASE_AND_PROJECT.md`
 - **Workflows** → `docs/03_CORE_WORKFLOWS.md`
@@ -35,7 +36,7 @@ When code changes:
 ---
 
 **Golden Rule**: If conflict between memory and docs/, follow docs/.
-Last synced: 2026-04-17
+Last synced: 2026-04-20
 
 
 

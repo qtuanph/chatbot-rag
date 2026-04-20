@@ -11,16 +11,17 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN addgroup -g 1001 nextjs && adduser -D -u 1001 -G nextjs nextjs
+RUN addgroup -g 1001 nextapp && \
+	adduser -D -u 1001 -G nextapp nextapp
 
 # Copy only production-needed files from builder
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-RUN chown -R nextjs:nextjs /app
+RUN chown -R nextapp:nextapp /app
 
-USER nextjs
+USER nextapp
 
 EXPOSE 3000
 

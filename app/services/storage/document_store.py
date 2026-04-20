@@ -226,6 +226,35 @@ class SectionRepository:
         )
         return [self._section_to_dict(s) for s in rows]
 
+    def get_section_by_section_id(self, document_id: str, section_id: str) -> Optional[dict]:
+        """Get a single section by section_id within a document."""
+        row = (
+            self.session.query(DocumentSection)
+            .filter(
+                DocumentSection.document_id == document_id,
+                DocumentSection.section_id == section_id,
+            )
+            .one_or_none()
+        )
+        return self._section_to_dict(row) if row else None
+
+    def search_sections_by_document(self, document_id: str, query: str) -> List[dict]:
+        """Search sections by title or content within a document."""
+        pattern = f"%{query}%"
+        rows = (
+            self.session.query(DocumentSection)
+            .filter(
+                DocumentSection.document_id == document_id,
+                (
+                    DocumentSection.title.ilike(pattern)
+                    | DocumentSection.content.ilike(pattern)
+                ),
+            )
+            .order_by(DocumentSection.order_index)
+            .all()
+        )
+        return [self._section_to_dict(s) for s in rows]
+
     def delete_sections(self, document_id: str) -> int:
         """Delete all sections for a document."""
         try:

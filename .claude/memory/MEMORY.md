@@ -17,8 +17,9 @@ Persistent memory for chatbot-rag project.
 
 - **What:** Docker-first hierarchical RAG chatbot for Vietnamese documents
 - **Architecture:** 2-stage retrieval (Sections → Chunks) with PostgreSQL + Qdrant
+- **Tree order:** PostgreSQL `document_sections.order_index` is canonical; `page_range` is evidence/display metadata only
 - **Frontend:** Next.js 16 (active in `webapp/`)
 - **Status:** Production hardening phase
 
 ## Last Updated
-- 2026-04-17: Synced frontend context and current project state
+- 2026-04-20: Synced tree order/page-span behavior and backend scan findings

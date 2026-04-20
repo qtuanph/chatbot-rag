@@ -31,7 +31,7 @@ def check_database() -> dict[str, Any]:
                 cur.execute("SELECT 1")
                 cur.fetchone()
         return {"status": "up", "latency_ms": _latency_ms(start), "dsn": _redact(settings.database_url)}
-    except Exception as exc:
+    except Exception:
         return {"status": "down", "latency_ms": _latency_ms(start), "dsn": _redact(settings.database_url), "error": "database_unreachable"}
 
 
@@ -41,7 +41,7 @@ def check_redis() -> dict[str, Any]:
         client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=3, socket_timeout=3)
         client.ping()
         return {"status": "up", "latency_ms": _latency_ms(start), "url": _redact(settings.redis_url)}
-    except Exception as exc:
+    except Exception:
         return {"status": "down", "latency_ms": _latency_ms(start), "url": _redact(settings.redis_url), "error": "redis_unreachable"}
 
 
@@ -84,7 +84,7 @@ def check_storage() -> dict[str, Any]:
             "endpoint": endpoint,
             "error": "storage_unreachable",
         }
-    except Exception as exc:
+    except Exception:
         return {
             "status": "down",
             "latency_ms": _latency_ms(start),
@@ -119,7 +119,7 @@ def check_ai_provider() -> dict[str, Any]:
                 "configured": True,
                 "latency_ms": _latency_ms(start),
             }
-        except Exception as exc:
+        except Exception:
             return {
                 "status": "down",
                 "provider": provider,

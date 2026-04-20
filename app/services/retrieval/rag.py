@@ -35,6 +35,18 @@ def _validate_uuid_list(uuid_list: list[str] | set[str]) -> list[str]:
     return [uid for uid in uuid_list if _validate_uuid(uid)]
 
 
+def _format_page_range(page_start: int | None, page_end: int | None) -> str | None:
+    if page_start is None and page_end is None:
+        return None
+    if page_start is None:
+        page_start = page_end
+    if page_end is None:
+        page_end = page_start
+    if page_start == page_end:
+        return str(page_start)
+    return f"{page_start}-{page_end}"
+
+
 @dataclass(frozen=True)
 class RagNode:
     node_id: str
@@ -74,12 +86,11 @@ def _get_embedding_service() -> BaseEmbedding:
 
 @lru_cache(maxsize=1)
 def _get_vector_store() -> QdrantVectorStore:
-    embedding_service = _get_embedding_service()
     return QdrantVectorStore(
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key or None,
         collection_name=settings.qdrant_collection,
-        vector_size=embedding_service.get_dimension(),
+        vector_size=settings.embedding_vector_size,
         timeout=settings.qdrant_timeout,
     )
 
@@ -242,8 +253,10 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
     nodes: list[RagNode] = []
     for item in filtered[:limit]:
         heading = item.metadata.get("section_title") or item.metadata.get("heading") or item.metadata.get("node_type") or "Nội dung"
-        page_number = item.metadata.get("page_number")
-        page_range = str(page_number) if page_number else None
+        custom_metadata = item.metadata.get("custom", {}) or {}
+        page_start = custom_metadata.get("page_start") or item.metadata.get("page_number")
+        page_end = custom_metadata.get("page_end") or page_start
+        page_range = _format_page_range(page_start, page_end)
         sec_id = item.metadata.get("custom", {}).get("section_id")
         nodes.append(
             RagNode(

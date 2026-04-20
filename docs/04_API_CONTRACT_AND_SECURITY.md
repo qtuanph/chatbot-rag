@@ -274,11 +274,18 @@ Common throttling response:
       "parent_id": null,
       "child_count": 5,
       "text_length": 2500,
-      "page_number": 1
+      "page_number": "1-3"
     }
   ]
 }
 ```
+
+Tree ordering rules:
+- `document_sections.order_index` is the canonical sort key.
+- `page_number` in tree responses is a display hint and may be a range string such as `"1-3"`.
+- `page_range` is included explicitly to preserve the original page span as evidence for later AI use.
+- The tree endpoint returns a paginated slice ordered by `order_index`; page span is preserved for display and evidence only.
+- Qdrant is not the ordering source for tree display.
 
 `GET /api/v1/tree/{document_id}/nodes/{node_id}`
 ```json

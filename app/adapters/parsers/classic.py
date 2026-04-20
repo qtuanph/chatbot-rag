@@ -5,7 +5,6 @@ Used when Docling/LlamaIndex parsers are unavailable or fail.
 
 import logging
 import uuid
-import os
 from typing import List, Tuple
 from io import BytesIO
 
@@ -15,6 +14,7 @@ from app.adapters.base import (
     ParsingMetadata,
     ParsedNodeType,
 )
+from app.core.file_formats import extract_file_format
 from app.core.exceptions import ParsingException
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class ClassicParser(BaseParser):
         import time
         start_time = time.time()
         
-        source_format = self._extract_format(filename)
+        source_format = extract_file_format(filename)
         
         try:
             nodes = []
@@ -100,26 +100,6 @@ class ClassicParser(BaseParser):
                 error_code="CLASSIC_PARSER_FAILED",
                 details={'filename': filename, 'source_format': source_format, 'error': str(e)}
             )
-
-    def _extract_format(self, filename: str) -> str:
-        """Extract file format from filename."""
-        ext = os.path.splitext(filename.lower())[1].lstrip('.')
-        format_map = {
-            'pdf': 'pdf',
-            'docx': 'docx',
-            'doc': 'docx',
-            'xlsx': 'xlsx',
-            'xls': 'xlsx',
-            'txt': 'text',
-            'md': 'markdown',
-            'html': 'html',
-            'htm': 'html',
-            'jpg': 'image',
-            'png': 'image',
-            'gif': 'image',
-            'tiff': 'image',
-        }
-        return format_map.get(ext, ext or 'unknown')
 
     def _extract_pdf_pages(self, filename: str, content: bytes) -> List[IngestedNode]:
         """

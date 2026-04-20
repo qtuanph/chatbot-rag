@@ -18,6 +18,7 @@ from app.adapters.base import (
     ParsingMetadata,
     ParsedNodeType,
 )
+from app.core.file_formats import extract_file_format
 from app.core.exceptions import ParsingException
 from app.core.hardware import hardware
 
@@ -134,7 +135,7 @@ class DoclingParser(BaseParser):
         import time
         start_time = time.time()
 
-        source_format = self._extract_format(filename)
+        source_format = extract_file_format(filename)
 
         try:
             # Step 1: Convert with Docling
@@ -341,6 +342,18 @@ class DoclingParser(BaseParser):
                 return int(p['page_no'])
         return None
 
+    def _format_page_range(self, page_start: Optional[int], page_end: Optional[int]) -> Optional[str]:
+        """Format a stable page span for display and ordering hints."""
+        if page_start is None and page_end is None:
+            return None
+        if page_start is None:
+            page_start = page_end
+        if page_end is None:
+            page_end = page_start
+        if page_start == page_end:
+            return str(page_start)
+        return f"{page_start}-{page_end}"
+
     def _table_item_to_markdown(self, item) -> str:
         """Convert Docling TableItem to markdown table text."""
         data = getattr(item, 'data', None)
@@ -364,6 +377,19 @@ class DoclingParser(BaseParser):
             if row_idx == 0:  # Header separator after first row
                 lines.append("| " + " | ".join(["---"] * num_cols) + " |")
         return "\n".join(lines)
+
+    @staticmethod
+    def _should_persist_section(section: dict) -> bool:
+        """Persist section nodes even when they are content-light so hierarchy/page evidence is preserved."""
+        return bool(
+            section
+            and (
+                (section.get("content") or "").strip()
+                or (section.get("title") or "").strip()
+                or (section.get("image_count") or 0)
+                or (section.get("table_count") or 0)
+            )
+        )
 
     def _extract_from_docling_items(
         self,
@@ -396,7 +422,7 @@ class DoclingParser(BaseParser):
                 # SectionHeaderItem → start new section
                 if item_label == 'section_header':
                     # Save previous section
-                    if current_section and current_section["content"].strip():
+                    if self._should_persist_section(current_section):
                         sections_raw.append(current_section)
 
                     level = getattr(item, 'level', 1) or 1
@@ -425,16 +451,18 @@ class DoclingParser(BaseParser):
                         "content": "",
                         "level": level,
                         "breadcrumb": breadcrumb,
-                        "page_number": page_no,
+                        "page_start": page_no,
+                        "page_end": page_no,
                         "image_count": 0,
                         "table_count": 0,
                         "section_id": f"sec_{len(sections_raw):04d}",
                         "parent_section_id": parent_section_id,
                     }
+                    continue
 
                 # TitleItem → document title (treat as level 0 section)
                 elif item_label == 'title':
-                    if current_section and current_section["content"].strip():
+                    if self._should_persist_section(current_section):
                         sections_raw.append(current_section)
                     heading_stack = {}  # Reset for document title
                     heading_stack[0] = item_text.strip()
@@ -443,12 +471,14 @@ class DoclingParser(BaseParser):
                         "content": "",
                         "level": 0,
                         "breadcrumb": [item_text.strip()],
-                        "page_number": page_no,
+                        "page_start": page_no,
+                        "page_end": page_no,
                         "image_count": 0,
                         "table_count": 0,
                         "section_id": f"sec_{len(sections_raw):04d}",
                         "parent_section_id": None,
                     }
+                    continue
 
                 # TableItem → convert to markdown table
                 elif item_label == 'table':
@@ -458,7 +488,8 @@ class DoclingParser(BaseParser):
                             "content": "",
                             "level": 1,
                             "breadcrumb": [],
-                            "page_number": page_no,
+                            "page_start": page_no,
+                            "page_end": page_no,
                             "image_count": 0,
                             "table_count": 0,
                             "section_id": f"sec_{len(sections_raw):04d}",
@@ -468,6 +499,8 @@ class DoclingParser(BaseParser):
                     if table_md:
                         current_section["content"] += table_md + "\n\n"
                         current_section["table_count"] += 1
+                    if current_section is not None and page_no is not None:
+                        current_section["page_end"] = page_no
 
                 # TextItem / ListItem / CodeItem / FormulaItem → append text
                 elif item_label in ('paragraph', 'text', 'caption', 'footnote',
@@ -479,7 +512,8 @@ class DoclingParser(BaseParser):
                             "content": "",
                             "level": 1,
                             "breadcrumb": [],
-                            "page_number": page_no,
+                            "page_start": page_no,
+                            "page_end": page_no,
                             "image_count": 0,
                             "table_count": 0,
                             "section_id": f"sec_{len(sections_raw):04d}",
@@ -488,14 +522,18 @@ class DoclingParser(BaseParser):
                     if item_text.strip():
                         prefix = "- " if item_label == 'list_item' else ""
                         current_section["content"] += prefix + item_text.strip() + "\n\n"
+                    if current_section is not None and page_no is not None:
+                        current_section["page_end"] = page_no
 
                 # PictureItem → skip (future: image caption extraction)
                 elif item_label in ('picture',):
                     if current_section is not None:
                         current_section["image_count"] += 1
+                        if page_no is not None:
+                            current_section["page_end"] = page_no
 
             # Don't forget the last section
-            if current_section and current_section["content"].strip():
+            if self._should_persist_section(current_section):
                 sections_raw.append(current_section)
 
             if not sections_raw:
@@ -512,23 +550,27 @@ class DoclingParser(BaseParser):
                 content = section["content"]
                 level = section["level"]
                 breadcrumb = section["breadcrumb"]
-                page_number = section["page_number"]
+                page_start = section.get("page_start")
+                page_end = section.get("page_end")
 
                 # Create section record for PostgreSQL
                 sections_data.append({
                     "section_id": section_id,
                     "parent_section_id": section.get("parent_section_id"),
                     "title": title,
-                    "content": content[:5000] if content else None,
+                    "content": content if content else None,
                     "section_type": "section",
                     "level": level,
                     "order_index": sec_idx,
-                    "page_range": str(page_number) if page_number is not None else None,
+                    "page_range": self._format_page_range(page_start, page_end),
                     "image_count": section.get("image_count", 0),
                     "table_count": section.get("table_count", 0),
                     "chunk_count": 0,
                     "breadcrumb": breadcrumb,
-                    "metadata": {},
+                    "metadata": {
+                        "page_start": page_start,
+                        "page_end": page_end,
+                    },
                 })
 
                 # Split section content into chunks
@@ -544,7 +586,7 @@ class DoclingParser(BaseParser):
                         document_id=document_id,
                         text=chunk_text,
                         node_type=ParsedNodeType.PARAGRAPH,
-                        page_number=page_number,
+                        page_number=page_start,
                         section_title=title,
                         parent_id=None,
                         order=global_order,
@@ -554,7 +596,9 @@ class DoclingParser(BaseParser):
                             "section_level": level,
                             "chunk_index": chunk_idx,
                             "breadcrumb": breadcrumb,
-                            "page_number": page_number,
+                            "page_number": page_start,
+                            "page_start": page_start,
+                            "page_end": page_end,
                         },
                     ))
                     global_order += 1
@@ -606,7 +650,7 @@ class DoclingParser(BaseParser):
                     "section_id": section_id,
                     "parent_section_id": section.get("parent_section_id"),
                     "title": title,
-                    "content": content[:5000] if content else None,
+                    "content": content if content else None,
                     "section_type": "section",
                     "level": level,
                     "order_index": sec_idx,
@@ -708,7 +752,12 @@ class DoclingParser(BaseParser):
         for line in lines:
             heading_match = re.match(r'^(#{1,6})\s+(.+)$', line)
             if heading_match:
-                if current_section and current_section["content"].strip():
+                if current_section and (
+                    current_section["content"].strip()
+                    or current_section["title"].strip()
+                    or current_section.get("image_count", 0)
+                    or current_section.get("table_count", 0)
+                ):
                     sections.append(current_section)
 
                 level = len(heading_match.group(1))
@@ -750,7 +799,12 @@ class DoclingParser(BaseParser):
                 if "|" in line and "---" not in line:
                     current_section["table_count"] += 1
 
-        if current_section and current_section["content"].strip():
+        if current_section and (
+            current_section["content"].strip()
+            or current_section["title"].strip()
+            or current_section.get("image_count", 0)
+            or current_section.get("table_count", 0)
+        ):
             sections.append(current_section)
         return sections
 
@@ -880,12 +934,3 @@ class DoclingParser(BaseParser):
             0.0,
         ), 1.0)
 
-    def _extract_format(self, filename: str) -> str:
-        """Extract file format from filename."""
-        ext = os.path.splitext(filename.lower())[1].lstrip('.')
-        format_map = {
-            'pdf': 'pdf', 'docx': 'docx', 'doc': 'docx',
-            'xlsx': 'xlsx', 'xls': 'xlsx', 'txt': 'text',
-            'md': 'markdown', 'html': 'html', 'htm': 'html',
-        }
-        return format_map.get(ext, ext or 'unknown')

@@ -37,7 +37,27 @@ PostgreSQL is not the primary retrieval context store in the new direction.
 | QDRANT_URL | qdrant endpoint |
 | QDRANT_COLLECTION | vector collection |
 | EMBEDDING_MODEL | embedding model selection |
+| EMBEDDING_VECTOR_SIZE | Qdrant vector dimension (default 1024 for BAAI/bge-m3) |
 | AI_PROVIDER | chat generation backend selector |
+| NEXTAUTH_URL | public webapp base URL |
+| NEXTAUTH_SECRET | next-auth signing secret |
+| NEXT_PUBLIC_API_URL | browser-facing API base URL |
+| API_INTERNAL_URL | server-side API URL inside docker network |
+
+For Docker Compose deployments, keep webapp variables in root `.env` so backend and webapp share one env source of truth.
+
+## Container Runtime Users
+
+Both app images run as non-root users by default:
+
+- `api` image: `qtuanph`
+- `webapp` image: `nextapp`
+
+Runtime users are created without hardcoded passwords in Dockerfiles. If interactive shell password auth is ever required for debugging, pass it via runtime env or secret injection, not image build layers.
+
+Tree/detail views should reuse the existing Qdrant collection and read from payload only. They must not instantiate the embedding model just to derive vector size.
+
+Tree overview endpoints must use PostgreSQL as the ordering source of truth. Qdrant should be used for retrieval payload and detail lookup only, not to determine page order.
 
 ## Deployment Modes
 
@@ -69,8 +89,8 @@ Track at least:
 
 - request latency and error rate
 - queue depth and task failures
-- ingestion duration by stage (`uploaded`, `queued`, `download`, `parse`, `persist`, `ready`/`failed`)
-- document status field drift (`status`, `status_stage`, `progress_percent`, `status_updated_at`)
+- ingestion duration by stage (`uploaded`, `queued`, `download`, `parse`, `sections`, `persist`, `ready`/`failed`)
+- document status drift (`status`, `status_stage`, `progress_percent`, `status_updated_at`)
 - retrieval latency and hit count
 - provider generation latency
 

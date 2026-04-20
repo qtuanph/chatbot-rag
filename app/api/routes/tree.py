@@ -5,7 +5,8 @@ Provides hierarchical tree structure, node details, and search functionality.
 """
 
 import logging
-import os
+import re
+from collections import Counter
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,8 +16,8 @@ from app.core.config import settings
 from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.core import Document
-from app.adapters.vector_stores import build_vector_store
 from app.services.auth.throttle import RequestThrottle
+from app.services.storage.document_store import SectionRepository
 
 
 router = APIRouter(tags=["tree"])
@@ -48,13 +49,6 @@ def _verify_document_exists(document_id: str) -> Document:
             raise http_errors.not_found("Document not found")
         return doc
 
-
-def _get_max_nodes_limit() -> int:
-    """Get maximum nodes limit from config with safety cap."""
-    max_nodes = int(os.getenv("MAX_TREE_NODES", str(DEFAULT_MAX_NODES)))
-    return min(max_nodes, HARD_MAX_NODES)
-
-
 def _create_preview(text: str, query_lower: str) -> str:
     """Create a text preview around the matched query term."""
     text_lower = text.lower()
@@ -71,6 +65,24 @@ def _create_preview(text: str, query_lower: str) -> str:
         return preview
 
     return text[:MAX_PREVIEW_LENGTH]
+
+
+def _parse_page_start(page_range: str | None) -> int | None:
+    """Extract the first page number from a page range string."""
+    if not page_range:
+        return None
+    match = re.match(r"^\s*(\d+)", str(page_range))
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _section_sort_key(section: dict) -> tuple[int, int, str]:
+    """Sort sections by canonical order first, then page span as a tie-breaker."""
+    order_index = int(section.get("order_index") or 0)
+    page_start = _parse_page_start(section.get("page_range"))
+    section_id = str(section.get("section_id") or "")
+    return (order_index if order_index >= 0 else 0, 0 if page_start is not None else 1, page_start or 0, section_id)
 
 
 @router.get("/tree/{document_id}")
@@ -112,16 +124,12 @@ async def get_document_tree(
 
     try:
         doc = _verify_document_exists(document_id)
-        vector_store = build_vector_store()
+        with SessionLocal() as session:
+            section_repo = SectionRepository(session)
+            sections = section_repo.get_sections_by_document(document_id)
 
-        # First: get total count with a small scroll
-        count_data = vector_store.scroll(
-            filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
-            with_payload=False,
-            with_vector=False,
-            limit=10000,  # Qdrant scroll limit for counting
-        )
-        total_nodes = len(count_data)
+        ordered_sections = sorted(sections, key=_section_sort_key)
+        total_nodes = len(ordered_sections)
 
         if total_nodes == 0:
             return {
@@ -134,39 +142,31 @@ async def get_document_tree(
                 "nodes": []
             }
 
-        # Now get paginated nodes (offset + limit from the full set)
-        all_nodes_data = vector_store.scroll(
-            filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
-            with_payload=True,
-            with_vector=False,
-            limit=10000,
+        child_counts = Counter(
+            sec.get("parent_section_id")
+            for sec in ordered_sections
+            if sec.get("parent_section_id")
         )
 
-        # Apply pagination
-        paginated = all_nodes_data[offset:offset + limit]
+        page_sections = ordered_sections[offset:offset + limit]
 
-        # Build node list
         nodes_list = []
-        for point in paginated:
-            payload = point.get("payload", {})
-            node_id = payload.get("node_id", "")
-            breadcrumb = payload.get("metadata", {}).get("breadcrumb", [])
-
+        for section in page_sections:
+            breadcrumb = section.get("breadcrumb") or []
+            page_range = section.get("page_range")
             nodes_list.append({
-                "node_id": node_id,
-                "title": payload.get("section_title", ""),
-                "level": payload.get("metadata", {}).get("level", 0),
-                "breadcrumb": " > ".join(str(b) for b in breadcrumb) if breadcrumb else payload.get("section_title", ""),
-                "parent_id": payload.get("parent_id"),
-                "child_count": 0,
-                "text_length": len(payload.get("text", "")),
-                "page_number": payload.get("metadata", {}).get("page_number", "?"),
+                "node_id": section.get("section_id", ""),
+                "title": section.get("title", ""),
+                "level": section.get("level", 0),
+                "breadcrumb": " > ".join(str(b) for b in breadcrumb) if breadcrumb else section.get("title", ""),
+                "parent_id": section.get("parent_section_id"),
+                "child_count": int(child_counts.get(section.get("section_id"), 0)),
+                "text_length": len(section.get("content") or ""),
+                "page_number": page_range or "?",
+                "page_range": page_range,
             })
 
-        max_depth = max(
-            (len(point.get("payload", {}).get("metadata", {}).get("breadcrumb", [])) for point in all_nodes_data),
-            default=0,
-        )
+        max_depth = max((int(sec.get("level") or 0) for sec in ordered_sections), default=0)
 
         return {
             "document_id": document_id,
@@ -213,7 +213,6 @@ async def get_node_details(
     }
     """
     _validate_uuid(document_id, "document ID")
-    _validate_uuid(node_id, "node ID")
     if not throttle.allow(
         f"throttle:tree:detail:{auth.user_id}",
         limit=settings.effective_rate_limit(120),
@@ -223,38 +222,27 @@ async def get_node_details(
 
     try:
         _verify_document_exists(document_id)
-        vector_store = build_vector_store()
+        with SessionLocal() as session:
+            section_repo = SectionRepository(session)
+            section = section_repo.get_section_by_section_id(document_id, node_id)
 
-        nodes_data = vector_store.scroll(
-            filter={
-                "must": [
-                    {"key": "document_id", "match": {"value": document_id}},
-                    {"key": "node_id", "match": {"value": node_id}}
-                ]
-            },
-            with_payload=True,
-            with_vector=False,
-            limit=1
-        )
-
-        if not nodes_data:
+        if not section:
             raise http_errors.not_found("Node not found")
 
-        point = nodes_data[0]
-        payload = point.get("payload", {})
-        text = payload.get("text", "")
-        metadata = payload.get("metadata", {})
+        text = section.get("content") or ""
+        breadcrumb = section.get("breadcrumb") or []
 
         return {
             "node_id": node_id,
-            "title": payload.get("section_title", ""),
-            "level": metadata.get("level", 0),
-            "breadcrumb": " > ".join(str(b) for b in metadata.get("breadcrumb", [])),
+            "title": section.get("title", ""),
+            "level": section.get("level", 0),
+            "breadcrumb": " > ".join(str(b) for b in breadcrumb),
             "text": text,
             "metadata": {
-                "page_number": metadata.get("page_number", "?"),
-                "node_type": metadata.get("node_type", "unknown"),
-                "order": metadata.get("order", 0),
+                "page_number": section.get("page_range", "?"),
+                "page_range": section.get("page_range"),
+                "node_type": section.get("section_type", "section"),
+                "order": section.get("order_index", 0),
                 "char_count": len(text),
                 "token_count": len(text.split())
             }
@@ -300,35 +288,25 @@ async def search_nodes(
 
     try:
         _verify_document_exists(document_id)
-        vector_store = build_vector_store()
-
-        limit = _get_max_nodes_limit()
-        nodes_data = vector_store.scroll(
-            filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
-            with_payload=True,
-            with_vector=False,
-            limit=limit
-        )
+        with SessionLocal() as session:
+            section_repo = SectionRepository(session)
+            sections = section_repo.search_sections_by_document(document_id, query)
 
         query_lower = query.lower()
         results = []
 
-        for point in nodes_data:
-            payload = point.get("payload", {})
-            title = payload.get("section_title", "")
-            text = payload.get("text", "")
-            node_id = payload.get("node_id", "")
+        for section in sections[:MAX_SEARCH_RESULTS]:
+            text = section.get("content") or ""
+            preview_source = text if text else section.get("title", "")
+            preview = _create_preview(preview_source, query_lower)
+            results.append({
+                "node_id": section.get("section_id", ""),
+                "title": section.get("title", ""),
+                "preview": preview,
+                "highlight": query,
+            })
 
-            if query_lower in title.lower() or query_lower in text.lower():
-                preview = _create_preview(text, query_lower)
-                results.append({
-                    "node_id": node_id,
-                    "title": title,
-                    "preview": preview,
-                    "highlight": query
-                })
-
-        return {"results": results[:MAX_SEARCH_RESULTS]}
+        return {"results": results}
 
     except HTTPException:
         raise

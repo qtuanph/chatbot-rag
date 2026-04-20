@@ -16,7 +16,7 @@ Status: authoritative architecture baseline — updated to reflect Method D, Sma
 | Vector Store | Qdrant for vectors and retrieval payload |
 | Metadata Store | PostgreSQL for users, documents, **sections**, sessions, audit, connector metadata |
 | Queue/Cache | Redis for Celery broker/result, query embedding cache, rate limiting |
-| Retrieval | **2-stage retrieval**: Sections (PostgreSQL) → Chunks (Qdrant with section_id) |
+| Retrieval | **2-stage retrieval**: Sections (PostgreSQL canonical order) → Chunks (Qdrant with section_id) |
 | Query routing | Document RAG default; SQL route only when explicitly required and approved |
 | AI Provider | Google AI gemma-4-26b-a4b-it (demo); vLLM on-premise (production target) |
 | Workers | `upload-pipeline` (GPU, ingestion) + `cleanup-pipeline` (lightweight, deletion + beat) |
@@ -78,7 +78,7 @@ graph TD
 |-------|------|--------|
 | 1. Upload | Browser → Next.js → API → RustFS | File persisted, document row pending |
 | 2. Queue | API → Redis → Worker | Async task created, task_id returned |
-| 3. Parse | Worker → Docling `iterate_items()` (Method D) + Smart OCR → Section extraction → Chunk splitting | Sections + chunks with page numbers, heading levels |
+| 3. Parse | Worker → Docling `iterate_items()` (Method D) + Smart OCR → Section extraction → Chunk splitting | Sections + chunks with page spans, heading levels |
 | 4. Validate | Worker → Hierarchy Validator | Parent-child consistency report |
 | 5. Refine | Worker → Rule-Based Refiner (0GB VRAM, ~1ms) | Cleaned text, fixed OCR errors |
 | 6. Store Sections | Worker → SectionRepository → PostgreSQL | document_sections rows |

@@ -292,7 +292,7 @@ function NodeRow({
     <>
       <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onToggle}>
         <TableCell className="text-xs text-muted-foreground">{index}</TableCell>
-        <TableCell className="text-xs text-muted-foreground">{node.page_number || "?"}</TableCell>
+        <TableCell className="text-xs text-muted-foreground">{node.page_range || node.page_number || "?"}</TableCell>
         <TableCell className="font-medium text-sm truncate max-w-[500px]">{node.title}</TableCell>
         <TableCell className="text-xs text-muted-foreground">
           {node.text_length?.toLocaleString()}

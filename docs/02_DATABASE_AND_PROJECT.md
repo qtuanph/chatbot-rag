@@ -18,7 +18,7 @@ Status: single-project data model with role-based authorization — updated to r
 | `roles` | role definitions (admin, member) |
 | `users` | authenticated accounts with bcrypt password hash |
 | `documents` | uploaded file metadata, status, version, ingestion state |
-| `document_sections` | section-level storage for hierarchical retrieval |
+| `document_sections` | canonical hierarchical tree storage (`parent_section_id`, `order_index`, `page_range`, `breadcrumb`) |
 | `chat_sessions` | conversation sessions per user |
 | `chat_messages` | message history and citations payload |
 | `security_audit` | audit trail for sensitive actions |
@@ -90,7 +90,7 @@ Retrieval uses `Document.deleted_at.is_(None)` and `Document.status == 'ready'` 
 3. Upload-pipeline worker: parse with Docling `iterate_items()` (Method D) + Smart OCR (2-pass) → section extraction → chunk splitting.
 4. Rule-based refiner fixes OCR errors (0GB VRAM, ~1ms per node).
 5. Worker fires `progress_callback` at each stage → `progress_percent` updates live.
-6. Store sections in PostgreSQL `document_sections` table (with page numbers from Docling provenance).
+6. Store sections in PostgreSQL `document_sections` table (with `order_index`, `parent_section_id`, and page spans from Docling provenance).
 7. Embed nodes in parallel batches of 32 via `ThreadPoolExecutor`.
 8. Upsert vectors and payload in Qdrant per chunk (with `section_id` metadata).
 9. Save ingestion artifact metadata (`extra_metadata`) in the document row.

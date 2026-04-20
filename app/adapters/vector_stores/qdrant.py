@@ -325,6 +325,35 @@ class QdrantVectorStore(BaseVectorStore):
                 error_code="QDRANT_DELETE_FAILED",
                 details={'document_id': document_id, 'error': str(e)}
             )
+
+    def delete_by_ids(self, point_ids: List[str | int]) -> bool:
+        """Delete specific Qdrant points by point IDs."""
+        try:
+            from qdrant_client.models import PointIdsList
+
+            normalized_ids: list[int | str] = []
+            for point_id in point_ids:
+                if point_id is None:
+                    continue
+                try:
+                    normalized_ids.append(int(str(point_id)))
+                except (TypeError, ValueError):
+                    normalized_ids.append(str(point_id))
+
+            if not normalized_ids:
+                return True
+
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=PointIdsList(points=normalized_ids),
+            )
+            return True
+        except Exception as e:
+            raise VectorStoreOperationException(
+                f"Failed to delete points by id in Qdrant: {str(e)}",
+                error_code="QDRANT_DELETE_BY_ID_FAILED",
+                details={'point_ids': point_ids, 'error': str(e)}
+            )
     def count(self, document_id: str) -> int:
         """
         Count vectors stored for a given document_id.
@@ -386,6 +415,7 @@ class QdrantVectorStore(BaseVectorStore):
         with_payload: bool = True,
         with_vector: bool = False,
         limit: int = 100,
+        offset: int = 0,
     ) -> List[Dict[str, Any]]:
         """
         Scroll through all points that match the filter.
@@ -397,6 +427,7 @@ class QdrantVectorStore(BaseVectorStore):
             with_payload: Whether to include payload in results
             with_vector: Whether to include vector in results
             limit: Maximum number of points to return
+            offset: Number of matching points to skip before collecting results
 
         Returns:
             List of point dicts with id, payload, and optionally vector
@@ -429,6 +460,7 @@ class QdrantVectorStore(BaseVectorStore):
                 collection_name=self.collection_name,
                 scroll_filter=qdrant_filter,
                 limit=limit,
+                offset=offset,
                 with_payload=with_payload,
                 with_vectors=with_vector,
             )

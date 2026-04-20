@@ -153,6 +153,7 @@ export interface TreeNode {
   child_count: number;
   text_length: number;
   page_number: number | string;
+  page_range?: string | null;
 }
 
 export interface TreeResponse {
@@ -171,6 +172,7 @@ export interface NodeDetail {
   text: string;
   metadata: {
     page_number: number | string;
+    page_range?: string | null;
     node_type: string;
     order: number;
     char_count: number;

@@ -175,16 +175,17 @@ class PipelineRecoveryManager:
             # Get all section IDs in PostgreSQL
             with SessionLocal() as session:
                 section_ids = set()
-                rows = session.query(DocumentSection.id).filter(
+                rows = session.query(DocumentSection.section_id).filter(
                     DocumentSection.document_id == document_id
                 ).all()
                 section_ids = {str(row[0]) for row in rows}
 
             # Check if each vector has a matching section
             for point in vectors:
-                section_id = point.payload.get("section_id")
+                payload = point.get("payload", {})
+                section_id = payload.get("section_id")
                 if section_id and str(section_id) not in section_ids:
-                    orphaned.append(point.id)
+                    orphaned.append(point.get("id"))
 
             if orphaned:
                 logger.warning(
@@ -217,7 +218,7 @@ class PipelineRecoveryManager:
                 # Remove orphaned vectors
                 for vec_id in orphaned:
                     try:
-                        self.vector_store.delete_by_id(document_id, [vec_id])
+                        self.vector_store.delete_by_ids([vec_id])
                         report["cleaned"] += 1
                     except Exception as e:
                         logger.error(

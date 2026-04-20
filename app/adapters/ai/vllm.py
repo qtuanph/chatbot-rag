@@ -44,12 +44,7 @@ class VLLMAIProvider(AIProvider):
 
     def _build_messages(self, messages: list[dict[str, Any]], kwargs: dict[str, Any]) -> list[dict[str, str]]:
         context_nodes = kwargs.get("context") or []
-        context_lines: list[str] = []
-        for idx, node in enumerate(context_nodes, start=1):
-            title = node.get("document_title") or "Untitled"
-            heading = node.get("heading") or "Section"
-            text = (node.get("full_text") or "")[:2000]
-            context_lines.append(f"[{idx}] {title} | {heading}\n{text}")
+        context_lines = self._build_context_blocks(context_nodes)
 
         system_prompt = (
             "You are an enterprise assistant. Answer strictly from provided document context. "

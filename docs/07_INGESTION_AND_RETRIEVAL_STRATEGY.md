@@ -21,18 +21,18 @@ Use Qdrant for retrieval data path. Keep PostgreSQL as system metadata/state dat
    - **Pass 2 (fallback)**: Re-convert with `do_ocr=True` + EasyOCR (`lang=["vi","en"]`) → OCR only for scanned PDFs.
    - **Images (PNG/JPG)**: Always use OCR pipeline.
    - **DOCX**: Docling native parsing, no OCR needed.
-5. **Method D**: Extract directly from `iterate_items()` — preserves page numbers, heading levels, table structures with 100% metadata fidelity:
+5. **Method D**: Extract directly from `iterate_items()` — preserves page spans, heading levels, table structures with 100% metadata fidelity for extracted text (tree order still comes from PostgreSQL):
    - `SectionHeaderItem` → section boundary (level from `item.level`, page_no from provenance)
    - `TitleItem` → document title (level 0)
    - `TextItem` → content text (page_no from provenance)
    - `TableItem` → convert cells to markdown table (page_no from provenance)
    - `ListItem` → bullet/numbered text
    - `PictureItem` → skip (future: image captioning)
-6. **Section extraction**: Items → sections with exact page numbers → breadcrumbs from heading stack.
+6. **Section extraction**: Items → sections with exact page spans → breadcrumbs from heading stack.
 7. **Chunk splitting**: Each section → chunks of ~400 tokens with ~75 token overlap. Each chunk linked to section via `section_id` in metadata.
 8. **HierarchyValidator** checks parent-child consistency.
 9. **RuleBasedRefiner** fixes OCR errors, detects headers (0GB VRAM, ~1ms per node).
-10. **SectionRepository** stores sections in PostgreSQL `document_sections` table.
+10. **SectionRepository** stores sections in PostgreSQL `document_sections` table as the canonical order source (`order_index`, `parent_section_id`, page span).
 11. Sequential chunks of **32 nodes** are embedded using `embed_batch()` which delegates to the local **BAAI/bge-m3** model:
    - GPU-native batching via sentence-transformers
    - `vector_store.store()` upserts chunks to Qdrant with `section_id` in payload
@@ -78,6 +78,7 @@ Rule-based refiner is **500x faster** than AI-based refiner and uses **0GB VRAM*
 | **Normalization** | L2 normalize (cosine similarity) |
 | **Inference** | Local / offline — no API calls, no rate limits |
 | **Batch size** | 32 nodes/batch (`INGESTION_EMBEDDING_CHUNK_SIZE`) |
+| **Vector size config** | `EMBEDDING_VECTOR_SIZE=1024` (used for Qdrant collection init; avoids loading model on read-only paths) |
 | **Scale** | GTX 1650 (4GB): ~1.1GB VRAM · Future 24GB: larger batches, faster |
 
 BAAI/bge-m3 is pre-downloaded during Docker build (`RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')"`) using BuildKit cache mount. No runtime download.
@@ -140,11 +141,15 @@ Cache is particularly effective during demos and employee training sessions wher
 | Store | What belongs there |
 |-------|---------------------|
 | Qdrant | chunk text payload, vectors, retrieval metadata (including `section_id`) |
-| PostgreSQL | document status, file metadata, versions, **sections**, audit, sessions |
+| PostgreSQL | document status, file metadata, versions, **sections** (canonical tree order), audit, sessions |
 | RustFS | original file bytes |
 | Redis | Celery tasks, query embedding cache, rate limit counters |
 
 ---
+
+## Tree Ordering Policy
+
+Tree/list display order is derived from PostgreSQL `document_sections.order_index`, then page span. Qdrant does not define display order.
 
 ## Fallback Policy
 

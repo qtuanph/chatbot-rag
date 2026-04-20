@@ -294,12 +294,7 @@ class GoogleAIProvider(AIProvider):
             return "Vui lòng đặt câu hỏi."
 
         context_nodes = kwargs.get("context") or []
-        context_blocks: list[str] = []
-        for idx, node in enumerate(context_nodes, start=1):
-            title = node.get("document_title") or "Untitled"
-            heading = node.get("heading") or "Section"
-            text = (node.get("full_text") or "")[:2000]
-            context_blocks.append(f"[{idx}] {title} | {heading}\n{text}")
+        context_blocks = self._build_context_blocks(context_nodes)
 
         context_text = "\n\n".join(context_blocks) if context_blocks else "NO_DOCUMENTS"
 
