@@ -20,6 +20,7 @@ const serviceIcons: Record<string, React.ElementType> = {
   redis: HardDrive,
   storage: Server,
   ai_provider: Brain,
+  workers: Server,
   qdrant: Cpu,
 };
 
@@ -28,6 +29,7 @@ const serviceLabels: Record<string, string> = {
   redis: "Redis",
   storage: "RustFS",
   ai_provider: "AI Provider",
+  workers: "Celery Workers",
   qdrant: "Qdrant",
 };
 

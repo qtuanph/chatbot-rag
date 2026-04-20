@@ -78,10 +78,13 @@ Compose defaults bind published ports to 127.0.0.1 so local dev works without ex
 | Webapp | http://localhost:3000 |
 | upload-pipeline | celery inspect ping |
 | cleanup-pipeline | celery inspect ping |
+| Workers dashboard | API health payload includes combined Celery worker status |
 | PostgreSQL | pg_isready |
 | Redis | redis-cli ping |
 | Qdrant | /health |
 | vLLM (optional) | /health |
+
+Compose default probe cadence for `api` is 5 minutes to avoid noisy `/api/v1/health` access-log spam while still keeping container health monitoring enabled.
 
 ## Observability Baseline
 

@@ -33,7 +33,7 @@ Use Qdrant for retrieval data path. Keep PostgreSQL as system metadata/state dat
 8. **HierarchyValidator** checks parent-child consistency.
 9. **RuleBasedRefiner** fixes OCR errors, detects headers (0GB VRAM, ~1ms per node).
 10. **SectionRepository** stores sections in PostgreSQL `document_sections` table as the canonical order source (`order_index`, `parent_section_id`, page span).
-11. Sequential chunks of **32 nodes** are embedded using `embed_batch()` which delegates to the local **BAAI/bge-m3** model:
+11. Chunks are embedded with a bounded rolling window and stored concurrently up to `INGESTION_EMBED_PARALLELISM` (or hardware auto-detect), using `embed_batch()` on the local **BAAI/bge-m3** model:
    - GPU-native batching via sentence-transformers
    - `vector_store.store()` upserts chunks to Qdrant with `section_id` in payload
    - `progress_callback` updates `documents.progress_percent` in DB
@@ -98,21 +98,22 @@ BAAI/bge-m3 is pre-downloaded during Docker build (`RUN python -c "from sentence
 2. **Query embedding cache**: MD5-keyed lookup in Redis. Cache HIT → skip local model inference (TTL=1h).
 3. **Query embedding**: If cache MISS, call local `BAAI/bge-m3`, cache the result.
 4. **Document scope filter**: SQL query to get latest active document IDs (no `deleted_at`, `status=ready`, max version per filename).
+   - IDs are sourced from PostgreSQL query results (internal data path), not direct user input.
 5. **Stage 1 — Section search**: Qdrant search (top_k=50) → group results by `section_id` → pick top 3 sections (score ≥ 0.30). Load section details from PostgreSQL `document_sections` table.
-6. **Stage 2 — Chunk search**: Qdrant search within top sections → prioritize chunks with matching `section_id` → score filter (≥ 0.35).
+6. **Stage 2 — Chunk search**: Qdrant search filtered to the top `section_id` values → score filter (≥ 0.35).
 7. **Return** top sections + chunks with full text payload and citation metadata.
 
 ### Why 2-Stage Retrieval
 
-- **Coarse → Fine**: Section search quickly narrows scope, then chunk search finds precise answers within those sections.
+- **Coarse → Fine**: Section search quickly narrows scope, then chunk search is restricted to those `section_id` values for precise answers.
 - **Context preservation**: Each chunk carries its section context (title, breadcrumb), giving the LLM better understanding of where information comes from.
 - **Scalability**: For large documents (300+ pages), filtering by section first dramatically reduces the search space for Stage 2.
 
 ### Query Cache
 
 ```
-HIT flow:  query_text → MD5 hash → Redis GET → vector (0ms, 0 API cost)
-MISS flow: query_text → Gemini API → vector → Redis SET (TTL=1h) → Qdrant
+HIT flow:  query_text → MD5 hash → Redis GET → vector (0ms, 0 model cost)
+MISS flow: query_text → local BAAI/bge-m3 embed → vector → Redis SET (TTL=1h) → Qdrant
 ```
 
 Cache is particularly effective during demos and employee training sessions where the same questions are asked repeatedly.
@@ -180,8 +181,8 @@ Tree/list display order is derived from PostgreSQL `document_sections.order_inde
 | Section storage (PostgreSQL) | `app/services/storage/document_store.py:SectionRepository` |
 | Parallel embedding | `app/adapters/embeddings/sentence_transformer.py:embed_batch()` |
 | Vector store adapter | `app/adapters/vector_stores/qdrant.py` |
-| 2-stage retrieval + score filter | `app/services/rag.py:retrieve_context()` |
-| Query embedding cache | `app/services/query_cache.py` |
+| 2-stage retrieval + score filter | `app/services/retrieval/rag.py:retrieve_context()` |
+| Query embedding cache | `app/services/retrieval/cache.py` |
 | Hardware auto-detection | `app/core/hardware.py` |
 | Ingestion tasks | `app/workers/upload_pipeline.py` |
 | Cleanup tasks + beat | `app/workers/cleanup_pipeline.py` |

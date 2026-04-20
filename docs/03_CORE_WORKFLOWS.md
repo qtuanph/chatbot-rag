@@ -46,7 +46,7 @@ sequenceDiagram
 
     loop For each chunk of 32 nodes
         Pipeline->>Pipeline: embed_batch (ThreadPoolExecutor parallel)
-        Pipeline->>Qdrant: upsert vectors
+        Pipeline->>Qdrant: upsert vectors on bounded background store workers
         Pipeline->>DB: stage=embed_store, percent=40→90 [callback]
     end
 
@@ -60,6 +60,8 @@ sequenceDiagram
 |------|-------------|
 | Non-blocking | Upload endpoint returns `task_id` immediately |
 | Chunked embed | Embed + store in batches of 32 nodes, not all at once |
+| Pipelined store | Embedding of chunk N overlaps with Qdrant store of chunk N-1 |
+| Store window | In-flight Qdrant writes are bounded by `ingestion_embed_parallelism` or hardware profile |
 | Progress live | `progress_percent` updates after each chunk via callback |
 | Reliability | `task_acks_late=True` — task requeued if worker crashes |
 | Timeout | `SoftTimeLimitExceeded` at 25 min → status=failed, not silent hang |
@@ -70,7 +72,7 @@ sequenceDiagram
 |------|-------------|
 | Canonical order | `document_sections.order_index` defines document order |
 | Page grouping | Sections may span multiple pages; store page span, not only the first page |
-| Tree rendering | Tree/list views must render the ordered PostgreSQL slice, not Qdrant scroll order |
+| Tree/list display | Admin document detail should render the ordered PostgreSQL slice as a table/list, not Qdrant scroll order |
 | Full text | Section content is preserved during extraction; tree summaries may show truncated previews, but chunk payloads keep the full indexed text |
 
 ## Workflow 2: Chat → Retrieve → Generate → JSON Response
@@ -104,8 +106,8 @@ sequenceDiagram
     Retriever->>Retriever: group by section_id → pick top 3 sections (score ≥ 0.30)
     Retriever->>DB: load section details from document_sections
     Note over Retriever,Qdrant: Stage 2 — Fine chunk search within sections
-    Retriever->>Qdrant: search within top sections (score ≥ 0.35)
-    Retriever->>Retriever: prioritize in-section chunks
+    Retriever->>Qdrant: search filtered to top section_id values (score ≥ 0.35)
+    Retriever->>Retriever: keep section-scoped chunks first
     Retriever-->>API: top nodes with section context and citations
 
     loop For each chunk of response

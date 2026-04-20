@@ -1,5 +1,4 @@
 from datetime import UTC, datetime
-import html
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -11,7 +10,6 @@ from app.db.session import SessionLocal
 from app.models.core import Document
 from app.api.deps import get_auth_context, AuthContext
 from app.services.system.health import build_health_payload
-from app.services.storage import build_storage
 from app.services.auth.throttle import RequestThrottle
 
 router = APIRouter(tags=["health"])
@@ -29,77 +27,6 @@ def _fetch_documents(limit: int = 100) -> list[Document]:
             )
     except Exception:
         return []
-
-
-def _fetch_storage_objects() -> list[dict[str, Any]]:
-    try:
-        storage = build_storage()
-        if hasattr(storage, "list_objects"):
-            objects = storage.list_objects()
-            if isinstance(objects, list):
-                return objects
-    except Exception:
-        pass
-    return []
-
-
-def _services_rows(payload: dict[str, Any]) -> str:
-    checks = payload.get("checks", {})
-    if not isinstance(checks, dict) or not checks:
-        return "<tr><td colspan='2'>No service data</td></tr>"
-
-    rows: list[str] = []
-    for name, value in checks.items():
-        status_text = "unknown"
-        if isinstance(value, dict):
-            status_text = str(value.get("status", "unknown"))
-        rows.append(
-            "<tr>"
-            f"<td>{html.escape(str(name))}</td>"
-            f"<td>{html.escape(status_text)}</td>"
-            "</tr>"
-        )
-    return "".join(rows)
-
-
-def _pipeline_rows(docs: list[Document]) -> str:
-    if not docs:
-        return "<tr><td colspan='6'>No documents</td></tr>"
-
-    rows: list[str] = []
-    for doc in docs:
-        rows.append(
-            "<tr>"
-            f"<td>{html.escape(str(doc.id)[:8])}</td>"
-            f"<td>{html.escape(doc.file_name)}</td>"
-            f"<td>{html.escape(doc.status)}</td>"
-            f"<td>{html.escape(doc.status_stage)}</td>"
-            f"<td>{int(doc.progress_percent)}%</td>"
-            f"<td>{doc.file_size // 1024} KB</td>"
-            "</tr>"
-        )
-    return "".join(rows)
-
-
-def _storage_rows(objects: list[dict[str, Any]]) -> str:
-    if not objects:
-        return "<tr><td colspan='4'>No files</td></tr>"
-
-    rows: list[str] = []
-    for obj in objects:
-        doc_id = str(obj.get("document_id", ""))
-        filename = str(obj.get("filename", ""))
-        size = int(obj.get("size", 0))
-        modified = str(obj.get("last_modified", ""))
-        rows.append(
-            "<tr>"
-            f"<td>{html.escape(doc_id[:8])}</td>"
-            f"<td>{html.escape(filename)}</td>"
-            f"<td>{size // 1024} KB</td>"
-            f"<td>{html.escape(modified[:19])}</td>"
-            "</tr>"
-        )
-    return "".join(rows)
 
 
 def _fetch_qdrant_nodes(document_id: str | None, limit: int = 30) -> list[dict[str, Any]]:
@@ -198,7 +125,6 @@ def _build_snapshot(selected_document_id: str | None = None) -> dict[str, Any]:
         "latest_document_id": latest_document_id or "",
         "target_document_id": target_document_id or "",
         "checks": payload.get("checks", {}),
-        "services_html": _services_rows(payload),
     }
 
 

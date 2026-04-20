@@ -240,6 +240,7 @@ class BaseVectorStore(ABC):
         top_k: int = 5,
         document_id_filter: Optional[str] = None,
         document_ids_filter: Optional[List[str]] = None,
+        section_ids_filter: Optional[List[str]] = None,
     ) -> List[RetrievedDocument]:
         """
         Retrieve top-k documents by vector similarity.
@@ -249,6 +250,7 @@ class BaseVectorStore(ABC):
             top_k: Number of results to return
             document_id_filter: Optional filter to specific document
             document_ids_filter: Optional filter to multiple document IDs
+            section_ids_filter: Optional filter to multiple section IDs
         
         Returns:
             List of RetrievedDocument objects with scores

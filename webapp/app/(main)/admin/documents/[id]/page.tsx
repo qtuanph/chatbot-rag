@@ -78,12 +78,21 @@ export default function DocumentDetailPage() {
   // Search — load all matching (server-side search)
   useEffect(() => {
     const normalizedQuery = searchQuery.trim();
-    if (!normalizedQuery || !session?.accessToken || !docId) return;
+    if (!session?.accessToken || !docId) return;
+
+    if (!normalizedQuery) {
+      setExpandedNode(null);
+      fetchPage(0, false);
+      return;
+    }
+
+    let cancelled = false;
 
     const timer = setTimeout(() => {
       treeApi
         .search(docId, normalizedQuery.slice(0, 500), session.accessToken)
         .then((data) => {
+          if (cancelled) return;
           // Convert search results to display format
           const results = ((data.results || []) as Array<{ node_id: string; title: string; preview?: string }>);
           const searchNodes: TreeNode[] = results.map((r) => ({
@@ -96,14 +105,19 @@ export default function DocumentDetailPage() {
             text_length: r.preview?.length || 0,
             page_number: "?",
           }));
+          setExpandedNode(null);
           setNodes(searchNodes);
           setTotalNodes(searchNodes.length);
           setHasMore(false);
         })
         .catch(() => {});
     }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery, session?.accessToken, docId]);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, session?.accessToken, docId, fetchPage]);
 
   if (loading && nodes.length === 0) {
     return (
@@ -277,8 +291,8 @@ function NodeRow({
   const [nodeText, setNodeText] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState(false);
 
-  useEffect(() => {
-    if (isExpanded && nodeText === null && !loadingText) {
+  const handleToggle = () => {
+    if (!isExpanded && nodeText === null && !loadingText) {
       setLoadingText(true);
       treeApi
         .getNode(docId, node.node_id, accessToken)
@@ -286,11 +300,12 @@ function NodeRow({
         .catch(() => setNodeText("(Lỗi tải nội dung)"))
         .finally(() => setLoadingText(false));
     }
-  }, [isExpanded, nodeText, loadingText, docId, node.node_id, accessToken]);
+    onToggle();
+  };
 
   return (
     <>
-      <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onToggle}>
+      <TableRow className="cursor-pointer hover:bg-muted/50" onClick={handleToggle}>
         <TableCell className="text-xs text-muted-foreground">{index}</TableCell>
         <TableCell className="text-xs text-muted-foreground">{node.page_range || node.page_number || "?"}</TableCell>
         <TableCell className="font-medium text-sm truncate max-w-[500px]">{node.title}</TableCell>

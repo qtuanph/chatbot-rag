@@ -206,6 +206,7 @@ class QdrantVectorStore(BaseVectorStore):
         top_k: int = 5,
         document_id_filter: Optional[str] = None,
         document_ids_filter: Optional[List[str]] = None,
+        section_ids_filter: Optional[List[str]] = None,
     ) -> List[RetrievedDocument]:
         """
         Retrieve top-k documents by vector similarity.
@@ -226,25 +227,31 @@ class QdrantVectorStore(BaseVectorStore):
             from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchAny
             
             # Build optional filter
-            query_filter = None
+            query_conditions = []
             if document_ids_filter:
-                query_filter = Filter(
-                    must=[
-                        FieldCondition(
-                            key="document_id",
-                            match=MatchAny(any=document_ids_filter),
-                        )
-                    ]
+                query_conditions.append(
+                    FieldCondition(
+                        key="document_id",
+                        match=MatchAny(any=document_ids_filter),
+                    )
                 )
             elif document_id_filter:
-                query_filter = Filter(
-                    must=[
-                        FieldCondition(
-                            key="document_id",
-                            match=MatchValue(value=document_id_filter),
-                        )
-                    ]
+                query_conditions.append(
+                    FieldCondition(
+                        key="document_id",
+                        match=MatchValue(value=document_id_filter),
+                    )
                 )
+
+            if section_ids_filter:
+                query_conditions.append(
+                    FieldCondition(
+                        key="metadata.section_id",
+                        match=MatchAny(any=section_ids_filter),
+                    )
+                )
+
+            query_filter = Filter(must=query_conditions) if query_conditions else None
             
             # Search
             results = self.client.query_points(

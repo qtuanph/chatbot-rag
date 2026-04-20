@@ -5,14 +5,21 @@ Ingestion Pipeline: Main orchestration for document parsing → hierarchy → em
 import logging
 import math
 import time
-from typing import List, Callable, Optional
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import TYPE_CHECKING, List, Callable, Optional
 from dataclasses import dataclass
 
 from app.adapters.base import IngestedNode, ParsingMetadata
+from app.core.hardware import hardware
 from app.services.ingestion.parser_manager import ParserManager
 from app.services.ingestion.hierarchy_validator import HierarchyValidator, ValidationReport
 from app.core.config import settings
 from app.services.storage.document_store import SectionRepository
+
+if TYPE_CHECKING:
+    from app.adapters.base import BaseEmbedding, BaseVectorStore
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +57,9 @@ class IngestionPipeline:
     def __init__(
         self,
         parser_manager: 'ParserManager',
-        embedding_service: 'BaseEmbedding' = None,
-        vector_store: 'BaseVectorStore' = None,
-        db_session: 'Session' = None,
+        embedding_service: BaseEmbedding | None = None,
+        vector_store: BaseVectorStore | None = None,
+        db_session: Session | None = None,
     ):
         self.parser_manager = parser_manager
         self.embedding_service = embedding_service
@@ -168,37 +175,95 @@ class IngestionPipeline:
             if self.embedding_service and nodes:
                 chunk_size = settings.ingestion_embedding_chunk_size
                 n_chunks = math.ceil(len(nodes) / chunk_size) or 1
+                store_parallelism = settings.ingestion_embed_parallelism or hardware.embed_parallelism
+                store_parallelism = max(1, min(store_parallelism, 4))
+                pending_store_tasks: deque[tuple[int, list[IngestedNode], Future[list[str]]]] = deque()
 
-                for chunk_idx, chunk_start in enumerate(range(0, len(nodes), chunk_size)):
-                    chunk_nodes = nodes[chunk_start : chunk_start + chunk_size]
-                    chunk_texts = [n.text for n in chunk_nodes]
+                def _store_chunk(
+                    chunk_document_id: str,
+                    chunk_nodes: list[IngestedNode],
+                    chunk_vecs: list[list[float]],
+                ) -> list[str]:
+                    if not self.vector_store:
+                        return []
+                    return self.vector_store.store(chunk_document_id, chunk_nodes, chunk_vecs)
 
-                    try:
-                        # embed_batch handles internal parallelism via ThreadPoolExecutor
-                        vecs = self.embedding_service.embed_batch(chunk_texts)
+                with ThreadPoolExecutor(max_workers=store_parallelism) as store_executor:
+                    for chunk_idx, chunk_start in enumerate(range(0, len(nodes), chunk_size)):
+                        chunk_nodes = nodes[chunk_start : chunk_start + chunk_size]
+                        chunk_texts = [n.text for n in chunk_nodes]
 
-                        if self.vector_store:
-                            ids = self.vector_store.store(document_id, chunk_nodes, vecs)
+                        try:
+                            # embed_batch handles internal parallelism via ThreadPoolExecutor
+                            vecs = self.embedding_service.embed_batch(chunk_texts)
+
+                            if self.vector_store:
+                                pending_store_tasks.append((
+                                    chunk_idx,
+                                    chunk_nodes,
+                                    store_executor.submit(
+                                        _store_chunk,
+                                        document_id,
+                                        chunk_nodes,
+                                        vecs,
+                                    ),
+                                ))
+                            else:
+                                pct = 40 + int(50 * (chunk_idx + 1) / n_chunks)  # 40% → 90%
+                                _cb(
+                                    "embed_store",
+                                    pct,
+                                    f"Indexing section {chunk_idx + 1}/{n_chunks}…",
+                                )
+                                logger.info(
+                                    "[%s] Chunk %d/%d embedded (%d nodes) — storage disabled",
+                                    document_id, chunk_idx + 1, n_chunks, len(chunk_nodes),
+                                )
+
+                            while len(pending_store_tasks) >= store_parallelism:
+                                completed_idx, completed_nodes, completed_future = pending_store_tasks.popleft()
+                                ids = completed_future.result()
+                                storage_ids.extend(ids)
+                                pct = 40 + int(50 * (completed_idx + 1) / n_chunks)  # 40% → 90%
+                                _cb(
+                                    "embed_store",
+                                    pct,
+                                    f"Indexing section {completed_idx + 1}/{n_chunks}…",
+                                )
+                                logger.info(
+                                    "[%s] Chunk %d/%d embedded+stored (%d nodes)",
+                                    document_id, completed_idx + 1, n_chunks, len(completed_nodes),
+                                )
+                        except Exception as e:
+                            logger.error(
+                                "[%s] Chunk %d/%d embed failed: %s",
+                                document_id, chunk_idx + 1, n_chunks, e,
+                            )
+                            errors.append(f"Chunk {chunk_idx + 1} embed failed: {e}")
+                            # Continue with remaining chunks — partial index beats total failure
+                            continue
+
+                    while pending_store_tasks:
+                        completed_idx, completed_nodes, completed_future = pending_store_tasks.popleft()
+                        try:
+                            ids = completed_future.result()
                             storage_ids.extend(ids)
-                    except Exception as e:
-                        logger.error(
-                            "[%s] Chunk %d/%d failed: %s",
-                            document_id, chunk_idx + 1, n_chunks, e,
-                        )
-                        errors.append(f"Chunk {chunk_idx + 1} embed/store failed: {e}")
-                        # Continue with remaining chunks — partial index beats total failure
-                        continue
-
-                    pct = 40 + int(50 * (chunk_idx + 1) / n_chunks)  # 40% → 90%
-                    _cb(
-                        "embed_store",
-                        pct,
-                        f"Indexing section {chunk_idx + 1}/{n_chunks}…",
-                    )
-                    logger.info(
-                        "[%s] Chunk %d/%d embedded+stored (%d nodes)",
-                        document_id, chunk_idx + 1, n_chunks, len(chunk_nodes),
-                    )
+                            pct = 40 + int(50 * (completed_idx + 1) / n_chunks)  # 40% → 90%
+                            _cb(
+                                "embed_store",
+                                pct,
+                                f"Indexing section {completed_idx + 1}/{n_chunks}…",
+                            )
+                            logger.info(
+                                "[%s] Chunk %d/%d embedded+stored (%d nodes)",
+                                document_id, completed_idx + 1, n_chunks, len(completed_nodes),
+                            )
+                        except Exception as e:
+                            logger.error(
+                                "[%s] Chunk %d/%d store failed: %s",
+                                document_id, completed_idx + 1, n_chunks, e,
+                            )
+                            errors.append(f"Chunk {completed_idx + 1} store failed: {e}")
             else:
                 if not self.embedding_service:
                     warnings.append("No embedding service configured — skipping vector indexing")

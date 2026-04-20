@@ -22,6 +22,7 @@ type: project
 | **Canonical tree order** (`order_index` + page spans) | ✅ | `docs/02_DATABASE_AND_PROJECT.md` |
 | **Qdrant vectors with section_id** | ✅ | `docs/02_DATABASE_AND_PROJECT.md` |
 | **Shared file-format helper** | ✅ | `app/core/file_formats.py` |
+| **Admin document detail table view** | ✅ | `webapp/app/(main)/admin/documents/[id]/page.tsx` |
 | **Async ingestion + pipeline recovery** | ✅ | `docs/03_CORE_WORKFLOWS.md` |
 | **Rule-based AI Refiner** (0GB VRAM) | ✅ | `docs/03_CORE_WORKFLOWS.md` |
 | **Query embedding cache** (1h TTL) | ✅ | `docs/07_INGESTION_AND_RETRIEVAL_STRATEGY.md` |

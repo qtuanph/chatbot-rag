@@ -2,8 +2,8 @@
 Query Embedding Cache: Redis-backed cache for query vectors.
 
 Insight source: DoorDash "Applied Client-Side Caching to Improve Feature Store Performance by 70%"
-Applied here: Cache Gemini query embedding vectors so repeated questions
-(common during demos and training sessions) don't incur API charges.
+Applied here: Cache local BAAI/bge-m3 query embedding vectors so repeated
+questions (common during demos and training sessions) don't incur model cost.
 
 Key:   "qembed:" + MD5(query_text)  — MD5 is collision-resistant enough for cache keys
 Value: JSON-serialized List[float] (embedding vector)

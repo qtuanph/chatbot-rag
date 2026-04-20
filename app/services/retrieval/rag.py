@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 from dataclasses import dataclass
-from uuid import UUID
 
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
@@ -16,23 +15,6 @@ from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.services.retrieval.cache import QueryEmbeddingCache
 
 logger = logging.getLogger(__name__)
-
-
-def _validate_uuid(uuid_str: str) -> bool:
-    """Validate UUID string format."""
-    try:
-        UUID(uuid_str)
-        return True
-    except (ValueError, AttributeError, TypeError):
-        return False
-
-
-def _validate_uuid_list(uuid_list: list[str] | set[str]) -> list[str]:
-    """
-    Filter and validate UUID strings from a list.
-    Returns only valid UUIDs.
-    """
-    return [uid for uid in uuid_list if _validate_uuid(uid)]
 
 
 def _format_page_range(page_start: int | None, page_end: int | None) -> str | None:
@@ -103,21 +85,11 @@ def _get_query_cache() -> QueryEmbeddingCache:
 
 
 def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContext:
-    """
-    2-stage retrieval: Sections (coarse) → Chunks (fine) within matched sections.
+    """Retrieve relevant document context for a query using 2-stage retrieval.
 
-    Stage 1: Embed query → search Qdrant → group by section_id → pick top sections
-    Stage 2: Re-search within top sections for fine-grained chunks
-    Falls back to flat retrieval if no section data available.
-    """
-    """
-    Retrieve relevant document context for a query.
-
-    Performance optimizations:
-    - Single DB query for document titles (avoid N+1)
-    - Query embedding cache for repeated questions
-    - Efficient score filtering
-    - Early exit if no documents available
+    Stage 1: embed the query, search Qdrant, group by section_id, and pick top sections.
+    Stage 2: search chunks within those sections for fine-grained matches.
+    Falls back to flat retrieval if no section data is available.
     """
     # Early exit if query is too short or empty
     if not query or len(query.strip()) < 3:
@@ -129,19 +101,16 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
         logger.debug("No active documents found")
         return RagContext(nodes=[])
 
-    # Single query to fetch all document titles (avoid N+1 problem)
-    # Validate all UUIDs before using in SQL query to prevent SQL injection
-    valid_doc_ids = _validate_uuid_list(list(latest_doc_ids))
-    if not valid_doc_ids:
-        logger.debug("No valid document IDs after validation")
-        return RagContext(nodes=[])
+    # Single query to fetch all document titles (avoid N+1 problem).
+    # IDs come from PostgreSQL, so extra format validation is not required here.
+    doc_ids = list(latest_doc_ids)
 
     document_rows = (
         session.query(Document.id, Document.title)
         .filter(
             Document.deleted_at.is_(None),
             Document.status == "ready",
-            Document.id.in_(valid_doc_ids),
+            Document.id.in_(doc_ids),
         )
         .all()
     )
@@ -197,7 +166,7 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
         section_rows = (
             session.query(DocumentSection)
             .filter(
-                DocumentSection.document_id.in_(valid_doc_ids),
+                DocumentSection.document_id.in_(doc_ids),
                 DocumentSection.section_id.in_(top_sections_ids),
             )
             .all()
@@ -219,10 +188,16 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
     # ── Stage 2: Fine-grained chunk retrieval within sections ────────────
     # If we have sections, do a targeted search within them
     if top_sections_ids:
+        top_sections_set = set(top_sections_ids)
+        chunk_limit = max(
+            limit,
+            settings.retrieval_chunk_top_k * max(1, len(top_sections_ids)),
+        )
         chunk_results = vs.retrieve(
             query_vector=query_vector,
-            top_k=settings.retrieval_chunk_top_k * section_top_k,
+            top_k=chunk_limit,
             document_ids_filter=list(title_by_id.keys()),
+            section_ids_filter=top_sections_ids,
         )
     else:
         # No sections found — fall back to flat retrieval
@@ -243,7 +218,7 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
         out_section = []
         for item in filtered:
             sec_id = item.metadata.get("custom", {}).get("section_id")
-            if sec_id in top_sections_ids:
+            if sec_id in top_sections_set:
                 in_section.append(item)
             else:
                 out_section.append(item)

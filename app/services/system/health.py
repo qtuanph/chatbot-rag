@@ -10,6 +10,7 @@ import redis
 from botocore.client import Config
 from botocore.exceptions import ClientError
 
+from app.core.celery_app import celery_app
 from app.core.config import settings
 
 
@@ -132,12 +133,36 @@ def check_ai_provider() -> dict[str, Any]:
     return {"status": "down", "provider": provider, "configured": False, "error": "Unsupported AI provider"}
 
 
+def check_workers() -> dict[str, Any]:
+    start = perf_counter()
+    try:
+        inspector = celery_app.control.inspect(timeout=2.0)
+        replies = inspector.ping() if inspector is not None else None
+        worker_names = sorted(replies.keys()) if isinstance(replies, dict) else []
+        status = "up" if worker_names else "down"
+        return {
+            "status": status,
+            "latency_ms": _latency_ms(start),
+            "workers": worker_names,
+            "worker_count": len(worker_names),
+        }
+    except Exception:
+        return {
+            "status": "down",
+            "latency_ms": _latency_ms(start),
+            "workers": [],
+            "worker_count": 0,
+            "error": "celery_workers_unreachable",
+        }
+
+
 def build_health_payload() -> dict[str, Any]:
     checks = {
         "database": check_database(),
         "redis": check_redis(),
         "storage": check_storage(),
         "ai_provider": check_ai_provider(),
+        "workers": check_workers(),
     }
     overall = "healthy"
     if any(check["status"] == "down" for check in checks.values()):

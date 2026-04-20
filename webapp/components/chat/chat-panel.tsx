@@ -40,15 +40,13 @@ export function ChatPanel() {
         role: "user",
         content: query,
       };
-      setMessages((prev) => [...prev, userMsg]);
-      setStreaming(true);
-
-      // Create assistant placeholder
       const assistantId = crypto.randomUUID();
       setMessages((prev) => [
         ...prev,
+        userMsg,
         { id: assistantId, role: "assistant", content: "" },
       ]);
+      setStreaming(true);
 
       try {
         const res = await fetch(`${API_BASE}/chat/stream`, {
