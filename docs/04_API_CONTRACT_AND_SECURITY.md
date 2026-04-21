@@ -218,9 +218,28 @@ Auth request validation:
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `POST` | `/api/v1/chat` | ✅ Bearer | `{query, session_id?}` → `{answer, citations, session_id}` (non-streaming) |
-| `POST` | `/api/v1/chat/stream` | ✅ Bearer | `{query, session_id?}` → SSE stream với chunks real-time |
+| `POST` | `/api/v1/chat` | ✅ Bearer | `{query, session_id?}` → `{answer, citations, session_id}` (non-streaming, `strip_reasoning()` applied) |
+| `POST` | `/api/v1/chat/stream` | ✅ Bearer | `{query, session_id?}` → SSE stream với chunks real-time, `thinkingConfig: {thinkingBudget: 0}` |
 | `GET` | `/api/v1/chat/sessions` | ✅ Bearer | Danh sách chat sessions của user hiện tại |
+
+Chat features:
+- **Multi-turn**: Last 20 messages sent as Gemini `contents` array (role: assistant→model mapping)
+- **Memory injection**: Active user memories loaded from Redis cache → injected into `systemInstruction`
+- **Memory extraction**: Async post-response — heuristic triggers + Gemini extraction → `user_memories` table
+- **Thinking control**: `thinkingConfig: {thinkingBudget: 0}` disables Gemma 4 chain-of-thought; `thought:true` parts filtered; `strip_reasoning()` applied to saved text
+
+### User Memories
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET` | `/api/v1/memories` | ✅ Bearer | Danh sách tất cả memories của user hiện tại |
+| `POST` | `/api/v1/memories` | ✅ Bearer | `{memory_type, content}` → tạo memory mới (201) |
+| `PATCH` | `/api/v1/memories/{id}` | ✅ Bearer | `{content?, memory_type?, is_active?}` → cập nhật memory |
+| `DELETE` | `/api/v1/memories/{id}` | ✅ Bearer | Xóa memory (204) |
+
+Memory types: `preference` | `correction` | `instruction` | `fact`
+Content limit: max 1000 characters per memory.
+Redis cache (5min TTL) invalidated on create/update/delete.
 
 ### Health / Monitoring (JSON)
 

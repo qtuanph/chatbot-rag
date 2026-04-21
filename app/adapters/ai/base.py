@@ -29,7 +29,7 @@ class AIProvider(ABC):
     def _build_context_blocks(
         self,
         context_nodes: list[dict[str, Any]],
-        max_context_chars: int = 12000,
+        max_context_chars: int = 500000,
     ) -> list[str]:
         """Pack context blocks without a fixed per-node truncation.
 

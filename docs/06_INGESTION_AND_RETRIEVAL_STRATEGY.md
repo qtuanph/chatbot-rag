@@ -92,22 +92,35 @@ BAAI/bge-m3 is pre-downloaded during Docker build (`RUN python -c "from sentence
 
 ## Retrieval Pipeline (Authoritative)
 
-### Steps — 2-Stage Retrieval
+### Steps — 2-Stage Retrieval (Optimised)
 
 1. **Rate limit check**: Atomic Lua script in Redis — 30 req/min per user.
 2. **Query embedding cache**: MD5-keyed lookup in Redis. Cache HIT → skip local model inference (TTL=1h).
 3. **Query embedding**: If cache MISS, call local `BAAI/bge-m3`, cache the result.
-4. **Document scope filter**: SQL query to get latest active document IDs (no `deleted_at`, `status=ready`, max version per filename).
+4. **Document scope filter**: TTL-cached latest active document IDs (60 s TTL). PostgreSQL subquery runs at most once per minute; cache is invalidated explicitly on document upload or hard-delete via `invalidate_doc_ids_cache()`.
    - IDs are sourced from PostgreSQL query results (internal data path), not direct user input.
-5. **Stage 1 — Section search**: Qdrant search (top_k=50) → group results by `section_id` → pick top 3 sections (score ≥ 0.30). Load section details from PostgreSQL `document_sections` table.
-6. **Stage 2 — Chunk search**: Qdrant search filtered to the top `section_id` values → score filter (≥ 0.35).
-7. **Return** top sections + chunks with full text payload and citation metadata.
+5. **Single Qdrant query** (top_k=50–80, filtered to active docs): fetches enough results to cover both section discovery and chunk ranking in one round-trip.
+6. **Stage 1 — Section identification** (in-memory): Group results by `section_id` → pick top 3 sections (score ≥ 0.30). Load section details from PostgreSQL `document_sections` table.
+7. **Stage 2 — Chunk re-ranking** (in-memory): Prioritise chunks within top sections first, then fill with remaining results. Score filter (≥ 0.35).
+8. **Return** top sections + chunks with full text payload and citation metadata.
 
-### Why 2-Stage Retrieval
+### Why Single-Query 2-Stage Retrieval
 
-- **Coarse → Fine**: Section search quickly narrows scope, then chunk search is restricted to those `section_id` values for precise answers.
+- **Latency**: One Qdrant round-trip instead of two — eliminates ~20–50 ms of network + serialisation overhead per chat request.
+- **Coarse → Fine still works**: Section grouping and prioritisation logic is unchanged — only the data source went from 2 Qdrant queries to 1 query + in-memory re-ranking.
 - **Context preservation**: Each chunk carries its section context (title, breadcrumb), giving the LLM better understanding of where information comes from.
-- **Scalability**: For large documents (300+ pages), filtering by section first dramatically reduces the search space for Stage 2.
+- **Scalability**: For large documents (300+ pages), section grouping dramatically narrows relevant context.
+
+### Document ID Cache
+
+```
+First call:  PostgreSQL subquery → cache (TTL=60s)
+Subsequent:  cache HIT → skip PostgreSQL entirely (0ms, 0 DB cost)
+Invalidation: upload_pipeline sets status=ready → invalidate_doc_ids_cache()
+              cleanup_pipeline hard-deletes → invalidate_doc_ids_cache()
+```
+
+Cache is particularly effective for chat sessions where multiple messages reference the same document set.
 
 ### Query Cache
 
@@ -182,7 +195,14 @@ Tree/list display order is derived from PostgreSQL `document_sections.order_inde
 | Parallel embedding | `app/adapters/embeddings/sentence_transformer.py:embed_batch()` |
 | Vector store adapter | `app/adapters/vector_stores/qdrant.py` |
 | 2-stage retrieval + score filter | `app/services/retrieval/rag.py:retrieve_context()` |
+| Document ID TTL cache + invalidation | `app/services/retrieval/rag.py:invalidate_doc_ids_cache()` |
 | Query embedding cache | `app/services/retrieval/cache.py` |
 | Hardware auto-detection | `app/core/hardware.py` |
 | Ingestion tasks | `app/workers/upload_pipeline.py` |
 | Cleanup tasks + beat | `app/workers/cleanup_pipeline.py` |
+| User memory service | `app/services/chat/memory.py:UserMemoryService` |
+| User memory model | `app/models/memory.py:UserMemory` |
+| Memory CRUD routes | `app/api/routes/memories.py` |
+| AI provider (Google) | `app/adapters/ai/google.py:GoogleAIProvider` |
+| Thinking control | `app/adapters/ai/google.py:strip_reasoning()` + `thinkingConfig:{thinkingLevel:"MINIMAL"}` + `_ThoughtFilter` |
+| Multi-turn context | `app/adapters/ai/google.py:_build_contents()` |

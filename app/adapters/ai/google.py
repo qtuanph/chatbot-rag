@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import json
+import re
 from typing import Any, AsyncGenerator
 
 import httpx
@@ -13,16 +14,155 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+_SYSTEM_INSTRUCTION = (
+    "Bạn là trợ lý AI chuyên nghiệp cho hệ thống hỏi đáp tài liệu.\n"
+    "QUY TẮC:\n"
+    "- Trả lời bằng ngôn ngữ của câu hỏi\n"
+    "- Dùng Markdown để định dạng: ## headings, **bold**, - lists, ```code```\n"
+    "- Dựa trên tài liệu tham khảo để trả lời, KHÔNG bịa đặt\n"
+    "- QUAN TRỌNG: Tổng hợp, phân tích và diễn giải lại bằng lời văn của bạn. "
+    "KHÔNG copy nguyên văn từ tài liệu. Hãy viết lại theo cách hiểu của bạn "
+    "nhưng vẫn giữ đúng ý nghĩa và chính xác.\n"
+    "- Nếu tài liệu không đủ thông tin, hãy nói rõ\n"
+    "- Trả lời lịch sự, chuyên nghiệp, có cấu trúc khoa học\n"
+    "- Giữ dấu cách giữa các từ tiếng Việt\n"
+    "- KHÔNG dùng tiêu đề 'Thông báo lỗi', 'Thông báo', hay 'Error'\n"
+    "- Nếu không có tài liệu, hướng dẫn người dùng yêu cầu Admin tải lên"
+)
+
+# --- Gemma 4 Thinking Mode Suppression ---
+#
+# Gemma 4 uses <|channel>thought...<channel|> tags for chain-of-thought.
+# 3 layers to suppress:
+#   1. API-level: thought:true part filter in _extract_text()
+#   2. Stream-level: _ThoughtFilter state machine strips <|channel>thought...<channel|>
+#   3. Post-level: strip_reasoning() + strip_thought_blocks() on saved text
+
+# Regex to strip <|channel>thought...<channel|> blocks (including newlines)
+_THOUGHT_BLOCK = re.compile(
+    r"<\|channel\|>thought.*?<channel\|>",
+    re.DOTALL,
+)
+
+# Chain-of-thought reasoning markers (fallback for non-tagged CoT)
+_REASONING_END_MARKER = re.compile(
+    r"Final\s*Polish\s*[:：]\s*\n",
+    re.IGNORECASE,
+)
+
+_REASONING_LINE_MARKER = re.compile(
+    r"^\s*(?:"
+    r"Question\s*[:：]|"
+    r"Source\s*Material\s*[:：]|"
+    r"Document\s*\[\d+\]\s*[:：]|"
+    r"Definition\s*[:：]|"
+    r"Context\s*[:：]|"
+    r"Objectives?\s*[:：]|"
+    r"Heading\s*[:：]|"
+    r"Structure\s*[:：]|"
+    r"Drafting|"
+    r"Self[-\s]Correction|"
+    r"Final\s*Polish\s*[:：]|"
+    r"Analysis\s*[:：]|"
+    r"Planning\s*[:：]|"
+    r"Step\s+\d+"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def strip_thought_blocks(text: str) -> str:
+    """Remove <|channel>thought...<channel|> blocks from text."""
+    if not text:
+        return text
+    return _THOUGHT_BLOCK.sub("", text).strip()
+
+
+def strip_reasoning(text: str) -> str:
+    """Remove chain-of-thought reasoning from model output.
+
+    Gemma 4 thinking mode may output its reasoning process as visible text.
+    This function strips that reasoning and returns only the final answer.
+    """
+    if not text or len(text) < 100:
+        return text
+
+    # First: strip <|channel>thought...<channel|> blocks
+    text = strip_thought_blocks(text)
+
+    # Then: strip reasoning markers
+    match = _REASONING_END_MARKER.search(text)
+    if match:
+        result = text[match.end():].strip()
+        if result and len(result) >= 50:
+            return result
+
+    lines = text.split("\n")
+    cleaned = [line for line in lines if not _REASONING_LINE_MARKER.match(line)]
+    result = "\n".join(cleaned).strip()
+
+    if len(result) < len(text) * 0.3:
+        return text
+
+    return result
+
+
+class _ThoughtFilter:
+    """Stateful filter to suppress <|channel>thought...<channel|> blocks during streaming."""
+
+    _START = "<|channel|>thought"
+    _END = "<channel|>"
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._in_thought = True  # Assume thinking starts first
+
+    def feed(self, chunk: str) -> str | None:
+        """Feed a chunk. Returns cleaned text or None if all thinking."""
+        self._buffer += chunk
+        result_parts: list[str] = []
+
+        while True:
+            if self._in_thought:
+                end_idx = self._buffer.find(self._END)
+                if end_idx >= 0:
+                    self._buffer = self._buffer[end_idx + len(self._END):]
+                    self._in_thought = False
+                else:
+                    break  # Still in thought, keep buffering
+            else:
+                start_idx = self._buffer.find(self._START)
+                if start_idx >= 0:
+                    result_parts.append(self._buffer[:start_idx])
+                    self._buffer = self._buffer[start_idx:]
+                    self._in_thought = True
+                else:
+                    # No markers — yield everything
+                    result_parts.append(self._buffer)
+                    self._buffer = ""
+                    break
+
+        joined = "".join(result_parts)
+        return joined if joined else None
+
+    def flush(self) -> str:
+        """Return remaining non-thought buffer content."""
+        remaining = self._buffer
+        self._buffer = ""
+        return "" if self._in_thought else remaining
+
+# Maximum conversation turns to include in context (for performance)
+_MAX_HISTORY_MESSAGES = 20
+
 
 class GoogleAIProvider(AIProvider):
     """
     Google Gemini AI provider with retry logic and robust streaming.
 
     Features:
+    - Multi-turn conversation support via Gemini contents array
     - Automatic retry on rate limits (429) and server errors (5xx)
-    - Exponential backoff for retries
     - Proper SSE stream parsing with error handling
-    - Graceful handling of client disconnects
     - Connection pooling for better performance
     """
 
@@ -33,7 +173,6 @@ class GoogleAIProvider(AIProvider):
         if not self.api_key:
             raise ValueError("GOOGLE_API_KEY must be configured when AI_PROVIDER=google")
 
-        # Configure connection pooling for better performance
         self.limits = httpx.Limits(
             max_keepalive_connections=10,
             max_connections=20,
@@ -42,95 +181,25 @@ class GoogleAIProvider(AIProvider):
 
     async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> dict[str, Any]:
         """
-        Non-streaming chat with retry logic.
-
-        Retries on:
-        - Rate limits (429): exponential backoff (1s, 2s)
-        - Server errors (5xx): 1 retry with 1s delay
-        - Timeouts: 1 retry
+        Non-streaming chat — collects all chunks from chat_stream().
 
         Returns:
             dict with 'answer' and 'citations' keys
         """
-        prompt = self._build_prompt(messages, kwargs)
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "systemInstruction": {
-                "parts": [{"text": (
-                    "Bạn là trợ lý AI. TUÂN THỦ TUYỆT ĐỐI: "
-                    "Phản hồi BẮT ĐẦU ngay bằng <thinking>. "
-                    "Phần thinking chỉ 2-3 câu. "
-                    "Sau đó là <final>với câu trả lời Markdown. "
-                    "Sau </final> KHÔNG VIẾT GÌ THÊM. "
-                    "KHÔNG phân tích ràng buộc, KHÔNG tự kiểm tra, KHÔNG viết nháp."
-                )}]
-            },
-            "generationConfig": {
-                "temperature": 0.2,
-                "maxOutputTokens": 2048,
-            },
-        }
+        full_answer = ""
+        async for chunk in self.chat_stream(messages, **kwargs):
+            full_answer += chunk
 
-        url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
-
-        # Retry logic: up to 2 attempts with exponential backoff
-        for attempt in range(2):
-            try:
-                async with httpx.AsyncClient(timeout=60.0, limits=self.limits) as client:
-                    response = await client.post(url, json=payload)
-                    response.raise_for_status()
-                    data = response.json()
-                    answer = self._extract_text(data) or "Không thể tạo câu trả lời lúc này. Vui lòng thử lại."
-                    citations = kwargs.get("citations") or []
-                    return {"answer": answer, "citations": citations}
-
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 429 and attempt == 0:
-                    # Rate limited - wait and retry
-                    logger.warning("Rate limited, retrying after backoff...")
-                    await asyncio.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s
-                    continue
-                elif e.response.status_code >= 500:
-                    # Server error - retry once
-                    if attempt == 0:
-                        logger.warning("Server error %s, retrying...", e.response.status_code)
-                        await asyncio.sleep(1)
-                        continue
-                    raise RuntimeError(f"Google AI server error: {e.response.status_code}") from None
-                else:
-                    # Client error - don't retry
-                    error_data = self._safe_json_parse(e.response)
-                    error_msg = error_data.get("error", {}).get("message", str(e))
-                    raise RuntimeError(f"Google AI request failed: {error_msg}") from None
-
-            except httpx.TimeoutException:
-                if attempt == 0:
-                    logger.warning("Timeout on first attempt, retrying...")
-                    continue
-                raise RuntimeError("Google AI request timed out after 60s") from None
-
-            except Exception as exc:
-                logger.error("Google AI unexpected error: %s", exc, exc_info=True)
-                raise RuntimeError(f"Google AI request failed: {exc}") from None
-
-        # Should not reach here, but just in case
-        raise RuntimeError("Google AI request failed after retries")
+        citations = kwargs.get("citations") or []
+        return {"answer": full_answer or "Không thể tạo câu trả lời lúc này. Vui lòng thử lại.", "citations": citations}
 
     async def refine_text(self, text: str, current_header: str | None = None) -> tuple[str, str | None]:
         """
-        Refine text using Gemma-4 to fix OCR errors and detect headers.
-
-        Args:
-            text: Raw text to refine (often with OCR errors)
-            current_header: Current section header (optional)
-
-        Returns:
-            Tuple of (cleaned_text, detected_header)
+        Refine text using Gemini to fix OCR errors and detect headers.
         """
         if not text or not text.strip():
             return text, current_header
 
-        # Build refinement prompt
         prompt = (
             "You are a text refinement tool for documents. Your tasks:\n"
             "1. Fix common OCR errors (e.g., 'M Ụ C T I Ê U' → 'MỤC TIÊU')\n"
@@ -143,8 +212,11 @@ class GoogleAIProvider(AIProvider):
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
-                "temperature": 0.1,  # Low temp for consistency
+                "temperature": 0.1,
                 "maxOutputTokens": 512,
+                "thinkingConfig": {
+                    "thinkingLevel": "MINIMAL"
+                }
             },
         }
 
@@ -156,15 +228,12 @@ class GoogleAIProvider(AIProvider):
                 response.raise_for_status()
                 data = response.json()
 
-                # Extract JSON response
                 response_text = self._extract_text(data)
                 if not response_text:
                     return text, current_header
 
-                # Parse JSON
                 import json as json_lib
                 try:
-                    # Try to extract JSON from response (may have extra text)
                     json_start = response_text.find('{')
                     json_end = response_text.rfind('}') + 1
                     if json_start >= 0 and json_end > json_start:
@@ -184,62 +253,58 @@ class GoogleAIProvider(AIProvider):
     async def chat_stream(self, messages: list[dict[str, Any]], **kwargs: Any) -> AsyncGenerator[str, None]:
         """
         Stream chat responses from Google Gemini API.
-        Yields chunks of text as they are generated.
-
-        Handles:
-        - Connection errors with retry
-        - Timeout errors with retry
-        - Malformed SSE data (skips invalid chunks)
-        - Client disconnects (GeneratorExit)
-        - Rate limits (429) with exponential backoff
-
-        Yields:
-            str: Text chunks from AI response
+        Uses multi-turn contents array for conversation history support.
         """
-        prompt = self._build_prompt(messages, kwargs)
+        contents = self._build_contents(messages, kwargs)
+
+        # Build system instruction with optional user memories
+        system_text = _SYSTEM_INSTRUCTION
+        user_memories = kwargs.get("user_memories", "")
+        if user_memories:
+            system_text = f"{_SYSTEM_INSTRUCTION}\n\n{user_memories}"
+
         payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
+            "contents": contents,
             "systemInstruction": {
-                "parts": [{"text": (
-                    "Bạn là trợ lý AI. TUÂN THỦ TUYỆT ĐỐI: "
-                    "Phản hồi BẮT ĐẦU ngay bằng <thinking>. "
-                    "Phần thinking chỉ 2-3 câu. "
-                    "Sau đó là <final>với câu trả lời Markdown. "
-                    "Sau </final> KHÔNG VIẾT GÌ THÊM. "
-                    "KHÔNG phân tích ràng buộc, KHÔNG tự kiểm tra, KHÔNG viết nháp."
-                )}]
+                "parts": [{"text": system_text}]
             },
             "generationConfig": {
-                "temperature": 0.2,
-                "maxOutputTokens": 2048,
+                "temperature": 0.3,
+                "maxOutputTokens": 1048576,
+                "thinkingConfig": {
+                    "thinkingLevel": "MINIMAL"
+                }
             },
         }
 
         url = f"{self.base_url}/models/{self.model}:streamGenerateContent?alt=sse&key={self.api_key}"
 
-        # Retry logic for streaming
         for attempt in range(2):
             client = None
             try:
-                client = httpx.AsyncClient(timeout=60.0, limits=self.limits)
+                client = httpx.AsyncClient(timeout=300.0, limits=self.limits)
                 response = await client.post(url, json=payload)
                 response.raise_for_status()
 
                 chunk_count = 0
+                thought_filter = _ThoughtFilter()
+
                 async for line in response.aiter_lines():
                     if not line.strip():
                         continue
 
                     try:
-                        # SSE format: data: {...}
                         if line.startswith("data: "):
-                            json_str = line[6:]  # Remove "data: " prefix
+                            json_str = line[6:]
                             data = json.loads(json_str)
                             text = self._extract_text(data)
                             if text:
-                                chunk_count += 1
-                                logger.debug("Yielding chunk #%d: %d chars", chunk_count, len(text))
-                                yield text
+                                # Filter thought blocks from stream
+                                filtered = thought_filter.feed(text)
+                                if filtered:
+                                    chunk_count += 1
+                                    logger.debug("Yielding chunk #%d: %d chars", chunk_count, len(filtered))
+                                    yield filtered
                     except json.JSONDecodeError as e:
                         logger.warning("Failed to parse SSE line: %s (line: %s)", e, line[:200])
                         continue
@@ -247,7 +312,12 @@ class GoogleAIProvider(AIProvider):
                         logger.warning("Error processing SSE chunk: %s", e)
                         continue
 
-                # If we got here successfully, break out of retry loop
+                # Flush remaining non-thought content
+                remaining = thought_filter.flush()
+                if remaining:
+                    chunk_count += 1
+                    yield remaining
+
                 return
 
             except httpx.HTTPStatusError as e:
@@ -266,10 +336,9 @@ class GoogleAIProvider(AIProvider):
                 if attempt == 0:
                     logger.warning("Streaming timeout, retrying...")
                     continue
-                raise RuntimeError("Google AI streaming timed out after 60s") from None
+                raise RuntimeError("Google AI streaming timed out after 300s") from None
 
             except GeneratorExit:
-                # Client disconnected
                 logger.info("Client disconnected during streaming")
                 raise
 
@@ -280,80 +349,82 @@ class GoogleAIProvider(AIProvider):
                 if client:
                     await client.aclose()
 
-        # Should not reach here
         raise RuntimeError("Google AI streaming failed after retries")
 
-    def _build_prompt(self, messages: list[dict[str, Any]], kwargs: dict[str, Any]) -> str:
+    def _build_contents(
+        self, messages: list[dict[str, Any]], kwargs: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Build Gemini-format multi-turn contents array.
+
+        Converts conversation history into Gemini's expected format:
+        [{"role": "user", "parts": [{"text": "..."}]},
+         {"role": "model", "parts": [{"text": "..."}]},
+         ...]
+
+        The RAG context is embedded into the current (last) user message.
+        """
+        context_nodes = kwargs.get("context") or []
+        context_blocks = self._build_context_blocks(context_nodes)
+        context_text = "\n\n".join(context_blocks) if context_blocks else ""
+
+        contents: list[dict[str, Any]] = []
+
+        # Previous conversation history (all messages except the last one)
+        history = messages[:-1] if messages else []
+        # Limit to last N messages for performance
+        if len(history) > _MAX_HISTORY_MESSAGES:
+            history = history[-_MAX_HISTORY_MESSAGES:]
+
+        for msg in history:
+            role = "model" if msg.get("role") == "assistant" else "user"
+            content = str(msg.get("content", "")).strip()
+            # Strip thought blocks from previous assistant responses
+            # to prevent model from continuing thinking mode
+            if role == "model":
+                content = strip_thought_blocks(content)
+            if content:
+                contents.append({"role": role, "parts": [{"text": content}]})
+
+        # Build current user message with RAG context
         user_query = ""
-        for message in reversed(messages):
-            if message.get("role") == "user":
-                user_query = str(message.get("content", "")).strip()
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                user_query = str(msg.get("content", "")).strip()
                 break
 
         if not user_query:
-            return "Vui lòng đặt câu hỏi."
+            return [{"role": "user", "parts": [{"text": "Vui lòng đặt câu hỏi."}]}]
 
-        context_nodes = kwargs.get("context") or []
-        context_blocks = self._build_context_blocks(context_nodes)
-
-        context_text = "\n\n".join(context_blocks) if context_blocks else "NO_DOCUMENTS"
-
-        if context_text == "NO_DOCUMENTS":
-            context_instruction = (
-                "Không có tài liệu nào được cung cấp. "
-                "Hãy nói rõ với người dùng rằng chưa có tài liệu và khuyên họ yêu cầu Admin tải tài liệu lên."
+        if context_text:
+            current_text = (
+                f"Dựa vào tài liệu sau để trả lời câu hỏi. "
+                f"Chỉ sử dụng thông tin từ tài liệu, không bịa đặt.\n\n"
+                f"{context_text}\n\n"
+                f"---\nCâu hỏi: {user_query}"
             )
         else:
-            context_instruction = (
-                "Dưới đây là tài liệu tham khảo. Chỉ trả lời dựa trên tài liệu. "
-                "Tổng hợp từ nhiều nguồn nếu cần. Không bịa đặt."
-            )
+            current_text = user_query
 
-        # Direct, authoritative format — no XML-like wrapper tags that the model
-        # might interpret as content to reason about. The model MUST start its
-        # output with <thinking> immediately.
-        return (
-            "SYSTEM: Bạn là trợ lý AI thông minh. "
-            "Trả lời câu hỏi dựa trên tài liệu cung cấp.\n\n"
+        contents.append({"role": "user", "parts": [{"text": current_text}]})
 
-            "QUY TẮC ĐỊNH DẠNG PHẢN HỒI (TUÂN THỦ TUYỆT ĐỐI):\n"
-            "1. Phản hồi PHẢI bắt đầu ngay bằng <thinking> (không viết gì trước đó)\n"
-            "2. Phần <thinking> chỉ chứa 2-3 câu phân tích ngắn\n"
-            "3. Sau </thinking> PHẢI là <final>\n"
-            "4. Phần <final> chứa câu trả lời Markdown\n"
-            "5. Sau </final> KHÔNG VIẾT GÌ THÊM\n"
-            "6. KHÔNG phân tích ràng buộc, KHÔNG tự kiểm tra, KHÔNG viết nháp\n"
-            "7. Viết bằng ngôn ngữ của câu hỏi\n"
-            "8. Trong <final> dùng Markdown: ## headings, **bold**, - lists\n\n"
-
-            f"VĂN BẢN MẪU:\n"
-            f"<thinking>Phân tích ý chính.</thinking>\n"
-            f"<final>Câu trả lời.</final>\n\n"
-
-            f"{context_instruction}\n\n"
-
-            f"Câu hỏi: {user_query}\n\n"
-
-            f"Tài liệu:\n{context_text}"
-        )
+        return contents
 
     @staticmethod
     def _extract_text(data: dict[str, Any]) -> str:
-        """
-        Extract text from Google AI response.
-        Returns empty string when no text is found (for streaming compatibility).
-        """
+        """Extract text from Google AI response, skipping thinking parts."""
         try:
             candidates = data.get("candidates") or []
             for candidate in candidates:
                 content = candidate.get("content") or {}
                 parts = content.get("parts") or []
                 for part in parts:
+                    # Skip thinking/reasoning parts (Gemma 4 thinking mode)
+                    if part.get("thought"):
+                        continue
                     text = part.get("text")
                     if text and text.strip():
                         return text.strip()
             return ""
-
         except Exception:
             return ""
 

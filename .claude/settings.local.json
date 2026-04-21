@@ -117,7 +117,19 @@
       "mcp__exa__web_search_exa",
       "mcp__exa__get_code_context_exa",
       "Bash(chmod +x:*)",
-      "mcp__next-devtools__browser_eval"
+      "mcp__next-devtools__browser_eval",
+      "mcp__playwright__browser_press_key",
+      "Bash(npx --yes @anthropic-ai/playwright-mcp@latest --help)",
+      "Bash(npx -y @anthropic-ai/playwright-mcp@latest)",
+      "mcp__playwright__browser_file_upload",
+      "Bash(npx shadcn@latest add tooltip --overwrite)",
+      "Bash(npx shadcn@latest add tooltip --overwrite --force)",
+      "Bash(npx shadcn@latest add tooltip -y -o)",
+      "Bash(npm outdated:*)",
+      "mcp__web-reader__webReader",
+      "mcp__exa__crawling_exa",
+      "mcp__playwright__browser_close",
+      "mcp__web-search-prime__web_search_prime"
     ]
   }
 }

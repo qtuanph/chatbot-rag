@@ -36,7 +36,7 @@ def hard_delete_document(document_id: str) -> dict[str, bool]:
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key or None,
         collection_name=settings.qdrant_collection,
-        vector_size=1,       # placeholder — collection already exists, only used on creation
+        vector_size=settings.embedding_vector_size,
         timeout=settings.qdrant_timeout,
     )
 
@@ -117,6 +117,10 @@ def hard_delete_document(document_id: str) -> dict[str, bool]:
 
     registry.purge(document_id)   # removes all remaining Redis keys
     registry_deleted = True
+
+    # Invalidate cached doc IDs so next chat request no longer sees deleted doc
+    from app.services.retrieval.rag import invalidate_doc_ids_cache
+    invalidate_doc_ids_cache()
 
     return {
         "db_deleted": db_deleted,

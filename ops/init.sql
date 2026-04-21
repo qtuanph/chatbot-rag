@@ -254,6 +254,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_source_schema_cache TO app_rw
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_source_query_audit TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE security_audit TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_sections TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE user_memories TO app_rw;
 
 -- ============= SEED DATA =============
 -- Insert default roles (if not already present)
@@ -275,3 +276,16 @@ INSERT INTO users (role_id, username, password_hash, is_active)
 SELECT r.id, 'member', '$2b$12$Zu/0SxKObaExq.O16nsgXOxP6VVhPMTaYG0Gy1vQecXfShKhtAed6', true
 FROM roles r WHERE r.name = 'member'
 ON CONFLICT (username) DO NOTHING;
+
+-- User memories: persistent facts/preferences learned from conversations
+CREATE TABLE IF NOT EXISTS user_memories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    memory_type VARCHAR(20) NOT NULL DEFAULT 'instruction',
+    content TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS ix_user_memories_user_active ON user_memories(user_id, is_active);

@@ -249,6 +249,11 @@ def parse_document_task(
             document.parse_error = None
             document.updated_at = datetime.now(timezone.utc)
             session.commit()
+
+            # Invalidate cached doc IDs so next chat request picks up new document
+            from app.services.retrieval.rag import invalidate_doc_ids_cache
+            invalidate_doc_ids_cache()
+
             logger.info("[%s] ✓ Document metadata persisted", document_id)
 
     except SoftTimeLimitExceeded:

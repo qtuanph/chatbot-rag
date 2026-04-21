@@ -21,6 +21,9 @@ Status: authoritative architecture baseline — updated to reflect Method D, Sma
 | AI Provider | Google AI gemma-4-26b-a4b-it (demo); vLLM on-premise (production target) |
 | Workers | `upload-pipeline` (GPU, ingestion) + `cleanup-pipeline` (lightweight, deletion + beat) |
 | Chat sessions | Auto-delete after 1 day (`CHAT_SESSION_TTL_DAYS`) via Celery beat |
+| User memory | ChatGPT-like persistent memory: facts, preferences, corrections injected into system prompt |
+| AI thinking | `thinkingConfig: {thinkingLevel: "MINIMAL"}` disables Gemma 4 thought tokens; `thought:true` part filter + `_ThoughtFilter` stream + `strip_reasoning()` safety net |
+| AI output | No limits: `maxOutputTokens: 1048576`, `max_context_chars: 500000`, streaming timeout 300s (5min) |
 
 PostgreSQL is the system database for metadata, status, auth, audit, and connector state. Qdrant is the retrieval store for node vectors and payload. Redis is used for task queue, cache, and atomic rate limiting.
 
@@ -63,13 +66,17 @@ graph TD
 
     Chat --> Throttle[Atomic Rate Limiter — Lua+Redis]
     Chat --> QueryCache[Query Embedding Cache — Redis]
-    Chat --> Retriever[2-Stage Retriever: Sections → Chunks]
+    Chat --> DocIDCache[Document ID TTL Cache — 60s in-memory]
+    Chat --> Retriever[2-Stage Retriever: single Qdrant query → in-memory re-rank]
     Retriever --> PG
     Retriever --> Qdrant
     Retriever -. planned -.-> SQLConnector[SQL Connector — Phase 2]
     Chat --> LLM[AI Provider Adapter]
     LLM --> Google[Google AI gemma-4-26b-a4b-it]
     LLM --> vLLM[vLLM — Production On-Premise]
+    Chat --> MemorySvc[UserMemoryService]
+    MemorySvc --> Redis[(Redis cache 5min TTL)]
+    MemorySvc --> PG[(user_memories table)]
 ```
 
 ## Runtime Data Flow
@@ -84,8 +91,10 @@ graph TD
 | 6. Store Sections | Worker → SectionRepository → PostgreSQL | document_sections rows |
 | 7. Embed | Worker → BAAI/bge-m3 (parallel batches of 32) | Dense vectors per chunk |
 | 8. Persist | Worker → Qdrant | Chunks with section_id metadata |
-| 9. Retrieve | Chat → QueryCache → Embedder → Stage 1 (sections) → Stage 2 (chunks) | Top sections + chunks |
-| 10. Stream | Chat → AI Provider → SSE stream | Grounded answer with citations |
+| 9. Retrieve | Chat → QueryCache → Embedder → single Qdrant query → in-memory section grouping → chunk re-ranking | Top sections + chunks |
+| 10. Memory | Chat → UserMemoryService → Redis cache (5min TTL) → PostgreSQL fallback → inject into systemInstruction | Personalized prompt context |
+| 11. Stream | Chat → AI Provider (maxOutputTokens: 1M, timeout 5min) → strip_reasoning() safety net → SSE stream | Grounded answer with citations, no chain-of-thought |
+| 12. Extract | Post-response → UserMemoryService.extract_memories_from_turn() → async Gemini call → store in user_memories | Learned facts for future turns |
 
 ## Non-Negotiable Invariants
 
@@ -139,3 +148,67 @@ See: Pinterest Text-to-SQL, Swiggy Hermes, Uber QueryGPT for reference patterns.
 | `app/worker.py` (single worker) | Refactored to `app/workers/upload_pipeline.py` + `app/workers/cleanup_pipeline.py` |
 | `app/workflows/` directory | Removed — was empty, tasks moved to `app/workers/` |
 | `do_ocr=True` on all PDFs | Replaced by Smart OCR Strategy — fast no-OCR first, OCR fallback only for scanned PDFs |
+| 2-query retrieval (Stage 1 → Stage 2) | Replaced by single Qdrant query + in-memory section grouping and re-ranking — eliminates one round-trip |
+| Direct PostgreSQL subquery per chat request | Replaced by TTL-cached document IDs (60s), explicitly invalidated on upload/delete |
+| Duplicate system instruction in `chat()` and `chat_stream()` | Refactored to shared `_SYSTEM_INSTRUCTION` constant; `chat()` now reuses `chat_stream()` |
+| Direct port access (localhost:3000, localhost:8000) | Replaced by nginx reverse proxy on port 80 — SSE streaming, NextAuth routing, rate limiting, security headers |
+
+## User Memory Architecture
+
+ChatGPT-like persistent memory system that allows the AI to learn user preferences, corrections, and instructions over time.
+
+### Storage
+
+| Layer | Store | TTL |
+|-------|-------|-----|
+| Primary | PostgreSQL `user_memories` table | Persistent |
+| Cache | Redis `user_memories:{user_id}` | 5 minutes |
+| API endpoint | `GET/POST/PATCH/DELETE /api/v1/memories` | Per-request |
+
+### Memory Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `preference` | User preferences | "Trả lời ngắn gọn" |
+| `correction` | User corrections | "Đừng dùng bullet points" |
+| `instruction` | Explicit instructions | "Luôn trích dẫn nguồn" |
+| `fact` | Facts about user | "Làm việc ở phòng marketing" |
+
+### Flow
+
+1. **Load**: Before streaming, `UserMemoryService.format_memories_for_prompt()` loads active memories (Redis → PostgreSQL fallback)
+2. **Inject**: Memories appended to `systemInstruction` in Gemini API payload
+3. **Generate**: AI generates personalized response using memory context
+4. **Extract**: After response, async `extract_memories_from_turn()` uses heuristic triggers + Gemini to extract new facts
+5. **Store**: New memories saved to PostgreSQL + Redis cache invalidated
+
+### Frontend
+
+Settings page (`/settings`) provides full CRUD:
+- View all memories with type badges (color-coded)
+- Add new memory (type selector + content input)
+- Toggle active/inactive
+- Delete memory
+
+## AI Thinking Control
+
+Gemma 4 26B A4B is a thinking model that outputs chain-of-thought reasoning by default. Three layers suppress this:
+
+| Layer | Mechanism | Location |
+|-------|-----------|----------|
+| **API-level** | `thinkingConfig: {thinkingLevel: "MINIMAL"}` — Gemma 4 only accepts `MINIMAL` and `HIGH` | `app/adapters/ai/google.py` generationConfig |
+| **Part filter** | Skip parts with `"thought": true` in `_extract_text()` | `app/adapters/ai/google.py` |
+| **Stream filter** | `_ThoughtFilter` state machine strips `<\|channel\|>thought...<channel\|>` tags real-time | `app/adapters/ai/google.py` |
+| **Post-process** | `strip_reasoning()` + `strip_thought_blocks()` on saved text | `app/adapters/ai/google.py` → `chat.py` |
+
+**Note:** `thinkingBudget: 0` causes 400 error with Gemma 4. `includeThoughts: false` is silently ignored (bug). Only `thinkingLevel: "MINIMAL"` works. Source: google-gemini/cookbook#1198.
+
+The `strip_reasoning()` function detects markers like "Question:", "Source Material:", "Structure:", "Drafting", "Self-Correction", "Final Polish:" and strips everything before the actual answer. Applied to saved text in both streaming and non-streaming routes.
+
+## Multi-Turn Conversation
+
+Chat supports multi-turn context via Gemini `contents` array format:
+- History mapped: `assistant` → `model`, `user` → `user` roles
+- Last 20 messages included for performance
+- RAG context embedded into current user message (not separate field)
+- Session managed by `ChatStore` with Redis-backed history

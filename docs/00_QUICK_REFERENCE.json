@@ -1,7 +1,7 @@
 {
   "document": {
     "id": "00_QUICK_REFERENCE",
-    "version": "2026-04-20",
+    "version": "2026-04-21",
     "purpose": "Rules and patterns cheat sheet for fast AI/agent preflight.",
     "authority": "This file is the quick-reference entrypoint. docs/ remains the source of truth."
   },
@@ -12,7 +12,7 @@
     },
     {
       "name": "two_stage_retrieval",
-      "rule": "Query -> stage 1 section search (>=0.30) -> stage 2 chunk search in selected sections (>=0.35)."
+      "rule": "Query -> single Qdrant fetch -> in-memory section grouping (>=0.30) -> chunk re-ranking within sections (>=0.35). Doc IDs TTL-cached 60s."
     },
     {
       "name": "hard_delete_order",
@@ -62,6 +62,13 @@
       "storage": "JWT + Redis blacklist",
       "query_layer": "TokenBlacklist",
       "notes": "Token revocation on logout"
+    },
+    {
+      "data": "user_memories",
+      "storage": "PostgreSQL + Redis cache (5min TTL)",
+      "table": "user_memories",
+      "query_layer": "UserMemoryService",
+      "notes": "Persistent per-user facts/preferences/corrections injected into AI system prompt"
     }
   ],
   "critical_env": {
@@ -161,7 +168,28 @@
         "method": "GET",
         "path": "/health",
         "auth": "public"
+      },
+      {
+        "method": "GET",
+        "path": "/memories",
+        "auth": "member"
+      },
+      {
+        "method": "POST",
+        "path": "/memories",
+        "auth": "member"
+      },
+      {
+        "method": "PATCH",
+        "path": "/memories/{id}",
+        "auth": "member"
+      },
+      {
+        "method": "DELETE",
+        "path": "/memories/{id}",
+        "auth": "member"
       }
+    ]
     ]
   },
   "service_structure": [
@@ -169,6 +197,7 @@
     "app/services/documents",
     "app/services/retrieval",
     "app/services/chat",
+    "app/services/chat/memory.py (UserMemoryService)",
     "app/services/system",
     "app/services/ingestion"
   ],
@@ -185,10 +214,12 @@
   ],
   "retrieval_flow": [
     "rate limit check (Redis Lua)",
-    "query embedding cache lookup",
+    "query embedding cache lookup (Redis MD5-keyed, TTL=1h)",
     "embed query if cache miss",
-    "stage 1 section search",
-    "stage 2 chunk search with section_ids filter",
+    "TTL-cached document IDs (60s, invalidated on upload/delete)",
+    "single Qdrant query (top_k=50-80, filtered to active docs)",
+    "in-memory: group by section_id -> pick top sections (>=0.30)",
+    "in-memory: re-rank chunks within top sections first (>=0.35)",
     "return chunks + citations"
   ],
   "security_rules": [
@@ -232,9 +263,10 @@
   },
   "run_commands": {
     "compose_up": "docker compose up --build",
-    "health": "curl http://localhost:8000/api/v1/health",
+    "health": "curl http://localhost/api/v1/health",
     "api_logs": "docker compose logs -f api",
     "worker_logs": "docker compose logs -f upload-pipeline",
-    "db_shell": "docker exec -it chatbot-rag-db-1 psql -U db-admin -d ragbot"
+    "db_shell": "docker exec -it chatbot-rag-db-1 psql -U db-admin -d ragbot",
+    "nginx_health": "curl http://localhost/nginx_status"
   }
 }

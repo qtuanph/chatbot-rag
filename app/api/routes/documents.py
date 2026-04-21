@@ -17,6 +17,7 @@ from app.schemas.documents import (
     DocumentDeleteResponse,
     DocumentDetailResponse,
     DocumentListResponse,
+    DocumentRetryResponse,
     DocumentSummaryResponse,
     TaskProgressInfo,
     TaskStatusResponse,
@@ -403,3 +404,117 @@ async def delete_document(request: Request, document_id: str, _auth=Depends(requ
     )
 
     return DocumentDeleteResponse(status="delete_queued", document_id=document_id)
+
+
+@router.post("/documents/{document_id}/retry", response_model=DocumentRetryResponse)
+async def retry_document(request: Request, document_id: str, auth: AuthContext = Depends(require_admin)) -> DocumentRetryResponse:
+    """
+    Retry a failed document: clean up partial data (sections, vectors),
+    reset status, and re-queue the ingestion task.
+    The original file in object storage is preserved.
+    """
+    with SessionLocal() as session:
+        document = session.get(Document, document_id)
+        if document is None:
+            raise http_errors.not_found("Document not found")
+        if document.status != "failed":
+            raise http_errors.bad_request("Only failed documents can be retried")
+
+        file_path = document.file_path
+        filename = document.file_name
+
+    # Clean up partial artifacts (sections + vectors), keep file + DB row
+    try:
+        from app.models.core import DocumentSection
+        from app.adapters.vector_stores.qdrant import QdrantVectorStore
+
+        vector_store = QdrantVectorStore(
+            url=settings.qdrant_url,
+            api_key=settings.qdrant_api_key or None,
+            collection_name=settings.qdrant_collection,
+            vector_size=settings.embedding_vector_size,
+            timeout=settings.qdrant_timeout,
+        )
+
+        # Delete vectors
+        try:
+            vector_store.delete(document_id)
+            logger.info("Retry: deleted vectors for document %s", document_id)
+        except Exception:
+            logger.warning("Retry: no vectors to delete for document %s", document_id, exc_info=True)
+
+        # Delete sections
+        with SessionLocal() as session:
+            count = session.query(DocumentSection).filter(
+                DocumentSection.document_id == document_id
+            ).delete()
+            session.commit()
+            if count > 0:
+                logger.info("Retry: deleted %d sections for document %s", count, document_id)
+    except Exception as exc:
+        logger.warning("Retry: partial cleanup failed for document %s: %s", document_id, exc, exc_info=True)
+
+    # Reset document status
+    new_task_id = str(uuid4())
+    with SessionLocal() as session:
+        document = session.get(Document, document_id)
+        if document is not None:
+            document.status = "pending"
+            document.status_stage = "queued"
+            document.progress_percent = 5
+            document.status_message = "Retrying: task queued for worker processing."
+            document.parse_error = None
+            document.status_updated_at = datetime.now(timezone.utc)
+            session.commit()
+
+    # Re-queue ingestion task
+    try:
+        registry.put(
+            DocumentRecord(
+                document_id=document_id,
+                task_id=new_task_id,
+                object_uri=file_path,
+                filename=filename,
+                status="queued",
+            )
+        )
+        celery_app.send_task(
+            "app.workers.upload_pipeline.parse_document_task",
+            kwargs={
+                "task_id": new_task_id,
+                "document_id": document_id,
+                "file_path": file_path,
+            },
+            task_id=new_task_id,
+        )
+        celery_app.backend.store_result(
+            new_task_id,
+            {"stage": "queued", "progress": {"step": "queued", "percent": 0}, "document_id": document_id},
+            state="QUEUED",
+        )
+    except Exception as exc:
+        logger.error("Retry: failed to enqueue task for document %s: %s", document_id, exc, exc_info=True)
+        with SessionLocal() as session:
+            document = session.get(Document, document_id)
+            if document is not None:
+                document.status = "failed"
+                document.status_stage = "retry_enqueue_failed"
+                document.progress_percent = 100
+                document.status_message = "Retry failed: could not enqueue task."
+                document.status_updated_at = datetime.now(timezone.utc)
+            session.commit()
+        raise http_errors.service_unavailable(
+            "Failed to enqueue retry task. Please try again later."
+        ) from exc
+
+    safe_record_audit(
+        action="document.retry",
+        actor_user_id=auth.user_id,
+        subject_type="document",
+        subject_id=document_id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        details={"task_id": new_task_id},
+    )
+
+    return DocumentRetryResponse(task_id=new_task_id, document_id=document_id, status="queued")

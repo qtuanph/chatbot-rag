@@ -52,6 +52,7 @@ sequenceDiagram
 
     Pipeline->>DB: stage=ready, percent=100 [callback]
     Worker->>DB: status=ready, extra_metadata saved
+    Worker->>Worker: invalidate_doc_ids_cache() — new doc visible to chat immediately
 ```
 
 ### Upload Invariants
@@ -86,6 +87,7 @@ sequenceDiagram
     participant Retriever
     participant DB as PostgreSQL
     participant Qdrant
+    participant Memory as UserMemoryService
     participant Provider as AI Provider
 
     Browser->>API: POST /api/v1/chat/stream (SSE)
@@ -100,22 +102,34 @@ sequenceDiagram
         API->>Redis: cache.set(query, vector, TTL=1h)
     end
     API->>Retriever: retrieve_context(query_vector, limit=20)
-    Retriever->>DB: fetch latest active doc IDs
-    Note over Retriever,Qdrant: Stage 1 — Coarse section search
-    Retriever->>Qdrant: search top-50 by cosine similarity
+    Retriever->>Retriever: fetch TTL-cached doc IDs (60s, invalidated on upload/delete)
+    Note over Retriever,Qdrant: Single Qdrant query (replaces old 2-query approach)
+    Retriever->>Qdrant: search top-50~80 by cosine similarity (filtered to active docs)
+    Note over Retriever: Stage 1 — In-memory section grouping
     Retriever->>Retriever: group by section_id → pick top 3 sections (score ≥ 0.30)
     Retriever->>DB: load section details from document_sections
-    Note over Retriever,Qdrant: Stage 2 — Fine chunk search within sections
-    Retriever->>Qdrant: search filtered to top section_id values (score ≥ 0.35)
-    Retriever->>Retriever: keep section-scoped chunks first
+    Note over Retriever: Stage 2 — In-memory chunk re-ranking
+    Retriever->>Retriever: prioritise chunks within top sections (score ≥ 0.35)
     Retriever-->>API: top nodes with section context and citations
 
+    API->>Memory: format_memories_for_prompt(user_id)
+    Memory->>Redis: cache lookup (5min TTL)
+    alt Cache HIT
+        Redis-->>Memory: cached memories
+    else Cache MISS
+        Memory->>DB: SELECT user_memories WHERE user_id AND is_active
+        Memory->>Redis: cache result (5min TTL)
+    end
+    Memory-->>API: formatted memory string for systemInstruction
+
     loop For each chunk of response
-        API->>Provider: chat_stream (generate next chunk)
-        Provider-->>API: text chunk
+        API->>Provider: chat_stream (maxOutputTokens=1M, multi-turn contents)
+        Provider-->>API: text chunk (thought:true parts filtered)
         API-->>Browser: SSE data: {"chunk": "...", "done": false}
     end
-    API->>DB: save ChatMessage
+    API->>API: strip_reasoning(full_answer) — safety net
+    API->>DB: save ChatMessage (clean answer)
+    API->>Memory: extract_memories_from_turn() — async, best-effort
     API-->>Browser: SSE data: {"done": true, "session_id": "...", "citations": [...]}
 ```
 
@@ -124,11 +138,19 @@ sequenceDiagram
 | Rule | Requirement |
 |------|-------------|
 | Cache first | Check Redis for query embedding before calling API |
-| 2-stage retrieval | Stage 1: sections (≥ 0.30) → Stage 2: chunks within sections (≥ 0.35) |
+| Doc ID cache | TTL-cached 60s, invalidated on upload/delete — avoids PostgreSQL subquery per request |
+| 2-stage retrieval | Single Qdrant query → in-memory section grouping (≥ 0.30) → chunk re-ranking within sections (≥ 0.35) |
 | Citation required | Return citation payload for every grounded answer |
 | Retrieval filters | Exclude deleted docs, prefer latest version |
 | Rate limiting | Atomic Lua script — 30 requests/min per user |
 | Provider swap safety | Chat route stays provider-agnostic via adapter |
+| Multi-turn context | Last 20 messages via Gemini `contents` array with role mapping (assistant→model) |
+| Memory injection | User memories loaded from Redis/PostgreSQL, injected into systemInstruction |
+| Memory extraction | Async post-response: heuristic trigger detection + Gemini extraction → store in user_memories |
+| Thinking suppressed | `thinkingConfig: {thinkingLevel: "MINIMAL"}` + `thought:true` filter + `_ThoughtFilter` stream + `strip_reasoning()` — 4 layers |
+| History clean | `strip_thought_blocks()` removes `<\|channel\|>thought...<channel\|>` from previous assistant messages before sending as multi-turn context |
+| No output limits | `maxOutputTokens: 1048576`, `max_context_chars: 500000`, streaming timeout 300s (5min) |
+| Clean saved text | `strip_reasoning()` applied to answer before saving to DB |
 
 ## Workflow 3: Delete → Hard Delete
 
@@ -154,6 +176,7 @@ sequenceDiagram
     Cleanup->>DB: delete sections from document_sections
     Cleanup->>RustFS: delete file object
     Cleanup->>DB: DELETE document row
+    Cleanup->>Cleanup: invalidate_doc_ids_cache() — deleted doc removed from chat scope immediately
     Cleanup->>Registry: registry.purge() → remove Redis keys
 ```
 

@@ -161,6 +161,11 @@ export const documentsApi = {
       method: "DELETE",
     }, token),
 
+  retry: (id: string, token: string): Promise<{ task_id: string; document_id: string; status: string }> =>
+    apiFetch<{ task_id: string; document_id: string; status: string }>(`/documents/${id}/retry`, {
+      method: "POST",
+    }, token),
+
   getStatus: (taskId: string, token: string): Promise<TaskStatus> =>
     apiFetch<TaskStatus>(`/status/${taskId}`, {}, token),
 };
@@ -191,6 +196,35 @@ export const healthApi = {
 
   getData: (token: string): Promise<HealthData> =>
     apiFetch<HealthData>("/health/data", {}, token),
+};
+
+// --- Memories ---
+export interface MemoryItem {
+  id: string;
+  memory_type: string;
+  content: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export const memoriesApi = {
+  list: (token: string): Promise<{ items: MemoryItem[] }> =>
+    apiFetch<{ items: MemoryItem[] }>("/memories", {}, token),
+
+  create: (data: { memory_type: string; content: string }, token: string): Promise<MemoryItem> =>
+    apiFetch<MemoryItem>("/memories", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }, token),
+
+  update: (id: string, data: { content?: string; memory_type?: string; is_active?: boolean }, token: string): Promise<MemoryItem> =>
+    apiFetch<MemoryItem>(`/memories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }, token),
+
+  delete: (id: string, token: string): Promise<void> =>
+    apiFetch<void>(`/memories/${id}`, { method: "DELETE" }, token),
 };
 
 export { ApiError };

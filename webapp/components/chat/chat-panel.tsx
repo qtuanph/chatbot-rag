@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessage } from "@/components/chat/chat-message";
 import { toast } from "sonner";
@@ -176,20 +176,13 @@ export function ChatPanel() {
           </div>
         ) : (
           <div className="py-4 space-y-1">
-            {messages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} />
+            {messages.map((msg, index) => (
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+                isStreaming={streaming && index === messages.length - 1 && msg.role === "assistant"}
+              />
             ))}
-            {streaming && messages[messages.length - 1]?.role === "assistant" && !messages[messages.length - 1]?.content && (
-              <div className="flex gap-3 px-4 py-3">
-                <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs">
-                  AI
-                </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Đang suy nghĩ...
-                </div>
-              </div>
-            )}
           </div>
         )}
       </ScrollArea>

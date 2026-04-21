@@ -6,24 +6,27 @@ Status: deployment and operations baseline — updated to reflect worker archite
 
 Primary runtime uses Docker Compose with the following services:
 
-- api (FastAPI) — published on localhost only
-- webapp (Next.js 16) — published on localhost only
+- nginx (reverse proxy) — **port 80 (public entry point)**
+- api (FastAPI) — internal only (accessed via nginx)
+- webapp (Next.js 16) — internal only (accessed via nginx)
 - upload-pipeline (Celery GPU worker) — queues: ingestion, default
 - cleanup-pipeline (Celery lightweight worker + beat) — queues: cleanup, default
-- db (PostgreSQL 18) — published on localhost only
-- redis (broker/result/cache) — published on localhost only
-- rustfs (object storage) — published on localhost only
-- qdrant (vector retrieval store) — published on localhost only
+- db (PostgreSQL 18) — internal only
+- redis (broker/result/cache) — internal only
+- rustfs (object storage) — internal only
+- qdrant (vector retrieval store) — internal only
 - vllm (optional on-prem profile)
+
+All services are accessed through nginx on port 80. Direct port access is no longer the default.
 
 ## Storage Responsibilities
 
 | Component | Role |
 |-----------|------|
-| PostgreSQL | system database: auth, roles, sessions, documents metadata, status, audit |
+| PostgreSQL | system database: auth, roles, sessions, documents metadata, status, audit, **user memories** |
 | Qdrant | retrieval database: node vectors and retrieval payload |
 | RustFS | raw upload and artifact object storage |
-| Redis | queue and lightweight runtime cache |
+| Redis | queue, lightweight runtime cache, **user memory cache (5min TTL)** |
 
 PostgreSQL is not the primary retrieval context store in the new direction.
 
@@ -74,8 +77,9 @@ Compose defaults bind published ports to 127.0.0.1 so local dev works without ex
 
 | Service | Probe |
 |---------|-------|
-| API | /api/v1/health |
-| Webapp | http://localhost:3000 |
+| Nginx | `/nginx_status` (internal only, 127.0.0.1) |
+| API | `/api/v1/health` (via nginx) — no Docker healthcheck (health checked on-demand via dashboard) |
+| Webapp | proxied through nginx `/` |
 | upload-pipeline | celery inspect ping |
 | cleanup-pipeline | celery inspect ping |
 | Workers dashboard | API health payload includes combined Celery worker status |
@@ -84,7 +88,7 @@ Compose defaults bind published ports to 127.0.0.1 so local dev works without ex
 | Qdrant | /health |
 | vLLM (optional) | /health |
 
-Compose default probe cadence for `api` is 30 seconds to keep readiness updates responsive while still limiting `/api/v1/health` access-log spam.
+Compose healthcheck cadence is 3 seconds interval with 5 second start_period — optimised for fast startup (~25s total).
 
 ## Observability Baseline
 
@@ -109,3 +113,31 @@ Recovery priority:
 1. PostgreSQL system state
 2. RustFS raw uploads/artifacts
 3. Qdrant vectors (rebuildable if raw docs + ingestion pipeline are intact)
+
+## Nginx Reverse Proxy Configuration
+
+Config: `ops/nginx/nginx.conf` | Image: `nginx:stable-alpine3.23-perl`
+
+### Location Block Order (Critical)
+
+```
+1. /api/auth/         → webapp_frontend (NextAuth routes — MUST be before /api/)
+2. /api/v1/chat/stream → api_backend (SSE streaming — unbuffered)
+3. /api/               → api_backend (general API — rate limited)
+4. /view/              → api_backend (demo UI)
+5. /                   → webapp_frontend (Next.js app)
+6. /_next/static/      → webapp_frontend (aggressive caching 365d)
+```
+
+### Key Features
+
+| Feature | Config |
+|---------|--------|
+| SSE streaming | `proxy_buffering off; proxy_cache off; gzip off; chunked_transfer_encoding off` |
+| Connection pooling | `keepalive 32` on both upstreams |
+| Rate limiting | `api_limit` 30r/s, `upload_limit` 2r/s |
+| WebSocket/HMR | `map $http_upgrade $connection_upgrade` for Next.js hot reload |
+| Security headers | `proxy_hide_header` prevents duplicate headers from backend |
+| Upload size | `client_max_body_size 50m` (matches MAX_UPLOAD_SIZE_MB) |
+| Long timeout | `proxy_read_timeout 86400s` for SSE and HMR |
+| Version hidden | `server_tokens off` |

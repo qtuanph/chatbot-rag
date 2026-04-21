@@ -21,7 +21,7 @@ from app.services.documents.registry import DocumentRecord, DocumentRegistry
 from app.services.documents.cleanup import hard_delete_document
 
 # Retrieval services
-from app.services.retrieval.rag import retrieve_context, build_answer, RagContext, RagNode, RagSection
+from app.services.retrieval.rag import retrieve_context, build_answer, RagContext, RagNode, RagSection, invalidate_doc_ids_cache
 from app.services.retrieval.cache import QueryEmbeddingCache
 
 # Chat services
@@ -54,6 +54,7 @@ __all__ = [
     "RagContext",
     "RagNode",
     "RagSection",
+    "invalidate_doc_ids_cache",
     "QueryEmbeddingCache",
     # Chat
     "ChatStore",

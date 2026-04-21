@@ -50,6 +50,12 @@ class DocumentListResponse(BaseModel):
     limit: int = Field(default=20, ge=1, le=100)
 
 
+class DocumentRetryResponse(BaseModel):
+    task_id: str
+    document_id: str
+    status: str
+
+
 class DocumentDetailResponse(BaseModel):
     document_id: str
     title: str

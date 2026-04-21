@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import {
   Dialog,
@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Upload } from "lucide-react";
+import { Upload, X } from "lucide-react";
 import { documentsApi } from "@/lib/api-client";
 import { toast } from "sonner";
 
@@ -24,10 +24,33 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelledRef = useRef(false);
+
+  const cancelPolling = useCallback(() => {
+    cancelledRef.current = true;
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  const resetState = useCallback(() => {
+    setUploading(false);
+    setProgress(0);
+    setStatusMessage("");
+    setErrorMessage(null);
+    cancelledRef.current = false;
+  }, []);
 
   const pollProgress = useCallback(
     async (id: string, token: string) => {
+      cancelledRef.current = false;
+
       const poll = async () => {
+        if (cancelledRef.current) return;
+
         try {
           const status = await documentsApi.getStatus(id, token);
           setProgress(status.progress.percent);
@@ -38,21 +61,22 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
             setStatusMessage("Hoàn tất!");
             setTimeout(() => {
               setOpen(false);
-              setProgress(0);
-              setStatusMessage("");
+              resetState();
               onUploaded();
             }, 1000);
             return;
           }
 
           if (status.status === "failed") {
-            toast.error(status.error || "Xử lý tài liệu thất bại");
+            const msg = status.error || "Xử lý tài liệu thất bại";
+            setErrorMessage(msg);
+            toast.error(msg);
             setUploading(false);
             return;
           }
 
           // Continue polling
-          setTimeout(() => poll(), 2000);
+          pollTimerRef.current = setTimeout(() => poll(), 2000);
         } catch {
           toast.error("Lỗi khi kiểm tra tiến trình");
           setUploading(false);
@@ -60,7 +84,7 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
       };
       poll();
     },
-    [onUploaded],
+    [onUploaded, resetState],
   );
 
   const handleFileChange = useCallback(
@@ -71,6 +95,7 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
       setUploading(true);
       setProgress(5);
       setStatusMessage("Đang tải lên...");
+      setErrorMessage(null);
 
       try {
         const result = await documentsApi.upload(file, session.accessToken);
@@ -81,12 +106,35 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
         toast.error("Tải lên thất bại. Vui lòng thử lại.");
         setUploading(false);
       }
+
+      // Reset file input so the same file can be re-selected
+      e.target.value = "";
     },
     [session, pollProgress],
   );
 
+  const handleCancel = useCallback(() => {
+    cancelPolling();
+    resetState();
+  }, [cancelPolling, resetState]);
+
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen && uploading) {
+        // Don't close while uploading — user must cancel first
+        return;
+      }
+      setOpen(nextOpen);
+      if (!nextOpen) {
+        cancelPolling();
+        resetState();
+      }
+    },
+    [uploading, cancelPolling, resetState],
+  );
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <Button className="gap-2" onClick={() => setOpen(true)}>
         <Upload className="h-4 w-4" />
         Tải tài liệu lên
@@ -96,7 +144,7 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
           <DialogTitle>Tải tài liệu lên</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          {!uploading ? (
+          {!uploading && !errorMessage ? (
             <div className="grid w-full max-w-sm items-center gap-1.5">
               <label
                 htmlFor="file-upload"
@@ -123,6 +171,34 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
               <Progress value={progress} />
               <p className="text-sm text-muted-foreground">{statusMessage}</p>
               <p className="text-xs text-muted-foreground">{progress}%</p>
+              {errorMessage && (
+                <p className="text-sm text-destructive">{errorMessage}</p>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancel}
+                  className="gap-1"
+                >
+                  <X className="h-3 w-3" />
+                  {errorMessage ? "Đóng" : "Hủy"}
+                </Button>
+                {errorMessage && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      resetState();
+                      // Re-trigger file input click
+                      document.getElementById("file-upload")?.click();
+                    }}
+                    className="gap-1"
+                  >
+                    <Upload className="h-3 w-3" />
+                    Tải lại
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </div>

@@ -10,18 +10,21 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import AuthContext, get_auth_context
 from app.adapters.ai import build_ai_provider
+from app.adapters.ai.google import strip_reasoning
 from app.core.config import settings
 from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.chat import ChatMessage, ChatSession
 from app.schemas.chat import ChatRequest
 from app.services.chat.store import ChatStore
+from app.services.chat.memory import UserMemoryService
 from app.services.retrieval.rag import build_answer, retrieve_context
 from app.services.auth.throttle import RequestThrottle
 
 
 router = APIRouter(tags=["chat"])
 store = ChatStore()
+memory_service = UserMemoryService()
 provider = build_ai_provider()
 throttle = RequestThrottle()
 logger = logging.getLogger(__name__)
@@ -179,6 +182,9 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
             raw_citations = assistant_seed.get("citations") or []
             citations = _deduplicate_citations(raw_citations)
 
+            # Load user memories for personalized system instruction
+            user_memories = memory_service.format_memories_for_prompt(auth.user_id)
+
         except Exception as e:
             logger.error("Error preparing chat context: %s", e, exc_info=True)
             raise http_errors.internal_server_error(
@@ -198,6 +204,7 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                 [{"role": item["role"], "content": item["content"]} for item in history],
                 context=assistant_seed.get("context") or [],
                 citations=citations,
+                user_memories=user_memories,
             ):
                 chunk_count += 1
                 full_answer += chunk
@@ -209,31 +216,8 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                 }, ensure_ascii=False)
                 yield f"data: {event_data}\n\n"
 
-            # Extract clean content from tags for DB storage
-            clean_answer = full_answer
-            final_match = None
-            for m in __import__('re').finditer(r'<final>([\s\S]*?)</final>', full_answer):
-                final_match = m
-            if final_match:
-                clean_answer = final_match.group(1).strip()
-            else:
-                # Fallback: try to find content after last </thinking>
-                for m in __import__('re').finditer(r'</thinking>([\s\S]*?)$', full_answer):
-                    clean_answer = m.group(1).strip()
-                    # Remove any trailing self-review
-                    if '</final>' in clean_answer:
-                        pass  # Already handled above
-                    break
-
-            # Extract thinking for DB (optional, brief)
-            clean_thinking = None
-            thinking_matches = list(__import__('re').finditer(r'<thinking>([\s\S]*?)</thinking>', full_answer))
-            if thinking_matches:
-                raw_thinking = thinking_matches[-1].group(1).strip()
-                # Keep only last 500 chars if too long
-                clean_thinking = raw_thinking[-500:] if len(raw_thinking) > 500 else raw_thinking
-
-            # Stream completed successfully - save CLEAN content to database
+            # Stream completed successfully — clean reasoning, then save
+            clean_answer = strip_reasoning(full_answer.strip())
             with SessionLocal() as session:
                 try:
                     session.add(
@@ -249,6 +233,17 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                     logger.error("Failed to save chat message: %s", e, exc_info=True)
 
             store.append_message(scope_id, session_id, "assistant", clean_answer)
+
+            # Async memory extraction — extract learnable facts from this turn
+            try:
+                import asyncio
+                asyncio.create_task(
+                    memory_service.extract_memories_from_turn(
+                        auth.user_id, request.query, clean_answer
+                    )
+                )
+            except Exception:
+                pass  # Memory extraction is best-effort, never block the response
 
             # Send final event with session info and citations
             final_data = json.dumps({
@@ -376,6 +371,9 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
             raw_citations = assistant_seed.get("citations") or []
             citations = _deduplicate_citations(raw_citations)
 
+            # Load user memories
+            user_memories = memory_service.format_memories_for_prompt(auth.user_id)
+
         except Exception as e:
             logger.error("Error preparing chat context: %s", e, exc_info=True)
             raise http_errors.internal_server_error(
@@ -387,6 +385,7 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
                 [{"role": item["role"], "content": item["content"]} for item in history],
                 context=assistant_seed["context"],
                 citations=citations,
+                user_memories=user_memories,
             )
         except Exception as e:
             logger.error("AI Provider error: %s", e, exc_info=True)
@@ -395,7 +394,7 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
             error_detail = _build_user_friendly_error(e)
             raise http_errors.service_unavailable(error_detail) from None
 
-        answer = response.get("answer") or assistant_seed["answer"]
+        answer = strip_reasoning(response.get("answer") or assistant_seed["answer"])
         citations = response.get("citations") or citations
 
         try:

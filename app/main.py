@@ -7,7 +7,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 
-from app.api.routes import auth, chat, documents, health, tree
+from app.api.routes import auth, chat, documents, health, memories, tree
 from app.api.middleware import SecurityHeadersMiddleware, RequestLoggingMiddleware, RateLimitMiddleware, CorrelationIDMiddleware
 from app.core.config import settings
 from app.core.error_response import build_error_response
@@ -51,7 +51,7 @@ app.add_middleware(RequestLoggingMiddleware)
 if settings.app_env == "production":
     app.add_middleware(RateLimitMiddleware, requests_per_minute=300)
 
-routers = [auth.router, health.router, documents.router, chat.router, tree.router]
+routers = [auth.router, health.router, documents.router, chat.router, tree.router, memories.router]
 
 for router in routers:
     app.include_router(router, prefix=settings.api_v1_prefix)
