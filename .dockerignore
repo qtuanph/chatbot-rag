@@ -15,7 +15,8 @@ FILEUPLOADTEST
 .python-version
 MEMORY.md
 tests
-ops
+ops/init.sql
+ops/nginx
 .gitattributes
 .mcp.json
 CLAUDE.md

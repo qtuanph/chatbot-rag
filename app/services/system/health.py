@@ -16,7 +16,7 @@ from app.core.celery_app import celery_app
 from app.core.config import settings
 
 
-_HEALTH_CACHE_TTL_SECONDS = 5.0
+_HEALTH_CACHE_TTL_SECONDS = 30.0
 _HEALTH_CACHE_LOCK = Lock()
 _HEALTH_CACHE: tuple[float, dict[str, Any]] | None = None
 
@@ -34,7 +34,7 @@ def _redact(value: str) -> str:
 def check_database() -> dict[str, Any]:
     start = perf_counter()
     try:
-        with psycopg.connect(settings.database_url.replace("+psycopg", ""), connect_timeout=3) as conn:
+        with psycopg.connect(settings.database_url.replace("+psycopg", ""), connect_timeout=2) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
                 cur.fetchone()
@@ -46,7 +46,7 @@ def check_database() -> dict[str, Any]:
 def check_redis() -> dict[str, Any]:
     start = perf_counter()
     try:
-        client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=3, socket_timeout=3)
+        client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
         client.ping()
         return {"status": "up", "latency_ms": _latency_ms(start), "url": _redact(settings.redis_url)}
     except Exception:
@@ -62,7 +62,7 @@ def check_storage() -> dict[str, Any]:
             endpoint_url=f"http{'s' if settings.s3_secure else ''}://{settings.s3_endpoint}",
             aws_access_key_id=settings.s3_access_key,
             aws_secret_access_key=settings.s3_secret_key,
-            config=Config(signature_version='s3v4'),
+            config=Config(signature_version='s3v4', connect_timeout=2, read_timeout=2),
             region_name='us-east-1'
         )
         client.head_bucket(Bucket=settings.s3_bucket)
@@ -143,7 +143,7 @@ def check_ai_provider() -> dict[str, Any]:
 def check_workers() -> dict[str, Any]:
     start = perf_counter()
     try:
-        inspector = celery_app.control.inspect(timeout=0.75)
+        inspector = celery_app.control.inspect(timeout=0.5)
         replies = inspector.ping() if inspector is not None else None
         worker_names = sorted(replies.keys()) if isinstance(replies, dict) else []
         status = "up" if worker_names else "down"

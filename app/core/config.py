@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
 
+    # Celery worker: which task modules to load ("all" | "upload" | "cleanup")
+    celery_include: str = "all"
+
     ai_provider: str = "google"
     google_api_key: str = ""
     google_model: str = "gemma-4-26b-a4b-it"

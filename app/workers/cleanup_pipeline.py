@@ -10,9 +10,6 @@ from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.chat import ChatSession
 from app.models.core import Document
-from app.adapters.vector_stores.qdrant import QdrantVectorStore
-from app.services.storage import build_storage
-from app.services.documents.cleanup import hard_delete_document
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +17,7 @@ logger = logging.getLogger(__name__)
 def _verify_deletion(
     document_id: str,
     file_path: str | None,
-    vector_store: QdrantVectorStore,
+    vector_store,
     storage,
 ) -> dict:
     """
@@ -77,6 +74,12 @@ def delete_document_task(
             "document_id": document_id,
         },
     )
+
+    # Lazy imports — avoid loading heavy modules (qdrant, storage, cleanup)
+    # unless this task actually runs
+    from app.adapters.vector_stores.qdrant import QdrantVectorStore
+    from app.services.storage import build_storage
+    from app.services.documents.cleanup import hard_delete_document
 
     storage = build_storage()
     # Resolve file_path before hard_delete removes the DB row

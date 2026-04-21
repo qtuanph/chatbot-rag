@@ -20,11 +20,17 @@ from celery import Celery
 from app.core.config import settings
 
 
+_all_modules = ["app.workers.upload_pipeline", "app.workers.cleanup_pipeline"]
+_include_map = {
+    "upload": ["app.workers.upload_pipeline"],
+    "cleanup": ["app.workers.cleanup_pipeline"],
+}
+
 celery_app = Celery(
     "chatbot_rag",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.workers.upload_pipeline", "app.workers.cleanup_pipeline"],
+    include=_include_map.get(settings.celery_include, _all_modules),
 )
 
 celery_app.conf.update(

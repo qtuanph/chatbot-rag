@@ -111,7 +111,13 @@
       "mcp__playwright__browser_wait_for",
       "mcp__playwright__browser_network_requests",
       "mcp__playwright__browser_evaluate",
-      "mcp__playwright__browser_run_code"
+      "mcp__playwright__browser_run_code",
+      "Bash(ls:*)",
+      "Bash(docker stats:*)",
+      "mcp__exa__web_search_exa",
+      "mcp__exa__get_code_context_exa",
+      "Bash(chmod +x:*)",
+      "mcp__next-devtools__browser_eval"
     ]
   }
 }
