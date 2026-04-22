@@ -129,7 +129,8 @@
       "mcp__web-reader__webReader",
       "mcp__exa__crawling_exa",
       "mcp__playwright__browser_close",
-      "mcp__web-search-prime__web_search_prime"
+      "mcp__web-search-prime__web_search_prime",
+      "mcp__next-devtools__nextjs_docs"
     ]
   }
 }

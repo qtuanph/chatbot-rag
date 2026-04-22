@@ -92,7 +92,9 @@
       "ALLOWED_HOSTS": "must be explicit",
       "CORS_ORIGINS": "must be explicit",
       "S3_SECURE": true,
-      "RATE_LIMIT_RELAXED_MODE": false
+      "RATE_LIMIT_RELAXED_MODE": false,
+      "NEXT_PUBLIC_API_URL": "/api/bep (browser — obfuscated proxy path)",
+      "API_INTERNAL_URL": "http://api:8000/api/v1 (server-side — internal network)"
     }
   },
   "api_summary": {
@@ -229,7 +231,11 @@
     "Hard-delete workflow enforced",
     "Filename/path traversal protections",
     "Correlation ID propagation",
-    "Security audit logging"
+    "Security audit logging",
+    "API gateway proxy: browser never sees Bearer token — all calls via /api/bep/ → Next.js Route Handler → getToken() → backend",
+    "Server-side auth guards: admin/chat/settings layouts call auth() and redirect if unauthorized",
+    "Security headers: X-Frame-Options DENY, X-Content-Type-Options nosniff, HSTS, Referrer-Policy, Permissions-Policy",
+    "Rate limiting: memories 20/min per user, user creation/deletion 5/min per admin"
   ],
   "anti_patterns": [
     "flat chunking without hierarchy",

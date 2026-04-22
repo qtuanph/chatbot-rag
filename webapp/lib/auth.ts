@@ -49,8 +49,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
     async session({ session, token }) {
-      // Expose to client
-      session.accessToken = token.accessToken as string;
+      // Expose role and userId to client (accessToken kept server-side only)
       session.role = token.role as string;
       session.userId = token.userId as string;
       return session;
@@ -69,7 +68,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 // Type augmentation for next-auth
 declare module "next-auth" {
   interface Session {
-    accessToken: string;
     role: string;
     userId: string;
   }

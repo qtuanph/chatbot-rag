@@ -104,6 +104,31 @@ Notes:
 | Input validation | schema validation and size limits |
 | Audit logging | log privileged actions and failures |
 | Soft-delete safety | deletion excludes docs from new retrieval, preserves history |
+| Token hiding | Browser never sends/receives Bearer token — all calls via API gateway proxy |
+| Server-side auth | Layout files enforce authentication at server component level |
+| Security headers | X-Frame-Options, HSTS, nosniff, Referrer-Policy applied via Next.js |
+
+### API Gateway Proxy
+
+Browser communicates with backend exclusively through the Next.js API gateway proxy:
+
+- **Browser path**: `/api/bep/v1/...` (set via `NEXT_PUBLIC_API_URL`)
+- **Server path**: `http://api:8000/api/v1/...` (set via `API_INTERNAL_URL`)
+- **Token flow**: Route Handler reads `accessToken` from encrypted HttpOnly JWT cookie via `getToken()` → attaches `Authorization: Bearer` header to backend request
+- **SSE support**: Stream forwarded as `ReadableStream` with `X-Accel-Buffering: no` header
+- **File upload**: `multipart/form-data` forwarded with `duplex: 'half'` for streaming request body
+
+### Rate Limiting Reference
+
+| Endpoint | Limit | Throttle Key |
+|----------|-------|--------------|
+| `POST /auth/login` | 50/min per IP+user | `throttle:login:{ip}:{username}` |
+| `POST /auth/users` | 5/min per admin | `throttle:user:create:{admin_id}` |
+| `DELETE /auth/users/{username}` | 5/min per admin | `throttle:user:delete:{admin_id}` |
+| `POST /memories` | 20/min per user | `throttle:memory:create:{user_id}` |
+| `PATCH /memories/{id}` | 20/min per user | `throttle:memory:update:{user_id}` |
+| `DELETE /memories/{id}` | 20/min per user | `throttle:memory:delete:{user_id}` |
+| `POST /chat/stream` | 30/min per user | existing chat throttle |
 
 ### Rate-Limit Notes
 

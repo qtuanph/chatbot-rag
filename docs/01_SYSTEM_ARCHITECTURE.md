@@ -36,7 +36,8 @@ graph TD
     WebApp --> |next-auth v5 JWT| Auth[Auth Client]
     WebApp --> |SSE streaming| SSE[Chat Streaming]
 
-    WebApp --> API[FastAPI Backend]
+    WebApp --> |API Gateway Proxy /api/bep/| APIProxy[Route Handler: getToken → Bearer]
+    APIProxy --> |server-side internal| API[FastAPI Backend]
     API --> AuthSvc[Auth and RBAC]
     API --> Upload[Upload Endpoint]
     API --> Chat[Chat Endpoint]
@@ -83,7 +84,7 @@ graph TD
 
 | Stage | Path | Output |
 |-------|------|--------|
-| 1. Upload | Browser → Next.js → API → RustFS | File persisted, document row pending |
+| 1. Upload | Browser → `/api/bep/` → Next.js proxy → API → RustFS | File persisted, document row pending |
 | 2. Queue | API → Redis → Worker | Async task created, task_id returned |
 | 3. Parse | Worker → Docling `iterate_items()` (Method D) + Smart OCR → Section extraction → Chunk splitting | Sections + chunks with page spans, heading levels |
 | 4. Validate | Worker → Hierarchy Validator | Parent-child consistency report |
@@ -93,7 +94,7 @@ graph TD
 | 8. Persist | Worker → Qdrant | Chunks with section_id metadata |
 | 9. Retrieve | Chat → QueryCache → Embedder → single Qdrant query → in-memory section grouping → chunk re-ranking | Top sections + chunks |
 | 10. Memory | Chat → UserMemoryService → Redis cache (5min TTL) → PostgreSQL fallback → inject into systemInstruction | Personalized prompt context |
-| 11. Stream | Chat → AI Provider (maxOutputTokens: 1M, timeout 5min) → strip_reasoning() safety net → SSE stream | Grounded answer with citations, no chain-of-thought |
+| 11. Stream | Chat → AI Provider (maxOutputTokens: 1M, timeout 5min) → strip_reasoning() safety net → SSE stream via proxy → Browser | Grounded answer with citations, no chain-of-thought |
 | 12. Extract | Post-response → UserMemoryService.extract_memories_from_turn() → async Gemini call → store in user_memories | Learned facts for future turns |
 
 ## Non-Negotiable Invariants
@@ -152,6 +153,9 @@ See: Pinterest Text-to-SQL, Swiggy Hermes, Uber QueryGPT for reference patterns.
 | Direct PostgreSQL subquery per chat request | Replaced by TTL-cached document IDs (60s), explicitly invalidated on upload/delete |
 | Duplicate system instruction in `chat()` and `chat_stream()` | Refactored to shared `_SYSTEM_INSTRUCTION` constant; `chat()` now reuses `chat_stream()` |
 | Direct port access (localhost:3000, localhost:8000) | Replaced by nginx reverse proxy on port 80 — SSE streaming, NextAuth routing, rate limiting, security headers |
+| Browser Bearer token exposure | Replaced by API gateway proxy — browser calls `/api/bep/` only, token read server-side via `getToken()` |
+| Client-side session.accessToken | Removed from Session type — `accessToken` stays in JWT callback, never exposed to client components |
+| Admin pages without server auth | Added server-side `auth()` guards in admin/chat/settings layouts |
 
 ## User Memory Architecture
 
@@ -212,3 +216,55 @@ Chat supports multi-turn context via Gemini `contents` array format:
 - Last 20 messages included for performance
 - RAG context embedded into current user message (not separate field)
 - Session managed by `ChatStore` with Redis-backed history
+
+## Security Architecture
+
+### API Gateway Proxy (JWT Hiding)
+
+Browser **never** sends or receives Bearer tokens. All browser API calls go through the Next.js API gateway proxy:
+
+```
+Browser → /api/bep/... → Next.js Route Handler → getToken() (HttpOnly cookie) → Bearer header → FastAPI backend
+```
+
+| Layer | Mechanism |
+|-------|-----------|
+| **Client** | Calls `/api/bep/v1/...` — no token in JS, no token in Network tab |
+| **Route Handler** | `webapp/app/api/bep/[...path]/route.ts` — reads JWT via `getToken()` from encrypted HttpOnly cookie |
+| **Backend** | Receives standard Bearer token — no changes to auth logic |
+| **Session type** | Client `Session` has `role` + `userId` only — `accessToken` stays server-side |
+
+### Server-Side Auth Guards
+
+All page layouts enforce authentication at the server component level:
+
+| Layout | Auth Level | Redirect |
+|--------|-----------|----------|
+| `webapp/app/(main)/admin/layout.tsx` | `session.role === "admin"` | → `/login` or `/chat` |
+| `webapp/app/(main)/chat/layout.tsx` | `session exists` | → `/login` |
+| `webapp/app/(main)/settings/layout.tsx` | `session exists` | → `/login` |
+
+### Security Headers
+
+Applied via `next.config.ts` `headers()` config on all routes:
+
+| Header | Value |
+|--------|-------|
+| X-Frame-Options | DENY |
+| X-Content-Type-Options | nosniff |
+| Referrer-Policy | strict-origin-when-cross-origin |
+| Permissions-Policy | geolocation=(), microphone=(), camera=(), payment=() |
+| X-DNS-Prefetch-Control | on |
+| Strict-Transport-Security | max-age=31536000; includeSubDomains |
+
+### Rate Limiting Summary
+
+| Endpoint | Limit | Key |
+|----------|-------|-----|
+| `POST /memories` | 20/min per user | `throttle:memory:create:{user_id}` |
+| `PATCH /memories/{id}` | 20/min per user | `throttle:memory:update:{user_id}` |
+| `DELETE /memories/{id}` | 20/min per user | `throttle:memory:delete:{user_id}` |
+| `POST /auth/users` | 5/min per admin | `throttle:user:create:{user_id}` |
+| `DELETE /auth/users/{username}` | 5/min per admin | `throttle:user:delete:{user_id}` |
+| `POST /chat/stream` | 30/min per user | existing chat throttle |
+| `POST /auth/login` | 50/min per IP+user | existing login throttle |

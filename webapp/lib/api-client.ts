@@ -18,13 +18,15 @@ import type {
   HealthData,
 } from "@/types/api";
 
-// Client-side: browser needs localhost (outside Docker)
-// Server-side: inside Docker needs internal hostname
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-const API_INTERNAL = process.env.API_INTERNAL_URL || API_BASE;
+// Browser: calls go through Next.js Route Handler proxy (/api/bep/...)
+// The proxy reads JWT from session cookie and forwards with Bearer token.
+// Token is NEVER exposed to browser JavaScript.
+// All URLs must be configured via environment variables — no localhost fallbacks.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL!;
+const API_INTERNAL = process.env.API_INTERNAL_URL!;
 
 function getBaseUrl(): string {
-  // On server (Node.js), use internal Docker URL; on client (browser), use public URL
+  // On server (Node.js), use internal Docker URL; on client (browser), use proxy
   return typeof window === "undefined" ? API_INTERNAL : API_BASE;
 }
 
@@ -70,6 +72,7 @@ async function apiFetch<T>(
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
+  // Token only used for server-side calls (auth.ts authorize flow)
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
@@ -95,57 +98,56 @@ export const authApi = {
       body: JSON.stringify(data),
     }),
 
-  logout: (token: string): Promise<{ status: string }> =>
-    apiFetch<{ status: string }>("/auth/logout", { method: "POST" }, token),
+  logout: (): Promise<{ status: string }> =>
+    apiFetch<{ status: string }>("/auth/logout", { method: "POST" }),
 
   getMe: (token: string): Promise<UserInfo> =>
     apiFetch<UserInfo>("/auth/me", {}, token),
 
-  getUsers: (token: string): Promise<UserItem[]> =>
-    apiFetch<UserItem[]>("/auth/users", {}, token),
+  getUsers: (): Promise<UserItem[]> =>
+    apiFetch<UserItem[]>("/auth/users"),
 
-  getRoles: (token: string): Promise<RoleItem[]> =>
-    apiFetch<RoleItem[]>("/auth/roles", {}, token),
+  getRoles: (): Promise<RoleItem[]> =>
+    apiFetch<RoleItem[]>("/auth/roles"),
 
-  createUser: (data: CreateUserRequest, token: string): Promise<UserItem> =>
+  createUser: (data: CreateUserRequest): Promise<UserItem> =>
     apiFetch<UserItem>("/auth/users", {
       method: "POST",
       body: JSON.stringify(data),
-    }, token),
+    }),
 
-  deleteUser: (username: string, token: string): Promise<{ status: string }> =>
+  deleteUser: (username: string): Promise<{ status: string }> =>
     apiFetch<{ status: string }>(`/auth/users/${encodeURIComponent(username)}`, {
       method: "DELETE",
-    }, token),
+    }),
 };
 
 // --- Chat ---
 export const chatApi = {
-  send: (data: ChatRequest, token: string): Promise<ChatResponse> =>
+  send: (data: ChatRequest): Promise<ChatResponse> =>
     apiFetch<ChatResponse>("/chat", {
       method: "POST",
       body: JSON.stringify(data),
-    }, token),
+    }),
 
-  getSessions: (token: string): Promise<ChatSession[]> =>
-    apiFetch<ChatSession[]>("/chat/sessions", {}, token),
+  getSessions: (): Promise<ChatSession[]> =>
+    apiFetch<ChatSession[]>("/chat/sessions"),
 };
 
 // --- Documents ---
 export const documentsApi = {
-  list: (token: string): Promise<DocumentListResponse> =>
-    apiFetch<DocumentListResponse>("/documents", {}, token),
+  list: (): Promise<DocumentListResponse> =>
+    apiFetch<DocumentListResponse>("/documents"),
 
-  get: (id: string, token: string): Promise<DocumentDetail> =>
-    apiFetch<DocumentDetail>(`/documents/${id}`, {}, token),
+  get: (id: string): Promise<DocumentDetail> =>
+    apiFetch<DocumentDetail>(`/documents/${id}`),
 
-  upload: async (file: File, token: string): Promise<UploadResponse> => {
+  upload: async (file: File): Promise<UploadResponse> => {
     const formData = new FormData();
     formData.append("file", file);
 
     const res = await fetch(`${getBaseUrl()}/upload`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
 
@@ -156,36 +158,36 @@ export const documentsApi = {
     return res.json();
   },
 
-  delete: (id: string, token: string): Promise<{ status: string; document_id: string }> =>
+  delete: (id: string): Promise<{ status: string; document_id: string }> =>
     apiFetch<{ status: string; document_id: string }>(`/documents/${id}`, {
       method: "DELETE",
-    }, token),
+    }),
 
-  retry: (id: string, token: string): Promise<{ task_id: string; document_id: string; status: string }> =>
+  retry: (id: string): Promise<{ task_id: string; document_id: string; status: string }> =>
     apiFetch<{ task_id: string; document_id: string; status: string }>(`/documents/${id}/retry`, {
       method: "POST",
-    }, token),
+    }),
 
-  getStatus: (taskId: string, token: string): Promise<TaskStatus> =>
-    apiFetch<TaskStatus>(`/status/${taskId}`, {}, token),
+  getStatus: (taskId: string): Promise<TaskStatus> =>
+    apiFetch<TaskStatus>(`/status/${taskId}`),
 };
 
 // --- Tree ---
 export const treeApi = {
-  get: (documentId: string, token: string, offset: number = 0, limit: number = 20): Promise<TreeResponse> => {
+  get: (documentId: string, offset: number = 0, limit: number = 20): Promise<TreeResponse> => {
     const params = new URLSearchParams({
       offset: String(offset),
       limit: String(limit),
     });
-    return apiFetch<TreeResponse>(`/tree/${documentId}?${params.toString()}`, {}, token);
+    return apiFetch<TreeResponse>(`/tree/${documentId}?${params.toString()}`);
   },
 
-  getNode: (documentId: string, nodeId: string, token: string): Promise<NodeDetail> =>
-    apiFetch<NodeDetail>(`/tree/${documentId}/nodes/${nodeId}`, {}, token),
+  getNode: (documentId: string, nodeId: string): Promise<NodeDetail> =>
+    apiFetch<NodeDetail>(`/tree/${documentId}/nodes/${nodeId}`),
 
-  search: (documentId: string, query: string, token: string): Promise<{ results: TreeSearchResult[] }> => {
+  search: (documentId: string, query: string): Promise<{ results: TreeSearchResult[] }> => {
     const params = new URLSearchParams({ query });
-    return apiFetch<{ results: TreeSearchResult[] }>(`/tree/${documentId}/search?${params.toString()}`, {}, token);
+    return apiFetch<{ results: TreeSearchResult[] }>(`/tree/${documentId}/search?${params.toString()}`);
   },
 };
 
@@ -194,8 +196,8 @@ export const healthApi = {
   get: (): Promise<{ status: string }> =>
     apiFetch<{ status: string }>("/health"),
 
-  getData: (token: string): Promise<HealthData> =>
-    apiFetch<HealthData>("/health/data", {}, token),
+  getData: (): Promise<HealthData> =>
+    apiFetch<HealthData>("/health/data"),
 };
 
 // --- Memories ---
@@ -208,23 +210,23 @@ export interface MemoryItem {
 }
 
 export const memoriesApi = {
-  list: (token: string): Promise<{ items: MemoryItem[] }> =>
-    apiFetch<{ items: MemoryItem[] }>("/memories", {}, token),
+  list: (): Promise<{ items: MemoryItem[] }> =>
+    apiFetch<{ items: MemoryItem[] }>("/memories"),
 
-  create: (data: { memory_type: string; content: string }, token: string): Promise<MemoryItem> =>
+  create: (data: { memory_type: string; content: string }): Promise<MemoryItem> =>
     apiFetch<MemoryItem>("/memories", {
       method: "POST",
       body: JSON.stringify(data),
-    }, token),
+    }),
 
-  update: (id: string, data: { content?: string; memory_type?: string; is_active?: boolean }, token: string): Promise<MemoryItem> =>
+  update: (id: string, data: { content?: string; memory_type?: string; is_active?: boolean }): Promise<MemoryItem> =>
     apiFetch<MemoryItem>(`/memories/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
-    }, token),
+    }),
 
-  delete: (id: string, token: string): Promise<void> =>
-    apiFetch<void>(`/memories/${id}`, { method: "DELETE" }, token),
+  delete: (id: string): Promise<void> =>
+    apiFetch<void>(`/memories/${id}`, { method: "DELETE" }),
 };
 
 export { ApiError };

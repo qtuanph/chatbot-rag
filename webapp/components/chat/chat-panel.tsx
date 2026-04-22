@@ -33,7 +33,7 @@ export function ChatPanel() {
 
   const handleSend = useCallback(
     async (query: string) => {
-      if (!session?.accessToken || streaming) return;
+      if (!session || streaming) return;
 
       const userMsg: ChatMessageType = {
         id: crypto.randomUUID(),
@@ -49,11 +49,11 @@ export function ChatPanel() {
       setStreaming(true);
 
       try {
+        // SSE goes through Next.js proxy — no Bearer token exposed to browser
         const res = await fetch(`${API_BASE}/chat/stream`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${session.accessToken}`,
           },
           body: JSON.stringify({
             query,
@@ -141,7 +141,7 @@ export function ChatPanel() {
         setStreaming(false);
       }
     },
-    [session?.accessToken, sessionId, streaming],
+    [session, sessionId, streaming],
   );
 
   return (

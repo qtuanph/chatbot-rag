@@ -8,13 +8,16 @@ from pydantic import BaseModel
 
 from app.api.deps import AuthContext, get_auth_context
 from app.core import http_errors
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.memory import UserMemory
+from app.services.auth.throttle import RequestThrottle
 from app.services.chat.memory import UserMemoryService
 
 
 router = APIRouter(tags=["memories"])
 memory_service = UserMemoryService()
+throttle = RequestThrottle()
 logger = logging.getLogger(__name__)
 
 
@@ -71,6 +74,9 @@ async def create_memory(
     auth: AuthContext = Depends(get_auth_context),
 ) -> MemoryResponse:
     """Create a new memory for the current user."""
+    throttle_key = f"throttle:memory:create:{auth.user_id}"
+    if not throttle.allow(throttle_key, limit=settings.effective_rate_limit(20), window_seconds=60):
+        raise http_errors.too_many_requests("Too many memory creation requests")
     if not data.content or not data.content.strip():
         raise http_errors.bad_request("Memory content cannot be empty")
 
@@ -111,6 +117,9 @@ async def update_memory(
     auth: AuthContext = Depends(get_auth_context),
 ) -> MemoryResponse:
     """Update a memory (toggle active, edit content)."""
+    throttle_key = f"throttle:memory:update:{auth.user_id}"
+    if not throttle.allow(throttle_key, limit=settings.effective_rate_limit(20), window_seconds=60):
+        raise http_errors.too_many_requests("Too many memory update requests")
     with SessionLocal() as session:
         memory = session.get(UserMemory, memory_id)
         if memory is None or str(memory.user_id) != auth.user_id:
@@ -143,6 +152,9 @@ async def delete_memory(
     auth: AuthContext = Depends(get_auth_context),
 ) -> None:
     """Delete a memory."""
+    throttle_key = f"throttle:memory:delete:{auth.user_id}"
+    if not throttle.allow(throttle_key, limit=settings.effective_rate_limit(20), window_seconds=60):
+        raise http_errors.too_many_requests("Too many memory delete requests")
     with SessionLocal() as session:
         memory = session.get(UserMemory, memory_id)
         if memory is None or str(memory.user_id) != auth.user_id:

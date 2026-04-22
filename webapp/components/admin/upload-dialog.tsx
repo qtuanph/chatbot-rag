@@ -45,14 +45,14 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
   }, []);
 
   const pollProgress = useCallback(
-    async (id: string, token: string) => {
+    async (id: string) => {
       cancelledRef.current = false;
 
       const poll = async () => {
         if (cancelledRef.current) return;
 
         try {
-          const status = await documentsApi.getStatus(id, token);
+          const status = await documentsApi.getStatus(id);
           setProgress(status.progress.percent);
           setStatusMessage(status.status_message || status.stage || "");
 
@@ -90,7 +90,7 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (!file || !session?.accessToken) return;
+      if (!file || !session) return;
 
       setUploading(true);
       setProgress(5);
@@ -98,10 +98,10 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
       setErrorMessage(null);
 
       try {
-        const result = await documentsApi.upload(file, session.accessToken);
+        const result = await documentsApi.upload(file);
         setProgress(10);
         setStatusMessage("Đang xử lý...");
-        pollProgress(result.task_id, session.accessToken);
+        pollProgress(result.task_id);
       } catch {
         toast.error("Tải lên thất bại. Vui lòng thử lại.");
         setUploading(false);

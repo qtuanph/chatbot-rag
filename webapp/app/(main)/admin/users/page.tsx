@@ -40,9 +40,9 @@ export default function UsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
-    if (!session?.accessToken) return;
+    if (!session) return;
     try {
-      const data = await authApi.getUsers(session.accessToken);
+      const data = await authApi.getUsers();
       setUsers(data);
     } catch {
       toast.error("Không thể tải danh sách người dùng");
@@ -50,9 +50,9 @@ export default function UsersPage() {
   }, [session]);
 
   const fetchRoles = useCallback(async () => {
-    if (!session?.accessToken) return;
+    if (!session) return;
     try {
-      const data = await authApi.getRoles(session.accessToken);
+      const data = await authApi.getRoles();
       setRoles(data);
     } catch {
       toast.error("Không thể tải danh sách vai trò");
@@ -67,7 +67,7 @@ export default function UsersPage() {
   const handleCreate = useCallback(
     async (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
-      if (!session?.accessToken) return;
+      if (!session) return;
 
       const formData = new FormData(e.currentTarget);
       const username = formData.get("username") as string;
@@ -75,7 +75,7 @@ export default function UsersPage() {
       const role = (formData.get("role") as CreateUserRequest["role"]) ?? "member";
 
       try {
-        await authApi.createUser({ username, password, role }, session.accessToken);
+        await authApi.createUser({ username, password, role });
         toast.success("Tạo người dùng thành công");
         setDialogOpen(false);
         fetchUsers();
@@ -88,9 +88,9 @@ export default function UsersPage() {
 
   const handleDelete = useCallback(
     async (username: string) => {
-      if (!session?.accessToken) return;
+      if (!session) return;
       try {
-        await authApi.deleteUser(username, session.accessToken);
+        await authApi.deleteUser(username);
         toast.success(`Đã xóa người dùng ${username}`);
         setDeleteTarget(null);
         fetchUsers();

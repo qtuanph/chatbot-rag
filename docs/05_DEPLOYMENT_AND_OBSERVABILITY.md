@@ -122,11 +122,12 @@ Config: `ops/nginx/nginx.conf` | Image: `nginx:stable-alpine3.23-perl`
 
 ```
 1. /api/auth/         → webapp_frontend (NextAuth routes — MUST be before /api/)
-2. /api/v1/chat/stream → api_backend (SSE streaming — unbuffered)
-3. /api/               → api_backend (general API — rate limited)
-4. /view/              → api_backend (demo UI)
-5. /                   → webapp_frontend (Next.js app)
-6. /_next/static/      → webapp_frontend (aggressive caching 365d)
+2. /api/bep/          → webapp_frontend (API gateway proxy — browser calls, SSE, file upload)
+3. /api/v1/chat/stream → api_backend (SSE streaming — unbuffered)
+4. /api/               → api_backend (general API — rate limited)
+5. /view/              → api_backend (demo UI)
+6. /                   → webapp_frontend (Next.js app)
+7. /_next/static/      → webapp_frontend (aggressive caching 365d)
 ```
 
 ### Key Features
@@ -134,10 +135,12 @@ Config: `ops/nginx/nginx.conf` | Image: `nginx:stable-alpine3.23-perl`
 | Feature | Config |
 |---------|--------|
 | SSE streaming | `proxy_buffering off; proxy_cache off; gzip off; chunked_transfer_encoding off` |
+| API gateway proxy | `/api/bep/` → webapp_frontend — browser never calls backend directly |
 | Connection pooling | `keepalive 32` on both upstreams |
 | Rate limiting | `api_limit` 30r/s, `upload_limit` 2r/s |
 | WebSocket/HMR | `map $http_upgrade $connection_upgrade` for Next.js hot reload |
 | Security headers | `proxy_hide_header` prevents duplicate headers from backend |
+| Security headers (Next.js) | X-Frame-Options DENY, HSTS, nosniff, Referrer-Policy via `next.config.ts` |
 | Upload size | `client_max_body_size 50m` (matches MAX_UPLOAD_SIZE_MB) |
 | Long timeout | `proxy_read_timeout 86400s` for SSE and HMR |
 | Version hidden | `server_tokens off` |

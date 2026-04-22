@@ -98,16 +98,16 @@ export function DocumentTable() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchDocs = useCallback(async () => {
-    if (!session?.accessToken) return;
+    if (!session) return;
     try {
-      const result = await documentsApi.list(session.accessToken);
+      const result = await documentsApi.list();
       setDocs(result.items);
     } catch {
       toast.error("Không thể tải danh sách tài liệu");
     } finally {
       setLoading(false);
     }
-  }, [session?.accessToken]);
+  }, [session]);
 
   useEffect(() => {
     fetchDocs();
@@ -136,14 +136,11 @@ export function DocumentTable() {
 
   // Progress dialog polling
   useEffect(() => {
-    if (!viewDoc || !session?.accessToken) return;
+    if (!viewDoc || !session) return;
 
     const pollView = async () => {
       try {
-        const detail = await documentsApi.get(
-          viewDoc.document_id,
-          session.accessToken!,
-        );
+        const detail = await documentsApi.get(viewDoc.document_id);
         setViewProgress(detail.progress_percent);
         setViewStatus(detail.status);
         setViewMessage(detail.status_message || detail.parse_error || "");
@@ -172,7 +169,7 @@ export function DocumentTable() {
         viewPollRef.current = null;
       }
     };
-  }, [viewDoc?.document_id, session?.accessToken, fetchDocs]);
+  }, [viewDoc?.document_id, session, fetchDocs]);
 
   const handleView = useCallback(
     (doc: DocumentSummary) => {
@@ -198,9 +195,9 @@ export function DocumentTable() {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (!session?.accessToken) return;
+      if (!session) return;
       try {
-        await documentsApi.delete(id, session.accessToken);
+        await documentsApi.delete(id);
         toast.success("Đã xếp hàng xóa tài liệu");
         setDeleteTarget(null);
         fetchDocs();
@@ -208,15 +205,15 @@ export function DocumentTable() {
         toast.error("Xóa thất bại");
       }
     },
-    [session?.accessToken, fetchDocs],
+    [session, fetchDocs],
   );
 
   const handleRetry = useCallback(
     async (id: string) => {
-      if (!session?.accessToken) return;
+      if (!session) return;
       setRetryingId(id);
       try {
-        await documentsApi.retry(id, session.accessToken);
+        await documentsApi.retry(id);
         toast.success("Đã xếp hàng xử lý lại tài liệu");
         handleCloseView();
         fetchDocs();
@@ -226,7 +223,7 @@ export function DocumentTable() {
         setRetryingId(null);
       }
     },
-    [session?.accessToken, fetchDocs, handleCloseView],
+    [session, fetchDocs, handleCloseView],
   );
 
   if (loading) {

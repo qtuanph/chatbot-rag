@@ -55,28 +55,27 @@ export default function SettingsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchMemories = useCallback(async () => {
-    if (!session?.accessToken) return;
+    if (!session) return;
     try {
-      const result = await memoriesApi.list(session.accessToken);
+      const result = await memoriesApi.list();
       setMemories(result.items);
     } catch {
       toast.error("Không thể tải bộ nhớ");
     } finally {
       setLoading(false);
     }
-  }, [session?.accessToken]);
+  }, [session]);
 
   useEffect(() => {
     fetchMemories();
   }, [fetchMemories]);
 
   const handleAdd = useCallback(async () => {
-    if (!session?.accessToken || !newContent.trim()) return;
+    if (!session || !newContent.trim()) return;
     setSaving(true);
     try {
       const item = await memoriesApi.create(
         { memory_type: newType, content: newContent.trim() },
-        session.accessToken,
       );
       setMemories((prev) => [item, ...prev]);
       setNewContent("");
@@ -86,16 +85,15 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  }, [session?.accessToken, newContent, newType]);
+  }, [session, newContent, newType]);
 
   const handleToggle = useCallback(
     async (id: string, isActive: boolean) => {
-      if (!session?.accessToken) return;
+      if (!session) return;
       try {
         const updated = await memoriesApi.update(
           id,
           { is_active: !isActive },
-          session.accessToken,
         );
         setMemories((prev) =>
           prev.map((m) => (m.id === id ? updated : m)),
@@ -105,15 +103,15 @@ export default function SettingsPage() {
         toast.error("Không thể cập nhật");
       }
     },
-    [session?.accessToken],
+    [session],
   );
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (!session?.accessToken) return;
+      if (!session) return;
       setDeletingId(id);
       try {
-        await memoriesApi.delete(id, session.accessToken);
+        await memoriesApi.delete(id);
         setMemories((prev) => prev.filter((m) => m.id !== id));
         toast.success("Đã xóa ghi nhớ");
       } catch {
@@ -122,7 +120,7 @@ export default function SettingsPage() {
         setDeletingId(null);
       }
     },
-    [session?.accessToken],
+    [session],
   );
 
   return (

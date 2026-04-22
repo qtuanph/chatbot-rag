@@ -45,16 +45,16 @@ export default function DocumentDetailPage() {
 
   const fetchPage = useCallback(
     async (offset: number, append: boolean) => {
-      if (!session?.accessToken || !docId) return;
+      if (!session || !docId) return;
       if (offset === 0) setLoading(true);
       else setLoadingMore(true);
 
       try {
         if (offset === 0) {
-          const docData = await documentsApi.get(docId, session.accessToken);
+          const docData = await documentsApi.get(docId);
           setDoc(docData);
         }
-        const treeData = await treeApi.get(docId, session.accessToken, offset, PAGE_SIZE);
+        const treeData = await treeApi.get(docId, offset, PAGE_SIZE);
         if (append) {
           setNodes((prev) => [...prev, ...treeData.nodes]);
         } else {
@@ -67,7 +67,7 @@ export default function DocumentDetailPage() {
         setLoadingMore(false);
       }
     },
-    [session?.accessToken, docId],
+    [session, docId],
   );
 
   // Initial load
@@ -78,7 +78,7 @@ export default function DocumentDetailPage() {
   // Search — load all matching (server-side search)
   useEffect(() => {
     const normalizedQuery = searchQuery.trim();
-    if (!session?.accessToken || !docId) return;
+    if (!session || !docId) return;
 
     if (!normalizedQuery) {
       setExpandedNode(null);
@@ -90,7 +90,7 @@ export default function DocumentDetailPage() {
 
     const timer = setTimeout(() => {
       treeApi
-        .search(docId, normalizedQuery.slice(0, 500), session.accessToken)
+        .search(docId, normalizedQuery.slice(0, 500))
         .then((data) => {
           if (cancelled) return;
           // Convert search results to display format
@@ -117,7 +117,7 @@ export default function DocumentDetailPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [searchQuery, session?.accessToken, docId, fetchPage]);
+  }, [searchQuery, session, docId, fetchPage]);
 
   if (loading && nodes.length === 0) {
     return (
@@ -238,7 +238,6 @@ export default function DocumentDetailPage() {
                         onToggle={() =>
                           setExpandedNode(expandedNode === node.node_id ? null : node.node_id)
                         }
-                        accessToken={session?.accessToken || ""}
                       />
                     ))}
                   </TableBody>
@@ -279,14 +278,12 @@ function NodeRow({
   index,
   isExpanded,
   onToggle,
-  accessToken,
 }: {
   node: TreeNode;
   docId: string;
   index: number;
   isExpanded: boolean;
   onToggle: () => void;
-  accessToken: string;
 }) {
   const [nodeText, setNodeText] = useState<string | null>(null);
   const [loadingText, setLoadingText] = useState(false);
@@ -295,7 +292,7 @@ function NodeRow({
     if (!isExpanded && nodeText === null && !loadingText) {
       setLoadingText(true);
       treeApi
-        .getNode(docId, node.node_id, accessToken)
+        .getNode(docId, node.node_id)
         .then((detail) => setNodeText(detail.text))
         .catch(() => setNodeText("(Lỗi tải nội dung)"))
         .finally(() => setLoadingText(false));

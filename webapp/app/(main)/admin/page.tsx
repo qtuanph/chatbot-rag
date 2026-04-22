@@ -51,16 +51,16 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
-    if (!session?.accessToken) return;
+    if (!session) return;
     try {
-      const result = await healthApi.getData(session.accessToken);
+      const result = await healthApi.getData();
       setData(result);
     } catch {
       // Silently fail
     } finally {
       setLoading(false);
     }
-  }, [session?.accessToken]);
+  }, [session]);
 
   useEffect(() => {
     fetchData();

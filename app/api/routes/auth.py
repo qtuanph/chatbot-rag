@@ -74,6 +74,10 @@ def logout(request: Request, authorization: str | None = Header(default=None)) -
 
 @router.post("/auth/users", response_model=CreateUserResponse)
 def create_user(payload: CreateUserRequest, _auth=Depends(require_admin)) -> CreateUserResponse:
+    throttle_key = f"throttle:user:create:{_auth.user_id}"
+    if not throttle.allow(throttle_key, limit=settings.effective_rate_limit(5), window_seconds=60):
+        raise http_errors.too_many_requests("Too many user creation requests")
+
     with SessionLocal() as session:
         normalized_username = payload.username.lower().strip()
         existing_user = session.query(User).filter(User.username == normalized_username).one_or_none()
@@ -146,6 +150,10 @@ def get_users(_auth=Depends(require_admin)) -> list[CreateUserResponse]:
 @router.delete("/auth/users/{username}")
 def delete_user(username: str, _auth=Depends(require_admin)) -> dict[str, str]:
     """Delete a user by username."""
+    throttle_key = f"throttle:user:delete:{_auth.user_id}"
+    if not throttle.allow(throttle_key, limit=settings.effective_rate_limit(5), window_seconds=60):
+        raise http_errors.too_many_requests("Too many user delete requests")
+
     with SessionLocal() as session:
         # Normalize username for lookup
         normalized_username = username.lower().strip()
