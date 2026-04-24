@@ -12,6 +12,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { LogOut, Settings } from "lucide-react";
+import { authApi } from "@/lib/api-client";
 
 export function UserNav() {
   const { data: session } = useSession();
@@ -20,6 +21,14 @@ export function UserNav() {
   if (!session) return null;
 
   const initials = session.user?.name?.slice(0, 2).toUpperCase() || "U";
+
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } finally {
+      await signOut({ callbackUrl: "/login" });
+    }
+  };
 
   return (
     <DropdownMenu>
@@ -41,7 +50,7 @@ export function UserNav() {
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={handleLogout}
           className="text-destructive"
         >
           <LogOut className="mr-2 h-4 w-4" />

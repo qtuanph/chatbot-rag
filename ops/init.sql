@@ -2,6 +2,11 @@
 -- Single-project, self-hosted Vietnamese chatbot
 -- One shared project dataset for authenticated users
 
+-- ============= TIMEZONE: Vietnam (UTC+7) =============
+-- All timestamps displayed in Asia/Ho_Chi_Minh timezone
+-- Internal storage is still UTC (PostgreSQL best practice)
+SET timezone = 'Asia/Ho_Chi_Minh';
+
 -- ============= EXTENSIONS =============
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -254,7 +259,6 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_source_schema_cache TO app_rw
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_source_query_audit TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE security_audit TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_sections TO app_rw;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE user_memories TO app_rw;
 
 -- ============= SEED DATA =============
 -- Insert default roles (if not already present)
@@ -289,3 +293,5 @@ CREATE TABLE IF NOT EXISTS user_memories (
 );
 
 CREATE INDEX IF NOT EXISTS ix_user_memories_user_active ON user_memories(user_id, is_active);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE user_memories TO app_rw;

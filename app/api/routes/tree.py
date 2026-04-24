@@ -9,7 +9,7 @@ import re
 from collections import Counter
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import AuthContext, get_auth_context
 from app.core.config import settings

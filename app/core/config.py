@@ -63,11 +63,11 @@ class Settings(BaseSettings):
     s3_bucket: str = "rag-documents"
     s3_secure: bool = False
     allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0"
-    cors_origins: str = "http://localhost:8000,http://localhost:9001,http://localhost:3000"
+    cors_origins: str = "http://localhost"  # All traffic through nginx port 80
 
     # Embedding — local/offline, on-premise
     embedding_model: str = "sentence-transformer"
-    embedding_hf_model: str = "BAAI/bge-m3"          # 1024-dim, 8192 tokens, multilingual
+    embedding_hf_model: str = "AITeamVN/Vietnamese_Embedding_v2"  # 1024-dim, 8192 tokens, built-in Normalize layer, Vietnamese fine-tuned BGE-M3
     embedding_vector_size: int = 1024
     embedding_query_prefix: str = ""
     embedding_passage_prefix: str = ""
@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     qdrant_timeout: int = 30  # Seconds
 
     # Chat history auto-delete
-    chat_session_ttl_days: int = 1  # Sessions older than 1 day are auto-deleted
+    chat_session_ttl_days: int = 30  # Sessions older than 30 days are auto-deleted
 
     def model_post_init(self, __context) -> None:
         # Security: Validate JWT secret meets minimum requirements
@@ -119,8 +119,8 @@ class Settings(BaseSettings):
         
         # Embedding validation
         self.vector_store = str(self.vector_store).strip().lower() or "qdrant"
-        if self.vector_store not in {"qdrant", "chroma", "weaviate"}:
-            raise ValueError("VECTOR_STORE must be qdrant/chroma/weaviate")
+        if self.vector_store not in {"qdrant"}:
+            raise ValueError("VECTOR_STORE must be qdrant")
         if self.embedding_batch_size < 1:
             raise ValueError("EMBEDDING_BATCH_SIZE must be >= 1")
         if self.embedding_vector_size < 1:

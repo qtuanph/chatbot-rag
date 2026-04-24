@@ -83,7 +83,7 @@ def _get_vector_store() -> QdrantVectorStore:
 def _get_query_cache() -> QueryEmbeddingCache:
     import redis
     client = redis.Redis.from_url(settings.redis_url, decode_responses=False)
-    return QueryEmbeddingCache(client)
+    return QueryEmbeddingCache(client, model_name=settings.embedding_hf_model)
 
 
 # ── TTL-cached document IDs ──────────────────────────────────────────────
@@ -138,19 +138,12 @@ def invalidate_doc_ids_cache() -> None:
 # ── Main retrieval ───────────────────────────────────────────────────────
 
 def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContext:
-    """Retrieve relevant document context for a query using optimised 2-stage retrieval.
-
-    Optimisations over the naïve approach:
-    1. **Single Qdrant query** — fetch enough results in one round-trip,
-       then re-rank in-memory by section.  Eliminates the 2nd Qdrant call.
-    2. **TTL-cached document IDs** — avoids a PostgreSQL subquery on every
-       chat request (60 s TTL, explicitly invalidated on upload/delete).
-    3. **Redis-cached query embeddings** — repeated questions skip the
-       BAAI/bge-m3 forward-pass entirely.
-    """
+    """Retrieve relevant document context for a query using optimised 2-stage retrieval."""
     if not query or len(query.strip()) < 3:
         logger.debug("Query too short, returning empty context")
         return RagContext(nodes=[])
+
+    _t0 = time.monotonic()
 
     latest_doc_ids = _latest_document_ids(session)
     if not latest_doc_ids:
@@ -174,6 +167,9 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
         logger.debug("No document titles found")
         return RagContext(nodes=[])
 
+    _t1 = time.monotonic()
+    logger.info("[PERF-RAG] Doc IDs + titles: %.3fs", _t1 - _t0)
+
     # Query embedding — Redis cache avoids re-computing on repeated questions.
     cache = _get_query_cache()
     query_vector = cache.get(query)
@@ -182,9 +178,11 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
         embed_fn = getattr(svc, "embed_query", None) or svc.embed
         query_vector = embed_fn(query)
         cache.set(query, query_vector)
-        logger.debug("Query cache MISS — embedded locally")
+        _t2 = time.monotonic()
+        logger.info("[PERF-RAG] Embed query (CACHE MISS): %.3fs", _t2 - _t1)
     else:
-        logger.debug("Query cache HIT — skipped embedding")
+        _t2 = time.monotonic()
+        logger.info("[PERF-RAG] Embed query (CACHE HIT): %.3fs", _t2 - _t1)
 
     vs = _get_vector_store()
 
@@ -202,6 +200,9 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
         top_k=fetch_k,
         document_ids_filter=list(title_by_id.keys()),
     )
+
+    _t3 = time.monotonic()
+    logger.info("[PERF-RAG] Qdrant search: %.3fs (%d results)", _t3 - _t2, len(all_results))
 
     # ── Stage 1: Identify top sections from the single result set ────────
     section_scores: dict[str, float] = {}
@@ -309,12 +310,12 @@ def build_answer(query: str, context: RagContext, history: list[dict[str, str]] 
             "context": [],
         }
 
-    # Build rich context for LLM with inline citations.
+    # Build clean context blocks for LLM (no inline citation numbers).
     context_blocks = []
     citations = []
     for idx, node in enumerate(context.nodes, start=1):
         full_text = node.full_text or ""
-        context_blocks.append(f"[{idx}] {node.document_title} - {node.heading}:\n{full_text}")
+        context_blocks.append(f"--- Tài liệu: {node.document_title} — {node.heading} ---\n{full_text}")
 
         citations.append({
             "document_id": node.document_id,
@@ -329,7 +330,7 @@ def build_answer(query: str, context: RagContext, history: list[dict[str, str]] 
 
     answer = (
         f"Câu hỏi: {query}\n\n"
-        f"Tài liệu tham khảo ({len(context.nodes)} nguồn):\n{context_text}"
+        f"Tài liệu tham khảo:\n{context_text}"
     )
 
     return {"answer": answer, "citations": citations, "context": [node.__dict__ for node in context.nodes]}

@@ -69,26 +69,6 @@ class IngestionPipeline:
         self.db_session = db_session
         self.validator = HierarchyValidator()
 
-    async def ingest_async(
-        self,
-        filename: str,
-        content: bytes,
-        user_id: str,
-        document_id: str,
-        progress_callback: Optional[ProgressCallback] = None,
-    ) -> 'IngestionResult':
-        """
-        Async entry point — runs synchronous ingest() in a thread pool
-        so it doesn't block the FastAPI event loop.
-        """
-        import asyncio
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None,
-            self.ingest,
-            filename, content, user_id, document_id, progress_callback,
-        )
-
     def ingest(
         self,
         filename: str,

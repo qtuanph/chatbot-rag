@@ -8,6 +8,7 @@ import type {
   ChatRequest,
   ChatResponse,
   ChatSession,
+  ChatMessageItem,
   DocumentListResponse,
   DocumentDetail,
   UploadResponse,
@@ -132,6 +133,11 @@ export const chatApi = {
 
   getSessions: (): Promise<ChatSession[]> =>
     apiFetch<ChatSession[]>("/chat/sessions"),
+
+  getMessages: (sessionId: string, limit: number = 20, offset: number = 0): Promise<{ messages: ChatMessageItem[]; total: number; has_more: boolean }> =>
+    apiFetch<{ messages: ChatMessageItem[]; total: number; has_more: boolean }>(
+      `/chat/messages?session_id=${encodeURIComponent(sessionId)}&limit=${limit}&offset=${offset}`
+    ),
 };
 
 // --- Documents ---

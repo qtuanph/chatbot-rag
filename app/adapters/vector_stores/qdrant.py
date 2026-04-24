@@ -30,7 +30,7 @@ class QdrantVectorStore(BaseVectorStore):
         url: str = "http://localhost:6333",
         api_key: Optional[str] = None,
         collection_name: str = "documents_vectors",
-        vector_size: int = 768,  # Gemini embedding dimension
+        vector_size: int = 1024,  # Vietnamese_Embedding_v2 dimension
         timeout: int = 30,
     ):
         """
@@ -40,7 +40,7 @@ class QdrantVectorStore(BaseVectorStore):
             url: Qdrant server URL (e.g., http://qdrant:6333)
             api_key: Optional API key for Qdrant cloud
             collection_name: Name of Qdrant collection
-            vector_size: Dimension of vectors (768 for Gemini embedding)
+            vector_size: Dimension of vectors (1024 for Vietnamese_Embedding_v2)
             timeout: Request timeout in seconds
         """
         self.url = url
@@ -84,26 +84,44 @@ class QdrantVectorStore(BaseVectorStore):
             )
 
     def _ensure_collection(self) -> None:
-        """Ensure collection exists; create if missing."""
+        """Ensure collection exists; create with int8 quantization and HNSW tuning if missing."""
         try:
-            from qdrant_client.models import Distance, VectorParams, PointStruct
-            
+            from qdrant_client.models import (
+                Distance,
+                VectorParams,
+                ScalarQuantization,
+                ScalarQuantizationConfig,
+                ScalarType,
+                HnswConfigDiff,
+            )
+
             # Check if collection exists
             collections = self.client.get_collections()
             if any(col.name == self.collection_name for col in collections.collections):
                 logger.info(f"Collection '{self.collection_name}' exists")
                 return
-            
-            # Create collection
-            logger.info(f"Creating collection '{self.collection_name}'...")
+
+            # Create collection with int8 quantization and tuned HNSW
+            logger.info(f"Creating collection '{self.collection_name}' (int8 quantized, HNSW m=16 ef_construct=128)...")
             self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(
                     size=self.vector_size,
-                    distance=Distance.COSINE,  # Cosine similarity for normalized vectors
+                    distance=Distance.COSINE,
+                ),
+                quantization_config=ScalarQuantization(
+                    scalar=ScalarQuantizationConfig(
+                        type=ScalarType.INT8,
+                        quantile=0.99,
+                        always_ram=True,
+                    ),
+                ),
+                hnsw_config=HnswConfigDiff(
+                    m=16,
+                    ef_construct=128,
                 ),
             )
-            logger.info(f"✓ Created collection '{self.collection_name}'")
+            logger.info(f"✓ Created collection '{self.collection_name}' with int8 quantization")
         
         except Exception as e:
             raise VectorStoreOperationException(
@@ -224,8 +242,15 @@ class QdrantVectorStore(BaseVectorStore):
             VectorStoreOperationException: If retrieve fails
         """
         try:
-            from qdrant_client.models import Filter, FieldCondition, MatchValue, MatchAny
-            
+            from qdrant_client.models import (
+                Filter,
+                FieldCondition,
+                MatchValue,
+                MatchAny,
+                SearchParams,
+                QuantizationSearchParams,
+            )
+
             # Build optional filter
             query_conditions = []
             if document_ids_filter:
@@ -252,8 +277,9 @@ class QdrantVectorStore(BaseVectorStore):
                 )
 
             query_filter = Filter(must=query_conditions) if query_conditions else None
-            
-            # Search
+
+            # Search with int8 rescoring: fetch 2x candidates via quantized vectors,
+            # then re-rank top-k using original float32 for near-perfect recall.
             results = self.client.query_points(
                 collection_name=self.collection_name,
                 query=query_vector,
@@ -261,6 +287,14 @@ class QdrantVectorStore(BaseVectorStore):
                 limit=top_k,
                 with_payload=True,
                 with_vectors=False,
+                search_params=SearchParams(
+                    hnsw_ef=128,
+                    quantization=QuantizationSearchParams(
+                        ignore=False,
+                        rescore=True,
+                        oversampling=2.0,
+                    ),
+                ),
             ).points
             
             # Convert to RetrievedDocument objects
@@ -401,20 +435,6 @@ class QdrantVectorStore(BaseVectorStore):
         # Take first 8 bytes and convert to int (max 2^63-1 for Qdrant)
         qdrant_id = int.from_bytes(hash_bytes[:8], byteorder='big') & 0x7FFFFFFFFFFFFFFF
         return qdrant_id
-
-    def get_stats(self) -> Dict[str, Any]:
-        """Get collection statistics."""
-        try:
-            collection_info = self.client.get_collection(self.collection_name)
-            return {
-                'collection_name': self.collection_name,
-                'points_count': collection_info.points_count,
-                'vectors_count': collection_info.vectors_count,
-                'status': str(collection_info.status),
-            }
-        except Exception as e:
-            logger.warning(f"Failed to get collection stats: {str(e)}")
-            return {}
 
     def scroll(
         self,

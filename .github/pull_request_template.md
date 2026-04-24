@@ -19,7 +19,7 @@ Describe what changed and why.
 ## Docs/Memory Update (Required for code changes)
 
 - [ ] This PR updates at least one docs/memory source when code/behavior changes.
-- [ ] If there is a conflict, `AGENTS.md` is treated as source of truth and memory files are synced.
+- [ ] If there is a conflict, `docs/` is treated as source of truth and agent memory/guardrail files are synced.
 
 ## Agent-Agnostic Confirmation
 

@@ -31,15 +31,11 @@ class AIProvider(ABC):
         context_nodes: list[dict[str, Any]],
         max_context_chars: int = 500000,
     ) -> list[str]:
-        """Pack context blocks without a fixed per-node truncation.
-
-        The budget is applied across the whole context so long sections stay intact
-        as much as possible while keeping prompts bounded.
-        """
+        """Pack context blocks without citation numbers for natural conversation."""
         blocks: list[str] = []
         remaining = max(0, int(max_context_chars))
 
-        for idx, node in enumerate(context_nodes, start=1):
+        for node in context_nodes:
             if remaining <= 0:
                 break
 
@@ -48,9 +44,9 @@ class AIProvider(ABC):
             page_range = node.get("page_range") or node.get("metadata", {}).get("page_range")
             full_text = str(node.get("full_text") or node.get("text") or "")
 
-            header = f"[{idx}] {title} | {heading}"
+            header = f"Tài liệu: {title} — {heading}"
             if page_range:
-                header += f" | pages {page_range}"
+                header += f" (trang {page_range})"
 
             if full_text:
                 block = f"{header}\n{full_text}"

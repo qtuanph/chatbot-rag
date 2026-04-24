@@ -24,10 +24,9 @@ class ParsedNodeType(str, Enum):
 @dataclass
 class ParsingMetadata:
     """Metadata about the parsing process."""
-    engine_used: str  # "docling", "llamaindex", "classic"
+    engine_used: str  # "docling+items", "docling+sections", "classic"
     source_format: str  # "pdf", "docx", "txt", "markdown", "xlsx"
     docling_used: bool = False  # Whether Docling was used
-    llamaindex_used: bool = False  # Whether LlamaIndex was used
     fallback_used: bool = False  # Whether fallback parser was triggered
     quality_score: float = 1.0  # 0.0–1.0 based on parse completeness
     parse_time_ms: float = 0.0  # Milliseconds spent parsing
@@ -108,19 +107,6 @@ class BaseParser(ABC):
         """
         pass
 
-    async def parse_async(
-        self,
-        filename: str,
-        content: bytes,
-    ) -> Tuple[List[IngestedNode], ParsingMetadata]:
-        """
-        Async wrapper for parse(); default implementation uses thread pool.
-        Override for true async implementations.
-        """
-        import asyncio
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self.parse, filename, content)
-
 
 @dataclass
 class EmbeddingResult:
@@ -181,12 +167,6 @@ class BaseEmbedding(ABC):
             EmbeddingException: If embedding fails
         """
         pass
-
-    async def embed_async(self, text: str, normalize: bool = True) -> List[float]:
-        """Async wrapper for embed(); default uses thread pool."""
-        import asyncio
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self.embed, text, normalize)
 
 
 @dataclass
@@ -275,14 +255,3 @@ class BaseVectorStore(ABC):
             VectorStoreException: If deletion fails
         """
         pass
-
-    async def store_async(
-        self,
-        document_id: str,
-        nodes: List[IngestedNode],
-        embeddings: List[List[float]],
-    ) -> List[str]:
-        """Async wrapper for store(); default uses thread pool."""
-        import asyncio
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self.store, document_id, nodes, embeddings)

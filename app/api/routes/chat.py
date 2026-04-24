@@ -4,6 +4,7 @@ import json
 import logging
 from uuid import UUID, uuid4
 from typing import Any, AsyncGenerator
+from sqlalchemy import func
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -32,43 +33,63 @@ logger = logging.getLogger(__name__)
 
 def _deduplicate_citations(citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
-    Deduplicate citations by document_id and node_id, keeping the most relevant one.
-    Sorts by index (relevance order from retrieval).
+    Group citations by document_id, merge page ranges into compact format.
 
-    Args:
-        citations: List of citation dicts with document_id, node_id, index, etc.
-
-    Returns:
-        Deduplicated and sorted citations list (max 10)
+    Returns one citation per document with merged page ranges like "1, 3-5, 7-9".
     """
     if not citations:
         return []
 
-    # Use dict to dedupe by document_id + node_id combo
-    seen: dict[tuple[str | None, str | None], dict] = {}
+    # Group by document_id
+    doc_groups: dict[str, list[dict]] = {}
+    doc_titles: dict[str, str] = {}
     for citation in citations:
-        key = (citation.get("document_id"), citation.get("node_id"))
-        if key not in seen:
-            seen[key] = citation
-        else:
-            # Keep the one with lower index (more relevant)
-            # Note: index is always present in build_answer() but we use defensive fallback
-            current_index = citation.get("index", 999)
-            existing_index = seen[key].get("index", 999)
-            if current_index < existing_index:
-                seen[key] = citation
+        doc_id = citation.get("document_id", "")
+        if doc_id not in doc_groups:
+            doc_groups[doc_id] = []
+            doc_titles[doc_id] = citation.get("title", "Tài liệu")
+        doc_groups[doc_id].append(citation)
 
-    # Sort by index and limit to top 10
-    deduped = list(seen.values())
-    deduped.sort(key=lambda x: x.get("index", 999))
+    result = []
+    for doc_id, cites in doc_groups.items():
+        # Collect all page numbers
+        pages: set[int] = set()
+        for c in cites:
+            pr = c.get("page_range")
+            if pr:
+                try:
+                    # Handle ranges like "3-5" or single "7"
+                    parts = str(pr).split("-")
+                    start = int(parts[0].strip())
+                    end = int(parts[-1].strip())
+                    pages.update(range(start, end + 1))
+                except (ValueError, IndexError):
+                    pass
 
-    # Ensure all citations have required fields
-    for citation in deduped:
-        citation.setdefault("title", "Tài liệu")
-        citation.setdefault("heading", "Nội dung")
-        citation.setdefault("page_range", None)
+        # Merge consecutive pages into ranges
+        page_display = ""
+        if pages:
+            sorted_pages = sorted(pages)
+            ranges: list[str] = []
+            range_start = sorted_pages[0]
+            range_end = sorted_pages[0]
+            for p in sorted_pages[1:]:
+                if p == range_end + 1:
+                    range_end = p
+                else:
+                    ranges.append(f"{range_start}" if range_start == range_end else f"{range_start}-{range_end}")
+                    range_start = p
+                    range_end = p
+            ranges.append(f"{range_start}" if range_start == range_end else f"{range_start}-{range_end}")
+            page_display = ", ".join(ranges)
 
-    return deduped[:10]
+        result.append({
+            "document_id": doc_id,
+            "title": doc_titles.get(doc_id, "Tài liệu"),
+            "pages": page_display,
+        })
+
+    return result
 
 
 def _validate_query(query: str) -> None:
@@ -162,6 +183,9 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
     except ValueError:
         raise http_errors.bad_request("Invalid session ID format")
 
+    import time as _time
+    t_start = _time.monotonic()
+
     with SessionLocal() as session:
         chat_session = session.get(ChatSession, session_id)
         if chat_session is None:
@@ -171,11 +195,38 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
         elif str(chat_session.user_id) != auth.user_id:
             raise http_errors.forbidden("Chat session does not belong to this user")
 
+        # Auto-title from first user message
+        if chat_session.title == "Active chat":
+            chat_session.title = request.query[:80] + ("..." if len(request.query) > 80 else "")
+            session.commit()
+
         store.append_message(scope_id, session_id, "user", request.query)
+
+        # Save user message to PostgreSQL for persistence across sessions
+        session.add(ChatMessage(session_id=session_id, role="user", content=request.query))
+        session.commit()
+
+        # Hydrate Redis from DB if TTL expired
+        db_msgs = session.query(ChatMessage).filter(
+            ChatMessage.session_id == session_id
+        ).order_by(ChatMessage.created_at.asc()).all()
+        db_dicts = [{"role": m.role, "content": m.content} for m in db_msgs]
+        store.hydrate_from_db(scope_id, session_id, db_dicts)
+
+        t_session = _time.monotonic()
+        logger.info("[PERF] Session setup: %.3fs", t_session - t_start)
 
         try:
             context = retrieve_context(session, request.query, limit=20)
+
+            t_retrieve = _time.monotonic()
+            logger.info("[PERF] retrieve_context: %.3fs (%d nodes)", t_retrieve - t_session, len(context.nodes))
+
             assistant_seed = build_answer(request.query, context)
+
+            t_build = _time.monotonic()
+            logger.info("[PERF] build_answer: %.3fs", t_build - t_retrieve)
+
             history = store.get_history(scope_id, session_id)
 
             # Deduplicate and clean citations
@@ -184,6 +235,10 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
 
             # Load user memories for personalized system instruction
             user_memories = memory_service.format_memories_for_prompt(auth.user_id)
+
+            t_memories = _time.monotonic()
+            logger.info("[PERF] Memories + history: %.3fs", t_memories - t_build)
+            logger.info("[PERF] Total prep before AI: %.3fs", t_memories - t_start)
 
         except Exception as e:
             logger.error("Error preparing chat context: %s", e, exc_info=True)
@@ -198,6 +253,8 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
         """
         full_answer = ""
         chunk_count = 0
+        t_ai_start = _time.monotonic()
+        t_first_chunk = None
 
         try:
             async for chunk in provider.chat_stream(
@@ -209,6 +266,10 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                 chunk_count += 1
                 full_answer += chunk
 
+                if t_first_chunk is None:
+                    t_first_chunk = _time.monotonic()
+                    logger.info("[PERF] First AI chunk arrived: %.3fs (TTFT)", t_first_chunk - t_ai_start)
+
                 # Send SSE event with proper format
                 event_data = json.dumps({
                     'chunk': chunk,
@@ -217,6 +278,10 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                 yield f"data: {event_data}\n\n"
 
             # Stream completed successfully — clean reasoning, then save
+            t_ai_done = _time.monotonic()
+            logger.info("[PERF] AI streaming done: %.3fs total, %d chunks, %d chars",
+                        t_ai_done - t_ai_start, chunk_count, len(full_answer))
+            logger.info("[PERF] === END-TO-END: %.3fs ===", t_ai_done - t_start)
             clean_answer = strip_reasoning(full_answer.strip())
             with SessionLocal() as session:
                 try:
@@ -294,30 +359,101 @@ async def get_chat_sessions(auth: AuthContext = Depends(get_auth_context)) -> li
     Returns list of sessions with message counts and creation times.
     """
     with SessionLocal() as session:
-        sessions = (
-            session.query(ChatSession)
+        rows = (
+            session.query(
+                ChatSession.id,
+                ChatSession.title,
+                ChatSession.created_at,
+                ChatSession.updated_at,
+                func.count(ChatMessage.id).label("message_count"),
+            )
+            .outerjoin(ChatMessage, ChatMessage.session_id == ChatSession.id)
             .filter(ChatSession.user_id == auth.user_id)
+            .group_by(ChatSession.id)
             .order_by(ChatSession.created_at.desc())
             .all()
         )
 
-        result = []
-        for s in sessions:
-            # Count messages for each session
-            message_count = (
-                session.query(ChatMessage)
-                .filter(ChatMessage.session_id == s.id)
-                .count()
-            )
+        return [
+            {
+                "session_id": str(r.id),
+                "created_at": r.created_at.isoformat(),
+                "updated_at": r.updated_at.isoformat(),
+                "message_count": r.message_count,
+                "title": r.title or "Chat session",
+            }
+            for r in rows
+        ]
 
-            result.append({
-                "session_id": str(s.id),
-                "created_at": s.created_at.isoformat(),
-                "message_count": message_count,
-                "title": s.title or "Chat session",
-            })
 
-        return result
+@router.get("/chat/messages")
+async def get_chat_messages(
+    session_id: str,
+    limit: int = 20,
+    offset: int = 0,
+    auth: AuthContext = Depends(get_auth_context),
+) -> dict[str, object]:
+    """
+    Get messages for a specific chat session with pagination.
+    Used by frontend to restore conversation after browser refresh.
+    Returns messages ordered by creation time (newest first for pagination).
+    Default: last 20 messages. Use offset to load older messages.
+    """
+    try:
+        UUID(session_id)
+    except ValueError:
+        raise http_errors.bad_request("Invalid session ID format")
+
+    # Clamp limit to reasonable range
+    limit = max(1, min(limit, 100))
+
+    with SessionLocal() as session:
+        chat_session = session.get(ChatSession, session_id)
+        if chat_session is None:
+            raise http_errors.not_found("Chat session not found")
+        if str(chat_session.user_id) != auth.user_id:
+            raise http_errors.forbidden("Chat session does not belong to this user")
+
+        # Get total count
+        total = (
+            session.query(func.count(ChatMessage.id))
+            .filter(ChatMessage.session_id == session_id)
+            .scalar()
+        )
+
+        # Get messages: offset from the END (oldest messages)
+        # This way offset=0 returns the newest messages
+        effective_offset = max(0, total - offset - limit)
+        effective_limit = min(limit, total - offset)
+
+        if effective_limit <= 0:
+            return {"messages": [], "total": total, "has_more": False}
+
+        messages = (
+            session.query(ChatMessage)
+            .filter(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.asc())
+            .offset(effective_offset)
+            .limit(effective_limit)
+            .all()
+        )
+
+        has_more = effective_offset > 0
+
+        return {
+            "messages": [
+                {
+                    "id": str(m.id),
+                    "role": m.role,
+                    "content": m.content,
+                    "citations": m.citations or [],
+                    "created_at": m.created_at.isoformat(),
+                }
+                for m in messages
+            ],
+            "total": total,
+            "has_more": has_more,
+        }
 
 
 @router.post("/chat")
@@ -360,7 +496,23 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
         elif str(chat_session.user_id) != auth.user_id:
             raise http_errors.forbidden("Chat session does not belong to this user")
 
+        # Auto-title from first user message
+        if chat_session.title == "Active chat":
+            chat_session.title = request.query[:80] + ("..." if len(request.query) > 80 else "")
+            session.commit()
+
         store.append_message(scope_id, session_id, "user", request.query)
+
+        # Save user message to PostgreSQL for persistence
+        session.add(ChatMessage(session_id=session_id, role="user", content=request.query))
+        session.commit()
+
+        # Hydrate Redis from DB if TTL expired
+        db_msgs = session.query(ChatMessage).filter(
+            ChatMessage.session_id == session_id
+        ).order_by(ChatMessage.created_at.asc()).all()
+        db_dicts = [{"role": m.role, "content": m.content} for m in db_msgs]
+        store.hydrate_from_db(scope_id, session_id, db_dicts)
 
         try:
             context = retrieve_context(session, request.query, limit=20)

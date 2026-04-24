@@ -72,7 +72,10 @@ export default function DocumentDetailPage() {
 
   // Initial load
   useEffect(() => {
-    fetchPage(0, false);
+    const timer = setTimeout(() => {
+      void fetchPage(0, false);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchPage]);
 
   // Search — load all matching (server-side search)
@@ -81,9 +84,11 @@ export default function DocumentDetailPage() {
     if (!session || !docId) return;
 
     if (!normalizedQuery) {
-      setExpandedNode(null);
-      fetchPage(0, false);
-      return;
+      const timer = setTimeout(() => {
+        setExpandedNode(null);
+        void fetchPage(0, false);
+      }, 0);
+      return () => clearTimeout(timer);
     }
 
     let cancelled = false;

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class ParserManager:
     """
     Manages parser selection and orchestration.
-    - Primary: Docling+LlamaIndex if configured
+    - Primary: Docling (iterate_items → markdown fallback)
     - Secondary: Classic parser for fallback
     """
 
@@ -74,38 +74,3 @@ class ParserManager:
                 logger.error(f"Classic parser failed: {e.message}")
                 raise
 
-    async def parse_async(
-        self,
-        filename: str,
-        content: bytes,
-    ) -> Tuple[List[IngestedNode], ParsingMetadata]:
-        """
-        Async version of parse().
-        
-        Args:
-            filename: Document filename
-            content: Raw file bytes
-        
-        Returns:
-            Tuple of (IngestedNode list, ParsingMetadata)
-        """
-        if self.docling_parser:
-            return await self.docling_parser.parse_async(filename, content)
-        else:
-            return await self.classic_parser.parse_async(filename, content)
-
-    def get_available_parsers(self) -> List[str]:
-        """Return list of available parser names."""
-        parsers = ['classic']
-        if self.docling_parser:
-            parsers.insert(0, 'docling')
-        return parsers
-
-    def health_check(self) -> dict:
-        """Return health status of parsers."""
-        return {
-            'primary_parser': self.primary_parser_name,
-            'docling_available': self.docling_parser is not None,
-            'classic_available': self.classic_parser is not None,
-            'fallback_available': self.docling_parser is not None and self.docling_parser.fallback_parser is not None,
-        }

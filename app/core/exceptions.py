@@ -24,11 +24,6 @@ class ParsingException(IngestionException):
     pass
 
 
-class ParsingFallbackException(ParsingException):
-    """Raised when both primary and fallback parsers fail."""
-    pass
-
-
 class HierarchyValidationException(IngestionException):
     """Raised when node hierarchy validation fails (orphaned nodes, cycles, etc.)."""
     pass
@@ -64,46 +59,6 @@ class DocumentStoreException(StorageException):
     pass
 
 
-class ComponentException(ChatbotRAGException):
-    """Raised when component pool or adapter initialization fails."""
-    pass
-
-
-class ComponentNotFoundError(ComponentException):
-    """Raised when a requested component is not registered."""
-    pass
-
-
-class ComponentConfigurationError(ComponentException):
-    """Raised when component configuration is invalid."""
-    pass
-
-
 class ChatException(ChatbotRAGException):
     """Base exception for chat-related errors."""
-    pass
-
-
-class ChatStreamException(ChatException):
-    """Raised when streaming chat fails."""
-    pass
-
-
-class ChatProviderException(ChatException):
-    """Raised when AI provider fails (timeout, rate limit, etc.)."""
-    pass
-
-
-class ChatValidationException(ChatException):
-    """Raised when chat request validation fails."""
-    pass
-
-
-class RetrievalException(ChatbotRAGException):
-    """Raised when document retrieval fails."""
-    pass
-
-
-class RateLimitException(ChatbotRAGException):
-    """Raised when rate limit is exceeded."""
     pass

@@ -60,8 +60,11 @@ export default function UsersPage() {
   }, [session]);
 
   useEffect(() => {
-    fetchUsers();
-    fetchRoles();
+    const timer = setTimeout(() => {
+      void fetchUsers();
+      void fetchRoles();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchUsers, fetchRoles]);
 
   const handleCreate = useCallback(

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SessionProvider } from "next-auth/react";
 import { Toaster } from "@/components/ui/sonner";
@@ -32,7 +33,9 @@ export default function RootLayout({
       >
         <SessionProvider>
           <TooltipProvider>
-            {children}
+            <Suspense>
+              {children}
+            </Suspense>
             <Toaster richColors position="top-right" />
           </TooltipProvider>
         </SessionProvider>

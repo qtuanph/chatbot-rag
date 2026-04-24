@@ -33,7 +33,7 @@ Use Qdrant for retrieval data path. Keep PostgreSQL as system metadata/state dat
 8. **HierarchyValidator** checks parent-child consistency.
 9. **RuleBasedRefiner** fixes OCR errors, detects headers (0GB VRAM, ~1ms per node).
 10. **SectionRepository** stores sections in PostgreSQL `document_sections` table as the canonical order source (`order_index`, `parent_section_id`, page span).
-11. Chunks are embedded with a bounded rolling window and stored concurrently up to `INGESTION_EMBED_PARALLELISM` (or hardware auto-detect), using `embed_batch()` on the local **BAAI/bge-m3** model:
+11. Chunks are embedded with a bounded rolling window and stored concurrently up to `INGESTION_EMBED_PARALLELISM` (or hardware auto-detect), using `embed_batch()` on the local **AITeamVN/Vietnamese_Embedding_v2** model:
    - GPU-native batching via sentence-transformers
    - `vector_store.store()` upserts chunks to Qdrant with `section_id` in payload
    - `progress_callback` updates `documents.progress_percent` in DB
@@ -71,17 +71,18 @@ Rule-based refiner is **500x faster** than AI-based refiner and uses **0GB VRAM*
 
 | Parameter | Value |
 |-----------|-------|
-| **Model** | `BAAI/bge-m3` — state-of-the-art multilingual |
+| **Model** | `AITeamVN/Vietnamese_Embedding_v2` — BGE-M3 fine-tuned trên 1.1M Vietnamese triplets |
 | **Dimensions** | 1024 |
 | **Max tokens** | 8192 (fits entire technical document sections) |
-| **Device** | GPU (auto-detected) → CPU fallback |
+| **Device** | GPU fp16 (auto-detected) → CPU ONNX fallback |
 | **Normalization** | L2 normalize (cosine similarity) |
 | **Inference** | Local / offline — no API calls, no rate limits |
 | **Batch size** | 32 nodes/batch (`INGESTION_EMBEDDING_CHUNK_SIZE`) |
-| **Vector size config** | `EMBEDDING_VECTOR_SIZE=1024` (used for Qdrant collection init; avoids loading model on read-only paths) |
-| **Scale** | GTX 1650 (4GB): ~1.1GB VRAM · Future 24GB: larger batches, faster |
+| **Vector size config** | `EMBEDDING_VECTOR_SIZE=1024` (used for Qdrant collection init) |
+| **Accuracy** | +16% Accuracy@1 vs BGE-M3 on Vietnamese legal retrieval |
+| **Quantization** | Qdrant int8 scalar quantization enabled (4x less RAM, <1% accuracy loss) |
 
-BAAI/bge-m3 is pre-downloaded during Docker build (`RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')"`) using BuildKit cache mount. No runtime download.
+AITeamVN/Vietnamese_Embedding_v2 is pre-downloaded during Docker build using BuildKit cache mount. GPU uses PyTorch fp16; CPU fallback uses ONNX runtime for 2-3x speedup.
 
 ### Why Chunked Processing
 
@@ -96,7 +97,7 @@ BAAI/bge-m3 is pre-downloaded during Docker build (`RUN python -c "from sentence
 
 1. **Rate limit check**: Atomic Lua script in Redis — 30 req/min per user.
 2. **Query embedding cache**: MD5-keyed lookup in Redis. Cache HIT → skip local model inference (TTL=1h).
-3. **Query embedding**: If cache MISS, call local `BAAI/bge-m3`, cache the result.
+3. **Query embedding**: If cache MISS, call local `AITeamVN/Vietnamese_Embedding_v2`, cache the result.
 4. **Document scope filter**: TTL-cached latest active document IDs (60 s TTL). PostgreSQL subquery runs at most once per minute; cache is invalidated explicitly on document upload or hard-delete via `invalidate_doc_ids_cache()`.
    - IDs are sourced from PostgreSQL query results (internal data path), not direct user input.
 5. **Single Qdrant query** (top_k=50–80, filtered to active docs): fetches enough results to cover both section discovery and chunk ranking in one round-trip.
@@ -126,7 +127,7 @@ Cache is particularly effective for chat sessions where multiple messages refere
 
 ```
 HIT flow:  query_text → MD5 hash → Redis GET → vector (0ms, 0 model cost)
-MISS flow: query_text → local BAAI/bge-m3 embed → vector → Redis SET (TTL=1h) → Qdrant
+MISS flow: query_text → local Vietnamese_Embedding_v2 embed → vector → Redis SET (TTL=1h) → Qdrant
 ```
 
 Cache is particularly effective during demos and employee training sessions where the same questions are asked repeatedly.

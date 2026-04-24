@@ -41,20 +41,33 @@ class DoclingParser(BaseParser):
     ):
         self.fallback_parser = fallback_parser
         self.min_quality_score = min_quality_score
-        self.converter_fast = None   # do_ocr=False for native PDF text
-        self.converter_ocr = None    # do_ocr=True for scanned PDF fallback
-        self.llamaindex_parser = None
+        self.converter_fast = None   # force_full_page_ocr=True for clean Vietnamese
+        self.converter_ocr = None    # OCR fallback (same config, kept for compatibility)
 
         self._initialize_docling()
-        self._initialize_llamaindex()
 
     def _select_ocr_backend(self):
-        """Build EasyOCR options for Vietnamese + English documents."""
-        from docling.datamodel.pipeline_options import EasyOcrOptions
-        use_gpu = hardware.gpu_count > 0
-        opts = EasyOcrOptions(lang=["vi", "en"], use_gpu=use_gpu)
-        logger.info("OCR backend: EasyOCR [vi, en] gpu=%s", use_gpu)
-        return opts
+        """Build OCR options for Vietnamese + English documents.
+
+        Uses RapidOCR (PaddleOCR ONNX models) — best Vietnamese quality,
+        Apache-2.0 license, lighter than EasyOCR (no PyTorch needed).
+        Falls back to EasyOCR if RapidOCR unavailable.
+        """
+        try:
+            from docling.datamodel.pipeline_options import RapidOcrOptions
+            opts = RapidOcrOptions(
+                lang=["vi", "en"],
+                force_full_page_ocr=False,  # Set per-converter below
+            )
+            logger.info("OCR backend: RapidOCR [vi, en] (PaddleOCR ONNX)")
+            return opts
+        except ImportError:
+            logger.warning("RapidOCR not available, falling back to EasyOCR")
+            from docling.datamodel.pipeline_options import EasyOcrOptions
+            use_gpu = hardware.gpu_count > 0
+            opts = EasyOcrOptions(lang=["vi", "en"], use_gpu=use_gpu)
+            logger.info("OCR backend: EasyOCR [vi, en] gpu=%s", use_gpu)
+            return opts
 
     def _initialize_docling(self) -> None:
         """Initialize 2 Docling converters: fast (no OCR) + OCR fallback."""
@@ -69,9 +82,12 @@ class DoclingParser(BaseParser):
 
             ocr_options = self._select_ocr_backend()
 
-            # Fast converter: extract embedded text only, no OCR
+            # Fast converter: force OCR on every page for clean Vietnamese text
+            # Bypasses pypdfium2 text extraction which garbles Vietnamese characters
             pipeline_fast = PdfPipelineOptions(
-                do_ocr=False,
+                do_ocr=True,
+                force_full_page_ocr=True,
+                ocr_options=ocr_options,
                 do_table_structure=True,
             )
 
@@ -115,17 +131,6 @@ class DoclingParser(BaseParser):
             except Exception:
                 logger.warning("Failed to initialize default Docling converter")
 
-    def _initialize_llamaindex(self) -> None:
-        """Lazy-initialize LlamaIndex Markdown parser."""
-        try:
-            from llama_index.core.node_parser import MarkdownNodeParser
-            self.llamaindex_parser = MarkdownNodeParser()
-            logger.info("LlamaIndex MarkdownNodeParser initialized")
-        except ImportError:
-            logger.warning("LlamaIndex not installed; skipping hierarchical parsing")
-        except Exception as e:
-            logger.warning("Failed to initialize LlamaIndex: %s", e)
-
     def parse(
         self,
         filename: str,
@@ -155,7 +160,6 @@ class DoclingParser(BaseParser):
                         engine_used="docling+items",
                         source_format=source_format,
                         docling_used=True,
-                        llamaindex_used=False,
                         fallback_used=False,
                         quality_score=quality_score,
                         parse_time_ms=parse_time_ms,
@@ -165,6 +169,7 @@ class DoclingParser(BaseParser):
                     )
 
                     nodes = self._refine_nodes(nodes)
+                    sections_data = self._refine_sections(sections_data)
                     metadata.sections_data = sections_data
 
                     logger.info(
@@ -186,7 +191,6 @@ class DoclingParser(BaseParser):
                             engine_used="docling+sections",
                             source_format=source_format,
                             docling_used=True,
-                            llamaindex_used=False,
                             fallback_used=False,
                             quality_score=quality_score,
                             parse_time_ms=parse_time_ms,
@@ -200,28 +204,6 @@ class DoclingParser(BaseParser):
                             "Parsed %s with Docling+Sections(fallback): %d nodes",
                             filename, len(nodes),
                         )
-                        return nodes, metadata
-
-                    # Step 2c: LlamaIndex fallback
-                    nodes, llamaindex_used = self._parse_markdown_with_llamaindex(
-                        markdown_content, filename, source_format,
-                    )
-                    if nodes:
-                        quality_score = self._calculate_quality_score(nodes, len(markdown_content))
-                        parse_time_ms = (time.time() - start_time) * 1000
-                        metadata = ParsingMetadata(
-                            engine_used="docling+llamaindex",
-                            source_format=source_format,
-                            docling_used=True,
-                            llamaindex_used=llamaindex_used,
-                            fallback_used=False,
-                            quality_score=quality_score,
-                            parse_time_ms=parse_time_ms,
-                            node_count=len(nodes),
-                            total_text_chars=sum(len(n.text) for n in nodes),
-                            warnings=[],
-                        )
-                        nodes = self._refine_nodes(nodes)
                         return nodes, metadata
 
         except Exception as e:
@@ -698,48 +680,6 @@ class DoclingParser(BaseParser):
             logger.warning("Markdown section extraction failed: %s", e)
             return [], [], False
 
-    def _parse_markdown_with_llamaindex(
-        self,
-        markdown_content: str,
-        document_id: str,
-        source_format: str,
-    ) -> Tuple[List[IngestedNode], bool]:
-        """Parse Markdown content into hierarchical nodes using LlamaIndex."""
-        if not self.llamaindex_parser:
-            return [], False
-
-        try:
-            from llama_index.core.schema import Document
-            doc = Document(text=markdown_content, metadata={'file_name': document_id})
-            llamaindex_nodes = self.llamaindex_parser.get_nodes_from_documents([doc])
-
-            nodes = []
-            for idx, node in enumerate(llamaindex_nodes):
-                parent_id = None
-                if hasattr(node, 'relationships') and 'parent' in node.relationships:
-                    parent_id = node.relationships['parent'].node_id
-
-                nodes.append(IngestedNode(
-                    node_id=str(uuid.uuid4()),
-                    document_id=document_id,
-                    text=node.get_content(),
-                    node_type=self._infer_node_type(node),
-                    page_number=node.metadata.get('page_number'),
-                    section_title=node.metadata.get('section_title'),
-                    parent_id=parent_id,
-                    order=idx,
-                    metadata={
-                        'source_format': source_format,
-                        'llamaindex_id': node.node_id,
-                        'llamaindex_metadata': node.metadata,
-                    },
-                ))
-
-            return nodes, True
-        except Exception as e:
-            logger.warning("LlamaIndex parsing failed: %s", e)
-            return [], False
-
     # ── Shared utilities ─────────────────────────────────────────────────────
 
     def _split_markdown_by_headings(self, markdown: str) -> List[dict]:
@@ -808,59 +748,154 @@ class DoclingParser(BaseParser):
             sections.append(current_section)
         return sections
 
+    # Vietnamese abbreviations that should NOT trigger sentence breaks
+    _VI_ABBREVIATIONS = re.compile(
+        r'(?:Tp|TP|GS|PGS|TS|ThS|BS|DS|KS|KTS|ĐH|CĐ|TT|UBND|VNĐ|VN'
+        r'|vol|Vol|No|no|tr|Tr|pg|Pg|ch|Ch|kt|Kt'
+        r'|khoả|khoảng|độ|đồng|v.v'
+        r')\.\s*$',
+    )
+
+    # Markdown table row pattern
+    _TABLE_ROW = re.compile(r'^\|.*\|$')
+
     def _split_text_to_chunks(
         self,
         text: str,
         chunk_size: int = 400,
         overlap: int = 75,
     ) -> List[str]:
-        """Split text into chunks of approximately chunk_size tokens."""
+        """
+        Recursive paragraph-first chunker optimized for Vietnamese documents.
+
+        Strategy (aligned with 2026 RAG benchmark recommendations):
+        1. Split into paragraphs (double newline boundaries)
+        2. Within each paragraph, split into sentences (Vietnamese-aware)
+        3. Accumulate sentences into chunks up to chunk_size tokens
+        4. Overlap with complete sentences from previous chunk
+        5. Never split markdown tables or list blocks mid-structure
+        """
         if not text or not text.strip():
             return []
 
         chars_per_chunk = chunk_size * 4
         overlap_chars = overlap * 4
 
-        sentences = re.split(r'(?<=[.!?。！？])\s+|\n\n+', text)
-        sentences = [s.strip() for s in sentences if s.strip()]
-        if not sentences:
+        # Step 1: Split into paragraphs, preserving table/list blocks intact
+        blocks = self._split_into_blocks(text)
+
+        # Step 2: Within each block, split into sentences
+        units: List[str] = []
+        for block in blocks:
+            if self._is_atomic_block(block):
+                # Tables and lists stay as one unit regardless of size
+                units.append(block)
+            else:
+                sentences = self._split_sentences(block)
+                units.extend(sentences)
+
+        units = [u.strip() for u in units if u.strip()]
+        if not units:
             return [text.strip()] if text.strip() else []
 
+        # Step 3: Accumulate into chunks with overlap
         chunks: List[str] = []
         current_chunk: List[str] = []
         current_length = 0
 
-        for sentence in sentences:
-            sentence_len = len(sentence)
-            if current_length + sentence_len > chars_per_chunk and current_chunk:
-                chunks.append(" ".join(current_chunk))
+        for unit in units:
+            unit_len = len(unit)
+            if current_length + unit_len > chars_per_chunk and current_chunk:
+                chunks.append("\n".join(current_chunk))
+                # Overlap: take complete sentences from the tail
+                overlap_units: List[str] = []
                 overlap_len = 0
-                overlap_sentences: List[str] = []
-                for s in reversed(current_chunk):
-                    if overlap_len + len(s) > overlap_chars:
+                for u in reversed(current_chunk):
+                    if overlap_len + len(u) > overlap_chars:
                         break
-                    overlap_sentences.insert(0, s)
-                    overlap_len += len(s)
-                current_chunk = overlap_sentences
+                    overlap_units.insert(0, u)
+                    overlap_len += len(u)
+                current_chunk = overlap_units
                 current_length = overlap_len
-            current_chunk.append(sentence)
-            current_length += sentence_len
+            current_chunk.append(unit)
+            current_length += unit_len
 
         if current_chunk:
-            chunk_text = " ".join(current_chunk)
+            chunk_text = "\n".join(current_chunk)
             if chunk_text.strip():
                 chunks.append(chunk_text)
         return chunks
+
+    def _split_into_blocks(self, text: str) -> List[str]:
+        """Split text into blocks: paragraphs, tables, and list groups."""
+        lines = text.split('\n')
+        blocks: List[str] = []
+        current_block: List[str] = []
+
+        for line in lines:
+            is_table = bool(self._TABLE_ROW.match(line.strip()))
+            is_list = line.strip().startswith(('- ', '* ', '+ ')) or re.match(r'^\d+\.\s', line.strip())
+
+            if is_table or is_list:
+                # Flush current paragraph block
+                if current_block:
+                    blocks.append('\n'.join(current_block))
+                    current_block = []
+                current_block.append(line)
+            elif current_block and (
+                self._TABLE_ROW.match(current_block[-1].strip())
+                or current_block[-1].strip().startswith(('- ', '* ', '+ '))
+                or re.match(r'^\d+\.\s', current_block[-1].strip())
+            ):
+                # Continuing a table/list block
+                current_block.append(line)
+            elif line.strip() == '':
+                # Paragraph boundary
+                if current_block:
+                    blocks.append('\n'.join(current_block))
+                    current_block = []
+            else:
+                current_block.append(line)
+
+        if current_block:
+            blocks.append('\n'.join(current_block))
+        return blocks
+
+    def _is_atomic_block(self, block: str) -> bool:
+        """Check if a block should not be further split (table or list group)."""
+        lines = block.strip().split('\n')
+        if not lines:
+            return False
+        # Multi-line table or list group
+        if len(lines) > 1:
+            table_lines = sum(1 for l in lines if self._TABLE_ROW.match(l.strip()))
+            if table_lines >= 2:
+                return True
+            list_lines = sum(1 for l in lines if l.strip().startswith(('- ', '* ', '+ ')) or re.match(r'^\d+\.\s', l.strip()))
+            if list_lines >= 2:
+                return True
+        return False
+
+    def _split_sentences(self, text: str) -> List[str]:
+        """Split text into sentences with Vietnamese-aware boundary detection."""
+        # Split on sentence-ending punctuation followed by space/newline
+        parts = re.split(r'(?<=[.!?。！？])\s+', text)
+        sentences: List[str] = []
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            # Rejoin if the period was an abbreviation, not a sentence end
+            if sentences and self._VI_ABBREVIATIONS.search(sentences[-1]):
+                sentences[-1] = sentences[-1] + ' ' + part
+            else:
+                sentences.append(part)
+        return sentences
 
     def _refine_nodes(self, nodes: List[IngestedNode]) -> List[IngestedNode]:
         """Rule-based text refinement: fix OCR errors, normalize whitespace."""
         from app.services.ingestion.rule_based_refiner import rule_based_refiner
 
-        id_map = {
-            node.metadata.get('llamaindex_id'): node.node_id
-            for node in nodes
-            if node.metadata.get('llamaindex_id')
-        }
         heading_stack: dict[int, str] = {}
 
         for idx, node in enumerate(nodes):
@@ -889,14 +924,27 @@ class DoclingParser(BaseParser):
 
             node.metadata['breadcrumb'] = [heading_stack[l] for l in sorted(heading_stack.keys())]
 
-            li_parent_id = node.metadata.get('llamaindex_metadata', {}).get('parent_id')
-            if li_parent_id and li_parent_id in id_map:
-                node.parent_id = id_map[li_parent_id]
-
         return nodes
 
+    def _refine_sections(self, sections_data: List[dict]) -> List[dict]:
+        """Apply text refinement to section titles and content."""
+        from app.services.ingestion.rule_based_refiner import rule_based_refiner
+        for sec in sections_data:
+            if sec.get("title"):
+                cleaned, _ = rule_based_refiner.refine_text(sec["title"], None)
+                sec["title"] = cleaned
+            if sec.get("content"):
+                cleaned, _ = rule_based_refiner.refine_text(sec["content"], None)
+                sec["content"] = cleaned
+            if sec.get("breadcrumb"):
+                sec["breadcrumb"] = [
+                    rule_based_refiner.refine_text(b, None)[0] if b else b
+                    for b in sec["breadcrumb"]
+                ]
+        return sections_data
+
     def _infer_node_type(self, node) -> ParsedNodeType:
-        """Infer node type from LlamaIndex node metadata."""
+        """Infer node type from node text content."""
         text = getattr(node, 'text', '') or ''
         metadata = getattr(node, 'metadata', {}) or {}
 

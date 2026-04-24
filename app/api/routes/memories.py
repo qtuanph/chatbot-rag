@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 
 from app.api.deps import AuthContext, get_auth_context
@@ -68,7 +68,7 @@ async def list_memories(auth: AuthContext = Depends(get_auth_context)) -> Memory
     return MemoryListResponse(items=items)
 
 
-@router.post("/memories", response_model=MemoryResponse, status_code=201)
+@router.post("/memories", response_model=MemoryResponse, status_code=status.HTTP_201_CREATED)
 async def create_memory(
     data: MemoryInput,
     auth: AuthContext = Depends(get_auth_context),
@@ -146,7 +146,7 @@ async def update_memory(
     return result
 
 
-@router.delete("/memories/{memory_id}", status_code=204)
+@router.delete("/memories/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_memory(
     memory_id: str,
     auth: AuthContext = Depends(get_auth_context),

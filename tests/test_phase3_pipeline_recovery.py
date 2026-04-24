@@ -13,7 +13,7 @@ import pytest
 from uuid import uuid4
 from datetime import datetime, timezone, timedelta
 
-from app.services.pipeline_recovery import PipelineRecoveryManager
+from app.services.ingestion.recovery import PipelineRecoveryManager
 from app.db.session import SessionLocal
 from app.models.core import Document
 from app.core.config import settings

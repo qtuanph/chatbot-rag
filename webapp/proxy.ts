@@ -21,6 +21,11 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
+  // API gateway proxy — Route Handler handles auth internally via getToken()
+  if (pathname.startsWith("/api/bep")) {
+    return NextResponse.next();
+  }
+
   // Protected routes: redirect to login if not authenticated
   if (!isLoggedIn) {
     const loginUrl = new URL("/login", req.nextUrl);

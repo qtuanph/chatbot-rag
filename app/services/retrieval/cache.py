@@ -1,11 +1,10 @@
 """
 Query Embedding Cache: Redis-backed cache for query vectors.
 
-Insight source: DoorDash "Applied Client-Side Caching to Improve Feature Store Performance by 70%"
-Applied here: Cache local BAAI/bge-m3 query embedding vectors so repeated
-questions (common during demos and training sessions) don't incur model cost.
+Caches query embedding vectors in Redis so repeated questions (common during
+demos and training sessions) skip local model inference entirely.
 
-Key:   "qembed:" + MD5(query_text)  — MD5 is collision-resistant enough for cache keys
+Key:   "qembed:{model_hash}:" + MD5(query_text) — model-aware for correctness
 Value: JSON-serialized List[float] (embedding vector)
 TTL:   1 hour — query patterns are stable within a working session
 
@@ -27,16 +26,19 @@ logger = logging.getLogger(__name__)
 
 
 class QueryEmbeddingCache:
-    """Redis cache for query embedding vectors."""
+    """Redis cache for query embedding vectors, keyed by model + query text."""
 
     PREFIX = "qembed:"
     TTL = 3600  # 1 hour in seconds
 
-    def __init__(self, redis_client) -> None:
+    def __init__(self, redis_client, model_name: str = "") -> None:
         self._r = redis_client
+        # Include model name hash in cache key so swapping models
+        # never serves stale vectors from a different model.
+        self._model_hash = hashlib.md5(model_name.encode("utf-8")).hexdigest()[:8] if model_name else "default"
 
     def _key(self, text: str) -> str:
-        return self.PREFIX + hashlib.md5(text.encode("utf-8")).hexdigest()
+        return f"{self.PREFIX}{self._model_hash}:{hashlib.md5(text.encode('utf-8')).hexdigest()}"
 
     def get(self, text: str) -> Optional[list[float]]:
         """Return cached embedding vector or None if not found."""

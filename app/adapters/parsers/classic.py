@@ -1,6 +1,6 @@
 """
 Classic Parser: Fallback parser for text, Markdown, DOCX, XLSX, and image-only content.
-Used when Docling/LlamaIndex parsers are unavailable or fail.
+Used when Docling parser is unavailable or fails.
 """
 
 import logging
@@ -62,8 +62,6 @@ class ClassicParser(BaseParser):
                 nodes = self._extract_xlsx_sheets(filename, content)
             elif source_format in {'markdown', 'text'}:
                 nodes = self._extract_text_markdown(filename, content)
-            elif source_format == 'html':
-                nodes = self._extract_html_text(filename, content)
             else:
                 # Try plain text as last resort
                 nodes = self._extract_text_markdown(filename, content)
@@ -76,18 +74,18 @@ class ClassicParser(BaseParser):
                 )
             
             parse_time_ms = (time.time() - start_time) * 1000
-            quality_score = 0.7  # Lower than Docling+LlamaIndex
+            quality_score = 0.7  # Lower than Docling direct extraction
             
             metadata = ParsingMetadata(
                 engine_used="classic",
                 source_format=source_format,
                 docling_used=False,
-                llamaindex_used=False,
                 fallback_used=True,
                 quality_score=quality_score,
                 parse_time_ms=parse_time_ms,
                 node_count=len(nodes),
                 total_text_chars=sum(len(node.text) for node in nodes),
+                sections_data=self._build_sections_data(nodes),
                 warnings=[f"Using fallback parser (not Docling); quality may be lower"],
             )
             
@@ -102,19 +100,16 @@ class ClassicParser(BaseParser):
             )
 
     def _extract_pdf_pages(self, filename: str, content: bytes) -> List[IngestedNode]:
-        """
-        Extract text from PDF on a page-by-page basis (simple fallback).
-        Requires PyPDF2 or similar.
-        """
+        """Extract text from PDF on a page-by-page basis (simple fallback)."""
         try:
-            import PyPDF2
+            from pypdf import PdfReader
         except ImportError:
-            logger.warning("PyPDF2 not installed; cannot extract PDF pages")
+            logger.warning("pypdf not installed; cannot extract PDF pages")
             return []
-        
+
         nodes = []
         try:
-            reader = PyPDF2.PdfReader(BytesIO(content))
+            reader = PdfReader(BytesIO(content))
             for page_num, page in enumerate(reader.pages, start=1):
                 text = page.extract_text()
                 if text.strip():
@@ -248,60 +243,25 @@ class ClassicParser(BaseParser):
                     metadata={'source_format': 'text' if filename.endswith('.txt') else 'markdown'},
                 )
                 nodes.append(node)
-        
+
         return nodes
 
-    def _extract_html_text(self, filename: str, content: bytes) -> List[IngestedNode]:
-        """Extract text from HTML files."""
-        try:
-            from html.parser import HTMLParser
-        except ImportError:
-            logger.warning("html.parser not available; using fallback")
-            return self._extract_text_markdown(filename, content)
-        
-        class TextExtractor(HTMLParser):
-            def __init__(self):
-                super().__init__()
-                self.text_parts = []
-                self.skip_scripts = False
-            
-            def handle_starttag(self, tag, attrs):
-                if tag in {'script', 'style'}:
-                    self.skip_scripts = True
-            
-            def handle_endtag(self, tag):
-                if tag in {'script', 'style'}:
-                    self.skip_scripts = False
-                elif tag in {'p', 'div', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'}:
-                    self.text_parts.append('\n')
-            
-            def handle_data(self, data):
-                if not self.skip_scripts:
-                    text = data.strip()
-                    if text:
-                        self.text_parts.append(text)
-        
-        try:
-            html_text = content.decode('utf-8', errors='ignore')
-            extractor = TextExtractor()
-            extractor.feed(html_text)
-            text = ''.join(extractor.text_parts)
-        except Exception as e:
-            logger.warning(f"HTML extraction failed: {str(e)}")
-            return []
-        
-        nodes = []
-        if text.strip():
-            paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-            for para_idx, para in enumerate(paragraphs):
-                node = IngestedNode(
-                    node_id=str(uuid.uuid4()),
-                    document_id=filename,
-                    text=para,
-                    node_type=ParsedNodeType.PARAGRAPH,
-                    order=para_idx,
-                    metadata={'source_format': 'html'},
-                )
-                nodes.append(node)
-        
-        return nodes
+    def _build_sections_data(self, nodes: List[IngestedNode]) -> List[dict]:
+        """Generate flat section records from classic parser nodes.
+
+        Ensures the tree/detail page shows content even when Docling fails.
+        """
+        sections = []
+        for i, node in enumerate(nodes):
+            page_label = f"Trang {node.page_number}" if node.page_number else f"Phần {i + 1}"
+            sections.append({
+                "section_id": f"classic-{node.node_id}",
+                "parent_section_id": None,
+                "title": node.section_title or page_label,
+                "content": node.text[:500],
+                "section_type": node.node_type.value if hasattr(node.node_type, 'value') else 'section',
+                "level": 1,
+                "order_index": i,
+                "page_range": str(node.page_number) if node.page_number else None,
+            })
+        return sections

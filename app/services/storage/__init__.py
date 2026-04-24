@@ -89,31 +89,6 @@ class S3ObjectStorage(ObjectStorage):
 				return False
 			raise
 
-	def list_objects(self) -> list[dict]:
-		"""List all objects in bucket with their metadata."""
-		try:
-			self._ensure_bucket()
-			response = self.client.list_objects_v2(Bucket=self.bucket, MaxKeys=1000)
-			if 'Contents' not in response:
-				return []
-			
-			objects = []
-			for obj in response['Contents']:
-				key = obj['Key']
-				if '/' in key:
-					doc_id = key.split('/')[0]
-					filename = key.split('/', 1)[1]
-					objects.append({
-						'document_id': doc_id,
-						'filename': filename,
-						'size': obj['Size'],
-						'last_modified': obj['LastModified'].isoformat() if 'LastModified' in obj else None,
-						'uri': f"s3://{self.bucket}/{key}"
-					})
-			return objects
-		except Exception:
-			return []
-
 	def _sanitize_filename(self, filename: str) -> str:
 		return Path(filename).name
 

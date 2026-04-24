@@ -16,4 +16,6 @@ exec uvicorn app.main:app \
     --port 8000 \
     --workers "$WORKERS" \
     --loop uvloop \
-    --http httptools
+    --http httptools \
+    --timeout-keep-alive 75 \
+    --log-level info

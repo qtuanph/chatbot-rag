@@ -1,7 +1,7 @@
 {
   "document": {
     "id": "00_QUICK_REFERENCE",
-    "version": "2026-04-21",
+    "version": "2026-04-23",
     "purpose": "Rules and patterns cheat sheet for fast AI/agent preflight.",
     "authority": "This file is the quick-reference entrypoint. docs/ remains the source of truth."
   },
@@ -40,10 +40,10 @@
       "notes": "status lifecycle: pending/processing/ready/deleted"
     },
     {
-      "data": "chat_history",
-      "storage": "Redis",
+      "data": "chat_messages",
+      "storage": "PostgreSQL + Redis",
       "query_layer": "ChatStore",
-      "notes": "TTL 24h with beat cleanup"
+      "notes": "Messages persisted to DB; Redis for hot history with 24h TTL. hydrate_from_db() reloads on TTL expiry. Active session is reused by the client/store; Celery cleanup after 30 days."
     },
     {
       "data": "uploaded_files",
@@ -73,10 +73,10 @@
   ],
   "critical_env": {
     "ai_embedding": {
-      "AI_PROVIDER": "google|vllm",
+      "AI_PROVIDER": "google",
       "GOOGLE_API_KEY": "required if AI_PROVIDER=google",
       "GOOGLE_MODEL": "gemma-4-26b-a4b-it",
-      "EMBEDDING_HF_MODEL": "BAAI/bge-m3"
+      "EMBEDDING_HF_MODEL": "AITeamVN/Vietnamese_Embedding_v2"
     },
     "retrieval_thresholds": {
       "RETRIEVAL_SECTION_MIN_SCORE": 0.3,
@@ -163,6 +163,13 @@
       },
       {
         "method": "GET",
+        "path": "/chat/messages",
+        "auth": "member",
+        "params": "session_id (required)",
+        "returns": "messages ordered by created_at ASC"
+      },
+      {
+        "method": "GET",
         "path": "/tree/{id}",
         "auth": "member"
       },
@@ -191,7 +198,6 @@
         "path": "/memories/{id}",
         "auth": "member"
       }
-    ]
     ]
   },
   "service_structure": [

@@ -96,6 +96,8 @@ export function DocumentTable() {
   const viewPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const viewDocId = viewDoc?.document_id;
+  const viewDocStatus = viewDoc?.status;
 
   const fetchDocs = useCallback(async () => {
     if (!session) return;
@@ -110,7 +112,10 @@ export function DocumentTable() {
   }, [session]);
 
   useEffect(() => {
-    fetchDocs();
+    const timer = setTimeout(() => {
+      void fetchDocs();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchDocs]);
 
   // Auto-poll when any document is processing/pending
@@ -136,11 +141,11 @@ export function DocumentTable() {
 
   // Progress dialog polling
   useEffect(() => {
-    if (!viewDoc || !session) return;
+    if (!viewDocId || !session) return;
 
     const pollView = async () => {
       try {
-        const detail = await documentsApi.get(viewDoc.document_id);
+        const detail = await documentsApi.get(viewDocId);
         setViewProgress(detail.progress_percent);
         setViewStatus(detail.status);
         setViewMessage(detail.status_message || detail.parse_error || "");
@@ -159,7 +164,7 @@ export function DocumentTable() {
 
     pollView();
 
-    if (viewDoc.status !== "ready" && viewDoc.status !== "failed") {
+    if (viewDocStatus !== "ready" && viewDocStatus !== "failed") {
       viewPollRef.current = setInterval(pollView, 2000);
     }
 
@@ -169,7 +174,7 @@ export function DocumentTable() {
         viewPollRef.current = null;
       }
     };
-  }, [viewDoc?.document_id, session, fetchDocs]);
+  }, [viewDocId, viewDocStatus, session, fetchDocs]);
 
   const handleView = useCallback(
     (doc: DocumentSummary) => {

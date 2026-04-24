@@ -114,30 +114,7 @@ def check_ai_provider() -> dict[str, Any]:
             "configured": configured,
         }
 
-    if provider == "vllm":
-        start = perf_counter()
-        try:
-            with httpx.Client(timeout=3.0) as client:
-                response = client.get(f"{settings.vllm_base_url.rstrip('/')}/models")
-                response.raise_for_status()
-            return {
-                "status": "up",
-                "provider": provider,
-                "endpoint": settings.vllm_base_url,
-                "configured": True,
-                "latency_ms": _latency_ms(start),
-            }
-        except Exception:
-            return {
-                "status": "down",
-                "provider": provider,
-                "endpoint": settings.vllm_base_url,
-                "configured": True,
-                "latency_ms": _latency_ms(start),
-                "error": "vllm_unreachable",
-            }
-
-    return {"status": "down", "provider": provider, "configured": False, "error": "Unsupported AI provider"}
+    return {"status": "down", "provider": provider, "configured": False, "error": "unsupported_ai_provider"}
 
 
 def check_workers() -> dict[str, Any]:

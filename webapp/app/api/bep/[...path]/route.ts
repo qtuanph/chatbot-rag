@@ -3,8 +3,8 @@ import type { NextRequest } from "next/server";
 
 const API_INTERNAL = process.env.API_INTERNAL_URL!;
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+// MIGRATED: Removed export const runtime = "nodejs" (default, not needed)
+// MIGRATED: Removed export const dynamic = "force-dynamic" (dynamic is default with Cache Components)
 
 async function proxyHandler(
   request: NextRequest,
@@ -34,13 +34,36 @@ async function proxyHandler(
 
   // Forward body for non-GET/HEAD requests (handles JSON, FormData, SSE)
   if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = request.body;
-    // duplex required for streaming request bodies in Node.js fetch
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (init as any).duplex = "half";
+    // Clone body before forwarding (needed for retry)
+    const bodyBlob = await request.blob();
+    init.body = bodyBlob;
   }
 
-  const backendRes = await fetch(backendUrl, init);
+  let backendRes: Response;
+  try {
+    backendRes = await fetch(backendUrl, init);
+  } catch (err: unknown) {
+    // Retry once on socket close (worker restart / transient error)
+    const isSocketError =
+      err instanceof TypeError ||
+      (err instanceof Error && /socket|closed|econnrefused|econnreset/i.test(err.message));
+
+    if (isSocketError) {
+      try {
+        backendRes = await fetch(backendUrl, init);
+      } catch {
+        return new Response(
+          JSON.stringify({ detail: "Backend service unavailable. Please try again." }),
+          { status: 502, headers: { "content-type": "application/json" } },
+        );
+      }
+    } else {
+      return new Response(
+        JSON.stringify({ detail: "Backend request failed." }),
+        { status: 502, headers: { "content-type": "application/json" } },
+      );
+    }
+  }
 
   // Build response headers
   const responseHeaders = new Headers();

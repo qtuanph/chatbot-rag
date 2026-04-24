@@ -2,10 +2,8 @@
 SentenceTransformer Embedding Adapter — Local/Offline.
 
 Wraps HuggingFace SentenceTransformer models for on-premise embedding.
-Default model: dangvantuan/vietnamese-document-embedding
-  - Fine-tuned for Vietnamese RAG + long documents (8192 tokens)
-  - 768-dim output — compatible with existing Qdrant collection
-  - Runs on GTX 1650 (4GB VRAM) comfortably in float16
+Default model: AITeamVN/Vietnamese_Embedding_v2 (1024-dim, Vietnamese-optimized).
+GPU: PyTorch fp16. CPU: ONNX runtime (2-3x faster than PyTorch fp32).
 """
 
 import logging
@@ -27,7 +25,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
 
     def __init__(
         self,
-        model_name: str = "dangvantuan/vietnamese-document-embedding",
+        model_name: str = "AITeamVN/Vietnamese_Embedding_v2",
         normalize: bool = True,
         batch_size: int = 32,
         query_prefix: str = "",
@@ -51,7 +49,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         self._model = self._load_model()
 
     def _load_model(self):
-        """Load SentenceTransformer model onto GPU (fp16) if available, else CPU (fp32)."""
+        """Load SentenceTransformer model onto GPU (fp16) if available, else CPU with ONNX backend."""
         try:
             from sentence_transformers import SentenceTransformer  # type: ignore
         except ImportError:
@@ -61,26 +59,33 @@ class SentenceTransformerEmbedding(BaseEmbedding):
             )
 
         if hardware.gpu_count > 0:
-            device = "cuda"
-            # fp16 on GPU: 2× inference speed, ~half VRAM (1.1GB vs 2.2GB for bge-m3).
-            # Leaves more VRAM budget for the vLLM chat model running alongside.
-            model = SentenceTransformer(self.model_name, device=device)
-            model = model.half()  # Cast to float16
+            # GPU path: PyTorch fp16 — halves VRAM usage and doubles inference speed.
+            model = SentenceTransformer(self.model_name, device="cuda")
+            model = model.half()
             logger.info(
                 "Embedding model loaded: model=%s device=cuda fp16=True dim=%d",
                 self.model_name,
-                model.get_sentence_embedding_dimension(),
+                model.get_embedding_dimension(),
             )
         else:
-            device = "cpu"
-            model = SentenceTransformer(self.model_name, device=device)
-            logger.info(
-                "Embedding model loaded: model=%s device=cpu fp32=True dim=%d",
-                self.model_name,
-                model.get_sentence_embedding_dimension(),
-            )
+            # CPU path: try ONNX backend first (2-3x faster than PyTorch fp32),
+            # fall back to standard PyTorch if ONNX weights unavailable.
+            try:
+                model = SentenceTransformer(self.model_name, backend="onnx")
+                logger.info(
+                    "Embedding model loaded: model=%s device=cpu backend=onnx dim=%d",
+                    self.model_name,
+                    model.get_embedding_dimension(),
+                )
+            except Exception:
+                model = SentenceTransformer(self.model_name, device="cpu")
+                logger.info(
+                    "Embedding model loaded: model=%s device=cpu backend=pytorch dim=%d",
+                    self.model_name,
+                    model.get_embedding_dimension(),
+                )
 
-        self._dim = model.get_sentence_embedding_dimension()
+        self._dim = model.get_embedding_dimension()
         return model
 
     # ------------------------------------------------------------------

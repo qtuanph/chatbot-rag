@@ -67,7 +67,10 @@ export default function SettingsPage() {
   }, [session]);
 
   useEffect(() => {
-    fetchMemories();
+    const timer = setTimeout(() => {
+      void fetchMemories();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchMemories]);
 
   const handleAdd = useCallback(async () => {

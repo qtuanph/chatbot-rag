@@ -60,8 +60,18 @@ export interface ChatResponse {
 export interface ChatSession {
   session_id: string;
   created_at: string;
+  updated_at: string;
   message_count: number;
   title: string;
+}
+
+// Chat message from DB (for session restore)
+export interface ChatMessageItem {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations: Citation[];
+  created_at: string;
 }
 
 // SSE streaming events

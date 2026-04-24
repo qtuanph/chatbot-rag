@@ -51,7 +51,12 @@ COPY --chown=qtuanph:qtuanph . .
 RUN mkdir -p /home/qtuanph/.cache/huggingface /home/qtuanph/.EasyOCR && \
     chown -R qtuanph:qtuanph /home/qtuanph /app
 
+# Pre-download embedding model into image (Vietnamese_Embedding_v2 ~2.2 GB)
+# Must run as qtuanph so HF cache is in the correct home directory
 USER qtuanph
+RUN python -c "from sentence_transformers import SentenceTransformer; \
+    SentenceTransformer('AITeamVN/Vietnamese_Embedding_v2'); \
+    print('Embedding model pre-downloaded successfully')"
 
 EXPOSE 8000
 

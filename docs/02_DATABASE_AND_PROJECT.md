@@ -100,7 +100,7 @@ Retrieval uses `Document.deleted_at.is_(None)` and `Document.status == 'ready'` 
 
 | Policy | Detail |
 |--------|--------|
-| Auto-delete TTL | `CHAT_SESSION_TTL_DAYS` (default: 1 day) |
+| Auto-delete TTL | `CHAT_SESSION_TTL_DAYS` (default: 30 days) |
 | Cleanup mechanism | Celery beat task in `cleanup-pipeline` worker (daily) |
 | Delete behavior | CASCADE delete on associated messages |
 | Config | `app/core/config.py: chat_session_ttl_days` |

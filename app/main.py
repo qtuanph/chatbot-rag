@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -16,7 +17,48 @@ from app.core.error_response import build_error_response
 logger = logging.getLogger(__name__)
 
 
-app = FastAPI(title=settings.app_name, docs_url=None, redoc_url=None)
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    """Application lifespan: startup and shutdown events."""
+    # ── Startup ────────────────────────────────────────────────────────
+    logger.info("Application started: %s [env=%s]", settings.app_name, settings.app_env)
+
+    # Pre-warm embedding model at startup to avoid cold-start on first chat request.
+    # This loads Vietnamese_Embedding_v2 into memory (GPU if available) once, so the first
+    # query embedding is fast instead of taking 60-160 seconds.
+    import asyncio
+    import time
+
+    def _warm_embedding():
+        start = time.time()
+        try:
+            from app.services.retrieval.rag import _get_embedding_service
+            svc = _get_embedding_service()
+            svc.embed_query("warmup")
+            elapsed = time.time() - start
+            logger.info("Embedding model pre-warmed in %.1fs", elapsed)
+        except Exception as e:
+            logger.warning("Embedding model pre-warm failed (will lazy-load): %s", e)
+
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, _warm_embedding)
+
+    # Security: Warn if running in production with insecure settings
+    if settings.app_env == "production":
+        if "*" in settings.allowed_hosts:
+            logger.warning("SECURITY: ALLOWED_HOSTS contains wildcard - this is unsafe for production!")
+        if "http://" in settings.cors_origins:
+            logger.warning("SECURITY: CORS allows HTTP origins - this is unsafe for production!")
+        if settings.s3_secure is False:
+            logger.warning("SECURITY: S3_SECURE is False - files transferred without encryption!")
+
+    yield
+
+    # ── Shutdown ───────────────────────────────────────────────────────
+    logger.info("Application shutting down: %s", settings.app_name)
+
+
+app = FastAPI(title=settings.app_name, docs_url=None, redoc_url=None, lifespan=lifespan)
 
 # Security: Correlation ID middleware (must be early to set request.state.correlation_id)
 app.add_middleware(CorrelationIDMiddleware)
@@ -98,20 +140,3 @@ async def unhandled_exception_handler(request: Request, _exc: Exception) -> JSON
             "Internal server error",
         ),
     )
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
-    # Schema is fully managed by ops/init.sql — no runtime DDL patches needed.
-    # Any schema changes must go through ops/init.sql and a Docker rebuild.
-    # Security: Log startup without exposing sensitive configuration
-    logger.info("Application started: %s [env=%s]", settings.app_name, settings.app_env)
-
-    # Security: Warn if running in production with insecure settings
-    if settings.app_env == "production":
-        if "*" in settings.allowed_hosts:
-            logger.warning("SECURITY: ALLOWED_HOSTS contains wildcard - this is unsafe for production!")
-        if "http://" in settings.cors_origins:
-            logger.warning("SECURITY: CORS allows HTTP origins - this is unsafe for production!")
-        if settings.s3_secure is False:
-            logger.warning("SECURITY: S3_SECURE is False - files transferred without encryption!")

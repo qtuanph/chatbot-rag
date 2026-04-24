@@ -15,7 +15,7 @@ Primary runtime uses Docker Compose with the following services:
 - redis (broker/result/cache) — internal only
 - rustfs (object storage) — internal only
 - qdrant (vector retrieval store) — internal only
-- vllm (optional on-prem profile)
+- vllm (planned on-prem profile; adapter not enabled in current code)
 
 All services are accessed through nginx on port 80. Direct port access is no longer the default.
 
@@ -40,7 +40,7 @@ PostgreSQL is not the primary retrieval context store in the new direction.
 | QDRANT_URL | qdrant endpoint |
 | QDRANT_COLLECTION | vector collection |
 | EMBEDDING_MODEL | embedding model selection |
-| EMBEDDING_VECTOR_SIZE | Qdrant vector dimension (default 1024 for BAAI/bge-m3) |
+| EMBEDDING_VECTOR_SIZE | Qdrant vector dimension (default 1024 for Vietnamese_Embedding_v2) |
 | AI_PROVIDER | chat generation backend selector |
 | NEXTAUTH_URL | public webapp base URL |
 | NEXTAUTH_SECRET | next-auth signing secret |
@@ -67,7 +67,7 @@ Tree overview endpoints must use PostgreSQL as the ordering source of truth. Qdr
 | Mode | Provider |
 |------|----------|
 | Demo mode | google adapter |
-| On-prem mode | vllm profile |
+| On-prem mode | vllm profile (planned; not enabled in current code) |
 
 Provider changes must not require API contract changes.
 
@@ -86,7 +86,7 @@ Compose defaults bind published ports to 127.0.0.1 so local dev works without ex
 | PostgreSQL | pg_isready |
 | Redis | redis-cli ping |
 | Qdrant | /health |
-| vLLM (optional) | /health |
+| vLLM (planned) | /health |
 
 Compose healthcheck cadence is 3 seconds interval with 5 second start_period — optimised for fast startup (~25s total).
 

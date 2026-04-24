@@ -83,7 +83,7 @@ sequenceDiagram
     participant Browser
     participant API
     participant Redis
-    participant Embedder as BAAI/bge-m3 Local
+    participant Embedder as Vietnamese_Embedding_v2 Local
     participant Retriever
     participant DB as PostgreSQL
     participant Qdrant
@@ -123,12 +123,12 @@ sequenceDiagram
     Memory-->>API: formatted memory string for systemInstruction
 
     loop For each chunk of response
-        API->>Provider: chat_stream (maxOutputTokens=1M, multi-turn contents)
+        API->>Provider: chat_stream (maxOutputTokens=8192, multi-turn contents)
         Provider-->>API: text chunk (thought:true parts filtered)
         API-->>Browser: SSE data: {"chunk": "...", "done": false}
     end
     API->>API: strip_reasoning(full_answer) — safety net
-    API->>DB: save ChatMessage (clean answer)
+    API->>DB: save both user and assistant ChatMessage to PostgreSQL (clean answer)
     API->>Memory: extract_memories_from_turn() — async, best-effort
     API-->>Browser: SSE data: {"done": true, "session_id": "...", "citations": [...]}
 ```
@@ -137,6 +137,8 @@ sequenceDiagram
 
 | Rule | Requirement |
 |------|-------------|
+| Message persistence | Both user and assistant messages saved to PostgreSQL. Redis used for hot history with TTL. `ChatStore.hydrate_from_db()` reloads from DB when Redis TTL expires. |
+| Session design | Active session is reused by the client/store. Auto-title from first user message (80 chars). No multi-session sidebar. |
 | Cache first | Check Redis for query embedding before calling API |
 | Doc ID cache | TTL-cached 60s, invalidated on upload/delete — avoids PostgreSQL subquery per request |
 | 2-stage retrieval | Single Qdrant query → in-memory section grouping (≥ 0.30) → chunk re-ranking within sections (≥ 0.35) |
@@ -149,7 +151,7 @@ sequenceDiagram
 | Memory extraction | Async post-response: heuristic trigger detection + Gemini extraction → store in user_memories |
 | Thinking suppressed | `thinkingConfig: {thinkingLevel: "MINIMAL"}` + `thought:true` filter + `_ThoughtFilter` stream + `strip_reasoning()` — 4 layers |
 | History clean | `strip_thought_blocks()` removes `<\|channel\|>thought...<channel\|>` from previous assistant messages before sending as multi-turn context |
-| No output limits | `maxOutputTokens: 1048576`, `max_context_chars: 500000`, streaming timeout 300s (5min) |
+| Output bounds | `maxOutputTokens: 8192`, `max_context_chars: 500000`, streaming timeout 300s (5min) |
 | Clean saved text | `strip_reasoning()` applied to answer before saving to DB |
 
 ## Workflow 3: Delete → Hard Delete
@@ -210,20 +212,25 @@ Implementation notes when building:
 sequenceDiagram
     participant Beat as Celery Beat (cleanup-pipeline)
     participant DB as PostgreSQL
+    participant Redis
 
     Note over Beat: Runs daily (every 86400s)
     Beat->>Beat: cleanup_old_chat_sessions_task
     Beat->>DB: DELETE chat_sessions WHERE created_at < NOW() - TTL
     DB->>DB: CASCADE DELETE associated chat_messages
+    Note over Redis: Redis keys expire via TTL naturally
 ```
 
 ### Chat Session TTL Invariants
 
 | Rule | Requirement |
 |------|-------------|
-| TTL | `CHAT_SESSION_TTL_DAYS` (default: 1 day) |
+| TTL | `CHAT_SESSION_TTL_DAYS` (default: 30 days) |
 | Cleanup | Celery beat task in `cleanup-pipeline` worker |
 | Delete behavior | CASCADE — messages deleted automatically with session |
+| Persistence | Messages saved to PostgreSQL on every turn; Redis is hot cache only |
+| Hydration | `ChatStore.hydrate_from_db()` reloads messages from DB when Redis TTL expires |
+| Auto-title | First user message used as session title (truncated to 80 chars) |
 | Config | `app/core/config.py` → `chat_session_ttl_days` |
 
 ## Error Handling Baseline
@@ -234,4 +241,5 @@ sequenceDiagram
 | Chunk embed failure | Log error, continue remaining chunks (partial index) |
 | Retrieval timeout (5s) | Return empty context, answer from LLM without grounding |
 | Provider timeout | Graceful error response |
+| Proxy socket close | Next.js Route Handler retries once; returns 502 JSON if retry also fails |
 | Worker crash mid-task | Auto-requeue via `task_acks_late=True` |

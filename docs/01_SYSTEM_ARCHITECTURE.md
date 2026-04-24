@@ -11,19 +11,19 @@ Status: authoritative architecture baseline — updated to reflect Method D, Sma
 | Backend | FastAPI with async endpoints |
 | Ingestion | Docling `iterate_items()` (Method D) for direct item extraction — preserves page numbers, heading levels, table structures |
 | OCR | **Smart OCR Strategy**: fast no-OCR first, OCR fallback only for scanned PDFs. EasyOCR (vi + en) backend. |
-| Embedding | **BAAI/bge-m3 LOCAL** via sentence-transformers (1024-dim, fully offline) |
+| Embedding | **AITeamVN/Vietnamese_Embedding_v2 LOCAL** via sentence-transformers (1024-dim, GPU fp16 / CPU ONNX, fully offline) |
 | AI Refiner | **Rule-based heuristics** (0GB VRAM, ~1ms per node) — NO AI in ingestion |
 | Vector Store | Qdrant for vectors and retrieval payload |
 | Metadata Store | PostgreSQL for users, documents, **sections**, sessions, audit, connector metadata |
 | Queue/Cache | Redis for Celery broker/result, query embedding cache, rate limiting |
 | Retrieval | **2-stage retrieval**: Sections (PostgreSQL canonical order) → Chunks (Qdrant with section_id) |
 | Query routing | Document RAG default; SQL route only when explicitly required and approved |
-| AI Provider | Google AI gemma-4-26b-a4b-it (demo); vLLM on-premise (production target) |
+| AI Provider | Google AI gemma-4-26b-a4b-it. vLLM on-premise is planned, not enabled in current code. |
 | Workers | `upload-pipeline` (GPU, ingestion) + `cleanup-pipeline` (lightweight, deletion + beat) |
-| Chat sessions | Auto-delete after 1 day (`CHAT_SESSION_TTL_DAYS`) via Celery beat |
+| Chat sessions | Auto-delete after 30 days (`CHAT_SESSION_TTL_DAYS`) via Celery beat. Messages persisted to PostgreSQL; Redis hot cache with 24h TTL and `hydrate_from_db()` on TTL expiry. Active session is reused until client/session state changes. |
 | User memory | ChatGPT-like persistent memory: facts, preferences, corrections injected into system prompt |
 | AI thinking | `thinkingConfig: {thinkingLevel: "MINIMAL"}` disables Gemma 4 thought tokens; `thought:true` part filter + `_ThoughtFilter` stream + `strip_reasoning()` safety net |
-| AI output | No limits: `maxOutputTokens: 1048576`, `max_context_chars: 500000`, streaming timeout 300s (5min) |
+| AI output | Streaming uses `maxOutputTokens: 8192`, `max_context_chars: 500000`, provider timeout 300s (5min) |
 
 PostgreSQL is the system database for metadata, status, auth, audit, and connector state. Qdrant is the retrieval store for node vectors and payload. Redis is used for task queue, cache, and atomic rate limiting.
 
@@ -53,7 +53,7 @@ graph TD
     Validator --> SectionStore[SectionRepository → PostgreSQL]
     Validator --> Refiner[Rule-Based Refiner]
     Refiner --> |0GB VRAM ~1ms| Validator
-    Validator --> Embedder[BAAI/bge-m3 Local — Parallel Batches]
+    Validator --> Embedder[Vietnamese_Embedding_v2 Local — Parallel Batches]
     Embedder --> Qdrant[(Qdrant — chunks with section_id)]
     Validator --> PG[(PostgreSQL system DB)]
 
@@ -74,7 +74,7 @@ graph TD
     Retriever -. planned -.-> SQLConnector[SQL Connector — Phase 2]
     Chat --> LLM[AI Provider Adapter]
     LLM --> Google[Google AI gemma-4-26b-a4b-it]
-    LLM --> vLLM[vLLM — Production On-Premise]
+    LLM -. planned .-> vLLM[vLLM — Future On-Premise]
     Chat --> MemorySvc[UserMemoryService]
     MemorySvc --> Redis[(Redis cache 5min TTL)]
     MemorySvc --> PG[(user_memories table)]
@@ -90,11 +90,11 @@ graph TD
 | 4. Validate | Worker → Hierarchy Validator | Parent-child consistency report |
 | 5. Refine | Worker → Rule-Based Refiner (0GB VRAM, ~1ms) | Cleaned text, fixed OCR errors |
 | 6. Store Sections | Worker → SectionRepository → PostgreSQL | document_sections rows |
-| 7. Embed | Worker → BAAI/bge-m3 (parallel batches of 32) | Dense vectors per chunk |
+| 7. Embed | Worker → Vietnamese_Embedding_v2 (parallel batches of 32) | Dense vectors per chunk |
 | 8. Persist | Worker → Qdrant | Chunks with section_id metadata |
 | 9. Retrieve | Chat → QueryCache → Embedder → single Qdrant query → in-memory section grouping → chunk re-ranking | Top sections + chunks |
 | 10. Memory | Chat → UserMemoryService → Redis cache (5min TTL) → PostgreSQL fallback → inject into systemInstruction | Personalized prompt context |
-| 11. Stream | Chat → AI Provider (maxOutputTokens: 1M, timeout 5min) → strip_reasoning() safety net → SSE stream via proxy → Browser | Grounded answer with citations, no chain-of-thought |
+| 11. Stream | Chat → AI Provider (`maxOutputTokens: 8192`, timeout 5min) → strip_reasoning() safety net → SSE stream via proxy → Browser | Grounded answer with citations, no chain-of-thought |
 | 12. Extract | Post-response → UserMemoryService.extract_memories_from_turn() → async Gemini call → store in user_memories | Learned facts for future turns |
 
 ## Non-Negotiable Invariants
@@ -139,7 +139,7 @@ See: Pinterest Text-to-SQL, Swiggy Hermes, Uber QueryGPT for reference patterns.
 | Sequential embedding loop | Replaced by `ThreadPoolExecutor` parallel batches — ~16x faster |
 | DDL patches in `main.py` startup | Removed — schema fully managed by `ops/init.sql` |
 | Non-atomic INCR+EXPIRE rate limit | Replaced by atomic Lua script |
-| Hardcoded `local-model` in vLLM adapter | Now reads `settings.vllm_model` from env |
+| vLLM runtime adapter | Not present in current code; on-prem provider remains planned |
 | AI-based text refiner (Qwen/Gemini) | Replaced by rule-based refiner — 0GB VRAM, ~1ms per node |
 | Nuxt.js frontend | Replaced by Next.js 16 with shadcn/ui v4 |
 | Streamlit frontend | Removed — replaced by Next.js app |
@@ -156,6 +156,12 @@ See: Pinterest Text-to-SQL, Swiggy Hermes, Uber QueryGPT for reference patterns.
 | Browser Bearer token exposure | Replaced by API gateway proxy — browser calls `/api/bep/` only, token read server-side via `getToken()` |
 | Client-side session.accessToken | Removed from Session type — `accessToken` stays in JWT callback, never exposed to client components |
 | Admin pages without server auth | Added server-side `auth()` guards in admin/chat/settings layouts |
+| Redis-only chat history | Replaced by PostgreSQL persistence + Redis hot cache — `ChatStore.hydrate_from_db()` reloads on TTL expiry |
+| N+1 session listing | Replaced by JOIN+GROUP BY query — `GET /chat/sessions` now returns `updated_at` field |
+| No message restore | Added `GET /chat/messages?session_id=...` endpoint — frontend restores messages on page load |
+| Proxy socket crash | Added retry-once in Route Handler — returns 502 JSON instead of crashing on socket close |
+| Uvicron default keep-alive | Added `--timeout-keep-alive 75` to uvicorn entrypoint for worker stability |
+| Single-file upload only | Frontend now supports multi-file parallel upload (`multiple` attribute, `Promise.allSettled()`) |
 
 ## User Memory Architecture
 
@@ -216,6 +222,9 @@ Chat supports multi-turn context via Gemini `contents` array format:
 - Last 20 messages included for performance
 - RAG context embedded into current user message (not separate field)
 - Session managed by `ChatStore` with Redis-backed history
+- **Message persistence**: Both user and assistant messages saved to PostgreSQL every turn
+- **Hydration**: `ChatStore.hydrate_from_db()` reloads messages from DB when Redis TTL expires
+- **Session design**: Active session is reused by the client/store, auto-title from first user message (80 chars), no multi-session sidebar
 
 ## Security Architecture
 

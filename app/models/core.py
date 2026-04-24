@@ -83,6 +83,7 @@ class DocumentSection(Base, TimestampMixin):
 
 
 class DataSource(Base, TimestampMixin):
+    """External data source for ERP/database connectors (future feature)."""
     __tablename__ = "data_sources"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -95,6 +96,7 @@ class DataSource(Base, TimestampMixin):
 
 
 class DataSourceSchemaCache(Base):
+    """Schema introspection cache for external data sources (future feature)."""
     __tablename__ = "data_source_schema_cache"
 
     __table_args__ = (
@@ -113,6 +115,7 @@ class DataSourceSchemaCache(Base):
 
 
 class DataSourceQueryAudit(Base):
+    """Query audit log for external data sources (future feature)."""
     __tablename__ = "data_source_query_audit"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))

@@ -54,18 +54,17 @@ class RuleBasedRefiner:
         Fix spaced text errors from OCR.
 
         Examples:
-        - "M Ụ C T I Ê U" → "MỤC TIÊU"
-        - "T R Ờ N G   C H Ủ" → "TRỌNG CHỦ"
+        - "M Ụ C T I Ê U" → "MỤCTIÊU" (then re-split heuristically)
+        - "T R Ờ N G   C H Ủ" → "TRỌNGCHỦ"
 
         Pattern: sequences of single chars separated by spaces (3+ consecutive).
         Only targets OCR-style spaced letters, NOT normal word spacing.
         """
-        # Fix sequences of single chars separated by spaces (OCR artifact)
-        # Pattern: 3+ single characters each followed by a space
-        # e.g., "M Ụ C T I Ê U" → "MỤCTIÊU"
+        # Fix sequences of single Vietnamese chars separated by spaces (OCR artifact)
+        # Match 3+ consecutive single chars each followed by a space, then merge
         text = re.sub(
-            r'(?<=[A-Za-zÀ-ỹ])\s+(?=[A-Za-zÀ-ỹ]\s+[A-Za-zÀ-ỹ])',
-            '',
+            r'(?:[A-Za-zÀ-ỹ]\s+){2,}[A-Za-zÀ-ỹ]',
+            lambda m: re.sub(r'\s+', '', m.group(0)),
             text,
         )
 

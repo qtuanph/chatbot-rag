@@ -9,7 +9,8 @@ def build_embedding_service() -> BaseEmbedding:
     """
     Factory: returns the local embedding adapter (always sentence-transformer).
 
-    Model: BAAI/bge-m3 — 1024-dim, 8192-token context, multilingual.
+    Model: AITeamVN/Vietnamese_Embedding_v2 — 1024-dim, 8192-token context,
+    BGE-M3 fine-tuned on 1.1M Vietnamese triplets (+16% Accuracy@1).
     Configurable via EMBEDDING_HF_MODEL env var if needed.
 
     IMPORTANT: changing the model changes the vector dimension.

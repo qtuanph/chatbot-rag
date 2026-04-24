@@ -117,6 +117,7 @@ Browser communicates with backend exclusively through the Next.js API gateway pr
 - **Token flow**: Route Handler reads `accessToken` from encrypted HttpOnly JWT cookie via `getToken()` → attaches `Authorization: Bearer` header to backend request
 - **SSE support**: Stream forwarded as `ReadableStream` with `X-Accel-Buffering: no` header
 - **File upload**: `multipart/form-data` forwarded with `duplex: 'half'` for streaming request body
+- **Retry**: Route Handler retries once on socket close errors; returns 502 JSON instead of crashing
 
 ### Rate Limiting Reference
 
@@ -153,11 +154,11 @@ Browser communicates with backend exclusively through the Next.js API gateway pr
 
 ## Compatibility Promise
 
-The API contract remains stable across provider mode changes:
+The API contract is designed to remain stable across future provider mode changes. Current code supports the Google adapter only; vLLM is planned.
 
-| Area | Demo mode | Production mode |
-|------|-----------|-----------------|
-| `AI_PROVIDER` | `google` | `vllm` |
+| Area | Current mode | Planned on-prem mode |
+|------|--------------|----------------------|
+| `AI_PROVIDER` | `google` | `vllm` (not implemented yet) |
 | Chat provider | Google AI Studio | On-prem `vLLM` |
 | Application endpoints | Unchanged | Unchanged |
 | Auth model | Project-only auth model | Project-only auth model |
@@ -233,7 +234,7 @@ Auth request validation:
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `POST` | `/api/v1/upload` | 🔒 Admin | `multipart/form-data` field `file` → `{task_id, document_id}` **202** |
+| `POST` | `/api/v1/upload` | 🔒 Admin | `multipart/form-data` field `file` → `{task_id, document_id}` **202**. Frontend supports multi-file parallel upload (`multiple` attribute, `Promise.allSettled()`) |
 | `GET` | `/api/v1/status/{task_id}` | ✅ Bearer | Poll trạng thái xử lý pipeline |
 | `GET` | `/api/v1/documents` | 🔒 Admin | Danh sách tài liệu (không bao gồm soft-deleted) |
 | `GET` | `/api/v1/documents/{document_id}` | 🔒 Admin | Chi tiết 1 document |
@@ -244,14 +245,18 @@ Auth request validation:
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `POST` | `/api/v1/chat` | ✅ Bearer | `{query, session_id?}` → `{answer, citations, session_id}` (non-streaming, `strip_reasoning()` applied) |
-| `POST` | `/api/v1/chat/stream` | ✅ Bearer | `{query, session_id?}` → SSE stream với chunks real-time, `thinkingConfig: {thinkingBudget: 0}` |
-| `GET` | `/api/v1/chat/sessions` | ✅ Bearer | Danh sách chat sessions của user hiện tại |
+| `POST` | `/api/v1/chat/stream` | ✅ Bearer | `{query, session_id?}` → SSE stream với chunks real-time, `thinkingConfig: {thinkingLevel: "MINIMAL"}` |
+| `GET` | `/api/v1/chat/sessions` | ✅ Bearer | Danh sách chat sessions của user hiện tại (JOIN+GROUP BY, includes `updated_at`) |
+| `GET` | `/api/v1/chat/messages?session_id=...` | ✅ Bearer | Danh sách messages trong session, ordered by `created_at ASC` |
 
 Chat features:
+- **Persistence**: Both user and assistant messages saved to PostgreSQL. `ChatStore.hydrate_from_db()` reloads DB messages into Redis when TTL expires.
+- **Session design**: Active session is reused by the client/store. No multi-session sidebar. Celery cleans up after 30 days (`CHAT_SESSION_TTL_DAYS`).
+- **Auto-title**: First user message used as session title (truncated to 80 chars).
 - **Multi-turn**: Last 20 messages sent as Gemini `contents` array (role: assistant→model mapping)
 - **Memory injection**: Active user memories loaded from Redis cache → injected into `systemInstruction`
 - **Memory extraction**: Async post-response — heuristic triggers + Gemini extraction → `user_memories` table
-- **Thinking control**: `thinkingConfig: {thinkingBudget: 0}` disables Gemma 4 chain-of-thought; `thought:true` parts filtered; `strip_reasoning()` applied to saved text
+- **Thinking control**: `thinkingConfig: {thinkingLevel: "MINIMAL"}` suppresses Gemma 4 chain-of-thought; `thought:true` parts filtered; `strip_reasoning()` applied to saved text
 
 ### User Memories
 

@@ -27,7 +27,7 @@ This is not a standalone Next.js app. Before making changes, understand the back
 ### Auth Token Refresh (MUST respect backend)
 - Backend uses JWT tokens with 1-hour expiry
 - Token blacklist checked on every request (Redis)
-- Logout must call `DELETE /api/v1/auth/logout` to blacklist token
+- Logout must call `POST /api/v1/auth/logout` to blacklist token
 - See: `../docs/04_API_CONTRACT_AND_SECURITY.md` → Auth
 
 ## 📚 Frontend Entry Point: Next.js

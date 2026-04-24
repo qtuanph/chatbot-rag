@@ -6,6 +6,7 @@ from app.core.config import settings
 
 engine = create_engine(
 	settings.database_url,
+	connect_args={"options": "-c timezone=Asia/Ho_Chi_Minh"},
 	pool_pre_ping=True,
 	pool_size=20,
 	max_overflow=10,
