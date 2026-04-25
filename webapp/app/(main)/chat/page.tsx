@@ -1,13 +1,9 @@
-import { ChatPanel } from "@/components/chat/chat-panel";
+import { ChatView } from "@/components/chat/chat-view";
 
 export const metadata = {
   title: "Chat — RAG Chatbot",
 };
 
 export default function ChatPage() {
-  return (
-    <div className="h-[calc(100vh-3rem)] overflow-hidden">
-      <ChatPanel />
-    </div>
-  );
+  return <div className="h-full"><ChatView /></div>;
 }

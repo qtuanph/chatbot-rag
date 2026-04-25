@@ -85,6 +85,16 @@ export interface ChatStreamDone {
   done: true;
   session_id: string;
   citations: Citation[];
+  stats?: {
+    total_ms: number;
+    ttft_ms: number | null;
+    chunks: number;
+    chars: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    estimated_cost_usd: number;
+  };
 }
 
 export interface ChatStreamError {

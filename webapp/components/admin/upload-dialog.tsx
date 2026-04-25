@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Upload, X, CheckCircle, AlertCircle } from "lucide-react";
-import { documentsApi } from "@/lib/api-client";
+import { documentsApi, ApiError } from "@/lib/api-client";
 import { toast } from "sonner";
 
 interface UploadItem {
@@ -128,15 +128,16 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
           );
 
           pollProgress(item.id, result.task_id);
-        } catch {
+        } catch (err) {
+          const msg = err instanceof ApiError ? err.detail : "Tải lên thất bại";
           setItems((prev) =>
             prev.map((i) =>
               i.id === item.id
-                ? { ...i, status: "failed", error: "Tải lên thất bại" }
+                ? { ...i, status: "failed", error: msg }
                 : i,
             ),
           );
-          toast.error(`Tải lên thất bại: ${item.file.name}`);
+          toast.error(`${item.file.name}: ${msg}`);
         }
       });
 
@@ -149,27 +150,18 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
     [session, pollProgress],
   );
 
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      if (!nextOpen && hasActive) {
-        // Don't close while uploads are active
-        return;
-      }
-      setOpen(nextOpen);
-      if (!nextOpen) {
-        // Notify parent if any upload completed successfully
-        const anyDone = items.some((i) => i.status === "done");
-        resetState();
-        if (anyDone) onUploaded();
-      }
-    },
-    [hasActive, items, resetState, onUploaded],
-  );
+  const handleClose = useCallback(() => {
+    cancelAllPolling();
+    const anyDone = items.some((i) => i.status === "done");
+    resetState();
+    if (anyDone) onUploaded();
+    setOpen(false);
+  }, [cancelAllPolling, items, resetState, onUploaded]);
 
   const allDone = items.length > 0 && items.every((i) => i.status === "done" || i.status === "failed");
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) handleClose(); }}>
       <Button className="gap-2" onClick={() => setOpen(true)}>
         <Upload className="h-4 w-4" />
         Tải tài liệu lên
@@ -231,47 +223,12 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
           )}
 
           {items.length > 0 && (
-            <div className="flex justify-between items-center">
-              {!allDone && (
-                <p className="text-xs text-muted-foreground">
-                  Đang xử lý {items.filter((i) => i.status === "processing" || i.status === "uploading").length}/{items.length} file(s)
-                </p>
-              )}
-              {allDone && (
-                <p className="text-xs text-muted-foreground">
-                  {items.filter((i) => i.status === "done").length}/{items.length} file(s) hoàn tất
-                </p>
-              )}
-              <div className="flex gap-2">
-                {!allDone && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={cancelAllPolling}
-                    className="gap-1"
-                  >
-                    <X className="h-3 w-3" />
-                    Hủy
-                  </Button>
-                )}
-                <Button
-                  variant={allDone ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    if (allDone) {
-                      const anyDone = items.some((i) => i.status === "done");
-                      resetState();
-                      if (anyDone) onUploaded();
-                      setOpen(false);
-                    }
-                  }}
-                  disabled={!allDone}
-                  className="gap-1"
-                >
-                  Đóng
-                </Button>
-              </div>
-            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              {!allDone
+                ? `Đang xử lý ${items.filter((i) => i.status === "processing" || i.status === "uploading").length}/${items.length} file(s)`
+                : `${items.filter((i) => i.status === "done").length}/${items.length} file(s) hoàn tất`
+              }
+            </p>
           )}
 
           {items.length > 0 && allDone && (

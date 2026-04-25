@@ -84,7 +84,11 @@ class QdrantVectorStore(BaseVectorStore):
             )
 
     def _ensure_collection(self) -> None:
-        """Ensure collection exists; create with int8 quantization and HNSW tuning if missing."""
+        """Ensure collection exists with named dense + sparse vectors.
+
+        If collection exists but uses unnamed (legacy) vectors, it is deleted
+        and recreated. This handles the migration from unnamed to named vectors.
+        """
         try:
             from qdrant_client.models import (
                 Distance,
@@ -93,22 +97,49 @@ class QdrantVectorStore(BaseVectorStore):
                 ScalarQuantizationConfig,
                 ScalarType,
                 HnswConfigDiff,
+                SparseVectorParams,
+                SparseIndexParams,
+                Modifier,
             )
 
             # Check if collection exists
             collections = self.client.get_collections()
             if any(col.name == self.collection_name for col in collections.collections):
-                logger.info(f"Collection '{self.collection_name}' exists")
-                return
+                # Check if collection has named vectors (not legacy unnamed)
+                info = self.client.get_collection(self.collection_name)
+                vectors_config = info.config.params.vectors
+                # Named vectors = dict, unnamed = single VectorParams
+                if isinstance(vectors_config, dict) and "dense" in vectors_config:
+                    logger.info("Collection '%s' exists with named vectors", self.collection_name)
+                    return
+                # Legacy collection with unnamed vectors — must recreate
+                logger.warning(
+                    "Collection '%s' uses legacy unnamed vectors — deleting and recreating with named vectors",
+                    self.collection_name,
+                )
+                self.client.delete_collection(self.collection_name)
 
-            # Create collection with int8 quantization and tuned HNSW
-            logger.info(f"Creating collection '{self.collection_name}' (int8 quantized, HNSW m=16 ef_construct=128)...")
+            # Create collection with named dense + sparse vectors for hybrid search
+
+            # Create collection with named dense + sparse vectors for hybrid search
+            logger.info(
+                "Creating collection '%s' (dense + sparse-bm25, int8 quantized, HNSW m=16 ef_construct=128)...",
+                self.collection_name,
+            )
             self.client.create_collection(
                 collection_name=self.collection_name,
-                vectors_config=VectorParams(
-                    size=self.vector_size,
-                    distance=Distance.COSINE,
-                ),
+                vectors_config={
+                    "dense": VectorParams(
+                        size=self.vector_size,
+                        distance=Distance.COSINE,
+                    ),
+                },
+                sparse_vectors_config={
+                    "sparse-bm25": SparseVectorParams(
+                        index=SparseIndexParams(on_disk=False),
+                        modifier=Modifier.IDF,
+                    ),
+                },
                 quantization_config=ScalarQuantization(
                     scalar=ScalarQuantizationConfig(
                         type=ScalarType.INT8,
@@ -121,8 +152,8 @@ class QdrantVectorStore(BaseVectorStore):
                     ef_construct=128,
                 ),
             )
-            logger.info(f"✓ Created collection '{self.collection_name}' with int8 quantization")
-        
+            logger.info("Created collection '%s' with dense + sparse-bm25 vectors", self.collection_name)
+
         except Exception as e:
             raise VectorStoreOperationException(
                 f"Failed to ensure collection '{self.collection_name}': {str(e)}",
@@ -148,36 +179,35 @@ class QdrantVectorStore(BaseVectorStore):
         document_id: str,
         nodes: List[IngestedNode],
         embeddings: List[List[float]],
+        sparse_embeddings: List | None = None,
     ) -> List[str]:
         """
-        Store document nodes and embeddings in Qdrant.
-        
+        Store document nodes and embeddings in Qdrant with optional sparse vectors.
+
         Args:
             document_id: ID of document being stored
             nodes: List of IngestedNode objects
-            embeddings: List of embedding vectors (must match nodes length)
-        
+            embeddings: List of dense embedding vectors (must match nodes length)
+            sparse_embeddings: Optional list of SparseVector for BM25 hybrid search
+
         Returns:
             List of stored node IDs
-        
-        Raises:
-            VectorStoreOperationException: If store fails
         """
         if len(nodes) != len(embeddings):
             raise VectorStoreOperationException(
                 f"Node count ({len(nodes)}) != embedding count ({len(embeddings)})",
                 error_code="QDRANT_MISMATCH"
             )
-        
+
         try:
-            from qdrant_client.models import PointStruct
-            
+            from qdrant_client.models import PointStruct, SparseVector
+
             points = []
             stored_ids = []
-            
-            for node, embedding in zip(nodes, embeddings):
+
+            for idx, (node, embedding) in enumerate(zip(nodes, embeddings)):
                 point_id = self._node_id_to_qdrant_id(node.node_id)
-                
+
                 # Build payload with rich metadata
                 payload = {
                     'document_id': document_id,
@@ -189,28 +219,38 @@ class QdrantVectorStore(BaseVectorStore):
                     'parent_id': node.parent_id,
                     'order': node.order,
                 }
-                
+
                 # Add custom metadata
                 if node.metadata:
                     payload['metadata'] = node.metadata
-                
+
+                # Named dense vector + optional sparse vector
+                vector: dict = {"dense": embedding}
+                if sparse_embeddings and idx < len(sparse_embeddings):
+                    sparse_emb = sparse_embeddings[idx]
+                    if sparse_emb is not None:
+                        vector["sparse-bm25"] = sparse_emb
+
                 point = PointStruct(
                     id=point_id,
-                    vector=embedding,
+                    vector=vector,
                     payload=payload,
                 )
                 points.append(point)
                 stored_ids.append(node.node_id)
-            
+
             # Upsert points
             self.client.upsert(
                 collection_name=self.collection_name,
                 points=points,
             )
-            
-            logger.info(f"Stored {len(points)} nodes for document {document_id} in Qdrant")
+
+            logger.info(
+                "Stored %d nodes for document %s (sparse=%s)",
+                len(points), document_id, "yes" if sparse_embeddings else "no",
+            )
             return stored_ids
-        
+
         except Exception as e:
             raise VectorStoreOperationException(
                 f"Failed to store nodes in Qdrant: {str(e)}",
@@ -225,21 +265,28 @@ class QdrantVectorStore(BaseVectorStore):
         document_id_filter: Optional[str] = None,
         document_ids_filter: Optional[List[str]] = None,
         section_ids_filter: Optional[List[str]] = None,
+        sparse_vector=None,
     ) -> List[RetrievedDocument]:
         """
-        Retrieve top-k documents by vector similarity.
-        
+        Retrieve top-k documents using hybrid search (Dense + BM25 RRF fusion).
+
+        When sparse_vector is provided, runs both dense (semantic) and sparse (BM25)
+        prefetch queries in parallel and fuses with Reciprocal Rank Fusion (RRF).
+        When sparse_vector is None, runs dense-only search.
+
         Args:
-            query_vector: Query embedding vector
+            query_vector: Dense query embedding vector
             top_k: Number of results to return
             document_id_filter: Optional filter to specific document
             document_ids_filter: Optional filter to multiple documents
-        
+            section_ids_filter: Optional filter to specific sections
+            sparse_vector: Optional SparseVector from VietnameseBM25Encoder for hybrid search
+
         Returns:
             List of RetrievedDocument objects with scores
-        
+
         Raises:
-            VectorStoreOperationException: If retrieve fails
+            VectorStoreOperationException: If retrieval fails
         """
         try:
             from qdrant_client.models import (
@@ -251,7 +298,7 @@ class QdrantVectorStore(BaseVectorStore):
                 QuantizationSearchParams,
             )
 
-            # Build optional filter
+            # Build filter conditions
             query_conditions = []
             if document_ids_filter:
                 query_conditions.append(
@@ -278,25 +325,73 @@ class QdrantVectorStore(BaseVectorStore):
 
             query_filter = Filter(must=query_conditions) if query_conditions else None
 
-            # Search with int8 rescoring: fetch 2x candidates via quantized vectors,
-            # then re-rank top-k using original float32 for near-perfect recall.
-            results = self.client.query_points(
-                collection_name=self.collection_name,
-                query=query_vector,
-                query_filter=query_filter,
-                limit=top_k,
-                with_payload=True,
-                with_vectors=False,
-                search_params=SearchParams(
-                    hnsw_ef=128,
-                    quantization=QuantizationSearchParams(
-                        ignore=False,
-                        rescore=True,
-                        oversampling=2.0,
+            if sparse_vector is not None:
+                # ── Hybrid mode: Dense + BM25 with RRF fusion ─────────────
+                from qdrant_client.models import Prefetch, FusionQuery, Fusion
+
+                prefetch_list = [
+                    # Sparse (BM25) prefetch
+                    Prefetch(
+                        query=sparse_vector,
+                        using="sparse-bm25",
+                        limit=min(top_k * 3, 60),
+                        filter=query_filter,
                     ),
-                ),
-            ).points
-            
+                    # Dense (semantic) prefetch with int8 rescoring
+                    Prefetch(
+                        query=query_vector,
+                        using="dense",
+                        limit=min(top_k * 3, 60),
+                        filter=query_filter,
+                        search_params=SearchParams(
+                            hnsw_ef=128,
+                            quantization=QuantizationSearchParams(
+                                ignore=False,
+                                rescore=True,
+                                oversampling=2.0,
+                            ),
+                        ),
+                    ),
+                ]
+
+                results = self.client.query_points(
+                    collection_name=self.collection_name,
+                    prefetch=prefetch_list,
+                    query=FusionQuery(fusion=Fusion.RRF),
+                    limit=top_k,
+                    with_payload=True,
+                    with_vectors=False,
+                ).points
+
+                logger.debug(
+                    "Hybrid retrieved %d documents (dense+sparse RRF, top %d)",
+                    len(results), top_k,
+                )
+            else:
+                # ── Dense-only mode: single vector search ──────────────────
+                results = self.client.query_points(
+                    collection_name=self.collection_name,
+                    query=query_vector,
+                    using="dense",
+                    query_filter=query_filter,
+                    limit=top_k,
+                    with_payload=True,
+                    with_vectors=False,
+                    search_params=SearchParams(
+                        hnsw_ef=128,
+                        quantization=QuantizationSearchParams(
+                            ignore=False,
+                            rescore=True,
+                            oversampling=2.0,
+                        ),
+                    ),
+                ).points
+
+                logger.debug(
+                    "Dense-only retrieved %d documents (top %d)",
+                    len(results), top_k,
+                )
+
             # Convert to RetrievedDocument objects
             retrieved = []
             for point in results:
@@ -305,7 +400,7 @@ class QdrantVectorStore(BaseVectorStore):
                     node_id=payload.get('node_id', str(point.id)),
                     document_id=payload.get('document_id', 'unknown'),
                     text=payload.get('text', ''),
-                    score=point.score,  # Cosine similarity score
+                    score=point.score,
                     metadata={
                         'page_number': payload.get('page_number'),
                         'section_title': payload.get('section_title'),
@@ -315,15 +410,14 @@ class QdrantVectorStore(BaseVectorStore):
                     },
                 )
                 retrieved.append(retrieved_doc)
-            
-            logger.debug(f"Retrieved {len(retrieved)} documents from Qdrant (top {top_k})")
+
             return retrieved
-        
+
         except Exception as e:
             raise VectorStoreOperationException(
                 f"Failed to retrieve from Qdrant: {str(e)}",
                 error_code="QDRANT_RETRIEVE_FAILED",
-                details={'top_k': top_k, 'error': str(e)}
+                details={'top_k': top_k, 'hybrid': sparse_vector is not None, 'error': str(e)}
             )
 
     def delete(self, document_id: str) -> bool:

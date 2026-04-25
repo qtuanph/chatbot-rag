@@ -82,11 +82,10 @@ class DoclingParser(BaseParser):
 
             ocr_options = self._select_ocr_backend()
 
-            # Fast converter: force OCR on every page for clean Vietnamese text
-            # Bypasses pypdfium2 text extraction which garbles Vietnamese characters
+            # Fast converter: extract embedded text first, OCR only for pages with no text
             pipeline_fast = PdfPipelineOptions(
                 do_ocr=True,
-                force_full_page_ocr=True,
+                force_full_page_ocr=False,
                 ocr_options=ocr_options,
                 do_table_structure=True,
             )
@@ -94,6 +93,7 @@ class DoclingParser(BaseParser):
             # OCR converter: for scanned PDFs that have no embedded text
             pipeline_ocr = PdfPipelineOptions(
                 do_ocr=True,
+                force_full_page_ocr=True,
                 ocr_options=ocr_options,
                 do_table_structure=True,
             )
@@ -121,15 +121,29 @@ class DoclingParser(BaseParser):
         except ImportError:
             logger.warning("Docling not installed; will skip Docling parsing")
         except Exception as e:
-            logger.warning("Failed to initialize Docling: %s", e)
+            logger.warning("Failed to initialize Docling with OCR: %s", e)
+            # Fallback: initialize without OCR (text extraction only)
             try:
-                from docling.document_converter import DocumentConverter
-                converter = DocumentConverter()
+                from docling.document_converter import (
+                    DocumentConverter,
+                    PdfFormatOption,
+                )
+                from docling.datamodel.base_models import InputFormat
+                from docling.datamodel.pipeline_options import PdfPipelineOptions
+
+                pipeline_no_ocr = PdfPipelineOptions(
+                    do_ocr=False,
+                    do_table_structure=True,
+                )
+
+                converter = DocumentConverter(format_options={
+                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_no_ocr),
+                })
                 self.converter_fast = converter
                 self.converter_ocr = converter
-                logger.info("Docling initialized with default settings")
-            except Exception:
-                logger.warning("Failed to initialize default Docling converter")
+                logger.info("Docling initialized WITHOUT OCR (text extraction only)")
+            except Exception as e2:
+                logger.warning("Failed to initialize Docling without OCR too: %s", e2)
 
     def parse(
         self,

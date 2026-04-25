@@ -24,13 +24,20 @@ class ChatStore:
         return self.client.get(self.active_key(scope_id))
 
     def append_message(self, scope_id: str, session_id: str, role: str, content: str) -> None:
+        key = self.history_key(scope_id, session_id)
         payload = json.dumps({"role": role, "content": content})
-        self.client.rpush(self.history_key(scope_id, session_id), payload)
-        self.client.expire(self.history_key(scope_id, session_id), 24 * 60 * 60)
+        pipe = self.client.pipeline()
+        pipe.rpush(key, payload)
+        pipe.expire(key, 24 * 60 * 60)
+        pipe.execute()
 
     def get_history(self, scope_id: str, session_id: str) -> list[dict[str, str]]:
         items = self.client.lrange(self.history_key(scope_id, session_id), 0, -1)
         return [json.loads(item) for item in items]
+
+    def history_exists(self, scope_id: str, session_id: str) -> bool:
+        """Check if Redis has history for this session (avoids unnecessary DB query)."""
+        return self.client.llen(self.history_key(scope_id, session_id)) > 0
 
     def hydrate_from_db(self, scope_id: str, session_id: str, db_messages: list[dict]) -> None:
         """Load DB messages into Redis if TTL expired (key empty or missing)."""

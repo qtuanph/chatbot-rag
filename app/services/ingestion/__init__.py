@@ -4,12 +4,14 @@ from app.services.ingestion.hierarchy_validator import HierarchyValidator, Valid
 from app.services.ingestion.parser_manager import ParserManager
 from app.services.ingestion.pipeline import IngestionPipeline, IngestionResult
 from app.services.ingestion.recovery import PipelineRecoveryManager
+from app.services.ingestion.rule_based_refiner import RuleBasedRefiner
 
 __all__ = [
-	"HierarchyValidator",
-	"ValidationReport",
-	"ParserManager",
-	"IngestionPipeline",
-	"IngestionResult",
-	"PipelineRecoveryManager",
+    "HierarchyValidator",
+    "ValidationReport",
+    "ParserManager",
+    "IngestionPipeline",
+    "IngestionResult",
+    "PipelineRecoveryManager",
+    "RuleBasedRefiner",
 ]

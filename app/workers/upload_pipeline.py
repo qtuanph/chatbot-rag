@@ -254,6 +254,11 @@ def parse_document_task(
             from app.services.retrieval.rag import invalidate_doc_ids_cache
             invalidate_doc_ids_cache()
 
+            # Rebuild BM25 index from all Qdrant chunks (includes new document)
+            logger.info("[%s] Rebuilding BM25 index from Qdrant...", document_id)
+            from app.services.retrieval.bm25_index import update_bm25_index
+            update_bm25_index([n.text for n in ingestion_result.nodes])
+
             logger.info("[%s] ✓ Document metadata persisted", document_id)
 
     except SoftTimeLimitExceeded:

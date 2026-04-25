@@ -6,27 +6,21 @@ Describe what changed and why.
 
 - [ ] I read docs first before coding, in this order:
   - [ ] `AGENTS.md`
-  - [ ] `docs/01_SYSTEM_ARCHITECTURE.md`
-  - [ ] `docs/03_CORE_WORKFLOWS.md`
-  - [ ] `docs/06_INGESTION_AND_RETRIEVAL_STRATEGY.md`
-- [ ] I can answer preflight checks:
-  - [ ] Retrieval strategy in use
-  - [ ] Where sections are stored
-  - [ ] Where chunks are stored
-  - [ ] Embedding model and dimension
-  - [ ] Hard-delete order and rationale
+  - [ ] `docs/00_QUICK_REFERENCE.json`
+  - [ ] `docs/01_ARCHITECTURE.md`
+  - [ ] `docs/02_WORKFLOWS.md`
+  - [ ] `docs/03_API_CONTRACTS.md`
+  - [ ] `docs/04_DEPLOYMENT.md`
+  - [ ] `docs/05_INGESTION_RETRIEVAL.md` (if ingestion/retrieval related)
+- [ ] I can answer all 12 preflight checks from AGENTS.md
 
 ## Docs/Memory Update (Required for code changes)
 
 - [ ] This PR updates at least one docs/memory source when code/behavior changes.
-- [ ] If there is a conflict, `docs/` is treated as source of truth and agent memory/guardrail files are synced.
-
-## Agent-Agnostic Confirmation
-
-- [ ] This PR follows the same guardrails regardless of implementation agent (Claude Code, GitHub Copilot, or other automation).
+- [ ] If conflict, `docs/` is treated as source of truth.
 
 ## Validation
 
 - [ ] I ran relevant checks for changed areas.
 - [ ] I reviewed API/contract impact (if any) and updated frontend/contracts accordingly.
-- [ ] I verified HTTPException status codes follow policy (`status.HTTP_*`, no raw numeric literals).
+- [ ] HTTPException status codes follow policy (`status.HTTP_*`, no raw numeric literals).

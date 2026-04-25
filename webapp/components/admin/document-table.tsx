@@ -38,7 +38,7 @@ import {
   ExternalLink,
   Loader2,
 } from "lucide-react";
-import { documentsApi } from "@/lib/api-client";
+import { documentsApi, ApiError } from "@/lib/api-client";
 import { toast } from "sonner";
 import { UploadDialog } from "@/components/admin/upload-dialog";
 import type { DocumentSummary } from "@/types/api";
@@ -206,8 +206,8 @@ export function DocumentTable() {
         toast.success("Đã xếp hàng xóa tài liệu");
         setDeleteTarget(null);
         fetchDocs();
-      } catch {
-        toast.error("Xóa thất bại");
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.detail : "Xóa thất bại");
       }
     },
     [session, fetchDocs],
@@ -222,8 +222,8 @@ export function DocumentTable() {
         toast.success("Đã xếp hàng xử lý lại tài liệu");
         handleCloseView();
         fetchDocs();
-      } catch {
-        toast.error("Không thể xử lý lại. Vui lòng thử lại.");
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.detail : "Không thể xử lý lại. Vui lòng thử lại.");
       } finally {
         setRetryingId(null);
       }

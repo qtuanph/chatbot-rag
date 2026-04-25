@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Trash2, Users } from "lucide-react";
-import { authApi } from "@/lib/api-client";
+import { authApi, ApiError } from "@/lib/api-client";
 import { toast } from "sonner";
 import type { CreateUserRequest, RoleItem, UserItem } from "@/types/api";
 
@@ -82,8 +82,9 @@ export default function UsersPage() {
         toast.success("Tạo người dùng thành công");
         setDialogOpen(false);
         fetchUsers();
-      } catch {
-        toast.error("Tạo người dùng thất bại");
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.detail : "Tạo người dùng thất bại";
+        toast.error(msg);
       }
     },
     [session, fetchUsers],
@@ -97,8 +98,9 @@ export default function UsersPage() {
         toast.success(`Đã xóa người dùng ${username}`);
         setDeleteTarget(null);
         fetchUsers();
-      } catch {
-        toast.error("Xóa thất bại");
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.detail : "Xóa thất bại";
+        toast.error(msg);
       }
     },
     [session, fetchUsers],

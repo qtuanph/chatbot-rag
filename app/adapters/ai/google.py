@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import json
+import random
 import re
 from typing import Any, AsyncGenerator
 
@@ -197,11 +198,20 @@ class GoogleAIProvider(AIProvider):
         if not self.api_key:
             raise ValueError("GOOGLE_API_KEY must be configured when AI_PROVIDER=google")
 
-        self.limits = httpx.Limits(
+        self._headers = {"x-goog-api-key": self.api_key}
+
+        self._limits = httpx.Limits(
             max_keepalive_connections=10,
-            max_connections=20,
+            max_connections=50,
             keepalive_expiry=30.0,
         )
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self, timeout: float = 300.0) -> httpx.AsyncClient:
+        """Get or create a reusable httpx client."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=timeout, limits=self._limits)
+        return self._client
 
     async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> dict[str, Any]:
         """
@@ -244,31 +254,31 @@ class GoogleAIProvider(AIProvider):
             },
         }
 
-        url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
+        url = f"{self.base_url}/models/{self.model}:generateContent"
 
         try:
-            async with httpx.AsyncClient(timeout=30.0, limits=self.limits) as client:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-                data = response.json()
+            client = self._get_client(timeout=30.0)
+            response = await client.post(url, json=payload, headers=self._headers)
+            response.raise_for_status()
+            data = response.json()
 
-                response_text = self._extract_text(data)
-                if not response_text:
-                    return text, current_header
+            response_text = self._extract_text(data)
+            if not response_text:
+                return text, current_header
 
-                import json as json_lib
-                try:
-                    json_start = response_text.find('{')
-                    json_end = response_text.rfind('}') + 1
-                    if json_start >= 0 and json_end > json_start:
-                        json_str = response_text[json_start:json_end]
-                        result = json_lib.loads(json_str)
-                        cleaned = result.get("cleaned_text", text).strip()
-                        header = result.get("detected_header") or current_header
-                        return cleaned, header
-                except Exception as e:
-                    logger.warning("Failed to parse refinement JSON: %s", e)
-                    return text, current_header
+            import json as json_lib
+            try:
+                json_start = response_text.find('{')
+                json_end = response_text.rfind('}') + 1
+                if json_start >= 0 and json_end > json_start:
+                    json_str = response_text[json_start:json_end]
+                    result = json_lib.loads(json_str)
+                    cleaned = result.get("cleaned_text", text).strip()
+                    header = result.get("detected_header") or current_header
+                    return cleaned, header
+            except Exception as e:
+                logger.warning("Failed to parse refinement JSON: %s", e)
+                return text, current_header
 
         except Exception as e:
             logger.warning("Text refinement failed, using fallback: %s", e)
@@ -278,7 +288,10 @@ class GoogleAIProvider(AIProvider):
         """
         Stream chat responses from Google Gemini API.
         Uses multi-turn contents array for conversation history support.
+
+        After streaming completes, token usage is available via `self.last_usage`.
         """
+        self.last_usage: dict[str, int] = {}
         contents = self._build_contents(messages, kwargs)
 
         # Build system instruction with optional user memories
@@ -302,13 +315,12 @@ class GoogleAIProvider(AIProvider):
             },
         }
 
-        url = f"{self.base_url}/models/{self.model}:streamGenerateContent?alt=sse&key={self.api_key}"
+        url = f"{self.base_url}/models/{self.model}:streamGenerateContent?alt=sse"
 
-        for attempt in range(2):
-            client = None
+        for attempt in range(3):
             try:
-                client = httpx.AsyncClient(timeout=300.0, limits=self.limits)
-                response = await client.post(url, json=payload)
+                client = self._get_client()
+                response = await client.post(url, json=payload, headers=self._headers)
                 response.raise_for_status()
 
                 chunk_count = 0
@@ -322,6 +334,16 @@ class GoogleAIProvider(AIProvider):
                         if line.startswith("data: "):
                             json_str = line[6:]
                             data = json.loads(json_str)
+
+                            # Capture usage metadata from Gemini response
+                            usage = data.get("usageMetadata")
+                            if usage:
+                                self.last_usage = {
+                                    "prompt_tokens": usage.get("promptTokenCount", 0),
+                                    "completion_tokens": usage.get("candidatesTokenCount", 0),
+                                    "total_tokens": usage.get("totalTokenCount", 0),
+                                }
+
                             text = self._extract_text(data)
                             if text:
                                 # Filter thought blocks from stream
@@ -346,11 +368,12 @@ class GoogleAIProvider(AIProvider):
                 return
 
             except httpx.HTTPStatusError as e:
-                if e.response.status_code == 429 and attempt == 0:
-                    logger.warning("Streaming rate limited, retrying after backoff...")
-                    await asyncio.sleep(2 ** attempt)
+                if e.response.status_code == 429 and attempt < 2:
+                    backoff = min(2 ** attempt + random.uniform(0, 1), 10)
+                    logger.warning("Streaming rate limited, retrying in %.1fs...", backoff)
+                    await asyncio.sleep(backoff)
                     continue
-                elif e.response.status_code >= 500 and attempt == 0:
+                elif e.response.status_code >= 500 and attempt < 2:
                     logger.warning("Streaming server error %s, retrying...", e.response.status_code)
                     await asyncio.sleep(1)
                     continue
@@ -358,7 +381,7 @@ class GoogleAIProvider(AIProvider):
                     raise RuntimeError(f"Google AI streaming failed: {e.response.status_code}") from None
 
             except httpx.TimeoutException:
-                if attempt == 0:
+                if attempt < 2:
                     logger.warning("Streaming timeout, retrying...")
                     continue
                 raise RuntimeError("Google AI streaming timed out after 300s") from None
@@ -369,10 +392,6 @@ class GoogleAIProvider(AIProvider):
 
             except Exception as exc:
                 raise RuntimeError(f"Google AI streaming request failed: {exc}") from None
-
-            finally:
-                if client:
-                    await client.aclose()
 
         raise RuntimeError("Google AI streaming failed after retries")
 

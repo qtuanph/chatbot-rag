@@ -258,7 +258,7 @@ class ClassicParser(BaseParser):
                 "section_id": f"classic-{node.node_id}",
                 "parent_section_id": None,
                 "title": node.section_title or page_label,
-                "content": node.text[:500],
+                "content": node.text,
                 "section_type": node.node_type.value if hasattr(node.node_type, 'value') else 'section',
                 "level": 1,
                 "order_index": i,

@@ -172,22 +172,12 @@ class UserMemoryService:
                 "QUAN TRỌNG: Chỉ trả về JSON, không thêm gì khác."
             )
 
-            import httpx
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{provider.model}:generateContent?key={provider.api_key}"
-            payload = {
-                "contents": [{"parts": [{"text": extraction_prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.1,
-                    "maxOutputTokens": 512,
-                },
-            }
-
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-                data = response.json()
-
-            text = provider._extract_text(data)
+            result = await provider.chat(
+                [{"role": "user", "content": extraction_prompt}],
+                context=[],
+                citations=[],
+            )
+            text = result.get("answer", "")
             if not text:
                 return
 

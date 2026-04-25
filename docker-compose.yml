@@ -43,7 +43,7 @@ services:
         condition: service_healthy
     shm_size: '2gb'
     volumes:
-      - hf-cache:/root/.cache/huggingface
+      - hf-cache:/home/qtuanph/.cache/huggingface
     restart: on-failure:3
     deploy:
       resources:

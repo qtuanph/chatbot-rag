@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Header, Request
-from jose import JWTError, jwt
+import jwt
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
@@ -12,6 +12,9 @@ from app.services.system.audit import safe_record_audit
 from app.api.deps import AuthContext, get_auth_context, require_admin
 from app.services.auth.token_blacklist import TokenBlacklist
 from app.services.auth.throttle import RequestThrottle
+
+# Module-level singleton — reuse Redis connection across requests
+_blacklist = TokenBlacklist()
 
 
 router = APIRouter(tags=["auth"])
@@ -34,7 +37,7 @@ def login(payload: LoginRequest, request: Request) -> TokenResponse:
         if role is None:
             raise http_errors.unauthorized("Invalid credentials")
 
-        token = create_access_token(subject=str(user.id))
+        token = create_access_token(subject=str(user.id), role=role.name)
         safe_record_audit(
             action="auth.login",
             actor_user_id=str(user.id),
@@ -57,7 +60,7 @@ def logout(request: Request, authorization: str | None = Header(default=None)) -
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         jti = str(payload["jti"])
         expires_at = int(payload["exp"])
-        TokenBlacklist().revoke(jti, expires_at)
+        _blacklist.revoke(jti, expires_at)
         safe_record_audit(
             action="auth.logout",
             actor_user_id=str(payload["sub"]),
@@ -68,7 +71,7 @@ def logout(request: Request, authorization: str | None = Header(default=None)) -
             details={"expires_at": expires_at},
         )
         return LogoutResponse(status="logged_out")
-    except (JWTError, KeyError, TypeError, ValueError):
+    except (jwt.exceptions.PyJWTError, KeyError, TypeError, ValueError):
         raise http_errors.unauthorized("Invalid token") from None
 
 

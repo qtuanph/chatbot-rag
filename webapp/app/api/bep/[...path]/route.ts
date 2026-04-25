@@ -32,6 +32,15 @@ async function proxyHandler(
     headers,
   };
 
+  // Add timeout for non-SSE requests (SSE needs long-lived connection)
+  const isSSERequest = request.headers.get("accept")?.includes("text/event-stream");
+  let controller: AbortController | null = null;
+  if (!isSSERequest) {
+    controller = new AbortController();
+    init.signal = controller.signal;
+    setTimeout(() => controller?.abort(), 30_000);
+  }
+
   // Forward body for non-GET/HEAD requests (handles JSON, FormData, SSE)
   if (request.method !== "GET" && request.method !== "HEAD") {
     // Clone body before forwarding (needed for retry)
@@ -69,6 +78,14 @@ async function proxyHandler(
   const responseHeaders = new Headers();
   const resContentType = backendRes.headers.get("content-type");
   if (resContentType) responseHeaders.set("content-type", resContentType);
+
+  // Redirect to login on 401 (token expired or invalid)
+  if (backendRes.status === 401) {
+    return new Response(
+      JSON.stringify({ detail: "Authentication required" }),
+      { status: 401, headers: { "content-type": "application/json" } },
+    );
+  }
 
   // SSE-specific headers to prevent buffering at every layer
   if (resContentType?.includes("text/event-stream")) {

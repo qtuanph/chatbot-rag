@@ -122,6 +122,17 @@ def hard_delete_document(document_id: str) -> dict[str, bool]:
     from app.services.retrieval.rag import invalidate_doc_ids_cache
     invalidate_doc_ids_cache()
 
+    # Rebuild BM25 index — IDF values changed after document removal
+    try:
+        from app.services.retrieval.bm25_index import build_bm25_index_from_qdrant
+        build_bm25_index_from_qdrant()
+        logger.info("BM25 index rebuilt after deleting document %s", document_id)
+    except Exception:
+        logger.warning(
+            "BM25 rebuild failed after deleting document %s",
+            document_id, exc_info=True,
+        )
+
     return {
         "db_deleted": db_deleted,
         "sections_deleted": sections_deleted,

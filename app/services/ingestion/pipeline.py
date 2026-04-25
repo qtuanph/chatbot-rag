@@ -161,6 +161,11 @@ class IngestionPipeline:
                 store_parallelism = max(1, min(store_parallelism, 4))
                 pending_store_tasks: deque[tuple[int, list[IngestedNode], Future[list[str]]]] = deque()
 
+                # BM25 sparse encoder — always available, builds vocab on first use
+                from app.services.retrieval.bm25_index import get_bm25_encoder
+                bm25_encoder = get_bm25_encoder()
+                bm25_ready = bm25_encoder.is_ready
+
                 def _store_chunk(
                     chunk_document_id: str,
                     chunk_nodes: list[IngestedNode],
@@ -168,7 +173,16 @@ class IngestionPipeline:
                 ) -> list[str]:
                     if not self.vector_store:
                         return []
-                    return self.vector_store.store(chunk_document_id, chunk_nodes, chunk_vecs)
+                    # Generate BM25 sparse vectors for hybrid search
+                    sparse_embs = None
+                    if bm25_ready:
+                        sparse_embs = bm25_encoder.encode_batch_sparse_vectors(
+                            [n.text for n in chunk_nodes]
+                        )
+                    return self.vector_store.store(
+                        chunk_document_id, chunk_nodes, chunk_vecs,
+                        sparse_embeddings=sparse_embs,
+                    )
 
                 with ThreadPoolExecutor(max_workers=store_parallelism) as store_executor:
                     for chunk_idx, chunk_start in enumerate(range(0, len(nodes), chunk_size)):

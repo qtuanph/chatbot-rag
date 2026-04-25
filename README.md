@@ -474,12 +474,11 @@ Read `AGENTS.md` first, then the JSON quick reference and topic docs.
 | Topic | File | Time |
 |-------|------|------|
 | Rules & patterns | `docs/00_QUICK_REFERENCE.json` | 5 min |
-| System architecture | `docs/01_SYSTEM_ARCHITECTURE.md` | 10 min |
-| Database & schema | `docs/02_DATABASE_AND_PROJECT.md` | 5 min |
-| Core workflows | `docs/03_CORE_WORKFLOWS.md` | 10 min |
-| API & security | `docs/04_API_CONTRACT_AND_SECURITY.md` | 10 min |
-| Deployment & observability | `docs/05_DEPLOYMENT_AND_OBSERVABILITY.md` | 10 min |
-| Ingestion & retrieval deep dive | `docs/06_INGESTION_AND_RETRIEVAL_STRATEGY.md` | 15 min |
+| Architecture & data model | `docs/01_ARCHITECTURE.md` | 10 min |
+| Core workflows | `docs/02_WORKFLOWS.md` | 10 min |
+| API contracts & security | `docs/03_API_CONTRACTS.md` | 10 min |
+| Deployment & observability | `docs/04_DEPLOYMENT.md` | 5 min |
+| Ingestion & retrieval | `docs/05_INGESTION_RETRIEVAL.md` | 10 min |
 
 ---
 

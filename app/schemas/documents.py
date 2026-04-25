@@ -60,7 +60,6 @@ class DocumentDetailResponse(BaseModel):
     document_id: str
     title: str
     file_name: str
-    file_path: str
     sha256: str
     file_type: str
     file_size: int

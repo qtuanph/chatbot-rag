@@ -1,9 +1,15 @@
 {
   "document": {
     "id": "00_QUICK_REFERENCE",
-    "version": "2026-04-23",
-    "purpose": "Rules and patterns cheat sheet for fast AI/agent preflight.",
-    "authority": "This file is the quick-reference entrypoint. docs/ remains the source of truth."
+    "version": "2026-04-25",
+    "purpose": "Rules and patterns cheat sheet for AI/agent preflight. Read first, then task-specific docs.",
+    "doc_guide": {
+      "01_ARCHITECTURE.md": "System design, data model, storage, invariants, delete/version policy, AI control",
+      "02_WORKFLOWS.md": "Upload, chat, delete, session cleanup workflows with diagrams",
+      "03_API_CONTRACTS.md": "Full route reference, security, rate limits, error handling",
+      "04_DEPLOYMENT.md": "Docker topology, nginx, env vars, health probes, backup",
+      "05_INGESTION_RETRIEVAL.md": "12-step pipeline, Smart OCR, embedding specs, retrieval deep dive"
+    }
   },
   "core_invariants": [
     {
@@ -11,265 +17,112 @@
       "rule": "Upload returns task_id immediately. Parsing/indexing runs asynchronously via Celery workers."
     },
     {
-      "name": "two_stage_retrieval",
-      "rule": "Query -> single Qdrant fetch -> in-memory section grouping (>=0.30) -> chunk re-ranking within sections (>=0.35). Doc IDs TTL-cached 60s."
+      "name": "four_stage_retrieval",
+      "rule": "Hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → cross-encoder reranking (top 5) → context assembly. Multi-query expansion opt-in. Doc IDs TTL-cached 60s."
     },
     {
       "name": "hard_delete_order",
-      "rule": "registry -> vectors -> file -> database -> purge"
+      "rule": "6 steps: registry → vectors → sections → file → DB row → purge. Sections before DB row (referential integrity)."
+    },
+    {
+      "name": "api_gateway_proxy",
+      "rule": "Browser never sees Bearer token. All calls via /api/bep/ → Next.js Route Handler → getToken() → backend."
     }
   ],
   "data_location_map": [
-    {
-      "data": "sections",
-      "storage": "PostgreSQL",
-      "table": "document_sections",
-      "query_layer": "SectionRepository",
-      "notes": "Level-1 structure and canonical order source"
-    },
-    {
-      "data": "chunks",
-      "storage": "Qdrant",
-      "query_layer": "qdrant.py adapter",
-      "notes": "~400 token chunks with section_id metadata"
-    },
-    {
-      "data": "documents",
-      "storage": "PostgreSQL",
-      "table": "documents",
-      "notes": "status lifecycle: pending/processing/ready/deleted"
-    },
-    {
-      "data": "chat_messages",
-      "storage": "PostgreSQL + Redis",
-      "query_layer": "ChatStore",
-      "notes": "Messages persisted to DB; Redis for hot history with 24h TTL. hydrate_from_db() reloads on TTL expiry. Active session is reused by the client/store; Celery cleanup after 30 days."
-    },
-    {
-      "data": "uploaded_files",
-      "storage": "RustFS",
-      "query_layer": "DocumentStore",
-      "notes": "Hard-deleted on user delete request"
-    },
-    {
-      "data": "query_embedding_cache",
-      "storage": "Redis",
-      "query_layer": "QueryEmbeddingCache",
-      "notes": "MD5 keyed; TTL 1 hour"
-    },
-    {
-      "data": "user_sessions",
-      "storage": "JWT + Redis blacklist",
-      "query_layer": "TokenBlacklist",
-      "notes": "Token revocation on logout"
-    },
-    {
-      "data": "user_memories",
-      "storage": "PostgreSQL + Redis cache (5min TTL)",
-      "table": "user_memories",
-      "query_layer": "UserMemoryService",
-      "notes": "Persistent per-user facts/preferences/corrections injected into AI system prompt"
-    }
+    { "data": "sections", "storage": "PostgreSQL", "table": "document_sections", "notes": "Canonical order source (order_index)" },
+    { "data": "chunks", "storage": "Qdrant", "notes": "~400 token chunks with section_id metadata. Named dense + sparse-bm25 vectors." },
+    { "data": "bm25_vocab", "storage": "disk", "notes": "data/bm25_vocab.json — rebuilt on upload/delete. Underthesea tokenization + IDF." },
+    { "data": "documents", "storage": "PostgreSQL", "table": "documents", "notes": "status: pending→processing→ready/failed" },
+    { "data": "chat_messages", "storage": "PostgreSQL + Redis", "notes": "DB persisted (tokens_in, tokens_out, latency_ms); Redis hot cache (pipeline atomic). hydrate_from_db() on expiry." },
+    { "data": "chat_sessions", "storage": "PostgreSQL", "table": "chat_sessions", "notes": "Hard-deleted after 30 days by Celery Beat. Sidebar ordered by updated_at DESC." },
+    { "data": "uploaded_files", "storage": "RustFS", "notes": "Hard-deleted on user delete request" },
+    { "data": "query_embedding_cache", "storage": "Redis", "notes": "MD5 keyed; TTL 1 hour" },
+    { "data": "user_memories", "storage": "PostgreSQL + Redis", "table": "user_memories", "notes": "Redis cache 5min TTL; injected into AI systemInstruction" },
+    { "data": "user_sessions", "storage": "JWT (PyJWT) + Redis blacklist", "notes": "Token revocation on logout. Role cached in JWT payload." }
   ],
   "critical_env": {
-    "ai_embedding": {
+    "ai": {
       "AI_PROVIDER": "google",
-      "GOOGLE_API_KEY": "required if AI_PROVIDER=google",
+      "GOOGLE_API_KEY": "required",
       "GOOGLE_MODEL": "gemma-4-26b-a4b-it",
       "EMBEDDING_HF_MODEL": "AITeamVN/Vietnamese_Embedding_v2"
     },
-    "retrieval_thresholds": {
+    "retrieval": {
       "RETRIEVAL_SECTION_MIN_SCORE": 0.3,
       "RETRIEVAL_MIN_SCORE": 0.35,
       "RETRIEVAL_SECTION_TOP_K": 3,
-      "RETRIEVAL_CHUNK_TOP_K": 5
-    },
-    "ingestion": {
-      "INGESTION_ENGINE": "docling|classic",
-      "INGESTION_EMBEDDING_CHUNK_SIZE": 32
+      "RETRIEVAL_CHUNK_TOP_K": 5,
+      "RETRIEVAL_RERANK_TOP_K": 5,
+      "RETRIEVAL_RERANK_MODEL": "AITeamVN/Vietnamese_Reranker",
+      "RETRIEVAL_BM25_K1": 1.5,
+      "RETRIEVAL_BM25_B": 0.75,
+      "RETRIEVAL_QUERY_EXPANSION_ENABLED": false,
+      "RETRIEVAL_QUERY_EXPANSION_VARIANTS": 3
     },
     "production_safety": {
       "ALLOWED_HOSTS": "must be explicit",
       "CORS_ORIGINS": "must be explicit",
-      "S3_SECURE": true,
-      "RATE_LIMIT_RELAXED_MODE": false,
-      "NEXT_PUBLIC_API_URL": "/api/bep (browser — obfuscated proxy path)",
-      "API_INTERNAL_URL": "http://api:8000/api/v1 (server-side — internal network)"
+      "NEXT_PUBLIC_API_URL": "/api/bep (browser proxy path)",
+      "API_INTERNAL_URL": "http://api:8000/api/v1 (server-side)"
     }
   },
   "api_summary": {
     "base": "/api/v1",
     "routes": [
-      {
-        "method": "POST",
-        "path": "/auth/login",
-        "auth": "public"
-      },
-      {
-        "method": "POST",
-        "path": "/auth/logout",
-        "auth": "jwt"
-      },
-      {
-        "method": "GET",
-        "path": "/auth/me",
-        "auth": "jwt"
-      },
-      {
-        "method": "POST",
-        "path": "/auth/users",
-        "auth": "admin"
-      },
-      {
-        "method": "GET",
-        "path": "/auth/users",
-        "auth": "admin"
-      },
-      {
-        "method": "POST",
-        "path": "/upload",
-        "auth": "admin",
-        "returns": "task_id"
-      },
-      {
-        "method": "GET",
-        "path": "/status/{task_id}",
-        "auth": "jwt"
-      },
-      {
-        "method": "GET",
-        "path": "/documents",
-        "auth": "member"
-      },
-      {
-        "method": "DELETE",
-        "path": "/documents/{id}",
-        "auth": "admin"
-      },
-      {
-        "method": "POST",
-        "path": "/chat",
-        "auth": "member"
-      },
-      {
-        "method": "POST",
-        "path": "/chat/stream",
-        "auth": "member"
-      },
-      {
-        "method": "GET",
-        "path": "/chat/sessions",
-        "auth": "member"
-      },
-      {
-        "method": "GET",
-        "path": "/chat/messages",
-        "auth": "member",
-        "params": "session_id (required)",
-        "returns": "messages ordered by created_at ASC"
-      },
-      {
-        "method": "GET",
-        "path": "/tree/{id}",
-        "auth": "member"
-      },
-      {
-        "method": "GET",
-        "path": "/health",
-        "auth": "public"
-      },
-      {
-        "method": "GET",
-        "path": "/memories",
-        "auth": "member"
-      },
-      {
-        "method": "POST",
-        "path": "/memories",
-        "auth": "member"
-      },
-      {
-        "method": "PATCH",
-        "path": "/memories/{id}",
-        "auth": "member"
-      },
-      {
-        "method": "DELETE",
-        "path": "/memories/{id}",
-        "auth": "member"
-      }
+      { "method": "POST", "path": "/auth/login", "auth": "public" },
+      { "method": "POST", "path": "/auth/logout", "auth": "jwt" },
+      { "method": "GET", "path": "/auth/me", "auth": "jwt" },
+      { "method": "POST", "path": "/auth/users", "auth": "admin" },
+      { "method": "GET", "path": "/auth/users", "auth": "admin" },
+      { "method": "GET", "path": "/auth/roles", "auth": "admin" },
+      { "method": "DELETE", "path": "/auth/users/{username}", "auth": "admin" },
+      { "method": "POST", "path": "/upload", "auth": "admin", "returns": "task_id" },
+      { "method": "GET", "path": "/status/{task_id}", "auth": "jwt" },
+      { "method": "GET", "path": "/documents", "auth": "member" },
+      { "method": "GET", "path": "/documents/{id}", "auth": "admin" },
+      { "method": "DELETE", "path": "/documents/{id}", "auth": "admin" },
+      { "method": "POST", "path": "/documents/{id}/retry", "auth": "admin" },
+      { "method": "POST", "path": "/chat", "auth": "member" },
+      { "method": "POST", "path": "/chat/stream", "auth": "member" },
+      { "method": "POST", "path": "/chat/sessions", "auth": "member" },
+      { "method": "GET", "path": "/chat/sessions", "auth": "member" },
+      { "method": "GET", "path": "/chat/messages", "auth": "member", "params": "session_id" },
+      { "method": "GET", "path": "/tree/{id}", "auth": "member" },
+      { "method": "GET", "path": "/tree/{id}/search", "auth": "member", "params": "query" },
+      { "method": "GET", "path": "/health", "auth": "public" },
+      { "method": "GET", "path": "/health/data", "auth": "jwt" },
+      { "method": "GET", "path": "/memories", "auth": "member" },
+      { "method": "POST", "path": "/memories", "auth": "member" },
+      { "method": "PATCH", "path": "/memories/{id}", "auth": "member" },
+      { "method": "DELETE", "path": "/memories/{id}", "auth": "member" }
     ]
   },
-  "service_structure": [
-    "app/services/auth",
-    "app/services/documents",
-    "app/services/retrieval",
-    "app/services/chat",
-    "app/services/chat/memory.py (UserMemoryService)",
-    "app/services/system",
-    "app/services/ingestion"
-  ],
-  "ingestion_flow": [
-    "upload -> RustFS save -> enqueue task",
-    "download -> parse Docling Method D",
-    "Smart OCR 2-pass",
-    "hierarchy validate",
-    "rule-based refine",
-    "store sections in PostgreSQL",
-    "embed in bounded rolling batches",
-    "store vectors in Qdrant with section_id",
-    "persist artifact + status ready"
-  ],
-  "retrieval_flow": [
-    "rate limit check (Redis Lua)",
-    "query embedding cache lookup (Redis MD5-keyed, TTL=1h)",
-    "embed query if cache miss",
-    "TTL-cached document IDs (60s, invalidated on upload/delete)",
-    "single Qdrant query (top_k=50-80, filtered to active docs)",
-    "in-memory: group by section_id -> pick top sections (>=0.30)",
-    "in-memory: re-rank chunks within top sections first (>=0.35)",
-    "return chunks + citations"
-  ],
-  "security_rules": [
-    "Atomic Redis Lua rate limiting",
-    "Password complexity enforcement",
-    "JWT HS256 with revocation blacklist",
-    "Hard-delete workflow enforced",
-    "Filename/path traversal protections",
-    "Correlation ID propagation",
-    "Security audit logging",
-    "API gateway proxy: browser never sees Bearer token — all calls via /api/bep/ → Next.js Route Handler → getToken() → backend",
-    "Server-side auth guards: admin/chat/settings layouts call auth() and redirect if unauthorized",
-    "Security headers: X-Frame-Options DENY, X-Content-Type-Options nosniff, HSTS, Referrer-Policy, Permissions-Policy",
-    "Rate limiting: memories 20/min per user, user creation/deletion 5/min per admin"
-  ],
   "anti_patterns": [
     "flat chunking without hierarchy",
     "direct provider SDK calls in routes",
     "raw numeric HTTP status codes",
-    "direct raise HTTPException in guarded API layer",
+    "direct raise HTTPException in API layer (use http_errors helpers)",
     "hallucinated answers without retrieval grounding"
   ],
   "ai_code_style": {
     "priority": [
       "Make the smallest correct change",
       "Preserve public APIs and route contracts",
-      "Prefer existing service layers and adapters over new abstractions",
-      "Keep functions small and single-purpose",
-      "Use current naming, logging, and error patterns"
+      "Prefer existing service layers and adapters",
+      "Keep functions small and single-purpose"
     ],
     "do": [
-      "Read AGENTS.md first, then the quick reference, then task docs",
+      "Read AGENTS.md first, then 00_QUICK_REFERENCE, then task-specific docs",
       "Update docs when behavior changes",
-      "Reuse existing types, constants, and helper functions",
-      "Add tests or validation when changing contracts or data flow",
-      "Keep async boundaries intact for upload, retrieval, and cleanup"
+      "Reuse existing types, constants, and helpers",
+      "Keep async boundaries intact",
+      "Use nh3 for HTML sanitization, PyJWT for JWT"
     ],
     "do_not": [
-      "Invent new architecture unless existing docs require it",
-      "Rewrite large unrelated files during small fixes",
+      "Invent new architecture unless docs require it",
+      "Rewrite unrelated files during small fixes",
       "Change endpoint names or response fields silently",
-      "Mix provider-specific SDK code into route handlers",
       "Return confident answers without grounded evidence"
     ]
   },
@@ -277,8 +130,6 @@
     "compose_up": "docker compose up --build",
     "health": "curl http://localhost/api/v1/health",
     "api_logs": "docker compose logs -f api",
-    "worker_logs": "docker compose logs -f upload-pipeline",
-    "db_shell": "docker exec -it chatbot-rag-db-1 psql -U db-admin -d ragbot",
-    "nginx_health": "curl http://localhost/nginx_status"
+    "worker_logs": "docker compose logs -f upload-pipeline"
   }
 }

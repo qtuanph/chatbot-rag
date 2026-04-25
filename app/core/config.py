@@ -37,6 +37,18 @@ class Settings(BaseSettings):
     retrieval_chunk_overlap: int = 75          # Overlap between chunks in tokens
     retrieval_section_min_score: float = 0.30  # Lower threshold for sections (coarser search)
 
+    # Hybrid search (Dense + BM25) — always on, no toggle
+    retrieval_bm25_k1: float = 1.5             # BM25 term frequency saturation
+    retrieval_bm25_b: float = 0.75             # BM25 length normalization
+
+    # Cross-encoder reranker — always on, no toggle
+    retrieval_rerank_top_k: int = 5            # Final number of chunks after reranking
+    retrieval_rerank_model: str = "AITeamVN/Vietnamese_Reranker"  # Vietnamese cross-encoder
+
+    # Multi-query expansion
+    retrieval_query_expansion_enabled: bool = False  # Default OFF — opt-in
+    retrieval_query_expansion_variants: int = 3       # Number of query variants to generate
+
     database_url: str = "replace-me"
     redis_url: str = "redis://redis:6379/0"
     celery_broker_url: str = "redis://redis:6379/0"

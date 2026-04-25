@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import time as _time
 from uuid import UUID, uuid4
 from typing import Any, AsyncGenerator
 from sqlalchemy import func
+
+import nh3
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -29,6 +33,9 @@ memory_service = UserMemoryService()
 provider = build_ai_provider()
 throttle = RequestThrottle()
 logger = logging.getLogger(__name__)
+
+# Track background tasks to prevent GC
+_background_tasks: set[asyncio.Task] = set()
 
 
 def _deduplicate_citations(citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -109,10 +116,9 @@ def _validate_query(query: str) -> None:
     if len(query) > 5000:
         raise http_errors.bad_request("Query too long (max 5000 characters)")
 
-    # Check for potential injection patterns (basic sanitization)
-    dangerous_patterns = ["<script>", "javascript:", "onerror=", "onload="]
-    query_lower = query.lower()
-    if any(pattern in query_lower for pattern in dangerous_patterns):
+    # HTML sanitization — reject queries containing HTML tags
+    sanitized = nh3.clean(query, tags=set(), attributes=set())
+    if sanitized != query:
         raise http_errors.bad_request("Query contains invalid characters")
 
 
@@ -183,7 +189,6 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
     except ValueError:
         raise http_errors.bad_request("Invalid session ID format")
 
-    import time as _time
     t_start = _time.monotonic()
 
     with SessionLocal() as session:
@@ -204,20 +209,35 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
 
         # Save user message to PostgreSQL for persistence across sessions
         session.add(ChatMessage(session_id=session_id, role="user", content=request.query))
+        chat_session.updated_at = func.now()
         session.commit()
 
-        # Hydrate Redis from DB if TTL expired
-        db_msgs = session.query(ChatMessage).filter(
-            ChatMessage.session_id == session_id
-        ).order_by(ChatMessage.created_at.asc()).all()
-        db_dicts = [{"role": m.role, "content": m.content} for m in db_msgs]
-        store.hydrate_from_db(scope_id, session_id, db_dicts)
+        # Hydrate Redis from DB only if TTL expired (Redis empty)
+        if not store.history_exists(scope_id, session_id):
+            db_msgs = session.query(ChatMessage).filter(
+                ChatMessage.session_id == session_id
+            ).order_by(ChatMessage.created_at.asc()).all()
+            db_dicts = [{"role": m.role, "content": m.content} for m in db_msgs]
+            store.hydrate_from_db(scope_id, session_id, db_dicts)
 
         t_session = _time.monotonic()
         logger.info("[PERF] Session setup: %.3fs", t_session - t_start)
 
         try:
-            context = retrieve_context(session, request.query, limit=20)
+            # Multi-query expansion: generate query variants for broader recall
+            queries = [request.query]
+            if settings.retrieval_query_expansion_enabled:
+                from app.services.retrieval.query_expand import expand_query
+                queries = await asyncio.wait_for(
+                    expand_query(request.query),
+                    timeout=3.0,
+                )
+                logger.info(
+                    "[PERF] Query expansion: %d variants in %.3fs",
+                    len(queries), _time.monotonic() - t_session,
+                )
+
+            context = retrieve_context(session, queries, limit=20)
 
             t_retrieve = _time.monotonic()
             logger.info("[PERF] retrieve_context: %.3fs (%d nodes)", t_retrieve - t_session, len(context.nodes))
@@ -291,8 +311,15 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                             role="assistant",
                             content=clean_answer,
                             citations=citations,
+                            tokens_in=usage.get('prompt_tokens'),
+                            tokens_out=usage.get('completion_tokens'),
+                            latency_ms=int((t_ai_done - t_start) * 1000),
                         )
                     )
+                    # Touch session updated_at so sidebar ordering reflects activity
+                    chat_session_obj = session.get(ChatSession, session_id)
+                    if chat_session_obj:
+                        chat_session_obj.updated_at = func.now()
                     session.commit()
                 except Exception as e:
                     logger.error("Failed to save chat message: %s", e, exc_info=True)
@@ -301,21 +328,39 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
 
             # Async memory extraction — extract learnable facts from this turn
             try:
-                import asyncio
-                asyncio.create_task(
+                task = asyncio.create_task(
                     memory_service.extract_memories_from_turn(
                         auth.user_id, request.query, clean_answer
                     )
                 )
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
             except Exception:
                 pass  # Memory extraction is best-effort, never block the response
 
             # Send final event with session info and citations
+            usage = getattr(provider, 'last_usage', {})
+            # Estimate cost: Gemini 2.5 Flash pricing
+            # Input: $0.075/1M tokens, Output: $0.30/1M tokens
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+            estimated_cost_usd = (prompt_tokens * 0.075 + completion_tokens * 0.30) / 1_000_000
+
             final_data = json.dumps({
                 'chunk': '',
                 'done': True,
                 'session_id': session_id,
-                'citations': citations
+                'citations': citations,
+                'stats': {
+                    'total_ms': int((t_ai_done - t_start) * 1000),
+                    'ttft_ms': int((t_first_chunk - t_ai_start) * 1000) if t_first_chunk else None,
+                    'chunks': chunk_count,
+                    'chars': len(clean_answer),
+                    'prompt_tokens': prompt_tokens,
+                    'completion_tokens': completion_tokens,
+                    'total_tokens': prompt_tokens + completion_tokens,
+                    'estimated_cost_usd': round(estimated_cost_usd, 6),
+                }
             }, ensure_ascii=False)
             yield f"data: {final_data}\n\n"
 
@@ -352,6 +397,23 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
     )
 
 
+@router.post("/chat/sessions")
+async def create_chat_session(auth: AuthContext = Depends(get_auth_context)) -> dict[str, object]:
+    """Create a new empty chat session."""
+    with SessionLocal() as session:
+        chat_session = ChatSession(id=uuid4(), user_id=auth.user_id, title="Active chat")
+        session.add(chat_session)
+        session.commit()
+        session.refresh(chat_session)
+        return {
+            "session_id": str(chat_session.id),
+            "title": chat_session.title,
+            "created_at": chat_session.created_at.isoformat(),
+            "updated_at": chat_session.updated_at.isoformat(),
+            "message_count": 0,
+        }
+
+
 @router.get("/chat/sessions")
 async def get_chat_sessions(auth: AuthContext = Depends(get_auth_context)) -> list[dict[str, object]]:
     """
@@ -370,7 +432,7 @@ async def get_chat_sessions(auth: AuthContext = Depends(get_auth_context)) -> li
             .outerjoin(ChatMessage, ChatMessage.session_id == ChatSession.id)
             .filter(ChatSession.user_id == auth.user_id)
             .group_by(ChatSession.id)
-            .order_by(ChatSession.created_at.desc())
+            .order_by(ChatSession.updated_at.desc())
             .all()
         )
 
@@ -507,15 +569,25 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
         session.add(ChatMessage(session_id=session_id, role="user", content=request.query))
         session.commit()
 
-        # Hydrate Redis from DB if TTL expired
-        db_msgs = session.query(ChatMessage).filter(
-            ChatMessage.session_id == session_id
-        ).order_by(ChatMessage.created_at.asc()).all()
-        db_dicts = [{"role": m.role, "content": m.content} for m in db_msgs]
+        # Hydrate Redis from DB only if TTL expired (Redis empty)
+        if not store.history_exists(scope_id, session_id):
+            db_msgs = session.query(ChatMessage).filter(
+                ChatMessage.session_id == session_id
+            ).order_by(ChatMessage.created_at.asc()).all()
+            db_dicts = [{"role": m.role, "content": m.content} for m in db_msgs]
         store.hydrate_from_db(scope_id, session_id, db_dicts)
 
         try:
-            context = retrieve_context(session, request.query, limit=20)
+            # Multi-query expansion for non-streaming endpoint
+            queries = [request.query]
+            if settings.retrieval_query_expansion_enabled:
+                from app.services.retrieval.query_expand import expand_query
+                queries = await asyncio.wait_for(
+                    expand_query(request.query),
+                    timeout=3.0,
+                )
+
+            context = retrieve_context(session, queries, limit=20)
             assistant_seed = build_answer(request.query, context)
             history = store.get_history(scope_id, session_id)
 

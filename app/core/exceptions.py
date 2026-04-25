@@ -59,6 +59,11 @@ class DocumentStoreException(StorageException):
     pass
 
 
+class RetrievalException(ChatbotRAGException):
+    """Raised when retrieval pipeline fails (reranker, BM25 encoding, query expansion)."""
+    pass
+
+
 class ChatException(ChatbotRAGException):
     """Base exception for chat-related errors."""
     pass

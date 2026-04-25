@@ -37,11 +37,11 @@ jobs:
           CODE_CHANGED=0
           DOCS_OR_MEMORY_CHANGED=0
 
-          # Consider these as code/behavior changes requiring docs-memory sync
+          # Code/behavior changes requiring docs-memory sync
           CODE_PATTERNS='^(app/|webapp/|ops/init\.sql$|docker-compose\.yml$|Dockerfile$|requirements\.txt$|\.env\.example$)'
 
-          # Accept any of these as docs/memory updates
-          DOCS_MEMORY_PATTERNS='^(docs/|CLAUDE\.md$|AGENTS\.md$|\.claude/|README\.md$|webapp/README\.md$)'
+          # Acceptable docs/memory updates
+          DOCS_MEMORY_PATTERNS='^(docs/|CLAUDE\.md$|AGENTS\.md$|\.claude/|README\.md$|webapp/AGENTS\.md$)'
 
           while IFS= read -r file; do
             [ -z "$file" ] && continue
@@ -60,7 +60,7 @@ jobs:
 
           if [ "$CODE_CHANGED" -eq 1 ] && [ "$DOCS_OR_MEMORY_CHANGED" -eq 0 ]; then
             echo "::error::This PR changes code/runtime behavior but does not update docs or memory."
-            echo "::error::Please update at least one: docs/*, CLAUDE.md, AGENTS.md, .claude/*, README.md, or webapp/README.md"
+            echo "::error::Please update at least one: docs/*, AGENTS.md, webapp/AGENTS.md, .claude/*, README.md"
             exit 1
           fi
 

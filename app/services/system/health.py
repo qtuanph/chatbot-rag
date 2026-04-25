@@ -45,12 +45,16 @@ def check_database() -> dict[str, Any]:
 
 def check_redis() -> dict[str, Any]:
     start = perf_counter()
+    client = None
     try:
         client = redis.Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
         client.ping()
         return {"status": "up", "latency_ms": _latency_ms(start), "url": _redact(settings.redis_url)}
     except Exception:
         return {"status": "down", "latency_ms": _latency_ms(start), "url": _redact(settings.redis_url), "error": "redis_unreachable"}
+    finally:
+        if client:
+            client.close()
 
 
 def check_storage() -> dict[str, Any]:

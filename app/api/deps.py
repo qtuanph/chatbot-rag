@@ -1,13 +1,16 @@
 from dataclasses import dataclass
 
 from fastapi import Depends, Header, Request
-from jose import JWTError, jwt
+import jwt
 
 from app.core.config import settings
 from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.core import Role, User
 from app.services.auth.token_blacklist import TokenBlacklist
+
+# Module-level singleton — reuse Redis connection across requests
+_blacklist = TokenBlacklist()
 
 
 @dataclass(frozen=True)
@@ -40,23 +43,29 @@ def get_auth_context(
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         token_id = str(payload["jti"])
-        if TokenBlacklist().is_revoked(token_id):
+        if _blacklist.is_revoked(token_id):
             raise http_errors.unauthorized("Token revoked")
-        with SessionLocal() as session:
-            user = session.get(User, str(payload["sub"]))
-            if user is None or not user.is_active:
-                raise http_errors.unauthorized("Invalid token")
-            role = session.get(Role, user.role_id)
-            if role is None:
-                raise http_errors.unauthorized("Invalid token")
-            role_name = role.name
+
+        # Get role from JWT payload (embedded at login to avoid DB query per request)
+        role_name = payload.get("role", "")
+        if not role_name:
+            # Fallback: query DB for legacy tokens without role claim
+            with SessionLocal() as session:
+                user = session.get(User, str(payload["sub"]))
+                if user is None or not user.is_active:
+                    raise http_errors.unauthorized("Invalid token")
+                role = session.get(Role, user.role_id)
+                if role is None:
+                    raise http_errors.unauthorized("Invalid token")
+                role_name = role.name
+
         return AuthContext(
             user_id=str(payload["sub"]),
             role=role_name,
             token_id=token_id,
             request_id=request_id,
         )
-    except (JWTError, KeyError, TypeError, ValueError):
+    except (jwt.exceptions.PyJWTError, KeyError, TypeError, ValueError):
         raise http_errors.unauthorized("Invalid token") from None
 
 

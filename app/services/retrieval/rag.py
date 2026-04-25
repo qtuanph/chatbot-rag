@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from functools import lru_cache
 from dataclasses import dataclass
@@ -13,6 +14,8 @@ from app.core.config import settings
 from app.adapters.base import BaseEmbedding
 from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
+from app.core.exceptions import RetrievalException
+from app.services.retrieval.bm25_index import get_bm25_encoder
 from app.services.retrieval.cache import QueryEmbeddingCache
 
 logger = logging.getLogger(__name__)
@@ -41,6 +44,7 @@ class RagNode:
     full_text: str
     page_range: str | None
     section_id: str | None = None
+    score: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -91,16 +95,18 @@ def _get_query_cache() -> QueryEmbeddingCache:
 # Cache is invalidated explicitly on document upload/delete.
 
 _doc_ids_cache: tuple[float, set[str]] | None = None
+_doc_ids_lock = threading.Lock()
 _DOC_IDS_TTL = 60.0  # seconds
 
 
 def _latest_document_ids(session: Session) -> set[str]:
     """Return latest-version document IDs with a 60-second TTL cache."""
     global _doc_ids_cache
-    if _doc_ids_cache is not None:
-        cached_at, cached_ids = _doc_ids_cache
-        if time.monotonic() - cached_at < _DOC_IDS_TTL:
-            return cached_ids
+    with _doc_ids_lock:
+        if _doc_ids_cache is not None:
+            cached_at, cached_ids = _doc_ids_cache
+            if time.monotonic() - cached_at < _DOC_IDS_TTL:
+                return cached_ids
 
     latest_versions = (
         session.query(
@@ -124,7 +130,8 @@ def _latest_document_ids(session: Session) -> set[str]:
         .all()
     )
     result = {str(row[0]) for row in rows if row and row[0]}
-    _doc_ids_cache = (time.monotonic(), result)  # type: ignore[assignment]
+    with _doc_ids_lock:
+        _doc_ids_cache = (time.monotonic(), result)  # type: ignore[assignment]
     logger.debug("Refreshed document ID cache: %d docs", len(result))
     return result
 
@@ -132,14 +139,31 @@ def _latest_document_ids(session: Session) -> set[str]:
 def invalidate_doc_ids_cache() -> None:
     """Clear the cached document IDs. Call after document upload/delete."""
     global _doc_ids_cache
-    _doc_ids_cache = None
+    with _doc_ids_lock:
+        _doc_ids_cache = None
 
 
 # ── Main retrieval ───────────────────────────────────────────────────────
 
-def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContext:
-    """Retrieve relevant document context for a query using optimised 2-stage retrieval."""
-    if not query or len(query.strip()) < 3:
+def retrieve_context(
+    session: Session,
+    query: str | list[str],
+    limit: int = 15,
+) -> RagContext:
+    """Retrieve relevant document context for query/queries using 4-stage retrieval.
+
+    Stages: Hybrid search → Section grouping → Dedup → Cross-encoder rerank.
+
+    Args:
+        session: SQLAlchemy session
+        query: Single query string or list of query variants (multi-query expansion)
+        limit: Maximum number of nodes to return
+    """
+    # Normalize to list
+    queries = [query] if isinstance(query, str) else query
+    primary_query = queries[0]
+
+    if not primary_query or len(primary_query.strip()) < 3:
         logger.debug("Query too short, returning empty context")
         return RagContext(nodes=[])
 
@@ -172,37 +196,54 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
 
     # Query embedding — Redis cache avoids re-computing on repeated questions.
     cache = _get_query_cache()
-    query_vector = cache.get(query)
-    if query_vector is None:
-        svc = _get_embedding_service()
-        embed_fn = getattr(svc, "embed_query", None) or svc.embed
-        query_vector = embed_fn(query)
-        cache.set(query, query_vector)
-        _t2 = time.monotonic()
-        logger.info("[PERF-RAG] Embed query (CACHE MISS): %.3fs", _t2 - _t1)
-    else:
-        _t2 = time.monotonic()
-        logger.info("[PERF-RAG] Embed query (CACHE HIT): %.3fs", _t2 - _t1)
+    svc = _get_embedding_service()
+    embed_fn = getattr(svc, "embed_query", None) or svc.embed
 
     vs = _get_vector_store()
+    sparse_encoder = get_bm25_encoder()
 
-    # ── Single Qdrant query (replaces 2 round-trips) ────────────────────
     section_top_k = settings.retrieval_section_top_k
     section_min_score = settings.retrieval_section_min_score
     min_score = settings.retrieval_min_score
-
-    # Fetch enough results to cover both section discovery and chunk ranking.
-    # One query instead of the old two-query approach.
     fetch_k = min(80, max(50, section_top_k * settings.retrieval_chunk_top_k))
 
-    all_results = vs.retrieve(
-        query_vector=query_vector,
-        top_k=fetch_k,
-        document_ids_filter=list(title_by_id.keys()),
+    # ── Multi-query: search for each query variant, merge by node_id ────
+    merged: dict[str, tuple] = {}  # node_id → (RetrievedDocument, max_score)
+
+    for q in queries:
+        # Dense embedding (cached)
+        query_vector = cache.get(q)
+        if query_vector is None:
+            query_vector = embed_fn(q)
+            cache.set(q, query_vector)
+
+        # BM25 sparse vector
+        sparse_vector = None
+        if sparse_encoder.is_ready:
+            sparse_vector = sparse_encoder.encode_sparse_vector(q)
+
+        # Hybrid search
+        results = vs.retrieve(
+            query_vector=query_vector,
+            top_k=fetch_k,
+            document_ids_filter=list(title_by_id.keys()),
+            sparse_vector=sparse_vector,
+        )
+
+        # Merge: keep highest score per node_id
+        for item in results:
+            nid = item.node_id
+            if nid not in merged or item.score > merged[nid][1]:
+                merged[nid] = (item, item.score)
+
+    _t2 = time.monotonic()
+    logger.info(
+        "[PERF-RAG] Multi-query search: %d queries, %d unique results in %.3fs",
+        len(queries), len(merged), _t2 - _t1,
     )
 
-    _t3 = time.monotonic()
-    logger.info("[PERF-RAG] Qdrant search: %.3fs (%d results)", _t3 - _t2, len(all_results))
+    # Sort merged results by score descending
+    all_results = [item for item, _ in sorted(merged.values(), key=lambda x: x[1], reverse=True)]
 
     # ── Stage 1: Identify top sections from the single result set ────────
     section_scores: dict[str, float] = {}
@@ -254,7 +295,7 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
             len(filtered), len(all_results), min_score,
         )
 
-    # Prioritise chunks that belong to top sections.
+    # Prioritise chunks that belong to top sections, then sort by score descending.
     if top_sections_ids and filtered:
         top_sections_set = set(top_sections_ids)
         in_section: list = []
@@ -265,9 +306,50 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
                 in_section.append(item)
             else:
                 out_section.append(item)
+        # Sort each group by score descending, then merge (in-section first)
+        in_section.sort(key=lambda x: x.score, reverse=True)
+        out_section.sort(key=lambda x: x.score, reverse=True)
         filtered = in_section + out_section
 
-    # Build output nodes.
+    # Deduplicate overlapping chunks within the same section.
+    # Adjacent chunks share ~75 token overlap — keep only the higher-scored one.
+    if filtered:
+        _seen_texts: dict[str, int] = {}  # first 100 chars → index in deduped
+        deduped: list = []
+        for item in filtered:
+            text_sig = (item.text or "")[:100]
+            if text_sig in _seen_texts:
+                prev_idx = _seen_texts[text_sig]
+                if item.score > deduped[prev_idx].score:
+                    deduped[prev_idx] = item
+                # Skip this duplicate
+            else:
+                _seen_texts[text_sig] = len(deduped)
+                deduped.append(item)
+        if len(deduped) < len(filtered):
+            logger.debug("Dedup: %d → %d chunks", len(filtered), len(deduped))
+        filtered = deduped
+
+    # ── Stage 3: Cross-encoder reranking ────────────────────────────────
+    # Re-rank candidates with Vietnamese cross-encoder for higher precision.
+    if filtered:
+        rerank_top_k = settings.retrieval_rerank_top_k
+        if len(filtered) > rerank_top_k:
+            _t_rerank = time.monotonic()
+            _pre_rerank_count = len(filtered)
+            from app.services.retrieval.reranker import get_reranker
+            reranker = get_reranker()
+            filtered = reranker.rerank(
+                query=primary_query,
+                documents=filtered,
+                text_attr="text",
+                top_k=rerank_top_k,
+            )
+            _t_rerank_end = time.monotonic()
+            logger.info(
+                "[PERF-RAG] Reranker: %.3fs (%d → %d)",
+                _t_rerank_end - _t_rerank, _pre_rerank_count, len(filtered),
+            )
     nodes: list[RagNode] = []
     for item in filtered[:limit]:
         heading = (
@@ -292,6 +374,7 @@ def retrieve_context(session: Session, query: str, limit: int = 15) -> RagContex
                 full_text=item.text,
                 page_range=page_range,
                 section_id=sec_id,
+                score=item.score,
             )
         )
 
@@ -310,12 +393,32 @@ def build_answer(query: str, context: RagContext, history: list[dict[str, str]] 
             "context": [],
         }
 
-    # Build clean context blocks for LLM (no inline citation numbers).
+    # Build section lookup for breadcrumbs
+    section_map: dict[str, RagSection] = {}
+    if context.sections:
+        for sec in context.sections:
+            section_map[sec.section_id] = sec
+
+    # Sort nodes by score descending — most relevant first for LLM context
+    sorted_nodes = sorted(context.nodes, key=lambda n: n.score, reverse=True)
+
+    # Build enriched context blocks with breadcrumb hierarchy
     context_blocks = []
     citations = []
-    for idx, node in enumerate(context.nodes, start=1):
+    for idx, node in enumerate(sorted_nodes, start=1):
         full_text = node.full_text or ""
-        context_blocks.append(f"--- Tài liệu: {node.document_title} — {node.heading} ---\n{full_text}")
+
+        # Enrich with breadcrumb from section
+        sec = section_map.get(node.section_id) if node.section_id else None
+        if sec and sec.breadcrumb:
+            breadcrumb_path = " > ".join(sec.breadcrumb)
+            page_info = f" (trang {node.page_range})" if node.page_range else ""
+            header = f"**{breadcrumb_path}** — {node.document_title}{page_info}"
+        else:
+            page_info = f" (trang {node.page_range})" if node.page_range else ""
+            header = f"**{node.heading}** — {node.document_title}{page_info}"
+
+        context_blocks.append(f"{header}\n{full_text}")
 
         citations.append({
             "document_id": node.document_id,
@@ -333,4 +436,4 @@ def build_answer(query: str, context: RagContext, history: list[dict[str, str]] 
         f"Tài liệu tham khảo:\n{context_text}"
     )
 
-    return {"answer": answer, "citations": citations, "context": [node.__dict__ for node in context.nodes]}
+    return {"answer": answer, "citations": citations, "context": [node.__dict__ for node in sorted_nodes]}

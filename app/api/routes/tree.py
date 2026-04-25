@@ -181,7 +181,7 @@ async def get_document_tree(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting tree for {document_id}: {e}", exc_info=True)
+        logger.error("Error getting tree for %s: %s", document_id, e, exc_info=True)
         raise http_errors.internal_server_error("Failed to retrieve document tree") from None
 
 
@@ -251,7 +251,7 @@ async def get_node_details(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting node {node_id} for {document_id}: {e}", exc_info=True)
+        logger.error("Error getting node %s for %s: %s", node_id, document_id, e, exc_info=True)
         raise http_errors.internal_server_error("Failed to retrieve node details") from None
 
 
@@ -311,5 +311,5 @@ async def search_nodes(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error searching nodes in {document_id}: {e}", exc_info=True)
+        logger.error("Error searching nodes in %s: %s", document_id, e, exc_info=True)
         raise http_errors.internal_server_error("Failed to search nodes") from None

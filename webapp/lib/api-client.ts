@@ -125,6 +125,9 @@ export const authApi = {
 
 // --- Chat ---
 export const chatApi = {
+  createSession: (): Promise<ChatSession> =>
+    apiFetch<ChatSession>("/chat/sessions", { method: "POST" }),
+
   send: (data: ChatRequest): Promise<ChatResponse> =>
     apiFetch<ChatResponse>("/chat", {
       method: "POST",
