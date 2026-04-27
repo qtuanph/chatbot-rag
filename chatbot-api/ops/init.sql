@@ -1,0 +1,507 @@
+-- Multi-tenant RAG Database Initialization
+-- Shared platform, tenant-scoped documents and stateless chat
+
+-- ============= TIMEZONE: Vietnam (UTC+7) =============
+-- All timestamps displayed in Asia/Ho_Chi_Minh timezone
+-- Internal storage is still UTC (PostgreSQL best practice)
+SET timezone = 'Asia/Ho_Chi_Minh';
+
+-- ============= EXTENSIONS =============
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ============= UUID v7 FUNCTION =============
+-- PostgreSQL 18+ has native uuidv7(). For older versions, we provide a fallback.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'uuidv7') THEN
+        CREATE FUNCTION uuidv7() RETURNS uuid AS $func$
+        DECLARE
+          v_time timestamp with time zone:= clock_timestamp();
+          v_giga_ms bigint := cast(extract(epoch from v_time) * 1000 as bigint);
+          v_msec_hex text := lpad(to_hex(v_giga_ms), 12, '0');
+          v_rand_a_hex text := lpad(to_hex((random() * 4095)::int), 3, '0');
+          v_rand_b_hex text := lpad(to_hex((random() * 4611686018427387903)::bigint), 16, '0');
+        BEGIN
+          RETURN (
+            substring(v_msec_hex, 1, 8) || '-' ||
+            substring(v_msec_hex, 9, 4) || '-' ||
+            '7' || substring(v_rand_a_hex, 1, 3) || '-' ||
+            to_hex(((to_number(substring(v_rand_b_hex, 1, 1), 'x')::int & 3) | 8)) ||
+            substring(v_rand_b_hex, 2, 3) || '-' ||
+            substring(v_rand_b_hex, 5, 12)
+          )::uuid;
+        END;
+        $func$ LANGUAGE plpgsql VOLATILE;
+        RAISE NOTICE 'Custom uuidv7 fallback function created.';
+    ELSE
+        RAISE NOTICE 'Native uuidv7 function detected, skipping custom definition.';
+    END IF;
+END $$;
+
+-- ============= ROLES & PERMISSIONS =============
+DO $$
+DECLARE
+    app_rw_password text := current_setting('app.app_rw_password', true);
+    db_admin_password text := current_setting('app.db_admin_password', true);
+BEGIN
+    IF app_rw_password IS NULL OR app_rw_password = '' THEN
+        RAISE EXCEPTION 'app.app_rw_password must be provided to initialize app_rw';
+    END IF;
+    IF db_admin_password IS NULL OR db_admin_password = '' THEN
+        RAISE EXCEPTION 'app.db_admin_password must be provided to initialize db-admin';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_rw') THEN
+        EXECUTE format('CREATE ROLE app_rw LOGIN PASSWORD %L', app_rw_password);
+    ELSE
+        EXECUTE format('ALTER ROLE app_rw WITH LOGIN PASSWORD %L', app_rw_password);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'db-admin') THEN
+        EXECUTE format('CREATE ROLE "db-admin" LOGIN PASSWORD %L', db_admin_password);
+    ELSE
+        EXECUTE format('ALTER ROLE "db-admin" WITH LOGIN PASSWORD %L', db_admin_password);
+    END IF;
+END $$;
+
+GRANT CONNECT ON DATABASE ragbot TO app_rw, "db-admin";
+GRANT USAGE, CREATE ON SCHEMA public TO app_rw;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "db-admin" IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_rw;
+
+-- ============= UTILITY FUNCTIONS =============
+CREATE OR REPLACE FUNCTION touch_updated_at()
+RETURNS trigger AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============= TABLES =============
+
+-- Roles: platform admin and tenant admin
+CREATE TABLE IF NOT EXISTS roles (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    name VARCHAR(50) NOT NULL UNIQUE,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug VARCHAR(120) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
+    description TEXT,
+    monthly_token_quota INTEGER NOT NULL DEFAULT 0,
+    monthly_request_quota INTEGER NOT NULL DEFAULT 0,
+    rate_limit_rpm INTEGER NOT NULL DEFAULT 60,
+    allowed_origins JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+-- Users: DB-backed authentication
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    role_id UUID NOT NULL REFERENCES roles(id) ON DELETE RESTRICT,
+    tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    is_active BOOLEAN DEFAULT true NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL;
+
+-- Documents: uploaded files, parse state, and ingestion metadata
+CREATE TABLE IF NOT EXISTS documents (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    title VARCHAR(500) NOT NULL,
+    file_name VARCHAR(500) NOT NULL,
+    file_path VARCHAR(1000) NOT NULL,
+    sha256 VARCHAR(64) NOT NULL,
+    file_type VARCHAR(255) NOT NULL,
+    file_size BIGINT NOT NULL,
+    version INTEGER DEFAULT 1 NOT NULL,
+    status VARCHAR(50) DEFAULT 'pending' NOT NULL,
+    status_stage VARCHAR(50) DEFAULT 'uploaded' NOT NULL,
+    progress_percent INTEGER DEFAULT 0 NOT NULL,
+    status_message VARCHAR(500),
+    status_updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    parse_error TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    deleted_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_stage VARCHAR(50) DEFAULT 'uploaded' NOT NULL;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS progress_percent INTEGER DEFAULT 0 NOT NULL;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_message VARCHAR(500);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE;
+
+-- Tenant Document Access: multi-tenant document permissions
+CREATE TABLE IF NOT EXISTS tenant_document_access (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    granted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT uq_tenant_document_access UNIQUE (tenant_id, document_id)
+);
+ALTER TABLE tenant_document_access ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tda_tenant_id ON tenant_document_access(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tda_document_id ON tenant_document_access(document_id);
+
+
+
+
+-- Security audit log
+CREATE TABLE IF NOT EXISTS security_audit (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    action VARCHAR(100) NOT NULL,
+    subject_type VARCHAR(100),
+    subject_id VARCHAR(255),
+    ip_address VARCHAR(64),
+    user_agent VARCHAR(500),
+    details JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenant_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE UNIQUE,
+    system_instruction TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenant_api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name VARCHAR(120) NOT NULL,
+    key_prefix VARCHAR(32) NOT NULL,
+    key_hash VARCHAR(128) NOT NULL UNIQUE,
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
+    expires_at TIMESTAMP WITH TIME ZONE,
+    last_used_at TIMESTAMP WITH TIME ZONE,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS ck_documents_version;
+ALTER TABLE documents ADD CONSTRAINT ck_documents_version CHECK (version >= 1);
+
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS ck_documents_status;
+ALTER TABLE documents ADD CONSTRAINT ck_documents_status CHECK (
+    status IN ('pending', 'processing', 'ready', 'failed', 'deleted')
+);
+
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS ck_documents_progress_percent;
+ALTER TABLE documents ADD CONSTRAINT ck_documents_progress_percent CHECK (
+    progress_percent >= 0 AND progress_percent <= 100
+);
+
+-- ============= INDEXES =============
+CREATE INDEX IF NOT EXISTS idx_documents_sha256 ON documents(sha256);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_id ON documents(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+CREATE INDEX IF NOT EXISTS idx_documents_status_stage ON documents(status_stage);
+CREATE INDEX IF NOT EXISTS idx_documents_deleted_at ON documents(deleted_at) WHERE deleted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id);
+CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_security_audit_actor ON security_audit(actor_user_id);
+CREATE INDEX IF NOT EXISTS idx_security_audit_created ON security_audit(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants(status);
+CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_tenant_id ON tenant_api_keys(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_status ON tenant_api_keys(status);
+
+-- Document Sections: Level 1 hierarchical storage for 2-stage retrieval (RAG v2)
+CREATE TABLE IF NOT EXISTS document_sections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    section_id VARCHAR(255) NOT NULL,
+    parent_section_id VARCHAR(255),
+    section_code VARCHAR(120),
+    title VARCHAR(1000) NOT NULL,
+    content TEXT,
+    section_type VARCHAR(50) DEFAULT 'section',
+    level INTEGER DEFAULT 1,
+    order_index INTEGER DEFAULT 0,
+    page_range VARCHAR(100),
+    image_count INTEGER DEFAULT 0,
+    table_count INTEGER DEFAULT 0,
+    chunk_count INTEGER DEFAULT 0,
+    breadcrumb JSONB DEFAULT '[]'::jsonb,
+    breadcrumb_text TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT uq_document_section UNIQUE (document_id, section_id)
+);
+ALTER TABLE document_sections ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE document_sections ADD COLUMN IF NOT EXISTS section_code VARCHAR(120);
+ALTER TABLE document_sections ADD COLUMN IF NOT EXISTS breadcrumb_text TEXT;
+CREATE INDEX IF NOT EXISTS idx_sections_document_id ON document_sections(document_id);
+CREATE INDEX IF NOT EXISTS idx_sections_tenant_id ON document_sections(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_sections_parent ON document_sections(parent_section_id);
+CREATE INDEX IF NOT EXISTS idx_sections_code ON document_sections(section_code);
+CREATE INDEX IF NOT EXISTS idx_sections_level ON document_sections(level);
+CREATE INDEX IF NOT EXISTS idx_sections_order ON document_sections(document_id, order_index);
+
+-- ============= TRIGGERS =============
+CREATE TRIGGER touch_roles_updated_at BEFORE UPDATE ON roles FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_tenants_updated_at BEFORE UPDATE ON tenants FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_documents_updated_at BEFORE UPDATE ON documents FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+CREATE TRIGGER touch_document_sections_updated_at BEFORE UPDATE ON document_sections FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_tenant_settings_updated_at BEFORE UPDATE ON tenant_settings FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_tenant_api_keys_updated_at BEFORE UPDATE ON tenant_api_keys FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
+-- ============= PERMISSIONS =============
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE roles TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tenants TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE users TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE documents TO app_rw;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE security_audit TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_sections TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tenant_settings TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tenant_api_keys TO app_rw;
+
+-- ============= SEED DATA =============
+-- Insert default roles (if not already present)
+INSERT INTO roles (name, description)
+VALUES
+    ('platform_admin', 'Platform administrator with full cross-tenant access'),
+    ('tenant_admin', 'Tenant administrator with tenant-scoped access')
+ON CONFLICT (name) DO NOTHING;
+
+DO $$
+DECLARE
+    seed_admin_username text := current_setting('app.admin_username', true);
+    seed_admin_password text := current_setting('app.admin_password', true);
+BEGIN
+    IF seed_admin_username IS NOT NULL AND seed_admin_username <> '' AND seed_admin_password IS NOT NULL AND seed_admin_password <> '' THEN
+        INSERT INTO users (role_id, tenant_id, username, password_hash, is_active)
+        SELECT r.id, NULL, seed_admin_username, crypt(seed_admin_password, gen_salt('bf', 12)), true
+        FROM roles r WHERE r.name = 'platform_admin'
+        ON CONFLICT (username) DO NOTHING;
+    END IF;
+END $$;
+
+-- ============= AI Model Usage Quota Tracking =============
+CREATE TABLE IF NOT EXISTS ai_model_usage (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    model_name VARCHAR(255) NOT NULL,
+    model_type VARCHAR(20) NOT NULL DEFAULT 'llm',
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_micros_vnd BIGINT NOT NULL DEFAULT 0,
+    currency_code VARCHAR(3) NOT NULL DEFAULT 'VND',
+    latency_ms DOUBLE PRECISION NOT NULL DEFAULT 0,
+    endpoint VARCHAR(100) NOT NULL,
+    tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
+    user_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL;
+ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS cost_micros_vnd BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS currency_code VARCHAR(3) NOT NULL DEFAULT 'VND';
+ALTER TABLE ai_model_usage DROP COLUMN IF EXISTS cost_usd;
+ALTER TABLE ai_model_usage DROP COLUMN IF EXISTS session_id;
+ALTER TABLE ai_model_usage DROP COLUMN IF EXISTS message_id;
+
+CREATE INDEX IF NOT EXISTS idx_ai_model_usage_created_at ON ai_model_usage(created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_model_usage_endpoint ON ai_model_usage(endpoint);
+CREATE INDEX IF NOT EXISTS idx_ai_model_usage_tenant_id ON ai_model_usage(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_ai_model_usage_user_id ON ai_model_usage(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_model_usage_model_type ON ai_model_usage(model_type);
+
+GRANT ALL ON ai_model_usage TO app_rw;
+
+-- ============= Chat Feedback =============
+CREATE TABLE IF NOT EXISTS chat_feedback (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    feedback_type VARCHAR(16) NOT NULL,
+    query_text TEXT NOT NULL,
+    assistant_answer TEXT NOT NULL,
+    llm_model VARCHAR(255) NOT NULL,
+    embedding_model VARCHAR(255),
+    reranker_model VARCHAR(255),
+    document_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    section_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    citations JSONB NOT NULL DEFAULT '[]'::jsonb,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_feedback_tenant_id ON chat_feedback(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_chat_feedback_user_id ON chat_feedback(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_feedback_type ON chat_feedback(feedback_type);
+CREATE INDEX IF NOT EXISTS idx_chat_feedback_created_at ON chat_feedback(created_at DESC);
+
+GRANT ALL ON chat_feedback TO app_rw;
+
+DROP TABLE IF EXISTS chat_messages CASCADE;
+DROP TABLE IF EXISTS chat_sessions CASCADE;
+DROP TABLE IF EXISTS user_memories CASCADE;
+
+-- ============= Conversation History (Admin-only audit) =============
+CREATE TABLE IF NOT EXISTS conversations (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    conversation_id VARCHAR(255) NOT NULL,
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    last_message_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    message_count INTEGER DEFAULT 0 NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT uq_conv_tenant_convid UNIQUE (tenant_id, conversation_id)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    conversation_pk UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL,
+    content TEXT NOT NULL,
+    model_name VARCHAR(255),
+    prompt_tokens INTEGER DEFAULT 0,
+    completion_tokens INTEGER DEFAULT 0,
+    latency_ms DOUBLE PRECISION DEFAULT 0,
+    cost_micros_vnd BIGINT DEFAULT 0,
+    is_cache_hit BOOLEAN DEFAULT false NOT NULL,
+    cached_type VARCHAR(20),
+    citations JSONB DEFAULT '[]'::jsonb NOT NULL,
+    no_answer BOOLEAN DEFAULT false NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_tenant ON conversations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_expires ON conversations(expires_at) WHERE expires_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_conv_messages_conv ON conversation_messages(conversation_pk);
+CREATE INDEX IF NOT EXISTS idx_conv_messages_tenant ON conversation_messages(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_conv_messages_created ON conversation_messages(created_at DESC);
+
+GRANT ALL ON conversations TO app_rw;
+GRANT ALL ON conversation_messages TO app_rw;
+
+-- ============= Products & Versions =============
+CREATE TABLE IF NOT EXISTS products (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    code VARCHAR(100) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_active BOOLEAN DEFAULT true NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS product_versions (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    version_code VARCHAR(100) NOT NULL,
+    is_active BOOLEAN DEFAULT true NOT NULL,
+    released_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT uq_product_version UNIQUE (product_id, version_code)
+);
+
+CREATE TABLE IF NOT EXISTS tenant_products (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    product_version_id UUID NOT NULL REFERENCES product_versions(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT uq_tenant_product_version UNIQUE (tenant_id, product_version_id)
+);
+
+GRANT ALL ON products, product_versions, tenant_products TO app_rw;
+
+-- ============= Knowledge Bases =============
+CREATE TABLE IF NOT EXISTS knowledge_bases (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    scope VARCHAR(20) NOT NULL DEFAULT 'shared',
+    owner_tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    product_version_id UUID REFERENCES product_versions(id) ON DELETE SET NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+    published_at TIMESTAMP WITH TIME ZONE,
+    deprecated_at TIMESTAMP WITH TIME ZONE,
+    published_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenant_knowledge_bases (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    knowledge_base_id UUID NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+    granted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    granted_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT uq_tkb UNIQUE (tenant_id, knowledge_base_id)
+);
+
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS knowledge_base_id UUID REFERENCES knowledge_bases(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_bases_status ON knowledge_bases(status);
+CREATE INDEX IF NOT EXISTS idx_knowledge_bases_scope ON knowledge_bases(scope);
+CREATE INDEX IF NOT EXISTS idx_tkb_tenant ON tenant_knowledge_bases(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tkb_kb ON tenant_knowledge_bases(knowledge_base_id);
+CREATE INDEX IF NOT EXISTS idx_documents_kb_id ON documents(knowledge_base_id);
+
+GRANT ALL ON knowledge_bases TO app_rw;
+GRANT ALL ON tenant_knowledge_bases TO app_rw;
+
+-- ============= Escalations =============
+CREATE TABLE IF NOT EXISTS escalations (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    conversation_id VARCHAR(255),
+    question TEXT NOT NULL,
+    answer TEXT,
+    citations JSONB DEFAULT '[]'::jsonb,
+    correlation_id VARCHAR(255),
+    user_consent BOOLEAN DEFAULT true NOT NULL,
+    status VARCHAR(20) DEFAULT 'open',
+    question_variants JSONB DEFAULT '[]'::jsonb,
+    query_hashes JSONB DEFAULT '[]'::jsonb,
+    hit_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_escalations_published_faq ON escalations(tenant_id, status) WHERE status = 'published_faq';
+ALTER TABLE escalations ADD COLUMN IF NOT EXISTS question_variants JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE escalations ADD COLUMN IF NOT EXISTS query_hashes JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE escalations ADD COLUMN IF NOT EXISTS hit_count INTEGER DEFAULT 0;
+ALTER TABLE escalations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL;
+GRANT ALL ON escalations TO app_rw;
+
+-- ============= Usage Extensions =============
+ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS is_cache_hit BOOLEAN DEFAULT false NOT NULL;
+ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS cached_type VARCHAR(20);
+
+CREATE INDEX IF NOT EXISTS idx_usage_tenant_created ON ai_model_usage(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_created_type ON ai_model_usage(created_at DESC, model_type);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_deleted ON documents(tenant_id, deleted_at, created_at DESC);
+
+

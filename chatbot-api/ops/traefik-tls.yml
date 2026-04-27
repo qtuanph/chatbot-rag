@@ -1,0 +1,15 @@
+# Traefik v3 Dynamic TLS Configuration for Custom SSL Certificates
+# Place fullchain.crt and private.key into `./ops/certs/` directory
+
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/fullchain.crt
+      keyFile: /etc/traefik/certs/private.key
+      stores:
+        - default
+
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/certs/fullchain.crt
+        keyFile: /etc/traefik/certs/private.key

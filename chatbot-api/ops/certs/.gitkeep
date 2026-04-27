@@ -1,0 +1,3 @@
+# Place your company SSL certificate files here:
+# 1. fullchain.crt (or fullchain010626.crt -> rename/symlink to fullchain.crt)
+# 2. private.key (or private010626.key -> rename/symlink to private.key)
