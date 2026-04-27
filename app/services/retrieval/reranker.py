@@ -2,7 +2,7 @@
 Vietnamese Cross-Encoder Reranker — re-ranks retrieved chunks for precision.
 
 Uses AITeamVN/Vietnamese_Reranker (MRR@10=0.8672 on Legal Zalo benchmark).
-Same org as the embedding model (AITeamVN/Vietnamese_Embedding_v2).
+Fine-tuned from BAAI/bge-reranker-v2-m3 for Vietnamese.
 
 Pipeline: dense+BM25 hybrid candidates → cross-encoder rerank → top-k for LLM context.
 """
@@ -11,18 +11,19 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 
+import torch
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+_MAX_LENGTH = 2304  # 256 query + 2048 passage
+
 
 @lru_cache(maxsize=1)
 def get_reranker() -> VietnameseReranker:
-    """Get or create the singleton reranker instance.
-
-    Raises ImportError if sentence-transformers is not installed.
-    Raises RuntimeError if model fails to load.
-    """
+    """Get or create the singleton reranker instance."""
     return VietnameseReranker()
 
 
@@ -34,15 +35,11 @@ class VietnameseReranker:
     """
 
     def __init__(self):
-        from sentence_transformers import CrossEncoder
-
         model_name = settings.retrieval_rerank_model
         logger.info("Loading reranker model: %s ...", model_name)
-        self.model = CrossEncoder(
-            model_name,
-            device="cpu",
-            max_length=2304,  # 256 query + 2048 passage
-        )
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        self.model.eval()
         logger.info("Reranker model loaded: %s", model_name)
 
     def rerank(
@@ -65,7 +62,6 @@ class VietnameseReranker:
 
         Raises:
             ValueError: If documents list is empty
-            RuntimeError: If model prediction fails
         """
         if not documents:
             raise ValueError("Cannot rerank empty document list")
@@ -76,13 +72,21 @@ class VietnameseReranker:
         pairs = []
         for doc in documents:
             text = getattr(doc, text_attr, None) or ""
-            pairs.append((query, text))
+            pairs.append([query, text])
 
         # Cross-encoder scoring
-        scores = self.model.predict(pairs, batch_size=32)
+        with torch.no_grad():
+            inputs = self.tokenizer(
+                pairs,
+                padding=True,
+                truncation=True,
+                return_tensors="pt",
+                max_length=_MAX_LENGTH,
+            )
+            scores = self.model(**inputs, return_dict=True).logits.view(-1).float()
 
         # Attach scores and sort
-        scored_docs = list(zip(documents, scores))
+        scored_docs = list(zip(documents, scores.tolist()))
         scored_docs.sort(key=lambda x: x[1], reverse=True)
 
         # Update score attributes on the document objects

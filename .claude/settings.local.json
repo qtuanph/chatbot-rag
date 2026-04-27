@@ -21,7 +21,9 @@
       "mcp__zai-mcp-server__*",
       "mcp__plugin_engram_engram__*",
       "Skill",
-      "WebSearch"
+      "WebSearch",
+      "mcp__MCP_DOCKER__*",
+      "PowerShell(Stop-Process:*)"
     ]
   }
 }

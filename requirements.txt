@@ -17,3 +17,4 @@ pypdf==5.8.0
 torch==2.11.0
 nh3==0.2.21
 underthesea>=6.8.0
+sentencepiece>=0.2.0

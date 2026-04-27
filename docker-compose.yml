@@ -1,7 +1,10 @@
 services:
   api:
     image: chatbot-rag-app:latest
-    build: .
+    build:
+      context: .
+      secrets:
+        - hf_token
     env_file:
       - .env
     entrypoint: ["/bin/bash", "/app/ops/entrypoint-api.sh"]
@@ -23,6 +26,12 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu, utility, compute]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
     networks:
       - internal
@@ -170,6 +179,12 @@ services:
     depends_on:
       api:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
     networks:
       - internal
@@ -199,3 +214,7 @@ volumes:
 networks:
   internal:
     driver: bridge
+
+secrets:
+  hf_token:
+    environment: HF_TOKEN

@@ -117,7 +117,7 @@ def _validate_query(query: str) -> None:
         raise http_errors.bad_request("Query too long (max 5000 characters)")
 
     # HTML sanitization — reject queries containing HTML tags
-    sanitized = nh3.clean(query, tags=set(), attributes=set())
+    sanitized = nh3.clean(query, tags=set(), attributes={})
     if sanitized != query:
         raise http_errors.bad_request("Query contains invalid characters")
 
