@@ -334,17 +334,30 @@ def retrieve_context(
     # Re-rank candidates with Vietnamese cross-encoder for higher precision.
     if filtered:
         rerank_top_k = settings.retrieval_rerank_top_k
+        # Cap candidates to avoid processing too many through cross-encoder
+        _MAX_RERANK_CANDIDATES = 30
+        if len(filtered) > _MAX_RERANK_CANDIDATES:
+            logger.debug(
+                "Reranker cap: %d → %d candidates",
+                len(filtered), _MAX_RERANK_CANDIDATES,
+            )
+            filtered = filtered[:_MAX_RERANK_CANDIDATES]
         if len(filtered) > rerank_top_k:
             _t_rerank = time.monotonic()
             _pre_rerank_count = len(filtered)
-            from app.services.retrieval.reranker import get_reranker
-            reranker = get_reranker()
-            filtered = reranker.rerank(
-                query=primary_query,
-                documents=filtered,
-                text_attr="text",
-                top_k=rerank_top_k,
-            )
+            try:
+                from app.services.retrieval.reranker import get_reranker
+                reranker = get_reranker()
+                filtered = reranker.rerank(
+                    query=primary_query,
+                    documents=filtered,
+                    text_attr="text",
+                    top_k=rerank_top_k,
+                )
+            except (RuntimeError, ValueError) as e:
+                logger.warning(
+                    "Reranker failed (%s), using score-based ranking", e,
+                )
             _t_rerank_end = time.monotonic()
             logger.info(
                 "[PERF-RAG] Reranker: %.3fs (%d → %d)",

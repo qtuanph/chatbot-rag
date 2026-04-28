@@ -15,7 +15,7 @@ Single source of truth for system design, data model, and invariants. Security d
 | Queue/Cache | Redis (Celery broker, embedding cache, rate limiting, chat hot cache with pipeline atomic ops) |
 | Embedding | AITeamVN/Vietnamese_Embedding_v2 (1024-dim, local, GPU fp16 / CPU ONNX) |
 | AI Provider | Google AI gemma-4-26b-a4b-it (singleton via lru_cache, x-goog-api-key header, httpx connection pool) |
-| Ingestion | Docling iterate_items() (Method D) + Smart OCR 2-pass + Rule-based refiner |
+| Ingestion | Docling iterate_items() (Method D) + PaddleOCR (RapidOCR ONNX, vi+en, force_full_page_ocr=True) + Rule-based refiner |
 | Reverse proxy | nginx on port 80 (all traffic: SSE, NextAuth, API, static) |
 
 ## Storage Split
@@ -75,7 +75,7 @@ graph TD
     API --> Upload[Upload → Redis queue]
     API --> Chat[Chat → Retriever → AI Provider]
     Upload --> Worker[upload-pipeline · GPU]
-    Worker --> Parser[Docling Method D + Smart OCR]
+    Worker --> Parser[Docling Method D + PaddleOCR]
     Parser --> Sections[SectionRepository → PostgreSQL]
     Parser --> Embedder[Vietnamese_Embedding_v2 → Qdrant]
     Chat --> Retriever[2-Stage: single Qdrant query → in-memory re-rank]
@@ -89,7 +89,7 @@ graph TD
 |-------|------|--------|
 | Upload | Browser → /api/bep/ → proxy → API → RustFS | File persisted, document row pending |
 | Queue | API → Redis → Worker | Async task, task_id returned (202) |
-| Parse | Worker → Docling Method D + Smart OCR → sections + chunks | Items with page spans, heading levels |
+| Parse | Worker → Docling Method D + PaddleOCR (force_full_page_ocr=True) → sections + chunks | Items with page spans, heading levels |
 | Validate | Hierarchy Validator + Rule-Based Refiner (0GB VRAM, ~1ms) | Cleaned, validated text |
 | Store | SectionRepository → PostgreSQL → Embed → Qdrant | document_sections rows + vectors |
 | Retrieve | QueryCache → single Qdrant query → section grouping → chunk re-rank | Top sections + chunks with citations |
@@ -188,7 +188,7 @@ Gemma 4 outputs chain-of-thought by default. 4 suppression layers:
 
 | Changed | Reason |
 |---------|--------|
-| Tesseract OCR | EasyOCR — better Vietnamese |
+| Tesseract OCR / EasyOCR | PaddleOCR (RapidOCR ONNX) — best Vietnamese OCR quality |
 | Sequential embedding | ThreadPoolExecutor parallel — ~16x faster |
 | AI-based refiner | Rule-based — 0GB VRAM, ~1ms |
 | 2-query retrieval | Single Qdrant query + in-memory re-ranking |
@@ -204,7 +204,7 @@ Gemma 4 outputs chain-of-thought by default. 4 suppression layers:
 | Per-request AI provider | lru_cache singleton via build_ai_provider() |
 | export_to_markdown() | Method D (iterate_items()) — preserves page numbers |
 | Single worker | upload_pipeline + cleanup_pipeline |
-| do_ocr=True on all PDFs | Smart OCR 2-pass — OCR only for scanned PDFs |
+| Smart OCR 2-pass / EasyOCR | PaddleOCR force_full_page_ocr=True — mandatory OCR on all pages |
 
 ## Planned (Phase 2)
 

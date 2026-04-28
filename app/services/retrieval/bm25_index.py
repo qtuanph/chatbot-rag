@@ -7,6 +7,8 @@ Called during startup (lazy) or after document ingestion.
 from __future__ import annotations
 
 import logging
+import os
+import time
 from functools import lru_cache
 
 from app.adapters.sparse_embeddings.vietnamese_bm25 import VietnameseBM25Encoder
@@ -15,22 +17,39 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _VOCAB_PATH = "data/bm25_vocab.json"
+_VOCAB_TTL = 120.0  # Reload vocab every 2 minutes to pick up new documents
+
+_cached_encoder: VietnameseBM25Encoder | None = None
+_cached_at: float = 0.0
 
 
-@lru_cache(maxsize=1)
 def get_bm25_encoder() -> VietnameseBM25Encoder:
-    """Get or create the singleton BM25 encoder.
+    """Get or create the BM25 encoder with TTL-based reload.
 
     Tries to load from disk first. If no vocab file exists,
     returns an encoder with empty vocab (will be built on first use).
+    Reloads from disk every _VOCAB_TTL seconds to pick up changes
+    made by the Celery worker after document upload.
     """
+    global _cached_encoder, _cached_at
+
+    now = time.monotonic()
+    if _cached_encoder is not None and (now - _cached_at) < _VOCAB_TTL:
+        return _cached_encoder
+
     encoder = VietnameseBM25Encoder(
         k1=settings.retrieval_bm25_k1,
         b=settings.retrieval_bm25_b,
     )
     loaded = encoder.load(_VOCAB_PATH)
     if not loaded:
+        # Keep old encoder if it exists and reload failed (no vocab file yet)
+        if _cached_encoder is not None:
+            return _cached_encoder
         logger.info("BM25 vocab not found at %s — will build on first query", _VOCAB_PATH)
+
+    _cached_encoder = encoder
+    _cached_at = now
     return encoder
 
 
@@ -48,7 +67,12 @@ def build_bm25_index_from_qdrant() -> int:
     from app.services.retrieval.rag import _get_vector_store
 
     vs = _get_vector_store()
-    encoder = get_bm25_encoder()
+
+    # Build fresh encoder (bypass cache)
+    encoder = VietnameseBM25Encoder(
+        k1=settings.retrieval_bm25_k1,
+        b=settings.retrieval_bm25_b,
+    )
 
     # Scroll all chunks from Qdrant via client directly
     all_texts: list[str] = []
@@ -78,13 +102,22 @@ def build_bm25_index_from_qdrant() -> int:
     logger.info("Scrolled %d chunks from Qdrant", len(all_texts))
 
     if not all_texts:
-        raise ValueError(
-            "No chunks found in Qdrant — cannot build BM25 index. "
-            "Upload documents first."
-        )
+        # No documents left — clear stale vocab so queries skip BM25
+        if os.path.exists(_VOCAB_PATH):
+            os.remove(_VOCAB_PATH)
+            logger.info("BM25 vocab cleared (no chunks in Qdrant)")
+        # Force reload on next get_bm25_encoder() call
+        global _cached_encoder, _cached_at
+        _cached_encoder = None
+        _cached_at = 0
+        return 0
 
     encoder.build_vocab_and_idf(all_texts)
     encoder.save(_VOCAB_PATH)
+
+    # Update cache immediately so API process has fresh vocab
+    _cached_encoder = encoder
+    _cached_at = time.monotonic()
 
     logger.info("BM25 index built: %d terms from %d docs", len(encoder.vocab), encoder.doc_count)
     return len(encoder.vocab)

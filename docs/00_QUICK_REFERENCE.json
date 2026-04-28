@@ -8,7 +8,7 @@
       "02_WORKFLOWS.md": "Upload, chat, delete, session cleanup workflows with diagrams",
       "03_API_CONTRACTS.md": "Full route reference, security, rate limits, error handling",
       "04_DEPLOYMENT.md": "Docker topology, nginx, env vars, health probes, backup",
-      "05_INGESTION_RETRIEVAL.md": "12-step pipeline, Smart OCR, embedding specs, retrieval deep dive"
+      "05_INGESTION_RETRIEVAL.md": "12-step pipeline, PaddleOCR (mandatory), embedding specs, retrieval deep dive"
     }
   },
   "core_invariants": [
@@ -32,7 +32,7 @@
   "data_location_map": [
     { "data": "sections", "storage": "PostgreSQL", "table": "document_sections", "notes": "Canonical order source (order_index)" },
     { "data": "chunks", "storage": "Qdrant", "notes": "~400 token chunks with section_id metadata. Named dense + sparse-bm25 vectors." },
-    { "data": "bm25_vocab", "storage": "disk", "notes": "data/bm25_vocab.json — rebuilt on upload/delete. Underthesea tokenization + IDF." },
+    { "data": "bm25_vocab", "storage": "disk", "notes": "data/bm25_vocab.json — rebuilt on upload/delete. TTL cache 120s. Underthesea tokenization + IDF." },
     { "data": "documents", "storage": "PostgreSQL", "table": "documents", "notes": "status: pending→processing→ready/failed" },
     { "data": "chat_messages", "storage": "PostgreSQL + Redis", "notes": "DB persisted (tokens_in, tokens_out, latency_ms); Redis hot cache (pipeline atomic). hydrate_from_db() on expiry." },
     { "data": "chat_sessions", "storage": "PostgreSQL", "table": "chat_sessions", "notes": "Hard-deleted after 30 days by Celery Beat. Sidebar ordered by updated_at DESC." },

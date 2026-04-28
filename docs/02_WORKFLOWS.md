@@ -31,8 +31,7 @@ sequenceDiagram
     Worker->>Pipeline: ingest(filename, bytes, progress_callback)
 
     Pipeline->>Pipeline: Docling iterate_items() — Method D
-    Note over Pipeline: Smart OCR: Pass 1 fast (no OCR)
-    Note over Pipeline: If scanned → Pass 2 with OCR
+    Note over Pipeline: PaddleOCR: force_full_page_ocr=True (mandatory)
     Pipeline->>Pipeline: Extract items: SectionHeader, Text, Table, ListItem...
     Pipeline->>Refiner: refine_text (0GB VRAM, ~1ms)
     Pipeline->>DB: Store sections in document_sections table

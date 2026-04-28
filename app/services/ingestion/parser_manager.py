@@ -1,6 +1,7 @@
 """
 Parser Manager: Selects appropriate parser based on configuration.
-Handles graceful fallback if primary parser unavailable.
+Docling + PaddleOCR is the primary parser for ALL document formats.
+Classic parser is fallback when Docling is unavailable.
 """
 
 import logging
@@ -20,26 +21,29 @@ logger = logging.getLogger(__name__)
 class ParserManager:
     """
     Manages parser selection and orchestration.
-    - Primary: Docling (iterate_items → markdown fallback)
-    - Secondary: Classic parser for fallback
+    - Primary: Docling + PaddleOCR (PDF, DOCX, images, etc.)
+    - Fallback: Classic parser (when Docling unavailable)
     """
 
     def __init__(self):
-        """Initialize available parsers."""
+        """Initialize parsers."""
         self.classic_parser = ClassicParser()
         self.docling_parser = None
         self.primary_parser_name = settings.ingestion_engine
-        
-        # Initialize Docling parser with fallback to Classic
+
         if self.primary_parser_name == "docling":
             try:
                 self.docling_parser = DoclingParser(fallback_parser=self.classic_parser)
-                logger.info("ParserManager initialized with Docling+Classic fallback")
+                logger.info("ParserManager: Docling + PaddleOCR ready (all formats)")
             except Exception as e:
-                logger.warning(f"Failed to initialize DoclingParser: {str(e)}; will use Classic only")
+                logger.critical(
+                    "ParserManager: Docling+PaddleOCR FAILED to initialize: %s. "
+                    "PDF/image OCR will NOT work! Fix: pip install rapidocr_onnxruntime",
+                    e,
+                )
                 self.docling_parser = None
         else:
-            logger.info("ParserManager initialized with Classic parser only")
+            logger.info("ParserManager: Classic parser only (ingestion_engine=%s)", self.primary_parser_name)
 
     def parse(
         self,
@@ -48,29 +52,26 @@ class ParserManager:
     ) -> Tuple[List[IngestedNode], ParsingMetadata]:
         """
         Parse document using configured parser.
-        
+
         Args:
             filename: Document filename
             content: Raw file bytes
-        
+
         Returns:
             Tuple of (IngestedNode list, ParsingMetadata)
-        
+
         Raises:
             ParsingException: If all parsers fail
         """
         if self.docling_parser:
             try:
                 return self.docling_parser.parse(filename, content)
-            except ParsingException as e:
-                logger.warning(f"DoclingParser failed: {e.message}")
-                # Fallback to Classic is handled within DoclingParser
+            except ParsingException:
                 raise
         else:
-            # Use Classic parser directly
+            # Use Classic parser directly (DOCX, XLSX, TXT only — no PDF OCR)
             try:
                 return self.classic_parser.parse(filename, content)
             except ParsingException as e:
-                logger.error(f"Classic parser failed: {e.message}")
+                logger.error("Classic parser failed: %s", e.message)
                 raise
-

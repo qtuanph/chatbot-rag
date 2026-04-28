@@ -60,15 +60,17 @@ async function proxyHandler(
     if (isSocketError) {
       try {
         backendRes = await fetch(backendUrl, init);
-      } catch {
+      } catch (retryErr: unknown) {
+        const retryMsg = retryErr instanceof Error ? retryErr.message : "unknown";
         return new Response(
-          JSON.stringify({ detail: "Backend service unavailable. Please try again." }),
+          JSON.stringify({ detail: `Backend service unavailable: ${retryMsg}` }),
           { status: 502, headers: { "content-type": "application/json" } },
         );
       }
     } else {
+      const errMsg = err instanceof Error ? err.message : "unknown error";
       return new Response(
-        JSON.stringify({ detail: "Backend request failed." }),
+        JSON.stringify({ detail: `Backend request failed: ${errMsg}` }),
         { status: 502, headers: { "content-type": "application/json" } },
       );
     }

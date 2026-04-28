@@ -48,9 +48,9 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --chown=qtuanph:qtuanph . .
 
-RUN mkdir -p /home/qtuanph/.cache/huggingface /home/qtuanph/.EasyOCR && \
+RUN mkdir -p /home/qtuanph/.cache/huggingface /home/qtuanph/.rapidocr && \
     chown -R qtuanph:qtuanph /home/qtuanph /app && \
-    chmod -R 777 /usr/local/lib/python3.12/site-packages/rapidocr/models/
+    chmod -R 777 /usr/local/lib/python3.12/site-packages/rapidocr/models/ 2>/dev/null; true
 
 USER qtuanph
 
@@ -80,6 +80,13 @@ RUN --mount=type=cache,id=hf-models,target=/tmp/hf-cache,uid=1000,gid=1000 \
     python -c "from underthesea import word_tokenize; \
     word_tokenize('Test tải model underthesea', format='text'); \
     print('Underthesea models pre-downloaded')"
+
+# Pre-download PaddleOCR (RapidOCR ONNX) models for Vietnamese OCR
+# On first run, RapidOCR downloads detection + classification + recognition models (~100 MB)
+RUN --mount=type=cache,id=rapidocr-models,target=/tmp/rapidocr-cache,uid=1000,gid=1000 \
+    python -c "from rapidocr_onnxruntime import RapidOCR; \
+    engine = RapidOCR(); \
+    print('PaddleOCR (RapidOCR ONNX) models pre-downloaded')"
 
 EXPOSE 8000
 

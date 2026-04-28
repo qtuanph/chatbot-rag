@@ -237,7 +237,7 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                     len(queries), _time.monotonic() - t_session,
                 )
 
-            context = retrieve_context(session, queries, limit=20)
+            context = await asyncio.to_thread(retrieve_context, session, queries, 20)
 
             t_retrieve = _time.monotonic()
             logger.info("[PERF] retrieve_context: %.3fs (%d nodes)", t_retrieve - t_session, len(context.nodes))
@@ -303,6 +303,7 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                         t_ai_done - t_ai_start, chunk_count, len(full_answer))
             logger.info("[PERF] === END-TO-END: %.3fs ===", t_ai_done - t_start)
             clean_answer = strip_reasoning(full_answer.strip())
+            usage = getattr(provider, 'last_usage', {})
             with SessionLocal() as session:
                 try:
                     session.add(
@@ -339,7 +340,7 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                 pass  # Memory extraction is best-effort, never block the response
 
             # Send final event with session info and citations
-            usage = getattr(provider, 'last_usage', {})
+            # (usage already defined above before DB save)
             # Estimate cost: Gemini 2.5 Flash pricing
             # Input: $0.075/1M tokens, Output: $0.30/1M tokens
             prompt_tokens = usage.get('prompt_tokens', 0)
@@ -575,7 +576,7 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
                 ChatMessage.session_id == session_id
             ).order_by(ChatMessage.created_at.asc()).all()
             db_dicts = [{"role": m.role, "content": m.content} for m in db_msgs]
-        store.hydrate_from_db(scope_id, session_id, db_dicts)
+            store.hydrate_from_db(scope_id, session_id, db_dicts)
 
         try:
             # Multi-query expansion for non-streaming endpoint
@@ -587,7 +588,7 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
                     timeout=3.0,
                 )
 
-            context = retrieve_context(session, queries, limit=20)
+            context = await asyncio.to_thread(retrieve_context, session, queries, 20)
             assistant_seed = build_answer(request.query, context)
             history = store.get_history(scope_id, session_id)
 

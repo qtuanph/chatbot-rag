@@ -11,12 +11,17 @@ Qdrant for retrieval. PostgreSQL for metadata/state. Redis for cache and queue. 
 1. **Upload**: Client uploads file → API saves to RustFS → inserts `documents` row (status=pending).
 2. **Enqueue**: API enqueues `parse_document_task` to Redis queue `ingestion`.
 3. **Download**: Worker downloads file bytes from RustFS.
-4. **Smart OCR** (2-pass):
-   - Pass 1: Fast extraction `do_ocr=False` → extract embedded text. Works for native PDFs.
-   - Scanned detection: If text_density < threshold → likely scanned.
-   - Pass 2: Re-convert with `do_ocr=True` + EasyOCR (`vi+en`) → OCR only for scanned PDFs.
-   - Images (PNG/JPG): Always OCR pipeline. DOCX: native parsing, no OCR.
-5. **Method D extraction**: Direct from `iterate_items()` — preserves page spans, heading levels, table structures:
+4. **PaddleOCR** (mandatory, single-pass):
+   - `force_full_page_ocr=True` — OCR on every page, no scanned detection.
+   - Engine: PaddleOCR via RapidOCR ONNX backend (`rapidocr_onnxruntime==1.4.4`).
+   - Languages: Vietnamese + English.
+   - Images (PNG/JPG): Always OCR pipeline. DOCX: Docling WordFormatOption (structure extraction).
+5. **Heading hierarchy fix** (PDF only):
+   - `docling-hierarchical-pdf` post-processor corrects flat `level=1` from Docling.
+   - 3 strategies: PDF bookmarks (pymupdf) → numbering patterns → font size/style clustering.
+   - Vietnamese heading correction: "CHƯƠNG I" / "PHẦN 1" → level 1 override.
+   - Noise filtering: empty sections on pages 1-2 (cover), TOC markers removed.
+6. **Method D extraction**: Direct from `iterate_items()` — preserves page spans, heading levels, table structures:
    - `SectionHeaderItem` → section boundary, `TitleItem` → document title
    - `TextItem` → content, `TableItem` → markdown table, `ListItem` → bullet text
    - `PictureItem` → skip (future: image captioning)
@@ -33,11 +38,11 @@ Qdrant for retrieval. PostgreSQL for metadata/state. Redis for cache and queue. 
 
 | Strategy | When | Config |
 |----------|------|--------|
-| Fast (`do_ocr=False`) | Native PDFs, DOCX | `converter_fast` |
-| OCR fallback (`do_ocr=True`) | Scanned PDFs, images | `converter_ocr` + EasyOCR vi+en |
-| Smart detection | After Pass 1: text_density < threshold | Both converters |
+| PaddleOCR (`force_full_page_ocr=True`) | All PDFs + images | `converter` + RapidOcrOptions vi+en |
+| Classic parser | DOCX, XLSX, TXT, Markdown | No OCR — native text extraction |
 
-Two converters initialized in `_initialize_docling()`. EasyOCR models pre-downloaded during Docker build via BuildKit cache.
+Single converter initialized in `_initialize_docling()`. PaddleOCR (RapidOCR ONNX) models pre-downloaded during Docker build.
+PaddleOCR is MANDATORY — if backend missing, `_require_paddleocr()` raises RuntimeError and worker fails with clear error.
 
 ### Embedding Model
 
@@ -64,7 +69,7 @@ Model pre-downloaded during Docker build via BuildKit cache.
 6. **Hybrid search**: For each query, run dense + BM25 sparse in parallel → RRF fusion in Qdrant.
 7. **Stage 1 — Section grouping**: Merge results across queries (dedupe by node_id, keep max score). Group by section_id → top 3 sections (score ≥ 0.30). Load section details from PostgreSQL.
 8. **Stage 2 — Chunk re-ranking**: Prioritise chunks within top sections first, then remaining. Score filter ≥ 0.35. Dedup overlapping chunks (100-char signature).
-9. **Stage 3 — Cross-encoder reranking**: AITeamVN/Vietnamese_Reranker scores (query, passage) pairs → top 5 chunks by relevance.
+9. **Stage 3 — Cross-encoder reranking**: AITeamVN/Vietnamese_Reranker scores (query, passage) pairs → top 5 chunks by relevance. Max 30 candidates sent to reranker. Errors caught → fallback to score-based ranking.
 10. **Stage 4 — Context assembly**: Enriched context blocks with breadcrumb hierarchy + page ranges for LLM.
 
 ### Hybrid Search: Dense + BM25
@@ -78,6 +83,7 @@ Model pre-downloaded during Docker build via BuildKit cache.
 | BM25 params | k1=1.5, b=0.75 (standard defaults) |
 | BM25 vocab | Built from all Qdrant chunks, persisted to `data/bm25_vocab.json` |
 | Vocab rebuild | After every document upload/delete (full rebuild for correct IDF) |
+| Vocab cache | TTL-based reload (120s) to pick up changes from Celery worker |
 
 ### Cross-Encoder Reranker
 
@@ -132,7 +138,7 @@ Display order from `document_sections.order_index`, then page span. Qdrant does 
 
 | Responsibility | Module |
 |----------------|--------|
-| Smart OCR 2-pass | `app/adapters/parsers/docling.py:_convert_with_docling()` |
+| PaddleOCR (mandatory) | `app/adapters/parsers/docling.py:_convert_with_docling()` |
 | Method D item extraction | `app/adapters/parsers/docling.py:_extract_from_docling_items()` |
 | Table → markdown | `app/adapters/parsers/docling.py:_table_item_to_markdown()` |
 | Page number extraction | `app/adapters/parsers/docling.py:_get_page_number()` |

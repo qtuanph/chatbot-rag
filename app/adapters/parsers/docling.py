@@ -1,8 +1,7 @@
 """
 Docling Parser: Primary document parser using Docling iterate_items() API.
-Extracts sections, chunks, page numbers, heading levels, and table structures
-directly from Docling's native document model — no markdown export needed.
-Falls back to markdown path if iterate_items() fails.
+OCR: PaddleOCR (RapidOCR ONNX) — mandatory, no fallback.
+If OCR fails → document parsing fails with clear error.
 """
 
 import logging
@@ -24,14 +23,11 @@ from app.core.hardware import hardware
 
 logger = logging.getLogger(__name__)
 
-# Minimum chars per page to consider PDF as having embedded text (not scanned)
-_MIN_CHARS_PER_PAGE = 50
-
 
 class DoclingParser(BaseParser):
     """
     Primary parser using Docling iterate_items() for 100% metadata preservation.
-    Falls back to markdown path on failure.
+    OCR: PaddleOCR (RapidOCR ONNX backend) — MANDATORY for all documents.
     """
 
     def __init__(
@@ -41,137 +37,129 @@ class DoclingParser(BaseParser):
     ):
         self.fallback_parser = fallback_parser
         self.min_quality_score = min_quality_score
-        self.converter_fast = None   # force_full_page_ocr=True for clean Vietnamese
-        self.converter_ocr = None    # OCR fallback (same config, kept for compatibility)
+        self.converter = None
 
         self._initialize_docling()
 
-    def _select_ocr_backend(self):
-        """Build OCR options for Vietnamese + English documents.
+    def _require_paddleocr(self):
+        """Build PaddleOCR options via RapidOcrOptions (ONNX backend).
 
-        Uses RapidOCR (PaddleOCR ONNX models) — best Vietnamese quality,
-        Apache-2.0 license, lighter than EasyOCR (no PyTorch needed).
-        Falls back to EasyOCR if RapidOCR unavailable.
+        PaddleOCR is MANDATORY — raises RuntimeError if not installed.
         """
         try:
-            from docling.datamodel.pipeline_options import RapidOcrOptions
-            opts = RapidOcrOptions(
-                lang=["vi", "en"],
-                force_full_page_ocr=False,  # Set per-converter below
-            )
-            logger.info("OCR backend: RapidOCR [vi, en] (PaddleOCR ONNX)")
-            return opts
+            import rapidocr_onnxruntime  # noqa: F401 — verify backend is installed
         except ImportError:
-            logger.warning("RapidOCR not available, falling back to EasyOCR")
-            from docling.datamodel.pipeline_options import EasyOcrOptions
-            use_gpu = hardware.gpu_count > 0
-            opts = EasyOcrOptions(lang=["vi", "en"], use_gpu=use_gpu)
-            logger.info("OCR backend: EasyOCR [vi, en] gpu=%s", use_gpu)
-            return opts
+            raise RuntimeError(
+                "PaddleOCR backend not installed. "
+                "Install: pip install rapidocr_onnxruntime==1.4.4 rapidocr==3.8.1"
+            )
+
+        from docling.datamodel.pipeline_options import RapidOcrOptions
+        opts = RapidOcrOptions(lang=["vi", "en"])
+        logger.info("OCR backend: PaddleOCR (RapidOCR ONNX) [vi, en]")
+        return opts
 
     def _initialize_docling(self) -> None:
-        """Initialize 2 Docling converters: fast (no OCR) + OCR fallback."""
+        """Initialize Docling converter with MANDATORY PaddleOCR."""
         try:
             from docling.document_converter import (
                 DocumentConverter,
                 PdfFormatOption,
                 ImageFormatOption,
+                WordFormatOption,
             )
             from docling.datamodel.base_models import InputFormat
             from docling.datamodel.pipeline_options import PdfPipelineOptions
 
-            ocr_options = self._select_ocr_backend()
+            ocr_options = self._require_paddleocr()
 
-            # Fast converter: extract embedded text first, OCR only for pages with no text
-            pipeline_fast = PdfPipelineOptions(
-                do_ocr=True,
-                force_full_page_ocr=False,
-                ocr_options=ocr_options,
-                do_table_structure=True,
-            )
-
-            # OCR converter: for scanned PDFs that have no embedded text
-            pipeline_ocr = PdfPipelineOptions(
+            # SINGLE converter: always OCR every page (force_full_page_ocr=True)
+            pipeline = PdfPipelineOptions(
                 do_ocr=True,
                 force_full_page_ocr=True,
                 ocr_options=ocr_options,
                 do_table_structure=True,
             )
 
-            # Image converter: always OCR
-            pipeline_image = PdfPipelineOptions(
-                do_ocr=True,
-                ocr_options=ocr_options,
-                do_table_structure=True,
+            image_fmt = ImageFormatOption(pipeline_options=pipeline)
+
+            self.converter = DocumentConverter(format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline),
+                InputFormat.IMAGE: image_fmt,
+                InputFormat.DOCX: WordFormatOption(),
+            })
+
+            logger.info(
+                "Docling+PaddleOCR initialized: force_full_page_ocr=True [vi,en] | GPU=%s",
+                hardware.gpu_count > 0,
             )
-
-            image_fmt = ImageFormatOption(pipeline_options=pipeline_image)
-
-            self.converter_fast = DocumentConverter(format_options={
-                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_fast),
-                InputFormat.IMAGE: image_fmt,
-            })
-
-            self.converter_ocr = DocumentConverter(format_options={
-                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_ocr),
-                InputFormat.IMAGE: image_fmt,
-            })
-
-            logger.info("Docling converters initialized: fast + OCR fallback")
+        except RuntimeError as e:
+            logger.critical("FATAL: %s", e)
+            raise
         except ImportError:
-            logger.warning("Docling not installed; will skip Docling parsing")
+            logger.critical("FATAL: Docling not installed — cannot parse documents")
+            raise
         except Exception as e:
-            logger.warning("Failed to initialize Docling with OCR: %s", e)
-            # Fallback: initialize without OCR (text extraction only)
-            try:
-                from docling.document_converter import (
-                    DocumentConverter,
-                    PdfFormatOption,
-                )
-                from docling.datamodel.base_models import InputFormat
-                from docling.datamodel.pipeline_options import PdfPipelineOptions
-
-                pipeline_no_ocr = PdfPipelineOptions(
-                    do_ocr=False,
-                    do_table_structure=True,
-                )
-
-                converter = DocumentConverter(format_options={
-                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_no_ocr),
-                })
-                self.converter_fast = converter
-                self.converter_ocr = converter
-                logger.info("Docling initialized WITHOUT OCR (text extraction only)")
-            except Exception as e2:
-                logger.warning("Failed to initialize Docling without OCR too: %s", e2)
+            logger.critical("FATAL: Docling+PaddleOCR initialization failed: %s", e)
+            raise
 
     def parse(
         self,
         filename: str,
         content: bytes,
     ) -> Tuple[List[IngestedNode], ParsingMetadata]:
-        """Parse document: Method D (iterate_items) → fallback markdown → fallback parser."""
+        """Parse document with Docling + PaddleOCR. Fails if OCR fails."""
         import time
         start_time = time.time()
 
         source_format = extract_file_format(filename)
 
-        try:
-            # Step 1: Convert with Docling
-            result, docling_used = self._convert_with_docling(filename, content)
+        # Step 1: Convert with Docling + PaddleOCR
+        result = self._convert_with_docling(filename, content)
 
-            if result:
-                # Step 2a: Try Method D — extract directly from Docling items
-                nodes, sections_data, ok = self._extract_from_docling_items(
-                    result.document, filename, source_format,
+        if result:
+            # Step 2a: Try Method D — extract directly from Docling items
+            nodes, sections_data, ok = self._extract_from_docling_items(
+                result.document, filename, source_format,
+            )
+
+            if ok and nodes:
+                quality_score = self._calculate_quality_score(nodes, 0)
+                parse_time_ms = (time.time() - start_time) * 1000
+
+                metadata = ParsingMetadata(
+                    engine_used="docling+paddleocr",
+                    source_format=source_format,
+                    docling_used=True,
+                    fallback_used=False,
+                    quality_score=quality_score,
+                    parse_time_ms=parse_time_ms,
+                    node_count=len(nodes),
+                    total_text_chars=sum(len(n.text) for n in nodes),
+                    warnings=[],
                 )
 
-                if ok and nodes:
-                    quality_score = self._calculate_quality_score(nodes, 0)
-                    parse_time_ms = (time.time() - start_time) * 1000
+                nodes = self._refine_nodes(nodes)
+                sections_data = self._refine_sections(sections_data)
+                metadata.sections_data = sections_data
 
+                logger.info(
+                    "Parsed %s: %d nodes, %d sections (Docling+PaddleOCR)",
+                    filename, len(nodes), len(sections_data),
+                )
+                return nodes, metadata
+
+            # Step 2b: Fallback to markdown export from Docling result
+            markdown_content = result.document.export_to_markdown()
+            if markdown_content:
+                nodes, sections_data, ok = self._extract_sections_from_markdown(
+                    markdown_content, filename, source_format,
+                )
+                if ok and nodes:
+                    quality_score = self._calculate_quality_score(nodes, len(markdown_content))
+                    parse_time_ms = (time.time() - start_time) * 1000
                     metadata = ParsingMetadata(
-                        engine_used="docling+items",
+                        engine_used="docling+paddleocr+sections",
                         source_format=source_format,
                         docling_used=True,
                         fallback_used=False,
@@ -181,84 +169,48 @@ class DoclingParser(BaseParser):
                         total_text_chars=sum(len(n.text) for n in nodes),
                         warnings=[],
                     )
-
                     nodes = self._refine_nodes(nodes)
-                    sections_data = self._refine_sections(sections_data)
                     metadata.sections_data = sections_data
-
                     logger.info(
-                        "Parsed %s with Docling+Items: %d nodes, %d sections",
-                        filename, len(nodes), len(sections_data),
+                        "Parsed %s: %d nodes (Docling+PaddleOCR+sections)",
+                        filename, len(nodes),
                     )
                     return nodes, metadata
 
-                # Step 2b: Fallback to markdown path
-                markdown_content = result.document.export_to_markdown()
-                if markdown_content:
-                    nodes, sections_data, ok = self._extract_sections_from_markdown(
-                        markdown_content, filename, source_format,
-                    )
-                    if ok and nodes:
-                        quality_score = self._calculate_quality_score(nodes, len(markdown_content))
-                        parse_time_ms = (time.time() - start_time) * 1000
-                        metadata = ParsingMetadata(
-                            engine_used="docling+sections",
-                            source_format=source_format,
-                            docling_used=True,
-                            fallback_used=False,
-                            quality_score=quality_score,
-                            parse_time_ms=parse_time_ms,
-                            node_count=len(nodes),
-                            total_text_chars=sum(len(n.text) for n in nodes),
-                            warnings=[],
-                        )
-                        nodes = self._refine_nodes(nodes)
-                        metadata.sections_data = sections_data
-                        logger.info(
-                            "Parsed %s with Docling+Sections(fallback): %d nodes",
-                            filename, len(nodes),
-                        )
-                        return nodes, metadata
-
-        except Exception as e:
-            logger.warning("Docling parsing failed for %s: %s", filename, e)
-
-        # Step 3: Fallback parser
+        # Fallback parser for non-PDF formats (DOCX, XLSX, TXT, Markdown)
         if self.fallback_parser:
             try:
                 nodes, fallback_metadata = self.fallback_parser.parse(filename, content)
                 if nodes:
                     fallback_metadata.fallback_used = True
                     fallback_metadata.parse_time_ms = (time.time() - start_time) * 1000
-                    logger.info("Parsed %s with fallback parser: %d nodes", filename, len(nodes))
+                    logger.info("Parsed %s with classic parser: %d nodes", filename, len(nodes))
                     return nodes, fallback_metadata
             except Exception as e:
-                logger.warning("Fallback parser failed for %s: %s", filename, e)
+                logger.warning("Classic parser failed for %s: %s", filename, e)
 
         raise ParsingException(
-            f"Failed to parse {filename}: all strategies failed",
-            error_code="PARSING_ALL_STRATEGIES_FAILED",
+            f"Failed to parse {filename}: Docling+PaddleOCR could not extract content",
+            error_code="PARSING_OCR_FAILED",
             details={'filename': filename, 'source_format': source_format}
         )
 
-    # ── Docling conversion (2-pass: fast → OCR if scanned) ──────────────────
+    # ── Docling conversion (single pass: always OCR) ────────────────────────
 
     def _convert_with_docling(
         self,
         filename: str,
         content: bytes,
-    ) -> Tuple[Optional[object], bool]:
+    ) -> Optional[object]:
         """
-        Convert document using Docling with smart OCR strategy.
+        Convert document using Docling + PaddleOCR.
+        Always runs OCR on every page (force_full_page_ocr=True).
 
-        Pass 1: Fast extraction (no OCR) — works for native PDF/DOCX.
-        Pass 2: OCR fallback — only if Pass 1 yields very little text (scanned PDF).
-
-        Returns: (ConversionResult or None, docling_used bool)
+        Returns: ConversionResult or None
         """
-        converter = self.converter_fast
-        if not converter:
-            return None, False
+        if not self.converter:
+            logger.error("Docling converter not initialized — PaddleOCR missing?")
+            return None
 
         try:
             with tempfile.NamedTemporaryFile(
@@ -269,59 +221,28 @@ class DoclingParser(BaseParser):
                 tmp_path = tmp.name
 
             try:
-                # Pass 1: Fast (no OCR)
-                result = converter.convert(tmp_path)
+                logger.info("Converting %s with PaddleOCR...", filename)
+                result = self.converter.convert(tmp_path)
 
-                # Check if this is a scanned PDF (very little text extracted)
-                if self._is_scanned(result):
-                    logger.info(
-                        "%s appears scanned (low text density), re-processing with OCR",
-                        filename,
-                    )
-                    if self.converter_ocr and self.converter_ocr is not converter:
-                        result = self.converter_ocr.convert(tmp_path)
-                        logger.info("Re-converted %s with OCR", filename)
+                # Post-process: fix heading hierarchy via docling-hierarchical-pdf
+                if filename.lower().endswith('.pdf'):
+                    try:
+                        from hierarchical.postprocessor import ResultPostprocessor
+                        ResultPostprocessor(result).process()
+                        logger.info("Applied hierarchical heading post-processor")
+                    except ImportError:
+                        logger.debug("docling-hierarchical-pdf not installed, skipping hierarchy fix")
+                    except Exception as e:
+                        logger.warning("Hierarchical post-processor failed: %s", e)
 
-                return result, True
+                logger.info("Converted %s successfully", filename)
+                return result
             finally:
                 os.unlink(tmp_path)
 
         except Exception as e:
-            logger.warning("Docling conversion failed for %s: %s", filename, e)
-            return None, False
-
-    def _is_scanned(self, result) -> bool:
-        """Detect if conversion result is a scanned document (very little text)."""
-        try:
-            total_chars = 0
-            num_pages = 0
-            for item, _level in result.document.iterate_items():
-                text = getattr(item, 'text', None) or ''
-                if text.strip():
-                    total_chars += len(text.strip())
-                # Count pages from provenance
-                prov = getattr(item, 'prov', None)
-                if prov:
-                    for p in (prov if isinstance(prov, list) else [prov]):
-                        page_no = getattr(p, 'page_no', None) or (p.get('page_no') if isinstance(p, dict) else None)
-                        if page_no is not None:
-                            num_pages = max(num_pages, page_no)
-
-            if num_pages == 0:
-                return total_chars < 100  # Very short document
-
-            chars_per_page = total_chars / num_pages
-            is_scanned = chars_per_page < _MIN_CHARS_PER_PAGE
-
-            if is_scanned:
-                logger.info(
-                    "Scanned detection: %d chars / %d pages = %.0f chars/page (< %d threshold)",
-                    total_chars, num_pages, chars_per_page, _MIN_CHARS_PER_PAGE,
-                )
-
-            return is_scanned
-        except Exception:
-            return False
+            logger.error("Docling+PaddleOCR conversion FAILED for %s: %s", filename, e)
+            return None
 
     # ── Method D: Extract directly from Docling items ────────────────────────
 
@@ -387,6 +308,28 @@ class DoclingParser(BaseParser):
             )
         )
 
+    @staticmethod
+    def _is_noise_section(title: str, content: str, page_start: int | None) -> bool:
+        """Filter empty sections from cover pages, TOC, and noise."""
+        title = (title or '').strip()
+        content = (content or '').strip()
+        # Empty section on first 2 pages → likely cover noise
+        if not content and len(title) < 40 and page_start and page_start <= 2:
+            return True
+        # Explicit TOC markers with no content
+        if title.upper() in ('MỤC LỤC', 'TABLE OF CONTENTS', 'NỘI DUNG') and not content:
+            return True
+        return False
+
+    @staticmethod
+    def _correct_vietnamese_heading_level(title: str, current_level: int) -> int:
+        """Override level for Vietnamese heading patterns that post-processor may miss."""
+        t = (title or '').strip()
+        # Chương/Phần always = level 1
+        if re.match(r'(?i)^(chương|phần)\s+[\dIVX]+', t):
+            return 1
+        return current_level
+
     def _extract_from_docling_items(
         self,
         document,
@@ -417,12 +360,19 @@ class DoclingParser(BaseParser):
 
                 # SectionHeaderItem → start new section
                 if item_label == 'section_header':
-                    # Save previous section
-                    if self._should_persist_section(current_section):
+                    # Save previous section (skip noise)
+                    if current_section and not self._is_noise_section(
+                        current_section.get("title", ""),
+                        current_section.get("content", ""),
+                        current_section.get("page_start"),
+                    ) and self._should_persist_section(current_section):
                         sections_raw.append(current_section)
 
                     level = getattr(item, 'level', 1) or 1
                     title = item_text.strip()
+
+                    # Vietnamese heading correction (supplement post-processor)
+                    level = self._correct_vietnamese_heading_level(title, level)
 
                     # Update heading stack for breadcrumbs
                     heading_stack[level] = title
@@ -458,7 +408,11 @@ class DoclingParser(BaseParser):
 
                 # TitleItem → document title (treat as level 0 section)
                 elif item_label == 'title':
-                    if self._should_persist_section(current_section):
+                    if current_section and not self._is_noise_section(
+                        current_section.get("title", ""),
+                        current_section.get("content", ""),
+                        current_section.get("page_start"),
+                    ) and self._should_persist_section(current_section):
                         sections_raw.append(current_section)
                     heading_stack = {}  # Reset for document title
                     heading_stack[0] = item_text.strip()
@@ -528,8 +482,12 @@ class DoclingParser(BaseParser):
                         if page_no is not None:
                             current_section["page_end"] = page_no
 
-            # Don't forget the last section
-            if self._should_persist_section(current_section):
+            # Don't forget the last section (skip noise)
+            if current_section and not self._is_noise_section(
+                current_section.get("title", ""),
+                current_section.get("content", ""),
+                current_section.get("page_start"),
+            ) and self._should_persist_section(current_section):
                 sections_raw.append(current_section)
 
             if not sections_raw:

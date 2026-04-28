@@ -127,4 +127,26 @@
   html {
     @apply font-sans;
   }
+
+  /* Thin scrollbar for chat message area */
+  .overflow-y-auto {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.7 0 0 / 40%) transparent;
+  }
+  .overflow-y-auto:hover {
+    scrollbar-color: oklch(0.55 0 0 / 60%) transparent;
+  }
+  .overflow-y-auto::-webkit-scrollbar {
+    width: 6px;
+  }
+  .overflow-y-auto::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .overflow-y-auto::-webkit-scrollbar-thumb {
+    background: oklch(0.7 0 0 / 40%);
+    border-radius: 3px;
+  }
+  .overflow-y-auto:hover::-webkit-scrollbar-thumb {
+    background: oklch(0.55 0 0 / 60%);
+  }
 }

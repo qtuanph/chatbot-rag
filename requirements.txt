@@ -12,9 +12,12 @@ sentence-transformers==5.4.1
 PyJWT==2.10.1
 bcrypt==5.0.0
 docling==2.90.0
+rapidocr==3.8.1
+rapidocr_onnxruntime==1.4.4
 qdrant-client==1.17.1
 pypdf==5.8.0
 torch==2.11.0
 nh3==0.2.21
 underthesea>=6.8.0
 sentencepiece>=0.2.0
+docling-hierarchical-pdf>=0.1.6

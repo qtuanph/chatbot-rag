@@ -44,7 +44,9 @@ function LoginForm() {
         redirect: false,
       });
 
-      if (result?.error) {
+      // next-auth v5: error may be in result.error or in redirect URL
+      const hasError = result?.error || (result?.url && new URL(result.url).searchParams.has("error"));
+      if (hasError) {
         toast.error("Sai tên đăng nhập hoặc mật khẩu");
         return;
       }

@@ -25,5 +25,12 @@
       "mcp__MCP_DOCKER__*",
       "PowerShell(Stop-Process:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "playwright",
+    "shadcn",
+    "codemap",
+    "sequential-thinking",
+    "next-devtools"
+  ]
 }

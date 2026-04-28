@@ -88,6 +88,7 @@ async function apiFetch<T>(
     throw new ApiError(res.status, extractErrorMessage(body, res.statusText));
   }
 
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 

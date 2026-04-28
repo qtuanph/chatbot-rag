@@ -6,7 +6,7 @@ Reliability settings (most important):
     If the worker crashes mid-task, the broker re-queues it automatically.
   - task_reject_on_worker_lost=True: Explicit requeue on unexpected worker death.
   - worker_prefetch_multiplier=1: Each worker holds exactly 1 task at a time.
-    Docling + EasyOCR tasks are heavy; hoarding multiple tasks wastes memory
+    Docling + PaddleOCR tasks are heavy; hoarding multiple tasks wastes memory
     and causes unfair load distribution.
 
 Time limits (prevent hung parse tasks):
@@ -41,7 +41,7 @@ celery_app.conf.update(
     # ── Performance ───────────────────────────────────────────────────────────
     worker_prefetch_multiplier=1,      # 1 task per worker — fair distribution
 
-    # ── Time limits (Docling + EasyOCR can be slow on large PDFs) ────────────
+    # ── Time limits (Docling + PaddleOCR can be slow on large PDFs) ────────────
     task_time_limit=1800,              # 30 min hard kill
     task_soft_time_limit=1500,         # 25 min → SoftTimeLimitExceeded in worker
 
