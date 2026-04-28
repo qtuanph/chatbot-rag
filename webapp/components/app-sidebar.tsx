@@ -8,6 +8,7 @@ import {
   Users,
   MessageSquare,
   Settings,
+  BarChart3,
 } from "lucide-react";
 import {
   Sidebar,
@@ -25,6 +26,7 @@ import { UserNav } from "@/components/user-nav";
 
 const adminNavItems = [
   { title: "Dashboard", href: "/admin", icon: LayoutDashboard },
+  { title: "Thống kê", href: "/admin/analytics", icon: BarChart3 },
   { title: "Tài liệu", href: "/admin/documents", icon: FileText },
   { title: "Người dùng", href: "/admin/users", icon: Users },
   { title: "Chat", href: "/chat", icon: MessageSquare },

@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
-from app.models.core import SecurityAudit
+from app.models.audit import SecurityAudit
 
 logger = logging.getLogger(__name__)
 

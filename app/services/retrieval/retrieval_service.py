@@ -1,21 +1,23 @@
+"""RAG retrieval service — 4-stage retrieval pipeline with hybrid search."""
+
 from __future__ import annotations
 
 import logging
 import threading
 import time
-from functools import lru_cache
 from dataclasses import dataclass
+from functools import lru_cache
+from typing import TYPE_CHECKING
 
-from sqlalchemy import and_, func
-from sqlalchemy.orm import Session
-
-from app.models.core import Document, DocumentSection
-from app.core.config import settings
 from app.adapters.base import BaseEmbedding
 from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
-from app.services.retrieval.bm25_index import get_bm25_encoder
-from app.services.retrieval.cache import QueryEmbeddingCache
+from app.core.config import settings
+from app.utils.bm25_index import get_bm25_encoder
+from app.utils.query_cache import QueryEmbeddingCache
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -92,16 +94,14 @@ def _get_query_cache() -> QueryEmbeddingCache:
 
 
 # ── TTL-cached document IDs ──────────────────────────────────────────────
-# Avoids running a complex PostgreSQL subquery on every chat request.
-# Cache is invalidated explicitly on document upload/delete.
 
 _doc_ids_cache: tuple[float, set[str]] | None = None
 _doc_ids_lock = threading.Lock()
-_DOC_IDS_TTL = 60.0  # seconds
+_DOC_IDS_TTL = settings.doc_ids_cache_ttl
 
 
 def _latest_document_ids(session: Session) -> set[str]:
-    """Return latest-version document IDs with a 60-second TTL cache."""
+    """Return latest-version document IDs with a 60-second TTL cache. Uses DocumentRepository."""
     global _doc_ids_cache
     with _doc_ids_lock:
         if _doc_ids_cache is not None:
@@ -109,30 +109,12 @@ def _latest_document_ids(session: Session) -> set[str]:
             if time.monotonic() - cached_at < _DOC_IDS_TTL:
                 return cached_ids
 
-    latest_versions = (
-        session.query(
-            Document.file_name.label("file_name"),
-            func.max(Document.version).label("max_version"),
-        )
-        .filter(Document.deleted_at.is_(None), Document.status == "ready")
-        .group_by(Document.file_name)
-        .subquery()
-    )
-    rows = (
-        session.query(Document.id)
-        .join(
-            latest_versions,
-            and_(
-                Document.file_name == latest_versions.c.file_name,
-                Document.version == latest_versions.c.max_version,
-            ),
-        )
-        .filter(Document.deleted_at.is_(None), Document.status == "ready")
-        .all()
-    )
-    result = {str(row[0]) for row in rows if row and row[0]}
+    from app.repositories.document_repository import DocumentRepository
+
+    repo = DocumentRepository(session)
+    result = repo.get_latest_active_document_ids()
     with _doc_ids_lock:
-        _doc_ids_cache = (time.monotonic(), result)  # type: ignore[assignment]
+        _doc_ids_cache = (time.monotonic(), result)
     logger.debug("Refreshed document ID cache: %d docs", len(result))
     return result
 
@@ -155,13 +137,10 @@ def retrieve_context(
     """Retrieve relevant document context for query/queries using 4-stage retrieval.
 
     Stages: Hybrid search → Section grouping → Dedup → Cross-encoder rerank.
-
-    Args:
-        session: SQLAlchemy session
-        query: Single query string or list of query variants (multi-query expansion)
-        limit: Maximum number of nodes to return
     """
-    # Normalize to list
+    from app.repositories.document_repository import DocumentRepository
+    from app.repositories.section_repository import SectionRepository
+
     queries = [query] if isinstance(query, str) else query
     primary_query = queries[0]
 
@@ -171,24 +150,16 @@ def retrieve_context(
 
     _t0 = time.monotonic()
 
+    doc_repo = DocumentRepository(session)
+    section_repo = SectionRepository(session)
+
     latest_doc_ids = _latest_document_ids(session)
     if not latest_doc_ids:
         logger.debug("No active documents found")
         return RagContext(nodes=[])
 
     doc_ids = list(latest_doc_ids)
-
-    # Fetch all document titles in one query (avoid N+1).
-    document_rows = (
-        session.query(Document.id, Document.title)
-        .filter(
-            Document.deleted_at.is_(None),
-            Document.status == "ready",
-            Document.id.in_(doc_ids),
-        )
-        .all()
-    )
-    title_by_id = {str(doc_id): title for doc_id, title in document_rows}
+    title_by_id = doc_repo.get_titles_by_ids(doc_ids)
     if not title_by_id:
         logger.debug("No document titles found")
         return RagContext(nodes=[])
@@ -196,7 +167,6 @@ def retrieve_context(
     _t1 = time.monotonic()
     logger.info("[PERF-RAG] Doc IDs + titles: %.3fs", _t1 - _t0)
 
-    # Query embedding — Redis cache avoids re-computing on repeated questions.
     cache = _get_query_cache()
     svc = _get_embedding_service()
     embed_fn = getattr(svc, "embed_query", None) or svc.embed
@@ -209,22 +179,18 @@ def retrieve_context(
     min_score = settings.retrieval_min_score
     fetch_k = min(80, max(50, section_top_k * settings.retrieval_chunk_top_k))
 
-    # ── Multi-query: search for each query variant, merge by node_id ────
-    merged: dict[str, tuple] = {}  # node_id → (RetrievedDocument, max_score)
+    merged: dict[str, tuple] = {}
 
     for q in queries:
-        # Dense embedding (cached)
         query_vector = cache.get(q)
         if query_vector is None:
             query_vector = embed_fn(q)
             cache.set(q, query_vector)
 
-        # BM25 sparse vector
         sparse_vector = None
         if sparse_encoder.is_ready:
             sparse_vector = sparse_encoder.encode_sparse_vector(q)
 
-        # Hybrid search
         results = vs.retrieve(
             query_vector=query_vector,
             top_k=fetch_k,
@@ -232,7 +198,6 @@ def retrieve_context(
             sparse_vector=sparse_vector,
         )
 
-        # Merge: keep highest score per node_id
         for item in results:
             nid = item.node_id
             if nid not in merged or item.score > merged[nid][1]:
@@ -246,10 +211,9 @@ def retrieve_context(
         _t2 - _t1,
     )
 
-    # Sort merged results by score descending
     all_results = [item for item, _ in sorted(merged.values(), key=lambda x: x[1], reverse=True)]
 
-    # ── Stage 1: Identify top sections from the single result set ────────
+    # ── Stage 1: Identify top sections ────────────────────────────────────
     section_scores: dict[str, float] = {}
     section_doc_map: dict[str, str] = {}
     for item in all_results:
@@ -265,33 +229,25 @@ def retrieve_context(
         :section_top_k
     ]
 
-    # Load section details from PostgreSQL.
+    # Load section details via repository
     rag_sections: list[RagSection] = []
     if top_sections_ids:
-        section_rows = (
-            session.query(DocumentSection)
-            .filter(
-                DocumentSection.document_id.in_(doc_ids),
-                DocumentSection.section_id.in_(top_sections_ids),
-            )
-            .all()
-        )
+        section_rows = section_repo.get_sections_for_rag(doc_ids, top_sections_ids)
         for row in section_rows:
             rag_sections.append(
                 RagSection(
-                    section_id=row.section_id,
-                    document_id=str(row.document_id),
-                    title=row.title,
-                    content=row.content or "",
-                    level=row.level,
-                    image_count=row.image_count,
-                    table_count=row.table_count,
-                    breadcrumb=tuple(row.breadcrumb or []),
+                    section_id=row["section_id"],
+                    document_id=str(row["document_id"]),
+                    title=row["title"],
+                    content=row["content"] or "",
+                    level=row["level"],
+                    image_count=row["image_count"],
+                    table_count=row["table_count"],
+                    breadcrumb=tuple(row["breadcrumb"] or []),
                 )
             )
 
-    # ── Stage 2: Re-rank in-memory (no 2nd Qdrant query) ────────────────
-    # Drop low-relevance chunks first.
+    # ── Stage 2: Re-rank in-memory ────────────────────────────────────────
     filtered = [item for item in all_results if item.score >= min_score]
     if len(filtered) < len(all_results):
         logger.debug(
@@ -301,7 +257,6 @@ def retrieve_context(
             min_score,
         )
 
-    # Prioritise chunks that belong to top sections, then sort by score descending.
     if top_sections_ids and filtered:
         top_sections_set = set(top_sections_ids)
         in_section: list = []
@@ -312,15 +267,12 @@ def retrieve_context(
                 in_section.append(item)
             else:
                 out_section.append(item)
-        # Sort each group by score descending, then merge (in-section first)
         in_section.sort(key=lambda x: x.score, reverse=True)
         out_section.sort(key=lambda x: x.score, reverse=True)
         filtered = in_section + out_section
 
-    # Deduplicate overlapping chunks within the same section.
-    # Adjacent chunks share ~75 token overlap — keep only the higher-scored one.
     if filtered:
-        _seen_texts: dict[str, int] = {}  # first 100 chars → index in deduped
+        _seen_texts: dict[str, int] = {}
         deduped: list = []
         for item in filtered:
             text_sig = (item.text or "")[:100]
@@ -328,7 +280,6 @@ def retrieve_context(
                 prev_idx = _seen_texts[text_sig]
                 if item.score > deduped[prev_idx].score:
                     deduped[prev_idx] = item
-                # Skip this duplicate
             else:
                 _seen_texts[text_sig] = len(deduped)
                 deduped.append(item)
@@ -337,11 +288,9 @@ def retrieve_context(
         filtered = deduped
 
     # ── Stage 3: Cross-encoder reranking ────────────────────────────────
-    # Re-rank candidates with Vietnamese cross-encoder for higher precision.
     if filtered:
         rerank_top_k = settings.retrieval_rerank_top_k
-        # Cap candidates to avoid processing too many through cross-encoder
-        _MAX_RERANK_CANDIDATES = 30
+        _MAX_RERANK_CANDIDATES = settings.retrieval_max_rerank_candidates
         if len(filtered) > _MAX_RERANK_CANDIDATES:
             logger.debug(
                 "Reranker cap: %d → %d candidates",
@@ -353,7 +302,7 @@ def retrieve_context(
             _t_rerank = time.monotonic()
             _pre_rerank_count = len(filtered)
             try:
-                from app.services.retrieval.reranker import get_reranker
+                from app.adapters.reranker import get_reranker
 
                 reranker = get_reranker()
                 filtered = reranker.rerank(
@@ -374,6 +323,7 @@ def retrieve_context(
                 _pre_rerank_count,
                 len(filtered),
             )
+
     nodes: list[RagNode] = []
     for item in filtered[:limit]:
         heading = (
@@ -412,6 +362,7 @@ def retrieve_context(
 
 
 def build_answer(query: str, context: RagContext, history: list[dict[str, str]] | None = None) -> dict:
+    """Build the answer seed from RAG context for AI provider."""
     if not context.nodes:
         return {
             "answer": "Hiện tại tôi chưa có tài liệu nào để trả lời câu hỏi này. Vui lòng yêu cầu Admin upload thêm tài liệu vào hệ thống.",
@@ -419,22 +370,18 @@ def build_answer(query: str, context: RagContext, history: list[dict[str, str]] 
             "context": [],
         }
 
-    # Build section lookup for breadcrumbs
     section_map: dict[str, RagSection] = {}
     if context.sections:
         for sec in context.sections:
             section_map[sec.section_id] = sec
 
-    # Sort nodes by score descending — most relevant first for LLM context
     sorted_nodes = sorted(context.nodes, key=lambda n: n.score, reverse=True)
 
-    # Build enriched context blocks with breadcrumb hierarchy
     context_blocks = []
     citations = []
     for idx, node in enumerate(sorted_nodes, start=1):
         full_text = node.full_text or ""
 
-        # Enrich with breadcrumb from section
         sec = section_map.get(node.section_id) if node.section_id else None
         if sec and sec.breadcrumb:
             breadcrumb_path = " > ".join(sec.breadcrumb)

@@ -239,7 +239,9 @@ class DoclingParser(BaseParser):
                     try:
                         from hierarchical.postprocessor import ResultPostprocessor
 
-                        ResultPostprocessor(result).process()
+                        # source=tmp_path enables PDF-bookmark/ToC extraction via pymupdf.
+                        # Without it, only stylistic inference (numbering, font size) runs.
+                        ResultPostprocessor(result, source=tmp_path).process()
                         logger.info("Applied hierarchical heading post-processor")
                     except ImportError:
                         logger.debug("docling-hierarchical-pdf not installed, skipping hierarchy fix")
@@ -911,7 +913,7 @@ class DoclingParser(BaseParser):
 
     def _refine_nodes(self, nodes: List[IngestedNode]) -> List[IngestedNode]:
         """Rule-based text refinement: fix OCR errors, normalize whitespace."""
-        from app.services.ingestion.rule_based_refiner import rule_based_refiner
+        from app.utils.text_refiner import rule_based_refiner
 
         heading_stack: dict[int, str] = {}
 
@@ -943,7 +945,7 @@ class DoclingParser(BaseParser):
 
     def _refine_sections(self, sections_data: List[dict]) -> List[dict]:
         """Apply text refinement to section titles and content."""
-        from app.services.ingestion.rule_based_refiner import rule_based_refiner
+        from app.utils.text_refiner import rule_based_refiner
 
         for sec in sections_data:
             if sec.get("title"):

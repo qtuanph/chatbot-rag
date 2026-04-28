@@ -1,6 +1,6 @@
 """Chat & session services."""
 
-from app.services.chat.store import ChatStore
-from app.services.chat.memory import UserMemoryService
+from app.services.chat.chat_service import ChatService
+from app.services.chat.user_memory_service import UserMemoryService
 
-__all__ = ["ChatStore", "UserMemoryService"]
+__all__ = ["ChatService", "UserMemoryService"]

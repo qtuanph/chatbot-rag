@@ -28,7 +28,7 @@ class ChatStore:
         payload = json.dumps({"role": role, "content": content})
         pipe = self.client.pipeline()
         pipe.rpush(key, payload)
-        pipe.expire(key, 24 * 60 * 60)
+        pipe.expire(key, settings.chat_history_redis_ttl)
         pipe.execute()
 
     def get_history(self, scope_id: str, session_id: str) -> list[dict[str, str]]:
@@ -44,7 +44,7 @@ class ChatStore:
         key = self.history_key(scope_id, session_id)
         if self.client.llen(key) > 0:
             return
-        for msg in db_messages[-40:]:
+        for msg in db_messages[-settings.chat_history_limit :]:
             payload = json.dumps({"role": msg["role"], "content": msg["content"]})
             self.client.rpush(key, payload)
-        self.client.expire(key, 24 * 60 * 60)
+        self.client.expire(key, settings.chat_history_redis_ttl)

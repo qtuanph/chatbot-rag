@@ -8,12 +8,12 @@ from celery.exceptions import SoftTimeLimitExceeded
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.models.core import Document
+from app.models.document import Document
 from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
-from app.services.storage import build_storage
-from app.services.ingestion.pipeline import IngestionPipeline
-from app.services.ingestion.parser_manager import ParserManager
+from app.adapters.storage import build_storage
+from app.services.ingestion.ingestion_service import IngestionService
+from app.adapters.parsers.manager import ParserManager
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,11 @@ def _verify_ingestion(
     name="app.workers.upload_pipeline.parse_document_task",
     bind=True,
     acks_late=True,
+    autoretry_for=(ConnectionError, TimeoutError),
+    retry_backoff=settings.celery_retry_backoff,
+    retry_backoff_max=settings.celery_retry_backoff_max,
+    retry_jitter=True,
+    max_retries=settings.celery_max_retries,
 )
 def parse_document_task(self, task_id: str, document_id: str, file_path: str, user_id: str = None) -> dict:
     """
@@ -148,7 +153,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
         # Open a DB session for section storage during ingestion
         db_session = SessionLocal()
 
-        pipeline = IngestionPipeline(
+        pipeline = IngestionService(
             parser_manager=parser_manager,
             embedding_service=embedding_service,
             vector_store=vector_store,
@@ -249,13 +254,13 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             session.commit()
 
             # Invalidate cached doc IDs so next chat request picks up new document
-            from app.services.retrieval.rag import invalidate_doc_ids_cache
+            from app.services.retrieval.retrieval_service import invalidate_doc_ids_cache
 
             invalidate_doc_ids_cache()
 
             # Rebuild BM25 index from all Qdrant chunks (includes new document)
             logger.info("[%s] Rebuilding BM25 index from Qdrant...", document_id)
-            from app.services.retrieval.bm25_index import update_bm25_index
+            from app.utils.bm25_index import update_bm25_index
 
             update_bm25_index([n.text for n in ingestion_result.nodes])
 

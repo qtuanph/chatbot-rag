@@ -1,4 +1,4 @@
-"""Object storage implementations and factory."""
+"""Object storage adapter — S3/RustFS integration."""
 
 from abc import ABC, abstractmethod
 from pathlib import Path

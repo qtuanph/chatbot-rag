@@ -37,11 +37,13 @@ class VietnameseReranker:
 
     def __init__(self):
         model_name = settings.retrieval_rerank_model
-        logger.info("Loading reranker model: %s ...", model_name)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info("Loading reranker model: %s (device=%s) ...", model_name, self.device)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name, trust_remote_code=True)
+        self.model.to(self.device)
         self.model.eval()
-        logger.info("Reranker model loaded: %s", model_name)
+        logger.info("Reranker model loaded: %s on %s", model_name, self.device)
 
     def rerank(
         self,
@@ -83,7 +85,7 @@ class VietnameseReranker:
                 truncation=True,
                 return_tensors="pt",
                 max_length=_MAX_LENGTH,
-            )
+            ).to(self.device)
             scores = self.model(**inputs, return_dict=True).logits.view(-1).float()
 
         # Attach scores and sort

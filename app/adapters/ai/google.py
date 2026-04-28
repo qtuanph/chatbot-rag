@@ -172,7 +172,7 @@ class _ThoughtFilter:
 
 
 # Maximum conversation turns to include in context (for performance)
-_MAX_HISTORY_MESSAGES = 20
+_MAX_HISTORY_MESSAGES = settings.ai_max_history_messages
 
 
 class GoogleAIProvider(AIProvider):
@@ -196,16 +196,21 @@ class GoogleAIProvider(AIProvider):
         self._headers = {"x-goog-api-key": self.api_key}
 
         self._limits = httpx.Limits(
-            max_keepalive_connections=10,
-            max_connections=50,
+            max_keepalive_connections=settings.ai_http_keepalive_connections,
+            max_connections=settings.ai_http_max_connections,
             keepalive_expiry=30.0,
         )
         self._client: httpx.AsyncClient | None = None
 
-    def _get_client(self, timeout: float = 300.0) -> httpx.AsyncClient:
+    @property
+    def model_name(self) -> str:
+        """Return the model identifier for analytics/token tracking."""
+        return self.model
+
+    def _get_client(self, timeout: float | None = None) -> httpx.AsyncClient:
         """Get or create a reusable httpx client."""
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=timeout, limits=self._limits)
+            self._client = httpx.AsyncClient(timeout=timeout or settings.ai_stream_timeout, limits=self._limits)
         return self._client
 
     async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> dict[str, Any]:
@@ -299,8 +304,8 @@ class GoogleAIProvider(AIProvider):
             "contents": contents,
             "systemInstruction": {"parts": [{"text": system_text}]},
             "generationConfig": {
-                "temperature": 0.3,
-                "maxOutputTokens": 8192,
+                "temperature": settings.ai_temperature,
+                "maxOutputTokens": settings.ai_max_output_tokens,
                 "thinkingConfig": {"thinkingLevel": "MINIMAL"},
             },
         }
@@ -310,50 +315,47 @@ class GoogleAIProvider(AIProvider):
         for attempt in range(3):
             try:
                 client = self._get_client()
-                response = await client.post(url, json=payload, headers=self._headers)
-                response.raise_for_status()
 
-                chunk_count = 0
-                thought_filter = _ThoughtFilter()
+                async with client.stream("POST", url, json=payload, headers=self._headers) as response:
+                    response.raise_for_status()
 
-                async for line in response.aiter_lines():
-                    if not line.strip():
-                        continue
+                    chunk_count = 0
+                    thought_filter = _ThoughtFilter()
 
-                    try:
-                        if line.startswith("data: "):
-                            json_str = line[6:]
-                            data = json.loads(json_str)
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
 
-                            # Capture usage metadata from Gemini response
-                            usage = data.get("usageMetadata")
-                            if usage:
-                                self.last_usage = {
-                                    "prompt_tokens": usage.get("promptTokenCount", 0),
-                                    "completion_tokens": usage.get("candidatesTokenCount", 0),
-                                    "total_tokens": usage.get("totalTokenCount", 0),
-                                }
+                        try:
+                            if line.startswith("data: "):
+                                json_str = line[6:]
+                                data = json.loads(json_str)
 
-                            text = self._extract_text(data)
-                            if text:
-                                # Filter thought blocks from stream
-                                filtered = thought_filter.feed(text)
-                                if filtered:
-                                    chunk_count += 1
-                                    logger.debug("Yielding chunk #%d: %d chars", chunk_count, len(filtered))
-                                    yield filtered
-                    except json.JSONDecodeError as e:
-                        logger.warning("Failed to parse SSE line: %s (line: %s)", e, line[:200])
-                        continue
-                    except Exception as e:
-                        logger.warning("Error processing SSE chunk: %s", e)
-                        continue
+                                usage = data.get("usageMetadata")
+                                if usage:
+                                    self.last_usage = {
+                                        "prompt_tokens": usage.get("promptTokenCount", 0),
+                                        "completion_tokens": usage.get("candidatesTokenCount", 0),
+                                        "total_tokens": usage.get("totalTokenCount", 0),
+                                    }
 
-                # Flush remaining non-thought content
-                remaining = thought_filter.flush()
-                if remaining:
-                    chunk_count += 1
-                    yield remaining
+                                text = self._extract_text(data)
+                                if text:
+                                    filtered = thought_filter.feed(text)
+                                    if filtered:
+                                        chunk_count += 1
+                                        yield filtered
+                        except json.JSONDecodeError as e:
+                            logger.warning("Failed to parse SSE line: %s (line: %s)", e, line[:200])
+                            continue
+                        except Exception as e:
+                            logger.warning("Error processing SSE chunk: %s", e)
+                            continue
+
+                    remaining = thought_filter.flush()
+                    if remaining:
+                        chunk_count += 1
+                        yield remaining
 
                 return
 

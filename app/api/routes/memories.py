@@ -1,109 +1,51 @@
-from __future__ import annotations
-
-import logging
+"""Memories API — CRUD for user memories."""
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel
 
-from app.api.deps import AuthContext, get_auth_context
+from app.api.deps import AuthContext, get_auth_context, get_memory_service
 from app.core import http_errors
 from app.core.config import settings
-from app.db.session import SessionLocal
-from app.models.memory import UserMemory
-from app.services.auth.throttle import RequestThrottle
-from app.services.chat.memory import UserMemoryService
+from app.schemas.memories import MemoryInput, MemoryListResponse, MemoryResponse, MemoryUpdate
+from app.utils.throttle import RequestThrottle
+from app.services.chat.memory_service import MemoryService
 
 router = APIRouter(tags=["memories"])
-memory_service = UserMemoryService()
 throttle = RequestThrottle()
-logger = logging.getLogger(__name__)
 
 
-class MemoryInput(BaseModel):
-    memory_type: str = "instruction"  # preference | correction | instruction | fact
-    content: str
-
-
-class MemoryUpdate(BaseModel):
-    content: str | None = None
-    memory_type: str | None = None
-    is_active: bool | None = None
-
-
-class MemoryResponse(BaseModel):
-    id: str
-    memory_type: str
-    content: str
-    is_active: bool
-    created_at: str
-
-
-class MemoryListResponse(BaseModel):
-    items: list[MemoryResponse]
+def _to_response(row: dict) -> MemoryResponse:
+    return MemoryResponse(
+        id=row["id"],
+        memory_type=row["memory_type"],
+        content=row["content"],
+        is_active=row["is_active"],
+        created_at=row["created_at"],
+    )
 
 
 @router.get("/memories", response_model=MemoryListResponse)
-async def list_memories(auth: AuthContext = Depends(get_auth_context)) -> MemoryListResponse:
-    """List all active memories for the current user."""
-    with SessionLocal() as session:
-        rows = (
-            session.query(UserMemory)
-            .filter(UserMemory.user_id == auth.user_id)
-            .order_by(UserMemory.created_at.desc())
-            .all()
-        )
-
-    items = [
-        MemoryResponse(
-            id=str(row.id),
-            memory_type=row.memory_type,
-            content=row.content,
-            is_active=row.is_active,
-            created_at=row.created_at.isoformat(),
-        )
-        for row in rows
-    ]
-    return MemoryListResponse(items=items)
+async def list_memories(
+    auth: AuthContext = Depends(get_auth_context), service: MemoryService = Depends(get_memory_service)
+) -> MemoryListResponse:
+    rows = service.list_memories(auth.user_id)
+    return MemoryListResponse(items=[_to_response(r) for r in rows])
 
 
 @router.post("/memories", response_model=MemoryResponse, status_code=status.HTTP_201_CREATED)
 async def create_memory(
     data: MemoryInput,
     auth: AuthContext = Depends(get_auth_context),
+    service: MemoryService = Depends(get_memory_service),
 ) -> MemoryResponse:
-    """Create a new memory for the current user."""
-    throttle_key = f"throttle:memory:create:{auth.user_id}"
-    if not throttle.allow(throttle_key, limit=settings.effective_rate_limit(20), window_seconds=60):
+    if not throttle.allow(
+        f"throttle:memory:create:{auth.user_id}", limit=settings.effective_rate_limit(20), window_seconds=60
+    ):
         raise http_errors.too_many_requests("Too many memory creation requests")
-    if not data.content or not data.content.strip():
-        raise http_errors.bad_request("Memory content cannot be empty")
-
-    if data.memory_type not in ("preference", "correction", "instruction", "fact"):
-        raise http_errors.bad_request("Invalid memory type. Must be: preference, correction, instruction, or fact")
-
-    if len(data.content) > 1000:
-        raise http_errors.bad_request("Memory content too long (max 1000 characters)")
-
-    with SessionLocal() as session:
-        memory = UserMemory(
-            user_id=auth.user_id,
-            memory_type=data.memory_type,
-            content=data.content.strip(),
-        )
-        session.add(memory)
-        session.commit()
-        session.refresh(memory)
-
-        result = MemoryResponse(
-            id=str(memory.id),
-            memory_type=memory.memory_type,
-            content=memory.content,
-            is_active=memory.is_active,
-            created_at=memory.created_at.isoformat(),
-        )
-
-    memory_service._invalidate_cache(auth.user_id)
-    return result
+    try:
+        result = service.create_memory(user_id=auth.user_id, memory_type=data.memory_type, content=data.content)
+    except ValueError as e:
+        raise http_errors.bad_request(str(e)) from None
+    return _to_response(result)
 
 
 @router.patch("/memories/{memory_id}", response_model=MemoryResponse)
@@ -111,51 +53,39 @@ async def update_memory(
     memory_id: str,
     data: MemoryUpdate,
     auth: AuthContext = Depends(get_auth_context),
+    service: MemoryService = Depends(get_memory_service),
 ) -> MemoryResponse:
-    """Update a memory (toggle active, edit content)."""
-    throttle_key = f"throttle:memory:update:{auth.user_id}"
-    if not throttle.allow(throttle_key, limit=settings.effective_rate_limit(20), window_seconds=60):
+    if not throttle.allow(
+        f"throttle:memory:update:{auth.user_id}", limit=settings.effective_rate_limit(20), window_seconds=60
+    ):
         raise http_errors.too_many_requests("Too many memory update requests")
-    with SessionLocal() as session:
-        memory = session.get(UserMemory, memory_id)
-        if memory is None or str(memory.user_id) != auth.user_id:
-            raise http_errors.not_found("Memory not found")
-
-        if data.content is not None:
-            memory.content = data.content.strip()
-        if data.memory_type is not None:
-            memory.memory_type = data.memory_type
-        if data.is_active is not None:
-            memory.is_active = data.is_active
-        session.commit()
-        session.refresh(memory)
-
-        result = MemoryResponse(
-            id=str(memory.id),
-            memory_type=memory.memory_type,
-            content=memory.content,
-            is_active=memory.is_active,
-            created_at=memory.created_at.isoformat(),
+    try:
+        result = service.update_memory(
+            memory_id=memory_id,
+            user_id=auth.user_id,
+            content=data.content,
+            memory_type=data.memory_type,
+            is_active=data.is_active,
         )
-
-    memory_service._invalidate_cache(auth.user_id)
-    return result
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg:
+            raise http_errors.not_found(msg) from None
+        raise http_errors.bad_request(msg) from None
+    return _to_response(result)
 
 
 @router.delete("/memories/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_memory(
     memory_id: str,
     auth: AuthContext = Depends(get_auth_context),
+    service: MemoryService = Depends(get_memory_service),
 ) -> None:
-    """Delete a memory."""
-    throttle_key = f"throttle:memory:delete:{auth.user_id}"
-    if not throttle.allow(throttle_key, limit=settings.effective_rate_limit(20), window_seconds=60):
+    if not throttle.allow(
+        f"throttle:memory:delete:{auth.user_id}", limit=settings.effective_rate_limit(20), window_seconds=60
+    ):
         raise http_errors.too_many_requests("Too many memory delete requests")
-    with SessionLocal() as session:
-        memory = session.get(UserMemory, memory_id)
-        if memory is None or str(memory.user_id) != auth.user_id:
-            raise http_errors.not_found("Memory not found")
-        session.delete(memory)
-        session.commit()
-
-    memory_service._invalidate_cache(auth.user_id)
+    try:
+        service.delete_memory(memory_id=memory_id, user_id=auth.user_id)
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None

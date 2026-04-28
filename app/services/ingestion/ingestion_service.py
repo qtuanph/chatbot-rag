@@ -14,10 +14,10 @@ from dataclasses import dataclass
 
 from app.adapters.base import IngestedNode, ParsingMetadata
 from app.core.hardware import hardware
-from app.services.ingestion.parser_manager import ParserManager
-from app.services.ingestion.hierarchy_validator import HierarchyValidator, ValidationReport
+from app.adapters.parsers.manager import ParserManager
+from app.utils.hierarchy_validator import HierarchyValidator, ValidationReport
 from app.core.config import settings
-from app.services.storage.document_store import SectionRepository
+from app.repositories.section_repository import SectionRepository
 
 if TYPE_CHECKING:
     from app.adapters.base import BaseEmbedding, BaseVectorStore
@@ -48,7 +48,7 @@ class IngestionResult:
 ProgressCallback = Callable[[str, int, str], None]  # (stage, percent, message)
 
 
-class IngestionPipeline:
+class IngestionService:
     """
     Main ingestion orchestration:
     1. Parse document (DoclingParser → ClassicParser fallback)
@@ -63,11 +63,13 @@ class IngestionPipeline:
         embedding_service: BaseEmbedding | None = None,
         vector_store: BaseVectorStore | None = None,
         db_session: Session | None = None,
+        section_repo: SectionRepository | None = None,
     ):
         self.parser_manager = parser_manager
         self.embedding_service = embedding_service
         self.vector_store = vector_store
         self.db_session = db_session
+        self.section_repo = section_repo
         self.validator = HierarchyValidator()
 
     def ingest(
@@ -142,7 +144,7 @@ class IngestionPipeline:
             if sections_data and self.db_session:
                 _cb("sections", 37, f"Storing {len(sections_data)} sections…")
                 try:
-                    section_repo = SectionRepository(self.db_session)
+                    section_repo = self.section_repo or SectionRepository(self.db_session)
                     section_ids = section_repo.store_sections(document_id, sections_data)
                     section_count = len(section_ids)
                     logger.info(
@@ -167,7 +169,7 @@ class IngestionPipeline:
                 pending_store_tasks: deque[tuple[int, list[IngestedNode], Future[list[str]]]] = deque()
 
                 # BM25 sparse encoder — always available, builds vocab on first use
-                from app.services.retrieval.bm25_index import get_bm25_encoder
+                from app.utils.bm25_index import get_bm25_encoder
 
                 bm25_encoder = get_bm25_encoder()
                 bm25_ready = bm25_encoder.is_ready

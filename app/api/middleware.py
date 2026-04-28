@@ -157,7 +157,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, requests_per_minute: int = 60):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
-        from app.services.auth.throttle import RequestThrottle
+        from app.utils.throttle import RequestThrottle
 
         self.throttle = RequestThrottle()
 

@@ -1,17 +1,15 @@
 """Ingestion service module: pipeline orchestration, validation, and recovery."""
 
-from app.services.ingestion.hierarchy_validator import HierarchyValidator, ValidationReport
-from app.services.ingestion.parser_manager import ParserManager
-from app.services.ingestion.pipeline import IngestionPipeline, IngestionResult
-from app.services.ingestion.recovery import PipelineRecoveryManager
-from app.services.ingestion.rule_based_refiner import RuleBasedRefiner
+from app.utils.hierarchy_validator import HierarchyValidator, ValidationReport
+from app.adapters.parsers.manager import ParserManager
+from app.services.ingestion.ingestion_service import IngestionService, IngestionResult
+from app.services.ingestion.recovery_service import RecoveryService
 
 __all__ = [
     "HierarchyValidator",
     "ValidationReport",
     "ParserManager",
-    "IngestionPipeline",
+    "IngestionService",
     "IngestionResult",
-    "PipelineRecoveryManager",
-    "RuleBasedRefiner",
+    "RecoveryService",
 ]

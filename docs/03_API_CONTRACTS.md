@@ -54,6 +54,7 @@ Applied via `next.config.ts` `headers()` on all routes:
 | `PATCH /memories/{id}` | 20/min per user | `throttle:memory:update:{user_id}` |
 | `DELETE /memories/{id}` | 20/min per user | `throttle:memory:delete:{user_id}` |
 | `POST /chat/stream` | 30/min per user | existing chat throttle |
+| `GET /analytics/stats` | 60/min per user | `throttle:analytics:{user_id}` |
 | SSE endpoint | nginx rate limit 100r/s burst=20 | nginx limit_req zone |
 
 - Non-production: relax via `RATE_LIMIT_RELAXED_MODE` + `RATE_LIMIT_RELAXED_FLOOR`
@@ -70,6 +71,8 @@ Applied via `next.config.ts` `headers()` on all routes:
 | Authorization | RBAC mandatory; role values from `roles` table |
 | HTTP status codes | Use `status.HTTP_*` constants, not raw numbers |
 | API layer errors | Use `app/core/http_errors.py` helpers, not direct HTTPException |
+| Service exceptions | Services raise `ValueError`/`RuntimeError` only — routes catch and translate to `http_errors.*` |
+| Route responsibility | Routes handle HTTP concerns only (SSE streaming, rate limiting, response formatting). ChatService.prepare_chat() handles full orchestration |
 
 ## Upload Contract
 
@@ -103,7 +106,7 @@ Non-streaming response:
 { "session_id": "session-id", "answer": "grounded answer text", "citations": [] }
 ```
 
-Streaming: SSE with `{"chunk": "...", "done": false}` chunks, final `{"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "chunks", "chars", "prompt_tokens", "completion_tokens", "total_tokens", "estimated_cost_usd"}}`.
+Streaming: SSE with `{"chunk": "...", "done": false}` chunks, final `{"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "chunks", "chars", "prompt_tokens", "completion_tokens", "total_tokens", "model_used", "estimated_cost_usd"}}`.
 
 ## Error Response Envelope
 
@@ -162,7 +165,7 @@ Chat features:
 - Memory injection: active memories → systemInstruction
 - Memory extraction: async post-response via provider singleton → user_memories
 - Token tracking: usageMetadata from Gemini → persisted to ChatMessage + frontend stats bar
-- Cost estimation: Gemini 2.5 Flash pricing ($0.075/1M input, $0.30/1M output)
+- Cost estimation: Configurable pricing via `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0 for free tier)
 - Input validation: nh3 HTML sanitization for query input
 - SSE abort: Frontend AbortController cancels stream on unmount/new message
 - Thinking suppressed: 4 layers (see 01_ARCHITECTURE.md)
@@ -182,10 +185,8 @@ Memory types: `preference` | `correction` | `instruction` | `fact`. Max 1000 cha
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| GET | `/health` | Public | Simple health status |
-| GET | `/health/data` | JWT | Detailed snapshot with parallel checks, cache, throttled |
-| GET | `/health/nodes` | JWT | `?document_id=` → Qdrant nodes list, throttled |
-| GET | `/health/node` | JWT | `?document_id=&node_id=` → single node detail, throttled |
+| GET | `/health` | Public | Liveness probe — `{"status": "up"}` for load balancers |
+| GET | `/health/data` | Admin | Service configuration overview (passive — no active probing) |
 
 ### Tree API
 
@@ -196,6 +197,25 @@ Memory types: `preference` | `correction` | `instruction` | `fact`. Max 1000 cha
 | GET | `/tree/{document_id}/search?query=` | JWT | Search nodes by title/content (query 1-500 chars), throttled |
 
 Tree ordering: `document_sections.order_index` is canonical sort key. `page_number` is display hint (may be range string like "1-3").
+
+### Analytics
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| GET | `/analytics/stats` | JWT | Token usage analytics. Admin: system-wide. Member: own sessions only. |
+
+Response:
+```json
+{
+  "total_messages": 150, "total_sessions": 12, "total_tokens_in": 50000,
+  "total_tokens_out": 120000, "total_tokens": 170000, "avg_latency_ms": 2500,
+  "estimated_cost_usd": 0.0, "model_used": "gemma-4-26b-a4b-it",
+  "daily": [{"date": "2026-04-28", "messages": 10, "tokens_in": 3000, "tokens_out": 8000, "avg_latency_ms": 2200, "cost_usd": 0.0}],
+  "pricing": {"input_per_1m": 0.0, "output_per_1m": 0.0, "model": "gemma-4-26b-a4b-it", "note": "Free tier"}
+}
+```
+
+Rate limit: 60/min per user. Throttle key: `throttle:analytics:{user_id}`.
 
 ### Demo UI (app/view/ — removable at go-live)
 

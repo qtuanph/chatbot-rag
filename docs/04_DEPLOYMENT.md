@@ -11,7 +11,7 @@ Docker Compose with these services:
 | nginx | Reverse proxy — **port 80 (public entry)** | Public |
 | api | FastAPI backend | Internal via nginx |
 | webapp | Next.js 16 frontend | Internal via nginx |
-| upload-pipeline | Celery GPU worker — queues: ingestion, default | Internal |
+| upload-pipeline | Celery GPU worker — queues: ingestion | Internal |
 | cleanup-pipeline | Celery lightweight worker + beat — queues: cleanup | Internal |
 | db | PostgreSQL 18 | Internal |
 | redis | Broker/result/cache | Internal |
@@ -35,17 +35,32 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | Variable | Purpose |
 |----------|---------|
 | DATABASE_URL | PostgreSQL connection |
-| REDIS_URL | Redis connection |
+| REDIS_URL | Redis connection (DB 2 for app cache) |
+| CELERY_BROKER_URL | Redis DB 0 (Celery broker) |
+| CELERY_RESULT_BACKEND | Redis DB 1 (task results) |
 | S3_* | Object storage configuration |
 | QDRANT_URL | Qdrant endpoint |
 | QDRANT_COLLECTION | Vector collection name |
 | EMBEDDING_MODEL | Embedding model selection |
 | EMBEDDING_VECTOR_SIZE | Qdrant dimension (default 1024) |
 | AI_PROVIDER | Chat generation backend |
+| AI_INPUT_COST_PER_1M | Input token cost per 1M tokens (default 0.0) |
+| AI_OUTPUT_COST_PER_1M | Output token cost per 1M tokens (default 0.0) |
 | NEXTAUTH_URL | Public webapp base URL |
 | NEXTAUTH_SECRET | next-auth signing secret |
 | NEXT_PUBLIC_API_URL | Browser API URL (`/api/bep`) |
 | API_INTERNAL_URL | Server-side API URL (`http://api:8000/api/v1`) |
+| REDIS_MAXMEMORY | Redis maxmemory (default 512mb) |
+| CELERY_TASK_TIME_LIMIT | Task hard kill in seconds (default 1800) |
+| CELERY_TASK_SOFT_TIME_LIMIT | Task soft kill in seconds (default 1500) |
+| CELERY_WORKER_MAX_MEMORY_KB | Worker memory limit (default 1500000) |
+| CELERY_MAX_TASKS_PER_CHILD | Recycle after N tasks (default 50) |
+| AI_TEMPERATURE | Generation temperature (default 0.3) |
+| AI_MAX_OUTPUT_TOKENS | Max output tokens (default 8192) |
+| AI_MAX_HISTORY_MESSAGES | Multi-turn context window (default 20) |
+| AI_STREAM_TIMEOUT | HTTP timeout for AI streaming (default 300s) |
+| AI_HTTP_MAX_CONNECTIONS | httpx connection pool (default 50) |
+| RATE_LIMIT_GLOBAL_RPM | Global rate limit, production only (default 300) |
 
 Docker Compose: keep webapp variables in root `.env` for single source of truth.
 
@@ -97,16 +112,73 @@ Healthcheck cadence: 3s interval, 5s start_period. Startup ~25s.
 
 ## Connection Pool Sizing
 
-| Service | Pool | Overflow | Per-Worker | Total (4 workers) |
-|---------|------|----------|------------|-------------------|
-| PostgreSQL (api) | 10 | 10 | 20 | 80 max |
-| PostgreSQL (celery) | — | — | — | ~4 |
-| httpx (Gemini) | 50 max conn | 10 keepalive | 50 | 50 (shared singleton) |
-| Redis | per-instance | — | — | ~7 instances |
+| Service | Pool | Overflow | Notes |
+|---------|------|----------|-------|
+| PostgreSQL (api) | `hardware.db_pool_size` | `hardware.db_max_overflow` | Auto-scales: 10+10 (1 worker) → 40+40 (8 workers) |
+| PostgreSQL (celery) | — | — | ~4 |
+| httpx (Gemini) | `AI_HTTP_MAX_CONNECTIONS` (default 50) | `AI_HTTP_KEEPALIVE_CONNECTIONS` (default 10) | Shared singleton |
+| Redis | per-instance | — | ~7 instances |
 
-PostgreSQL: `pool_size=10, max_overflow=10, pool_timeout=30, pool_recycle=3600`. SQLAlchemy engine in `app/db/session.py`.
+PostgreSQL: pool auto-calculated as `max(10, uvicorn_workers * 5)`. SQLAlchemy engine in `app/db/session.py` reads from `app/core/hardware.py`.
 
-AI provider: singleton via `@lru_cache(maxsize=1)` in `app/adapters/ai/__init__.py`. One httpx.AsyncClient with `max_connections=50, keepalive_expiry=30`.
+AI provider: singleton via `@lru_cache(maxsize=1)` in `app/adapters/ai/__init__.py`. httpx pool configurable via `AI_HTTP_MAX_CONNECTIONS` / `AI_HTTP_KEEPALIVE_CONNECTIONS`.
+
+## Resource Limits
+
+| Service | CPUs | Memory | Notes |
+|---------|------|--------|-------|
+| api | 4.0 | 6G | Docker deploy limits — increase for production |
+| redis | — | `REDIS_MAXMEMORY` env var (default 512mb) | allkeys-lru eviction |
+| upload-pipeline | — | — | GPU device reserved |
+
+## Hardware Auto-Detection
+
+`app/core/hardware.py` — HardwareProfile singleton detected once at module load. **3-tier VRAM-aware scaling.**
+
+| Mode | Condition | uvicorn workers | celery pool | celery concurrency | Reason |
+|------|-----------|-----------------|-------------|-------------------|--------|
+| TIGHT GPU | CUDA + VRAM headroom < 6GB | 1 | solo | min(cpu, 4) | Prevent VRAM duplication |
+| COMFORTABLE GPU | CUDA + VRAM headroom ≥ 6GB | min(cpu, ram//2, 8) | prefork | min(cpu, 8) | Multi-worker safe |
+| CPU only | No CUDA | min(cpu, ram//2, 8) | prefork | min(cpu, 8) | Full throughput |
+
+VRAM headroom = total VRAM − 2GB (embedding + reranker). GTX 1650 4GB → TIGHT. RTX 4090 24GB → COMFORTABLE.
+
+Entrypoint: `ops/entrypoint-api.sh` reads `hardware.uvicorn_workers`. Worker: `ops/entrypoint-worker.sh` auto-selects pool type based on VRAM.
+
+## Redis Configuration
+
+```
+redis-server --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes
+```
+
+| DB | Purpose |
+|----|---------|
+| 0 | Celery broker (task messages) |
+| 1 | Celery result backend (task results) |
+| 2 | App cache (query embedding cache, rate limits, chat history) |
+
+Separation prevents `allkeys-lru` eviction from deleting broker task messages.
+
+## Celery Worker Configuration
+
+All values configurable via env vars. Defaults designed for dev laptop.
+
+| Setting | Env Var | Default | Purpose |
+|---------|---------|---------|---------|
+| task_time_limit | CELERY_TASK_TIME_LIMIT | 1800s | Hard kill |
+| task_soft_time_limit | CELERY_TASK_SOFT_TIME_LIMIT | 1500s | Graceful SoftTimeLimitExceeded |
+| worker_max_memory_per_child | CELERY_WORKER_MAX_MEMORY_KB | 1,500,000 (1.5GB) | Kill child if RSS exceeded |
+| visibility_timeout | CELERY_VISIBILITY_TIMEOUT | 7200s (2h) | Prevent Redis re-delivery |
+| result_expires | CELERY_RESULT_EXPIRES | 86400s (24h) | Task result TTL |
+| max_tasks_per_child | CELERY_MAX_TASKS_PER_CHILD | 50 | Recycle child after N tasks |
+| retry_backoff (upload) | CELERY_RETRY_BACKOFF | 30s | Exponential backoff base |
+| retry_backoff_max | CELERY_RETRY_BACKOFF_MAX | 600s | Max backoff |
+| max_retries | CELERY_MAX_RETRIES | 3 | Transient failure recovery |
+| broker_connection_retry_on_startup | — | true | Don't crash if Redis unavailable |
+| worker_disable_rate_limits | — | true | Rate limit at API level |
+| worker_prefetch_multiplier | — | 1 | Fair distribution |
+| task_acks_late | — | true | ACK after completion |
+| Queue routing | — | ingestion→upload, cleanup→cleanup-pipeline | VRAM-aware separation |
 
 ## Observability Baseline
 

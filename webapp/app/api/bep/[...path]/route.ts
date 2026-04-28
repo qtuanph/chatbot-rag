@@ -32,8 +32,8 @@ async function proxyHandler(
     headers,
   };
 
-  // Add timeout for non-SSE requests (SSE needs long-lived connection)
-  const isSSERequest = request.headers.get("accept")?.includes("text/event-stream");
+  // Detect SSE requests by URL path — skip timeout for long-lived connections
+  const isSSERequest = path.some((segment) => segment === "stream");
   let controller: AbortController | null = null;
   if (!isSSERequest) {
     controller = new AbortController();

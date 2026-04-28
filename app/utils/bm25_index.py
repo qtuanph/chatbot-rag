@@ -64,7 +64,7 @@ def build_bm25_index_from_qdrant() -> int:
     Raises:
         Exception: If Qdrant scroll fails or vocab build fails.
     """
-    from app.services.retrieval.rag import _get_vector_store
+    from app.services.retrieval.retrieval_service import _get_vector_store
 
     vs = _get_vector_store()
 

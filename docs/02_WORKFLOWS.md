@@ -12,7 +12,7 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant Redis
     participant Worker as upload-pipeline (GPU)
-    participant Pipeline as IngestionPipeline
+    participant Pipeline as IngestionService
     participant Refiner as Rule-Based Refiner
     participant Qdrant
 
@@ -33,7 +33,7 @@ sequenceDiagram
     Pipeline->>Pipeline: Docling iterate_items() — Method D
     Note over Pipeline: PaddleOCR: force_full_page_ocr=True (mandatory)
     Pipeline->>Pipeline: Extract items: SectionHeader, Text, Table, ListItem...
-    Pipeline->>Refiner: refine_text (0GB VRAM, ~1ms)
+    Pipeline->>Refiner: refine_text via RuleBasedRefiner (app/utils/text_refiner.py, 0GB VRAM, ~1ms)
     Pipeline->>DB: Store sections in document_sections table
 
     loop For each chunk of 32 nodes
@@ -73,33 +73,35 @@ sequenceDiagram
 
     Browser->>API: POST /api/v1/chat/stream (SSE)
     API->>API: validate auth and payload
-    API->>Redis: check rate limit (atomic Lua script)
-    API->>Redis: query embedding cache lookup (MD5 key)
+    API->>ChatSvc: prepare_chat() — full orchestration
+    ChatSvc->>Redis: check rate limit (atomic Lua script)
+    ChatSvc->>Redis: query embedding cache lookup (MD5 key)
     alt Cache HIT
-        Redis-->>API: cached query vector
+        Redis-->>ChatSvc: cached query vector
     else Cache MISS
-        API->>Embedder: embed(query_text)
-        Embedder-->>API: query vector
-        API->>Redis: cache.set(query, vector, TTL=1h)
+        ChatSvc->>Embedder: embed(query_text)
+        Embedder-->>ChatSvc: query vector
+        ChatSvc->>Redis: cache.set(query, vector, TTL=1h)
     end
-    API->>Retriever: retrieve_context(query_vector)
-    Retriever->>Qdrant: search top-50~80 (filtered to active docs)
-    Note over Retriever: Stage 1: group by section_id → top 3 sections (≥0.30)
-    Retriever->>DB: load section details from document_sections
-    Note over Retriever: Stage 2: re-rank chunks within sections (≥0.35)
-    Retriever-->>API: top chunks with section context and citations
+    ChatSvc->>Retriever: retrieve_context(query_vector) via DocumentRepository + SectionRepository
+    Retriever->>Qdrant: hybrid search (dense + BM25 RRF fusion) top-50~80
+    Note over Retriever: Stage 1: section grouping → top sections (≥0.30)
+    Retriever->>DB: load section details via SectionRepository.get_sections_for_rag()
+    Note over Retriever: Stage 2: cross-encoder rerank → top 5 chunks
+    Note over Retriever: Stage 3: context assembly with breadcrumbs
+    Retriever-->>ChatSvc: top chunks with section context and citations
 
-    API->>Memory: format_memories_for_prompt(user_id)
-    Memory-->>API: formatted memory string for systemInstruction
+    ChatSvc->>Memory: format_memories_for_prompt(user_id)
+    Memory-->>ChatSvc: formatted memory string for systemInstruction
 
     loop For each chunk of response
-        API->>Provider: chat_stream (maxOutputTokens=8192)
-        Provider-->>API: text chunk (thought:true parts filtered)
-        API-->>Browser: SSE data: {"chunk": "...", "done": false}
+        ChatSvc->>Provider: chat_stream (maxOutputTokens=8192)
+        Provider-->>ChatSvc: text chunk (thought:true parts filtered)
+        ChatSvc-->>Browser: SSE data: {"chunk": "...", "done": false}
     end
-    API->>DB: save user + assistant ChatMessage to PostgreSQL (tokens_in, tokens_out, latency_ms)
-    API->>Memory: extract_memories_from_turn() — async (tracked in _background_tasks)
-    API-->>Browser: SSE data: {"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "tokens", "estimated_cost_usd"}}
+    ChatSvc->>DB: save user + assistant ChatMessage to PostgreSQL (tokens_in, tokens_out, latency_ms)
+    ChatSvc->>Memory: extract_memories_from_turn() — async (tracked in _background_tasks)
+    ChatSvc-->>Browser: SSE data: {"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "tokens", "model_used", "estimated_cost_usd"}}
 ```
 
 ### Chat Invariants
@@ -108,7 +110,7 @@ sequenceDiagram
 |------|-------------|
 | Cache first | Check Redis for query embedding before calling model |
 | Doc ID cache | TTL-cached 60s, invalidated on upload/delete |
-| 2-stage retrieval | Single Qdrant query → section grouping (≥0.30) → chunk re-ranking (≥0.35) |
+| 4-stage retrieval | Hybrid search (dense + BM25 RRF fusion in Qdrant) → section grouping (≥0.30) → cross-encoder reranking (top 5) → context assembly with citations |
 | Citation required | Return citation payload for every grounded answer |
 | Rate limiting | Atomic Lua script — 30 req/min per user |
 | Provider swap safety | Chat route stays provider-agnostic via adapter |
@@ -118,8 +120,8 @@ sequenceDiagram
 | Thinking suppressed | 4 layers: thinkingConfig MINIMAL + thought:true filter + ThoughtFilter + strip_reasoning() |
 | Output bounds | maxOutputTokens: 8192, max_context_chars: 500000, streaming timeout 300s |
 | Clean saved text | strip_reasoning() applied to answer before saving to DB |
-| Token tracking | Gemini usageMetadata captured: prompt_tokens, completion_tokens persisted to ChatMessage |
-| Cost estimation | Input $0.075/1M + Output $0.30/1M tokens (Gemini 2.5 Flash pricing) |
+| Token tracking | Gemini usageMetadata captured: prompt_tokens, completion_tokens, model_used persisted to ChatMessage |
+| Cost estimation | Configurable via `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0 for free tier) |
 | Async task tracking | Background memory extraction tracked in _background_tasks set, prevent GC |
 | Frontend SSE abort | AbortController cancels stream on unmount or new message |
 | Session default | Empty "Chat mới" on page load, sidebar for history |
@@ -140,11 +142,12 @@ sequenceDiagram
     API->>Redis: enqueue delete_document_task (queue=cleanup)
     API-->>Client: 202 accepted
 
+    Cleanup->>Cleanup: CleanupService orchestrates 6-step hard delete
     Cleanup->>Registry: registry.delete() → status='deleted'
     Cleanup->>Qdrant: delete all vectors for document_id
-    Cleanup->>DB: delete sections from document_sections
+    Cleanup->>DB: SectionRepository.delete() → delete sections from document_sections
     Cleanup->>RustFS: delete file object
-    Cleanup->>DB: DELETE document row
+    Cleanup->>DB: DocumentRepository.hard_delete() → DELETE document row
     Cleanup->>Cleanup: invalidate_doc_ids_cache()
     Cleanup->>Registry: registry.purge()
 ```
@@ -182,6 +185,37 @@ sequenceDiagram
 | Persistence | Messages saved to PostgreSQL every turn; Redis is hot cache |
 | Ordering | GET /chat/sessions returns updated_at DESC for sidebar |
 | Config | `app/core/config.py` → `chat_session_ttl_days` |
+
+## Workflow 5: Analytics Data Flow
+
+```mermaid
+sequenceDiagram
+    participant Chat as Chat Route
+    participant DB as PostgreSQL
+    participant API as Analytics Endpoint
+    participant Browser
+
+    Note over Chat: Every chat turn
+    Chat->>DB: INSERT ChatMessage (tokens_in, tokens_out, latency_ms, model_used)
+    Chat->>DB: estimated_cost_usd = tokens * pricing
+
+    Note over API: GET /analytics/stats
+    Browser->>API: Request (JWT auth)
+    API->>API: Check role (admin=system-wide, member=own sessions)
+    API->>DB: Aggregate SUM(tokens), COUNT(messages), AVG(latency)
+    API->>DB: GROUP BY date → daily stats
+    API-->>Browser: {total_messages, total_tokens, avg_latency, estimated_cost_usd, daily[], pricing}
+```
+
+### Analytics Invariants
+
+| Rule | Detail |
+|------|--------|
+| Role scoping | Admin sees all sessions, member sees only own |
+| Pricing | `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0) |
+| Aggregation | Per-message tokens → SQL SUM/COUNT → endpoint |
+| Frontend | Admin: KPI cards + daily chart + cost comparison. Member: welcome screen |
+| Rate limit | 60/min per user |
 
 ## Error Handling Baseline
 

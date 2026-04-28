@@ -21,6 +21,9 @@ services:
         condition: service_healthy
     deploy:
       resources:
+        limits:
+          cpus: '4.0'
+          memory: 6G
         reservations:
           devices:
             - driver: nvidia
@@ -116,6 +119,7 @@ services:
 
   redis:
     image: redis:8.6.2-trixie
+    command: redis-server --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
@@ -172,6 +176,7 @@ services:
     # No published port — all traffic goes through nginx on port 80
     # Internal access via Docker network: webapp:3000
     environment:
+      - HOSTNAME=0.0.0.0
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-to-a-random-string-at-least-32-chars}
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api/bep}
@@ -180,7 +185,7 @@ services:
       api:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:3000/ || exit 1"]
+      test: ["CMD-SHELL", "node -e \"const http=require('http');http.get('http://127.0.0.1:3000/',r=>process.exit(r.statusCode<400?0:1)).on('error',()=>process.exit(1))\""]
       interval: 15s
       timeout: 5s
       retries: 5

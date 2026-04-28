@@ -207,6 +207,34 @@ export interface TreeSearchResult {
   highlight: string;
 }
 
+// Analytics
+export interface AnalyticsDailyStat {
+  date: string;
+  messages: number;
+  tokens_in: number;
+  tokens_out: number;
+  avg_latency_ms: number;
+  cost_usd: number;
+}
+
+export interface AnalyticsStats {
+  total_messages: number;
+  total_sessions: number;
+  total_tokens_in: number;
+  total_tokens_out: number;
+  total_tokens: number;
+  avg_latency_ms: number;
+  estimated_cost_usd: number;
+  model_used: string;
+  daily: AnalyticsDailyStat[];
+  pricing: {
+    input_per_1m: number;
+    output_per_1m: number;
+    model: string;
+    note: string;
+  };
+}
+
 // Health
 export interface HealthCheck {
   status: "up" | "down" | "degraded";

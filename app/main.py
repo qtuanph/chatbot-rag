@@ -8,7 +8,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 
-from app.api.routes import auth, chat, documents, health, memories, tree
+from app.api.routes import analytics, auth, chat, documents, health, memories, tree
 from app.api.middleware import (
     SecurityHeadersMiddleware,
     RequestLoggingMiddleware,
@@ -36,7 +36,7 @@ async def lifespan(application: FastAPI):
     def _warm_embedding():
         start = time.time()
         try:
-            from app.services.retrieval.rag import _get_embedding_service
+            from app.services.retrieval.retrieval_service import _get_embedding_service
 
             svc = _get_embedding_service()
             svc.embed_query("warmup")
@@ -96,9 +96,9 @@ app.add_middleware(RequestLoggingMiddleware)
 # Security: coarse global rate-limit fallback (production only).
 # Fine-grained limits remain at route level.
 if settings.app_env == "production":
-    app.add_middleware(RateLimitMiddleware, requests_per_minute=300)
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.rate_limit_global_rpm)
 
-routers = [auth.router, health.router, documents.router, chat.router, tree.router, memories.router]
+routers = [auth.router, health.router, documents.router, chat.router, tree.router, memories.router, analytics.router]
 
 for router in routers:
     app.include_router(router, prefix=settings.api_v1_prefix)

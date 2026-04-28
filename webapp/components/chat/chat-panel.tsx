@@ -14,9 +14,9 @@ import { ChevronUp, MessageSquare, History, Plus, Loader2 } from "lucide-react";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessage } from "@/components/chat/chat-message";
 import { toast } from "sonner";
-import { API_BASE, chatApi } from "@/lib/api-client";
+import { API_BASE, analyticsApi, chatApi } from "@/lib/api-client";
 import type { ChatMessage as ChatMessageType } from "@/types/chat";
-import type { ChatSession, Citation, ChatStreamEvent } from "@/types/api";
+import type { ChatSession, Citation, ChatStreamEvent, AnalyticsStats } from "@/types/api";
 
 const PAGE_SIZE = 20;
 
@@ -75,6 +75,13 @@ export function ChatPanel({
     total_tokens?: number;
     estimated_cost_usd?: number;
   } | null>(null);
+  const [userStats, setUserStats] = useState<AnalyticsStats | null>(null);
+
+  // Fetch user analytics stats once per mount
+  useEffect(() => {
+    if (!session) return;
+    analyticsApi.getStats().then(setUserStats).catch(() => {});
+  }, [session]);
 
   // Active session display
   const activeSession = sessions.find((s) => s.session_id === sessionId);
@@ -208,6 +215,7 @@ export function ChatPanel({
           signal: controller.signal,
           headers: {
             "Content-Type": "application/json",
+            "Accept": "text/event-stream",
           },
           body: JSON.stringify({
             query,
@@ -380,6 +388,19 @@ export function ChatPanel({
               <p className="text-muted-foreground max-w-md">
                 Hỏi tôi bất kỳ điều gì về tài liệu đã tải lên hệ thống.
               </p>
+              {userStats && userStats.total_messages > 0 && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Bạn đã dùng {userStats.total_messages.toLocaleString()} tin nhắn
+                  {" \u00B7 "}
+                  {userStats.total_tokens.toLocaleString()} tokens
+                  {userStats.estimated_cost_usd > 0 && (
+                    <>
+                      {" \u00B7 "}
+                      ${userStats.estimated_cost_usd.toFixed(4)}
+                    </>
+                  )}
+                </p>
+              )}
             </div>
           </div>
         ) : (

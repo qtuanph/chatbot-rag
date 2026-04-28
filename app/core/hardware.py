@@ -52,6 +52,8 @@ class HardwareProfile:
         celery_concurrency:     Celery worker child processes
         celery_autoscale_max:   Celery autoscale upper bound
         embed_parallelism:      Parallel embedding API calls
+        db_pool_size:           SQLAlchemy pool_size (per worker)
+        db_max_overflow:        SQLAlchemy max_overflow
     """
 
     cpu_count: int
@@ -62,22 +64,25 @@ class HardwareProfile:
     celery_concurrency: int
     celery_autoscale_max: int
     embed_parallelism: int
+    db_pool_size: int
+    db_max_overflow: int
 
     @classmethod
     def detect(cls) -> "HardwareProfile":
         """
         Detect hardware and compute optimal settings.
 
+        VRAM-aware scaling:
+          - vram_headroom = vram - 2.0 (2GB for embedding + reranker)
+          - Tight GPU (< 8GB headroom): 1 worker, solo pool — prevent OOM
+          - Comfortable GPU (>= 8GB headroom): multi-worker — server-grade
+          - CPU only: fallback to multi-worker for throughput
+
         Formulas:
-          - uvicorn_workers: min(cpu_count, ram_gb // 2, 8)
-            FastAPI is async — few workers handle many connections.
-            Each worker ~50-100MB RAM.
-          - celery_concurrency: min(cpu_count, 4) when GPU, else min(cpu_count, 8)
-            GPU embedding is the bottleneck; more processes compete for GPU.
-          - celery_autoscale_max: min(cpu_count * 2, 8) when GPU, else cpu_count
-            Scale up when queue is busy, scale down when idle.
-          - embed_parallelism: min(cpu_count * 2, 16)
-            I/O-bound calls, 2x CPU is safe.
+          - uvicorn_workers: 1 if tight GPU, else min(cpu, ram//2, 8)
+          - celery_concurrency: min(cpu, 4) if GPU tight, min(cpu, 8) if CPU
+          - embed_parallelism: min(cpu * 2, 16) — I/O-bound
+          - db_pool_size: max(10, workers * 5) — scale with workers
         """
         cpu = multiprocessing.cpu_count()
         ram = _detect_ram_gb()
@@ -92,12 +97,31 @@ class HardwareProfile:
         except ImportError:
             pass
 
-        has_gpu = gpu > 0
+        # VRAM headroom: total VRAM minus what embedding + reranker need (~2GB)
+        vram_headroom = (vram - 2.0) if gpu > 0 else 0.0
+        tight_gpu = gpu > 0 and vram_headroom < 6.0
 
-        uvicorn_workers = max(1, min(cpu, int(ram // 2), 8))
-        celery_concurrency = min(cpu, 4) if has_gpu else min(cpu, 8)
-        celery_autoscale_max = min(cpu * 2, 8) if has_gpu else cpu
+        if tight_gpu:
+            # Tight GPU (e.g. GTX 1650 4GB): 1 worker, no VRAM duplication
+            uvicorn_workers = 1
+            celery_concurrency = min(cpu, 4)
+            celery_autoscale_max = min(cpu * 2, 8)
+        elif gpu > 0:
+            # Comfortable GPU (e.g. RTX 4090 24GB): multi-worker safe
+            uvicorn_workers = max(1, min(cpu, int(ram // 2), 8))
+            celery_concurrency = min(cpu, 8)
+            celery_autoscale_max = min(cpu * 2, 16)
+        else:
+            # CPU only: full multi-worker
+            uvicorn_workers = max(1, min(cpu, int(ram // 2), 8))
+            celery_concurrency = min(cpu, 8)
+            celery_autoscale_max = cpu
+
         embed_parallelism = min(cpu * 2, 16)
+
+        # DB pool scales with workers — each worker needs its own connections
+        db_pool_size = max(10, uvicorn_workers * 5)
+        db_max_overflow = db_pool_size
 
         profile = cls(
             cpu_count=cpu,
@@ -108,9 +132,12 @@ class HardwareProfile:
             celery_concurrency=celery_concurrency,
             celery_autoscale_max=celery_autoscale_max,
             embed_parallelism=embed_parallelism,
+            db_pool_size=db_pool_size,
+            db_max_overflow=db_max_overflow,
         )
 
         # Print diagnostic banner
+        mode_label = "TIGHT GPU" if tight_gpu else ("GPU" if gpu > 0 else "CPU")
         logger.info(
             "\n╔══════════════════════════════════════════╗\n"
             "║        HARDWARE PROFILE DETECTED         ║\n"
@@ -119,20 +146,24 @@ class HardwareProfile:
             "║ RAM:         %-28s║\n"
             "║ GPU:         %-28s║\n"
             "║ GPU VRAM:    %-28s║\n"
+            "║ Mode:        %-28s║\n"
             "╠══════════════════════════════════════════╣\n"
             "║ uvicorn workers:    %-22s║\n"
             "║ celery concurrency: %-22s║\n"
             "║ celery autoscale:   %-22s║\n"
             "║ embed parallelism:  %-22s║\n"
+            "║ db pool size:       %-22s║\n"
             "╚══════════════════════════════════════════╝",
             f"{cpu} cores",
             f"{ram} GB",
             f"{gpu}x" + (f" ({vram} GB VRAM)" if gpu > 0 else ""),
             f"{vram} GB" if gpu > 0 else "N/A",
+            mode_label,
             uvicorn_workers,
             celery_concurrency,
             f"{celery_concurrency}-{celery_autoscale_max}",
             embed_parallelism,
+            f"{db_pool_size}+{db_max_overflow}",
         )
         return profile
 

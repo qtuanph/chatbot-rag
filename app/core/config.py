@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     ai_provider: str = "google"
     google_api_key: str = ""
     google_model: str = "gemma-4-26b-a4b-it"
+    ai_input_cost_per_1m: float = 0.0  # Gemma 4 26B free tier on Google AI Studio
+    ai_output_cost_per_1m: float = 0.0  # Set to actual cost when switching models
 
     ingestion_engine: str = "docling"
     ingestion_min_non_empty_nodes: int = 1
@@ -50,7 +52,7 @@ class Settings(BaseSettings):
     retrieval_query_expansion_variants: int = 3  # Number of query variants to generate
 
     database_url: str = "replace-me"
-    redis_url: str = "redis://redis:6379/0"
+    redis_url: str = "redis://redis:6379/2"  # App cache — DB 2 (separate from broker DB 0 and result DB 1)
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/1"
     jwt_secret: str = "replace-me"
@@ -97,6 +99,35 @@ class Settings(BaseSettings):
 
     # Chat history auto-delete
     chat_session_ttl_days: int = 30  # Sessions older than 30 days are auto-deleted
+    chat_history_redis_ttl: int = 86400  # Redis hot cache TTL in seconds (default 24h)
+    chat_history_limit: int = 40  # Max messages loaded from DB on cache miss
+
+    # AI generation parameters — configurable per deployment
+    ai_temperature: float = 0.3
+    ai_max_output_tokens: int = 8192
+    ai_max_history_messages: int = 20  # Multi-turn context window
+    ai_stream_timeout: float = 300.0  # HTTP timeout for AI streaming (seconds)
+    ai_http_max_connections: int = 50  # httpx connection pool size
+    ai_http_keepalive_connections: int = 10  # httpx keepalive pool size
+
+    # Celery tuning — configurable for server-grade hardware
+    celery_task_time_limit: int = 1800  # 30 min hard kill
+    celery_task_soft_time_limit: int = 1500  # 25 min → SoftTimeLimitExceeded
+    celery_worker_max_memory_kb: int = 1_500_000  # 1.5GB — kill child if exceeded
+    celery_visibility_timeout: int = 7200  # 2h — Redis re-delivery guard
+    celery_result_expires: int = 86400  # 24h — task result TTL
+    celery_max_tasks_per_child: int = 50  # Recycle child after N tasks
+    celery_retry_backoff: int = 30  # Base retry delay in seconds (upload tasks)
+    celery_retry_backoff_max: int = 600  # Max 10 min between retries
+    celery_max_retries: int = 3  # Max retry attempts for transient failures
+
+    # Rate limiting — global middleware
+    rate_limit_global_rpm: int = 300  # Global requests per minute across all users
+
+    # Cache TTLs — configurable for deployment scale
+    memory_cache_ttl: int = 300  # User memory Redis cache TTL (seconds)
+    doc_ids_cache_ttl: float = 60.0  # Active document IDs cache TTL (seconds)
+    retrieval_max_rerank_candidates: int = 30  # Max candidates sent to cross-encoder
 
     def model_post_init(self, __context) -> None:
         # Security: Validate JWT secret meets minimum requirements

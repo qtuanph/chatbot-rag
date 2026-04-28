@@ -1,13 +1,5 @@
-"""Authentication & security services."""
+"""Authentication service — delegates to AuthService."""
 
-from app.services.auth.service import create_access_token, hash_password, verify_password
-from app.services.auth.token_blacklist import TokenBlacklist
-from app.services.auth.throttle import RequestThrottle
+from app.services.auth.auth_service import AuthService
 
-__all__ = [
-    "create_access_token",
-    "hash_password",
-    "verify_password",
-    "TokenBlacklist",
-    "RequestThrottle",
-]
+__all__ = ["AuthService"]

@@ -43,10 +43,10 @@
                 <mxCell id="q_ing" value="Redis Queue (ingestion)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" parent="1" vertex="1">
                     <mxGeometry x="40" y="310" width="120" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="w_ing" value="upload-pipeline (GPU Worker) ──────────────────────── ① Download from RustFS ② Parse Docling + Smart OCR (2-pass) ③ Validate hierarchy + Rule-based refine ④ Embed Vietnamese_Embedding_v2 (fp16) ⑤ Upsert chunks to Qdrant (section_id) ⑥ Persist sections to PostgreSQL ⑦ status=ready · invalidate doc ID cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=left;spacingLeft=8;" parent="1" vertex="1">
+                <mxCell id="w_ing" value="upload-pipeline (GPU Worker) ──────────────────────── ① Download from RustFS ② Parse Docling + PaddleOCR (mandatory, single-pass) ③ Validate hierarchy + Rule-based refine ④ Embed Vietnamese_Embedding_v2 (fp16) ⑤ Upsert chunks to Qdrant (section_id) ⑥ Persist sections to PostgreSQL ⑦ status=ready · invalidate doc ID cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=left;spacingLeft=8;" parent="1" vertex="1">
                     <mxGeometry x="28" y="380" width="260" height="150" as="geometry"/>
                 </mxCell>
-                <mxCell id="smart_ocr" value="Smart OCR (2-pass) ───────────────── Pass 1: do_ocr=False (fast, native PDF) Pass 2: do_ocr=True + EasyOCR (vi+en) Scanned detection: text_density check" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="smart_ocr" value="PaddleOCR (mandatory) ───────────────── force_full_page_ocr=True RapidOCR ONNX backend Vietnamese + English Single-pass (no detection)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="170" y="550" width="190" height="85" as="geometry"/>
                 </mxCell>
                 <mxCell id="r_chat" value="POST /chat/stream (SSE)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
@@ -64,7 +64,7 @@
                 <mxCell id="embedding" value="Vietnamese_Embedding_v2 ───────────────── 1024-dim · GPU fp16 / CPU ONNX BGE-M3 fine-tuned · 1.1M VN triplets +16% Accuracy@1 · sentence-transformers Offline · Pre-downloaded in Docker build" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;fontStyle=0;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="660" y="310" width="220" height="90" as="geometry"/>
                 </mxCell>
-                <mxCell id="retrieval" value="2-Stage Retrieval (single Qdrant query) ────────────────────────────────── Stage 1: Group by section_id → top 3 (score ≥ 0.30) Stage 2: Re-rank chunks within sections (score ≥ 0.35) Context: section details from PostgreSQL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="retrieval" value="4-Stage Retrieval ────────────────────────────────── Stage 1: Hybrid search (dense + BM25 RRF fusion) Stage 2: Section grouping → top sections (score ≥ 0.30) Stage 3: Cross-encoder rerank → top 5 chunks Stage 4: Context assembly with breadcrumbs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="460" y="420" width="280" height="90" as="geometry"/>
                 </mxCell>
                 <mxCell id="llm_g" value="Google AI gemma-4-26b-a4b-it (demo)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="1" vertex="1">
@@ -97,7 +97,7 @@
                 <mxCell id="rustfs" value="RustFS (S3) ───────────────── Original files PDF · DOCX · XLSX" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="730" y="690" width="160" height="85" as="geometry"/>
                 </mxCell>
-                <mxCell id="hf_cache" value="HuggingFace Cache ───────────────── Vietnamese_Embedding_v2 EasyOCR models Shared Docker volume" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="hf_cache" value="HuggingFace Cache ───────────────── Vietnamese_Embedding_v2 PaddleOCR (RapidOCR ONNX) Vietnamese_Reranker Shared Docker volume" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="930" y="690" width="190" height="85" as="geometry"/>
                 </mxCell>
                 <mxCell id="e_user_nginx" value="http://localhost" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#666666;fontSize=9;" parent="1" source="user" target="nginx" edge="1">

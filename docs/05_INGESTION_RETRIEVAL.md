@@ -6,7 +6,7 @@ Authoritative pipeline details. Architecture in `01_ARCHITECTURE.md`, workflows 
 
 Qdrant for retrieval. PostgreSQL for metadata/state. Redis for cache and queue. No full-text PostgreSQL scan as retrieval path.
 
-## Ingestion Pipeline (12 Steps)
+## Ingestion Pipeline (13 Steps)
 
 1. **Upload**: Client uploads file → API saves to RustFS → inserts `documents` row (status=pending).
 2. **Enqueue**: API enqueues `parse_document_task` to Redis queue `ingestion`.
@@ -25,14 +25,13 @@ Qdrant for retrieval. PostgreSQL for metadata/state. Redis for cache and queue. 
    - `SectionHeaderItem` → section boundary, `TitleItem` → document title
    - `TextItem` → content, `TableItem` → markdown table, `ListItem` → bullet text
    - `PictureItem` → skip (future: image captioning)
-6. **Section extraction**: Items → sections with exact page spans → breadcrumbs from heading stack.
-7. **Chunk splitting**: Each section → ~400 token chunks with ~75 token overlap, linked via `section_id`.
-8. **HierarchyValidator**: Checks parent-child consistency.
-9. **RuleBasedRefiner**: Fixes OCR errors, detects headers (0GB VRAM, ~1ms per node).
-10. **Section storage**: SectionRepository stores in `document_sections` (order_index, parent_section_id, page span).
-11. **Embed + store**: Chunks embedded in parallel batches of 32 via ThreadPoolExecutor → upsert to Qdrant with named dense vector + BM25 sparse vector + `section_id`. progress_callback updates percent live.
-12. **BM25 rebuild**: Full rebuild of BM25 vocab + IDF from all Qdrant chunks. Persisted to `data/bm25_vocab.json`.
-13. **Finalize**: Persist ingestion artifact to extra_metadata. Set status=ready. invalidate_doc_ids_cache().
+7. **Section extraction**: Items → sections with exact page spans → breadcrumbs from heading stack.
+8. **Chunk splitting**: Each section → ~400 token chunks with ~75 token overlap, linked via `section_id`.
+9. **HierarchyValidator** (`app/utils/hierarchy_validator.py`): Checks parent-child consistency.
+10. **RuleBasedRefiner** (`app/utils/text_refiner.py`): Fixes OCR errors, detects headers (0GB VRAM, ~1ms per node).
+11. **Section storage**: SectionRepository stores in `document_sections` (order_index, parent_section_id, page span).
+12. **Embed + store**: Chunks embedded in parallel batches of 32 via ThreadPoolExecutor → upsert to Qdrant with named dense vector + BM25 sparse vector + `section_id`. progress_callback updates percent live.
+13. **BM25 rebuild + finalize**: Full BM25 vocab rebuild from Qdrant chunks. Persist ingestion artifact. Set status=ready. invalidate_doc_ids_cache().
 
 ### OCR Backend
 
@@ -41,7 +40,7 @@ Qdrant for retrieval. PostgreSQL for metadata/state. Redis for cache and queue. 
 | PaddleOCR (`force_full_page_ocr=True`) | All PDFs + images | `converter` + RapidOcrOptions vi+en |
 | Classic parser | DOCX, XLSX, TXT, Markdown | No OCR — native text extraction |
 
-Single converter initialized in `_initialize_docling()`. PaddleOCR (RapidOCR ONNX) models pre-downloaded during Docker build.
+Parser selection and fallback managed by `ParserManager` (`app/adapters/parsers/manager.py`). Single converter initialized in `_initialize_docling()`. PaddleOCR (RapidOCR ONNX) models pre-downloaded during Docker build.
 PaddleOCR is MANDATORY — if backend missing, `_require_paddleocr()` raises RuntimeError and worker fails with clear error.
 
 ### Embedding Model
@@ -64,13 +63,13 @@ Model pre-downloaded during Docker build via BuildKit cache.
 1. **Rate limit**: Atomic Lua script — 30 req/min per user.
 2. **Query cache**: MD5-keyed Redis lookup. HIT → skip model inference (TTL=1h).
 3. **Query embed**: MISS → local Vietnamese_Embedding_v2 → cache result.
-4. **Doc scope**: TTL-cached active doc IDs (60s). PostgreSQL subquery runs once/minute max. Invalidated on upload/delete via `invalidate_doc_ids_cache()`.
+4. **Doc scope**: TTL-cached active doc IDs (60s). `DocumentRepository.get_latest_active_document_ids()` — returns set of latest-version ready doc IDs. Invalidated on upload/delete via `invalidate_doc_ids_cache()`.
 5. **Multi-query expansion** (opt-in, `RETRIEVAL_QUERY_EXPANSION_ENABLED=True`): Generate N query variants via AI provider. Each variant uses different vocabulary → broader recall.
 6. **Hybrid search**: For each query, run dense + BM25 sparse in parallel → RRF fusion in Qdrant.
-7. **Stage 1 — Section grouping**: Merge results across queries (dedupe by node_id, keep max score). Group by section_id → top 3 sections (score ≥ 0.30). Load section details from PostgreSQL.
+7. **Stage 1 — Section grouping**: Merge results across queries (dedupe by node_id, keep max score). Group by section_id → top 3 sections (score ≥ 0.30). Load section details via `SectionRepository.get_sections_for_rag()`.
 8. **Stage 2 — Chunk re-ranking**: Prioritise chunks within top sections first, then remaining. Score filter ≥ 0.35. Dedup overlapping chunks (100-char signature).
-9. **Stage 3 — Cross-encoder reranking**: AITeamVN/Vietnamese_Reranker scores (query, passage) pairs → top 5 chunks by relevance. Max 30 candidates sent to reranker. Errors caught → fallback to score-based ranking.
-10. **Stage 4 — Context assembly**: Enriched context blocks with breadcrumb hierarchy + page ranges for LLM.
+9. **Stage 3 — Cross-encoder reranking**: AITeamVN/Vietnamese_Reranker (`app/adapters/reranker/reranker.py`) scores (query, passage) pairs → top 5 chunks by relevance. Max 30 candidates sent to reranker. Errors propagate, no fallback.
+10. **Stage 4 — Context assembly**: Enriched context blocks with breadcrumb hierarchy + page ranges for LLM. Document titles via `DocumentRepository.get_titles_by_ids()`.
 
 ### Hybrid Search: Dense + BM25
 
@@ -83,7 +82,7 @@ Model pre-downloaded during Docker build via BuildKit cache.
 | BM25 params | k1=1.5, b=0.75 (standard defaults) |
 | BM25 vocab | Built from all Qdrant chunks, persisted to `data/bm25_vocab.json` |
 | Vocab rebuild | After every document upload/delete (full rebuild for correct IDF) |
-| Vocab cache | TTL-based reload (120s) to pick up changes from Celery worker |
+| Vocab cache | TTL-based reload (120s) to pick up changes from Celery worker. Note: Redis 512mb maxmemory with allkeys-lru may evict cache keys under memory pressure |
 
 ### Cross-Encoder Reranker
 
@@ -92,7 +91,7 @@ Model pre-downloaded during Docker build via BuildKit cache.
 | Model | AITeamVN/Vietnamese_Reranker |
 | Benchmark | MRR@10 = 0.8672 on Legal Zalo (best for Vietnamese) |
 | Context | 2304 tokens (256 query + 2048 passage) |
-| Device | CPU (~50-100ms for 20 candidates) |
+| Device | GPU auto / CPU fallback (~50-100ms for 20 candidates on CPU) |
 | Top-k | 5 (configurable via `RETRIEVAL_RERANK_TOP_K`) |
 
 ### Multi-Query Expansion
@@ -145,27 +144,28 @@ Display order from `document_sections.order_index`, then page span. Qdrant does 
 | Scanned PDF detection | `app/adapters/parsers/docling.py:_is_scanned()` |
 | Section + chunk extraction | `app/adapters/parsers/docling.py:_extract_from_docling_items()` |
 | Markdown fallback path | `app/adapters/parsers/docling.py:_extract_sections_from_markdown()` |
-| Parser selection + fallback | `app/services/ingestion/parser_manager.py` |
-| Ingestion orchestration | `app/services/ingestion/pipeline.py` |
-| Hierarchy checks | `app/services/ingestion/hierarchy_validator.py` |
-| Section storage (PostgreSQL) | `app/services/storage/document_store.py:SectionRepository` |
+| Parser selection + fallback | `app/adapters/parsers/manager.py:ParserManager` |
+| Ingestion orchestration | `app/services/ingestion/ingestion_service.py:IngestionService` (accepts optional section_repo) |
+| Hierarchy checks | `app/utils/hierarchy_validator.py:HierarchyValidator` |
+| Section storage (PostgreSQL) | `app/repositories/section_repository.py:SectionRepository` |
 | Parallel embedding | `app/adapters/embeddings/sentence_transformer.py:embed_batch()` |
-| Vector store adapter | `app/adapters/vector_stores/qdrant.py` — named dense + sparse-bm25, int8 quantized |
+| Vector store adapter | `app/adapters/vector_stores/qdrant.py` — named dense + sparse-bm25, int8 quantized. DocumentService uses build_vector_store() factory |
 | BM25 sparse encoder | `app/adapters/sparse_embeddings/vietnamese_bm25.py` — Underthesea tokenization + BM25 scoring |
-| BM25 index management | `app/services/retrieval/bm25_index.py` — vocab build from Qdrant, persist/rebuild |
-| 4-stage retrieval | `app/services/retrieval/rag.py:retrieve_context()` |
-| Cross-encoder reranker | `app/services/retrieval/reranker.py` — AITeamVN/Vietnamese_Reranker |
-| Multi-query expansion | `app/services/retrieval/query_expand.py` — Gemini query variants |
-| Doc ID TTL cache + invalidation | `app/services/retrieval/rag.py` |
-| Query embedding cache | `app/services/retrieval/cache.py` |
+| BM25 index management | `app/utils/bm25_index.py` — vocab build from Qdrant, persist/rebuild |
+| 4-stage retrieval | `app/services/retrieval/retrieval_service.py:retrieve_context()` — uses DocumentRepository + SectionRepository methods |
+| Cross-encoder reranker | `app/adapters/reranker/reranker.py` — AITeamVN/Vietnamese_Reranker |
+| Multi-query expansion | `app/services/retrieval/query_expand.py` — Gemini query variants (domain logic for RAG) |
+| Doc ID TTL cache + invalidation | `app/services/retrieval/retrieval_service.py` |
+| Query embedding cache | `app/utils/query_cache.py` |
 | Hardware auto-detection | `app/core/hardware.py` |
 | Ingestion tasks | `app/workers/upload_pipeline.py` — includes BM25 rebuild after ingestion |
-| Cleanup tasks + beat | `app/workers/cleanup_pipeline.py` — includes BM25 rebuild after deletion |
-| User memory service | `app/services/chat/memory.py:UserMemoryService` |
+| Cleanup tasks + beat | `app/workers/cleanup_pipeline.py` — uses CleanupService, includes BM25 rebuild after deletion |
+| User memory service | `app/services/chat/user_memory_service.py:UserMemoryService` — receives redis.Redis via DI, creates short-lived sessions per DB operation |
+| Memory service | `app/services/chat/memory_service.py:MemoryService` — receives UserMemoryService via DI |
 | AI provider (Google) | `app/adapters/ai/google.py:GoogleAIProvider` — singleton via lru_cache, x-goog-api-key header |
 | Provider factory | `app/adapters/ai/__init__.py:build_ai_provider()` — @lru_cache(maxsize=1) singleton |
 | Thinking control | `app/adapters/ai/google.py` (strip_reasoning + ThoughtFilter + thinkingConfig) |
 | Multi-turn context | `app/adapters/ai/google.py:_build_contents()` |
 | Memory CRUD routes | `app/api/routes/memories.py` |
-| Chat store | `app/services/chat/store.py:ChatStore` — Redis pipeline atomic ops, history_exists() check |
-| Doc ID cache | `app/services/retrieval/rag.py` — threading.Lock for thread safety |
+| Chat store | `app/utils/chat_store.py:ChatStore` — Redis pipeline atomic ops, history_exists() check |
+| Doc ID cache | `app/services/retrieval/retrieval_service.py` — threading.Lock for thread safety |

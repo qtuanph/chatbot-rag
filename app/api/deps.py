@@ -1,4 +1,7 @@
+"""FastAPI dependency injection — auth context + service factories."""
+
 from dataclasses import dataclass
+from typing import Generator
 
 from fastapi import Depends, Header, Request
 import jwt
@@ -6,8 +9,8 @@ import jwt
 from app.core.config import settings
 from app.core import http_errors
 from app.db.session import SessionLocal
-from app.models.core import Role, User
-from app.services.auth.token_blacklist import TokenBlacklist
+from app.models.auth import Role, User
+from app.utils.token_blacklist import TokenBlacklist
 
 # Module-level singleton — reuse Redis connection across requests
 _blacklist = TokenBlacklist()
@@ -84,3 +87,110 @@ def require_admin(request: Request, auth: AuthContext | None = Depends(get_auth_
     if auth.role != "admin":
         raise http_errors.forbidden("Admin only")
     return auth
+
+
+# ── Repository factories ───────────────────────────────────────────────
+
+
+def get_auth_repo() -> Generator:
+    from app.repositories.auth_repository import AuthRepository
+
+    with SessionLocal() as session:
+        yield AuthRepository(session)
+
+
+def get_chat_repo() -> Generator:
+    from app.repositories.chat_repository import ChatRepository
+
+    with SessionLocal() as session:
+        yield ChatRepository(session)
+
+
+def get_analytics_repo() -> Generator:
+    from app.repositories.analytics_repository import AnalyticsRepository
+
+    with SessionLocal() as session:
+        yield AnalyticsRepository(session)
+
+
+def get_memory_repo() -> Generator:
+    from app.repositories.memory_repository import MemoryRepository
+
+    with SessionLocal() as session:
+        yield MemoryRepository(session)
+
+
+def get_doc_repo() -> Generator:
+    from app.repositories.document_repository import DocumentRepository
+
+    with SessionLocal() as session:
+        yield DocumentRepository(session)
+
+
+def get_section_repo() -> Generator:
+    from app.repositories.section_repository import SectionRepository
+
+    with SessionLocal() as session:
+        yield SectionRepository(session)
+
+
+# ── Service factories ──────────────────────────────────────────────────
+
+
+def get_auth_service(repo=Depends(get_auth_repo)):
+    from app.services.auth.auth_service import AuthService
+
+    return AuthService(repo=repo, blacklist=_blacklist)
+
+
+def get_chat_service(repo=Depends(get_chat_repo)):
+    from app.services.chat.chat_service import ChatService
+    from app.services.chat.user_memory_service import UserMemoryService
+    from app.utils.chat_store import ChatStore
+
+    import redis as redis_lib
+
+    redis_client = redis_lib.Redis.from_url(settings.redis_url, decode_responses=True)
+    user_memory_service = UserMemoryService(redis_client=redis_client)
+    return ChatService(repo=repo, store=ChatStore(), user_memory_service=user_memory_service)
+
+
+def get_analytics_service(repo=Depends(get_analytics_repo)):
+    from app.services.analytics.analytics_service import AnalyticsService
+
+    return AnalyticsService(repo=repo)
+
+
+def get_memory_service(memory_repo=Depends(get_memory_repo)):
+    from app.services.chat.memory_service import MemoryService
+    from app.services.chat.user_memory_service import UserMemoryService
+
+    import redis as redis_lib
+
+    redis_client = redis_lib.Redis.from_url(settings.redis_url, decode_responses=True)
+    user_memory_service = UserMemoryService(redis_client=redis_client)
+    return MemoryService(repo=memory_repo, user_memory_service=user_memory_service)
+
+
+def get_document_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
+    from app.services.documents.document_service import DocumentService
+
+    return DocumentService(doc_repo=doc_repo, section_repo=section_repo)
+
+
+def get_tree_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
+    from app.services.documents.tree_service import TreeService
+
+    return TreeService(doc_repo=doc_repo, section_repo=section_repo)
+
+
+def get_health_service():
+    from app.services.system.health_service import HealthService
+
+    return HealthService()
+
+
+def get_cleanup_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
+    from app.services.documents.cleanup_service import CleanupService
+
+    return CleanupService(doc_repo=doc_repo, section_repo=section_repo)

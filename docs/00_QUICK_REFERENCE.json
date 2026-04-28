@@ -1,14 +1,14 @@
 {
   "document": {
     "id": "00_QUICK_REFERENCE",
-    "version": "2026-04-25",
+    "version": "2026-04-28",
     "purpose": "Rules and patterns cheat sheet for AI/agent preflight. Read first, then task-specific docs.",
     "doc_guide": {
       "01_ARCHITECTURE.md": "System design, data model, storage, invariants, delete/version policy, AI control",
       "02_WORKFLOWS.md": "Upload, chat, delete, session cleanup workflows with diagrams",
       "03_API_CONTRACTS.md": "Full route reference, security, rate limits, error handling",
       "04_DEPLOYMENT.md": "Docker topology, nginx, env vars, health probes, backup",
-      "05_INGESTION_RETRIEVAL.md": "12-step pipeline, PaddleOCR (mandatory), embedding specs, retrieval deep dive"
+      "05_INGESTION_RETRIEVAL.md": "13-step pipeline, PaddleOCR (mandatory), embedding specs, retrieval deep dive"
     }
   },
   "core_invariants": [
@@ -34,7 +34,7 @@
     { "data": "chunks", "storage": "Qdrant", "notes": "~400 token chunks with section_id metadata. Named dense + sparse-bm25 vectors." },
     { "data": "bm25_vocab", "storage": "disk", "notes": "data/bm25_vocab.json — rebuilt on upload/delete. TTL cache 120s. Underthesea tokenization + IDF." },
     { "data": "documents", "storage": "PostgreSQL", "table": "documents", "notes": "status: pending→processing→ready/failed" },
-    { "data": "chat_messages", "storage": "PostgreSQL + Redis", "notes": "DB persisted (tokens_in, tokens_out, latency_ms); Redis hot cache (pipeline atomic). hydrate_from_db() on expiry." },
+    { "data": "chat_messages", "storage": "PostgreSQL + Redis", "notes": "DB persisted (tokens_in, tokens_out, latency_ms, model_used); Redis hot cache (pipeline atomic). hydrate_from_db() on expiry." },
     { "data": "chat_sessions", "storage": "PostgreSQL", "table": "chat_sessions", "notes": "Hard-deleted after 30 days by Celery Beat. Sidebar ordered by updated_at DESC." },
     { "data": "uploaded_files", "storage": "RustFS", "notes": "Hard-deleted on user delete request" },
     { "data": "query_embedding_cache", "storage": "Redis", "notes": "MD5 keyed; TTL 1 hour" },
@@ -46,7 +46,9 @@
       "AI_PROVIDER": "google",
       "GOOGLE_API_KEY": "required",
       "GOOGLE_MODEL": "gemma-4-26b-a4b-it",
-      "EMBEDDING_HF_MODEL": "AITeamVN/Vietnamese_Embedding_v2"
+      "EMBEDDING_HF_MODEL": "AITeamVN/Vietnamese_Embedding_v2",
+      "AI_INPUT_COST_PER_1M": "0.0 (Gemma 4 free tier)",
+      "AI_OUTPUT_COST_PER_1M": "0.0 (set to actual cost when switching models)"
     },
     "retrieval": {
       "RETRIEVAL_SECTION_MIN_SCORE": 0.3,
@@ -65,6 +67,23 @@
       "CORS_ORIGINS": "must be explicit",
       "NEXT_PUBLIC_API_URL": "/api/bep (browser proxy path)",
       "API_INTERNAL_URL": "http://api:8000/api/v1 (server-side)"
+    },
+    "celery": {
+      "CELERY_TASK_TIME_LIMIT": "1800 (30 min hard kill)",
+      "CELERY_TASK_SOFT_TIME_LIMIT": "1500 (25 min soft)",
+      "CELERY_WORKER_MAX_MEMORY_KB": "1500000 (1.5GB)",
+      "CELERY_VISIBILITY_TIMEOUT": "7200 (2h)",
+      "CELERY_MAX_TASKS_PER_CHILD": "50",
+      "CELERY_RETRY_BACKOFF": "30 (upload), auto ÷3 for delete",
+      "CELERY_MAX_RETRIES": "3"
+    },
+    "ai_generation": {
+      "AI_TEMPERATURE": "0.3",
+      "AI_MAX_OUTPUT_TOKENS": "8192",
+      "AI_MAX_HISTORY_MESSAGES": "20",
+      "AI_STREAM_TIMEOUT": "300.0 (seconds)",
+      "AI_HTTP_MAX_CONNECTIONS": "50",
+      "RATE_LIMIT_GLOBAL_RPM": "300 (production middleware)"
     }
   },
   "api_summary": {
@@ -95,7 +114,8 @@
       { "method": "GET", "path": "/memories", "auth": "member" },
       { "method": "POST", "path": "/memories", "auth": "member" },
       { "method": "PATCH", "path": "/memories/{id}", "auth": "member" },
-      { "method": "DELETE", "path": "/memories/{id}", "auth": "member" }
+      { "method": "DELETE", "path": "/memories/{id}", "auth": "member" },
+      { "method": "GET", "path": "/analytics/stats", "auth": "jwt" }
     ]
   },
   "anti_patterns": [
@@ -103,8 +123,52 @@
     "direct provider SDK calls in routes",
     "raw numeric HTTP status codes",
     "direct raise HTTPException in API layer (use http_errors helpers)",
+    "SessionLocal or SQLAlchemy Session in route files (use Repository via Service)",
+    "business logic in route handlers (belongs in Service layer)",
     "hallucinated answers without retrieval grounding"
   ],
+  "architecture_layers": {
+    "pattern": "Controller-Service-Repository (CSR)",
+    "description": "Strict 3-layer separation. Routes = HTTP only. Services = business logic. Repositories = data access.",
+    "controller": {
+      "location": "app/api/routes/",
+      "responsibility": "HTTP parsing, auth deps, response formatting, status codes. NO business logic, NO SessionLocal, NO direct DB queries."
+    },
+    "service": {
+      "location": "app/services/{domain}/",
+      "files": {
+        "auth/auth_service.py": "AuthService — login, logout, user CRUD",
+        "chat/chat_service.py": "ChatService — prepare_chat (full orchestration), session mgmt, message persistence, extract_memories",
+        "chat/memory_service.py": "MemoryService — CRUD for user memories (receives UserMemoryService via DI)",
+        "chat/user_memory_service.py": "UserMemoryService — Redis + MemoryRepository via DI (no SessionLocal)",
+        "documents/document_service.py": "DocumentService — upload, status, delete, retry (uses build_vector_store factory)",
+        "documents/tree_service.py": "TreeService — document tree exploration",
+        "documents/cleanup_service.py": "CleanupService — hard delete orchestration (class, uses DocumentRepository + SectionRepository)",
+        "analytics/analytics_service.py": "AnalyticsService — stats aggregation",
+        "system/health_service.py": "HealthService — passive health config",
+        "ingestion/ingestion_service.py": "IngestionService — accepts optional section_repo via constructor",
+        "ingestion/recovery_service.py": "RecoveryService — uses Repository methods instead of raw ORM",
+        "retrieval/retrieval_service.py": "retrieve_context(), build_answer() — uses DocumentRepository + SectionRepository methods",
+        "retrieval/query_expand.py": "expand_query() — multi-query domain logic for RAG"
+      }
+    },
+    "repository": {
+      "location": "app/repositories/",
+      "files": {
+        "auth_repository.py": "AuthRepository — users, roles",
+        "chat_repository.py": "ChatRepository — sessions, messages",
+        "document_repository.py": "DocumentRepository — documents, get_latest_active_document_ids(), get_titles_by_ids(), hard_delete()",
+        "section_repository.py": "SectionRepository — document_sections, get_sections_for_rag(), get_section_ids_by_document()",
+        "analytics_repository.py": "AnalyticsRepository — aggregation queries",
+        "memory_repository.py": "MemoryRepository — user_memories"
+      },
+      "convention": "{domain}_repository.py naming. Takes Session via constructor, returns dicts (not ORM models)"
+    },
+    "di_wiring": {
+      "location": "app/api/deps.py",
+      "pattern": "Repository factories yield from SessionLocal, Service factories take Repository via Depends()"
+    }
+  },
   "ai_code_style": {
     "priority": [
       "Make the smallest correct change",
@@ -131,5 +195,12 @@
     "health": "curl http://localhost/api/v1/health",
     "api_logs": "docker compose logs -f api",
     "worker_logs": "docker compose logs -f upload-pipeline"
+  },
+  "infrastructure": {
+    "hardware_auto_detect": "app/core/hardware.py — 3-tier: TIGHT GPU (VRAM<8GB→1 worker), COMFORTABLE GPU (VRAM≥8GB→multi-worker), CPU (min(cpu, ram//2, 8))",
+    "redis_config": "maxmemory via REDIS_MAXMEMORY env var (default 512mb for dev), allkeys-lru, save 60 1000, appendonly yes",
+    "redis_db_separation": "DB 0: Celery broker, DB 1: result backend, DB 2: app cache",
+    "celery_config": "All values configurable via env vars: time limits, memory limit, visibility timeout, retry, max-tasks-per-child",
+    "api_resource_limits": "4 CPUs, 6G RAM (Docker deploy limits) — increase for production"
   }
 }

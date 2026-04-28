@@ -15,31 +15,35 @@ from __future__ import annotations
 import json
 import logging
 import re
+from typing import TYPE_CHECKING
 
 import redis
 
 from app.core.config import settings
-from app.db.session import SessionLocal
-from app.models.memory import UserMemory
+
+if TYPE_CHECKING:
+    from app.adapters.ai.base import AIProvider
 
 logger = logging.getLogger(__name__)
 
-# Redis cache TTL for user memories (5 minutes)
-_MEMORY_CACHE_TTL = 300
+_MEMORY_CACHE_TTL = settings.memory_cache_ttl
 
 
 class UserMemoryService:
-    """Manages persistent user memories with Redis caching."""
+    """Manages persistent user memories with Redis caching.
 
-    def __init__(self) -> None:
-        self._redis = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    Receives redis_client via DI. Creates short-lived DB sessions per operation
+    (justified: called from both DI and non-DI contexts like background tasks).
+    """
+
+    def __init__(self, redis_client: redis.Redis) -> None:
+        self._redis = redis_client
 
     def _cache_key(self, user_id: str) -> str:
         return f"user_memories:{user_id}"
 
     def get_active_memories(self, user_id: str) -> list[dict[str, str]]:
         """Get active memories for a user (Redis cache → PostgreSQL fallback)."""
-        # Try Redis cache first
         cache_key = self._cache_key(user_id)
         try:
             cached = self._redis.get(cache_key)
@@ -48,18 +52,14 @@ class UserMemoryService:
         except Exception:
             logger.warning("Redis cache miss for user memories: %s", user_id)
 
-        # Fallback to PostgreSQL
-        with SessionLocal() as session:
-            rows = (
-                session.query(UserMemory)
-                .filter(UserMemory.user_id == user_id, UserMemory.is_active.is_(True))
-                .order_by(UserMemory.created_at.desc())
-                .limit(50)
-                .all()
-            )
-            memories = [{"type": row.memory_type, "content": row.content} for row in rows]
+        from app.db.session import SessionLocal
+        from app.repositories.memory_repository import MemoryRepository
 
-        # Cache in Redis
+        with SessionLocal() as session:
+            repo = MemoryRepository(session)
+            rows = repo.list_active_by_user(user_id)
+            memories = [{"type": r["memory_type"], "content": r["content"]} for r in rows]
+
         try:
             self._redis.setex(cache_key, _MEMORY_CACHE_TTL, json.dumps(memories, ensure_ascii=False))
         except Exception as e:
@@ -86,22 +86,19 @@ class UserMemoryService:
         return "THÔNG TIN ĐÃ GHI NHỚ VỀ NGƯỜI DÙNG:\n" + "\n".join(lines)
 
     def add_memory(self, user_id: str, memory_type: str, content: str) -> None:
-        """Store a new memory for the user."""
-        with SessionLocal() as session:
-            session.add(
-                UserMemory(
-                    user_id=user_id,
-                    memory_type=memory_type,
-                    content=content,
-                )
-            )
-            session.commit()
+        """Store a new memory for the user via repository."""
+        from app.db.session import SessionLocal
+        from app.repositories.memory_repository import MemoryRepository
 
-        # Invalidate cache
-        self._invalidate_cache(user_id)
+        with SessionLocal() as session:
+            repo = MemoryRepository(session)
+            repo.create(user_id=user_id, memory_type=memory_type, content=content)
+
+        self.invalidate_cache(user_id)
         logger.info("Added %s memory for user %s: %s", memory_type, user_id[:8], content[:80])
 
-    def _invalidate_cache(self, user_id: str) -> None:
+    def invalidate_cache(self, user_id: str) -> None:
+        """Invalidate Redis cache for a user's memories."""
         try:
             self._redis.delete(self._cache_key(user_id))
         except Exception as e:
@@ -112,7 +109,6 @@ class UserMemoryService:
         if not user_message:
             return False
 
-        # Explicit memory triggers
         explicit_patterns = [
             r"nhớ(?: là| rằng| cho tôi)?",
             r"hãy nhớ",
@@ -120,7 +116,6 @@ class UserMemoryService:
             r"ghi nhớ",
             r"lưu ý",
         ]
-        # Correction/feedback triggers
         correction_patterns = [
             r"sai(?: rồi| mất)?",
             r"không(?: phải)? (?:vậy|thế|đúng)",
@@ -147,18 +142,13 @@ class UserMemoryService:
         user_id: str,
         user_message: str,
         assistant_response: str,
+        ai_provider: AIProvider,
     ) -> None:
-        """Extract memorable facts from a conversation turn using Gemini.
-
-        Called asynchronously after the chat response is complete.
-        """
+        """Extract memorable facts from a conversation turn using Gemini."""
         if not self.should_extract_memory(user_message):
             return
 
         try:
-            from app.adapters.ai import build_ai_provider
-
-            provider = build_ai_provider()
             extraction_prompt = (
                 "Phân tích tin nhắn người dùng sau và trích xuất các thông tin đáng nhớ. "
                 "Chỉ trích xuất nếu người dùng đưa ra sở thích, sửa đổi, chỉ dẫn, hoặc thông tin cá nhân.\n\n"
@@ -168,7 +158,7 @@ class UserMemoryService:
                 "QUAN TRỌNG: Chỉ trả về JSON, không thêm gì khác."
             )
 
-            result = await provider.chat(
+            result = await ai_provider.chat(
                 [{"role": "user", "content": extraction_prompt}],
                 context=[],
                 citations=[],
@@ -177,7 +167,6 @@ class UserMemoryService:
             if not text:
                 return
 
-            # Parse JSON from response
             json_start = text.find("[")
             json_end = text.rfind("]") + 1
             if json_start < 0 or json_end <= json_start:

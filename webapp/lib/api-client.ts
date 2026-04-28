@@ -5,8 +5,6 @@ import type {
   UserItem,
   CreateUserRequest,
   RoleItem,
-  ChatRequest,
-  ChatResponse,
   ChatSession,
   ChatMessageItem,
   DocumentListResponse,
@@ -17,6 +15,7 @@ import type {
   TreeSearchResult,
   NodeDetail,
   HealthData,
+  AnalyticsStats,
 } from "@/types/api";
 
 // Browser: calls go through Next.js Route Handler proxy (/api/bep/...)
@@ -129,12 +128,6 @@ export const chatApi = {
   createSession: (): Promise<ChatSession> =>
     apiFetch<ChatSession>("/chat/sessions", { method: "POST" }),
 
-  send: (data: ChatRequest): Promise<ChatResponse> =>
-    apiFetch<ChatResponse>("/chat", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
   getSessions: (): Promise<ChatSession[]> =>
     apiFetch<ChatSession[]>("/chat/sessions"),
 
@@ -237,6 +230,12 @@ export const memoriesApi = {
 
   delete: (id: string): Promise<void> =>
     apiFetch<void>(`/memories/${id}`, { method: "DELETE" }),
+};
+
+// --- Analytics ---
+export const analyticsApi = {
+  getStats: (): Promise<AnalyticsStats> =>
+    apiFetch<AnalyticsStats>("/analytics/stats"),
 };
 
 export { ApiError };

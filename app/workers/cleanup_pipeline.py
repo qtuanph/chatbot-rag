@@ -3,13 +3,14 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import delete as sa_delete
 
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.chat import ChatSession
-from app.models.core import Document
+from app.models.document import Document
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,10 @@ def _verify_deletion(
     name="app.workers.cleanup_pipeline.delete_document_task",
     bind=True,
     acks_late=True,
+    autoretry_for=(ConnectionError, TimeoutError),
+    retry_backoff=max(settings.celery_retry_backoff // 3, 5),
+    retry_jitter=True,
+    max_retries=settings.celery_max_retries,
 )
 def delete_document_task(self, task_id: str, document_id: str, user_id: str | None = None) -> dict:
     """
@@ -78,48 +83,59 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
         },
     )
 
-    # Lazy imports — avoid loading heavy modules (qdrant, storage, cleanup)
-    # unless this task actually runs
-    from app.adapters.vector_stores.qdrant import QdrantVectorStore
-    from app.services.storage import build_storage
-    from app.services.documents.cleanup import hard_delete_document
+    try:
+        # Lazy imports — avoid loading heavy modules (qdrant, storage, cleanup)
+        # unless this task actually runs
+        from app.adapters.vector_stores.qdrant import QdrantVectorStore
+        from app.adapters.storage import build_storage
+        from app.services.documents.cleanup_service import CleanupService
+        from app.repositories.document_repository import DocumentRepository
+        from app.repositories.section_repository import SectionRepository
 
-    storage = build_storage()
-    # Resolve file_path before hard_delete removes the DB row
-    file_path: str | None = None
-    with SessionLocal() as session:
-        doc = session.get(Document, document_id)
-        if doc is not None:
-            file_path = doc.file_path
+        storage = build_storage()
+        file_path: str | None = None
+        with SessionLocal() as session:
+            doc = session.get(Document, document_id)
+            if doc is not None:
+                file_path = doc.file_path
 
-    cleanup_result = hard_delete_document(document_id)
+        with SessionLocal() as session:
+            doc_repo = DocumentRepository(session)
+            section_repo = SectionRepository(session)
+            cleanup_svc = CleanupService(doc_repo=doc_repo, section_repo=section_repo)
+            cleanup_result = cleanup_svc.hard_delete_document(document_id)
 
-    # ── Post-delete verification ──────────────────────────────────────────────
-    # Build a minimal vector_store (no embedding needed for count/verify)
-    vector_store = QdrantVectorStore(
-        url=settings.qdrant_url,
-        api_key=settings.qdrant_api_key or None,
-        collection_name=settings.qdrant_collection,
-        vector_size=1,  # dimension irrelevant for count — collection already exists
-        timeout=settings.qdrant_timeout,
-    )
-    verify = _verify_deletion(document_id, file_path, vector_store, storage)
+        # ── Post-delete verification ──────────────────────────────────────────────
+        # Build a minimal vector_store (no embedding needed for count/verify)
+        vector_store = QdrantVectorStore(
+            url=settings.qdrant_url,
+            api_key=settings.qdrant_api_key or None,
+            collection_name=settings.qdrant_collection,
+            vector_size=1,  # dimension irrelevant for count — collection already exists
+            timeout=settings.qdrant_timeout,
+        )
+        verify = _verify_deletion(document_id, file_path, vector_store, storage)
 
-    return {
-        "task_id": task_id,
-        "document_id": document_id,
-        "status": "deleted",
-        "stage": "deleted",
-        "progress": {"step": "deleted", "percent": 100},
-        "requested_by": user_id,
-        "cleanup": cleanup_result,
-        "verification": verify,
-    }
+        return {
+            "task_id": task_id,
+            "document_id": document_id,
+            "status": "deleted",
+            "stage": "deleted",
+            "progress": {"step": "deleted", "percent": 100},
+            "requested_by": user_id,
+            "cleanup": cleanup_result,
+            "verification": verify,
+        }
+
+    except SoftTimeLimitExceeded:
+        logger.error("[%s] Delete task exceeded soft time limit", document_id)
+        raise
 
 
 @celery_app.task(
     name="app.workers.cleanup_pipeline.cleanup_old_chat_sessions_task",
     acks_late=True,
+    ignore_result=True,  # Fire-and-forget beat task — no result stored
 )
 def cleanup_old_chat_sessions_task() -> dict:
     """

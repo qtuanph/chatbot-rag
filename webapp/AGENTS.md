@@ -40,6 +40,12 @@ This is NOT a standalone Next.js app. Read backend docs before making changes.
 ### Admin Dashboard (MUST match backend)
 - Upload status: PROCESSING / COMPLETED / ERROR
 - DO NOT change statuses without updating backend Celery task states
+- Admin analytics page: `/admin/analytics` — KPI cards, daily token chart, cost comparison table
+- Analytics API: `GET /analytics/stats` — admin sees system-wide, member sees own sessions
+
+### Member Stats
+- Welcome screen in ChatPanel shows per-user stats: messages, tokens, cost
+- Uses `analyticsApi.getStats()` — scoped to user's own sessions
 
 ### Auth Token Refresh (MUST respect backend)
 - JWT tokens (PyJWT) with 1-hour expiry, role cached in payload
