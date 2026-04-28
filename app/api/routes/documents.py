@@ -28,7 +28,6 @@ from app.services.storage import build_storage
 from app.services.system.audit import safe_record_audit
 from app.services.auth.throttle import RequestThrottle
 
-
 router = APIRouter(tags=["documents"])
 registry = DocumentRegistry()
 throttle = RequestThrottle()
@@ -59,7 +58,9 @@ def _to_status_response(
 
 
 @router.post("/upload", response_model=UploadAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
-async def upload_document(request: Request, file: UploadFile = File(...), auth: AuthContext = Depends(require_admin)) -> UploadAcceptedResponse:
+async def upload_document(
+    request: Request, file: UploadFile = File(...), auth: AuthContext = Depends(require_admin)
+) -> UploadAcceptedResponse:
     if not throttle.allow(
         f"throttle:upload:{auth.user_id}",
         limit=settings.effective_rate_limit(5),
@@ -73,7 +74,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
     # Validate filename length
     if len(file.filename) > settings.max_filename_length:
         raise http_errors.bad_request(f"Filename exceeds maximum length of {settings.max_filename_length} characters")
-    
+
     # Reject path traversal attempts
     if "/" in file.filename or "\\" in file.filename or ".." in file.filename:
         raise http_errors.bad_request("Filename contains invalid path characters")
@@ -82,7 +83,9 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
     file_type = file.content_type or "application/octet-stream"
     allowed_types = settings.get_allowed_file_types()
     if file_type not in allowed_types:
-        raise http_errors.bad_request(f"File type '{file_type}' is not allowed. Allowed types: {', '.join(sorted(allowed_types))}")
+        raise http_errors.bad_request(
+            f"File type '{file_type}' is not allowed. Allowed types: {', '.join(sorted(allowed_types))}"
+        )
 
     # Early Content-Length check before reading entire file
     content_length = request.headers.get("content-length")
@@ -99,7 +102,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
     content = await file.read()
     if len(content) > max_size:
         raise http_errors.payload_too_large(f"File size exceeds maximum of {settings.max_upload_size_mb} MB")
-    
+
     # Reject empty files
     if len(content) == 0:
         raise http_errors.bad_request("File cannot be empty")
@@ -203,9 +206,7 @@ async def upload_document(request: Request, file: UploadFile = File(...), auth: 
             session.commit()
         if hasattr(storage, "delete_object"):
             storage.delete_object(object_uri)
-        raise http_errors.service_unavailable(
-            "Failed to enqueue document task. Please try again later."
-        ) from exc
+        raise http_errors.service_unavailable("Failed to enqueue document task. Please try again later.") from exc
 
     return UploadAcceptedResponse(task_id=task_id, status="queued", document_id=document_id)
 
@@ -254,14 +255,26 @@ async def get_status(task_id: str, _auth=Depends(require_admin)) -> TaskStatusRe
             registry.update(record)
         payload_stage = str(payload.get("stage")) if payload.get("stage") else None
         payload_status = str(payload.get("status")) if payload.get("status") else None
-        payload_percent = payload.get("progress", {}).get("percent") if isinstance(payload.get("progress"), dict) else None
+        payload_percent = (
+            payload.get("progress", {}).get("percent") if isinstance(payload.get("progress"), dict) else None
+        )
         return _to_status_response(
             task_id=task_id,
             status_value=(payload_status or (document.status if document is not None else "ready")),
-            stage=(payload_stage or (document.status_stage if document is not None and document.status_stage else "ready")),
-            percent=(int(payload_percent) if payload_percent is not None else (int(document.progress_percent) if document is not None else 100)),
+            stage=(
+                payload_stage or (document.status_stage if document is not None and document.status_stage else "ready")
+            ),
+            percent=(
+                int(payload_percent)
+                if payload_percent is not None
+                else (int(document.progress_percent) if document is not None else 100)
+            ),
             document_id=payload.get("document_id") or document_id,
-            status_message=document.status_message if document is not None else str(payload.get("status_message") or "Task complete."),
+            status_message=(
+                document.status_message
+                if document is not None
+                else str(payload.get("status_message") or "Task complete.")
+            ),
             result=payload,
         )
     if result.failed():
@@ -293,7 +306,7 @@ async def list_documents(offset: int = 0, limit: int = 20, _auth=Depends(require
     # Validate pagination bounds
     offset = max(0, offset)
     limit = max(1, min(limit, 100))  # Clamp limit to 1-100
-    
+
     if not throttle.allow(
         f"throttle:documents:{_auth.user_id}",
         limit=settings.effective_rate_limit(30),
@@ -304,7 +317,7 @@ async def list_documents(offset: int = 0, limit: int = 20, _auth=Depends(require
     with SessionLocal() as session:
         # Get total count
         total = session.query(func.count(Document.id)).filter(Document.deleted_at.is_(None)).scalar()
-        
+
         # Get paginated rows
         rows = (
             session.query(Document)
@@ -388,9 +401,7 @@ async def delete_document(request: Request, document_id: str, _auth=Depends(requ
         )
     except Exception as exc:
         logger.error("Failed to enqueue delete task for %s: %s", document_id, exc, exc_info=True)
-        raise http_errors.service_unavailable(
-            "Failed to enqueue delete task. Please try again later."
-        ) from exc
+        raise http_errors.service_unavailable("Failed to enqueue delete task. Please try again later.") from exc
 
     safe_record_audit(
         action="document.delete",
@@ -406,7 +417,9 @@ async def delete_document(request: Request, document_id: str, _auth=Depends(requ
 
 
 @router.post("/documents/{document_id}/retry", response_model=DocumentRetryResponse)
-async def retry_document(request: Request, document_id: str, auth: AuthContext = Depends(require_admin)) -> DocumentRetryResponse:
+async def retry_document(
+    request: Request, document_id: str, auth: AuthContext = Depends(require_admin)
+) -> DocumentRetryResponse:
     """
     Retry a failed document: clean up partial data (sections, vectors),
     reset status, and re-queue the ingestion task.
@@ -444,9 +457,7 @@ async def retry_document(request: Request, document_id: str, auth: AuthContext =
 
         # Delete sections
         with SessionLocal() as session:
-            count = session.query(DocumentSection).filter(
-                DocumentSection.document_id == document_id
-            ).delete()
+            count = session.query(DocumentSection).filter(DocumentSection.document_id == document_id).delete()
             session.commit()
             if count > 0:
                 logger.info("Retry: deleted %d sections for document %s", count, document_id)
@@ -502,9 +513,7 @@ async def retry_document(request: Request, document_id: str, auth: AuthContext =
                 document.status_message = "Retry failed: could not enqueue task."
                 document.status_updated_at = datetime.now(timezone.utc)
             session.commit()
-        raise http_errors.service_unavailable(
-            "Failed to enqueue retry task. Please try again later."
-        ) from exc
+        raise http_errors.service_unavailable("Failed to enqueue retry task. Please try again later.") from exc
 
     safe_record_audit(
         action="document.retry",

@@ -6,6 +6,7 @@ Each variant uses different vocabulary while preserving the original intent.
 
 This improves recall for queries where the user's wording doesn't match document phrasing.
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,11 +46,7 @@ async def expand_query(query: str, n_variants: int | None = None) -> list[str]:
         citations=[],
     )
 
-    variants = [
-        line.strip().lstrip("0123456789.-) ")
-        for line in response["answer"].split("\n")
-        if line.strip()
-    ]
+    variants = [line.strip().lstrip("0123456789.-) ") for line in response["answer"].split("\n") if line.strip()]
 
     # Deduplicate while preserving order
     seen = {query.lower()}

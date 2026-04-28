@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.models.core import SecurityAudit
 
-
 logger = logging.getLogger(__name__)
 
 

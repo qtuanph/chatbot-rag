@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
@@ -13,7 +12,6 @@ from app.db.session import SessionLocal
 from app.models.memory import UserMemory
 from app.services.auth.throttle import RequestThrottle
 from app.services.chat.memory import UserMemoryService
-
 
 router = APIRouter(tags=["memories"])
 memory_service = UserMemoryService()
@@ -81,9 +79,7 @@ async def create_memory(
         raise http_errors.bad_request("Memory content cannot be empty")
 
     if data.memory_type not in ("preference", "correction", "instruction", "fact"):
-        raise http_errors.bad_request(
-            "Invalid memory type. Must be: preference, correction, instruction, or fact"
-        )
+        raise http_errors.bad_request("Invalid memory type. Must be: preference, correction, instruction, or fact")
 
     if len(data.content) > 1000:
         raise http_errors.bad_request("Memory content too long (max 1000 characters)")

@@ -9,10 +9,14 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 
 from app.api.routes import auth, chat, documents, health, memories, tree
-from app.api.middleware import SecurityHeadersMiddleware, RequestLoggingMiddleware, RateLimitMiddleware, CorrelationIDMiddleware
+from app.api.middleware import (
+    SecurityHeadersMiddleware,
+    RequestLoggingMiddleware,
+    RateLimitMiddleware,
+    CorrelationIDMiddleware,
+)
 from app.core.config import settings
 from app.core.error_response import build_error_response
-
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,7 @@ async def lifespan(application: FastAPI):
         start = time.time()
         try:
             from app.services.retrieval.rag import _get_embedding_service
+
             svc = _get_embedding_service()
             svc.embed_query("warmup")
             elapsed = time.time() - start

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -14,18 +15,15 @@ from app.services.auth.throttle import RequestThrottle
 
 router = APIRouter(tags=["health"])
 throttle = RequestThrottle()
+logger = logging.getLogger(__name__)
 
 
 def _fetch_documents(limit: int = 100) -> list[Document]:
     try:
         with SessionLocal() as session:
-            return (
-                session.query(Document)
-                .order_by(Document.created_at.desc())
-                .limit(limit)
-                .all()
-            )
-    except Exception:
+            return session.query(Document).order_by(Document.created_at.desc()).limit(limit).all()
+    except Exception as e:
+        logger.warning("Failed to fetch documents: %s", e)
         return []
 
 
@@ -64,8 +62,8 @@ def _fetch_qdrant_nodes(document_id: str | None, limit: int = 30) -> list[dict[s
             points = result.get("points", []) if isinstance(result, dict) else []
             if isinstance(points, list):
                 return points
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to fetch Qdrant nodes: %s", e)
 
     return []
 
@@ -103,11 +101,10 @@ def _fetch_qdrant_node(document_id: str, node_id: str) -> dict[str, Any] | None:
             points = result.get("points", []) if isinstance(result, dict) else []
             if isinstance(points, list) and points:
                 return points[0]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to fetch Qdrant node: %s", e)
 
     return None
-
 
 
 def _build_snapshot(selected_document_id: str | None = None) -> dict[str, Any]:
@@ -126,7 +123,6 @@ def _build_snapshot(selected_document_id: str | None = None) -> dict[str, Any]:
         "target_document_id": target_document_id or "",
         "checks": payload.get("checks", {}),
     }
-
 
 
 @router.get("/health")

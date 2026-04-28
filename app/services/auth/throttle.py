@@ -16,7 +16,6 @@ import redis
 
 from app.core.config import settings
 
-
 # Atomic rate-limit script:
 # - INCR counter
 # - Set TTL only on first request (count == 1) so window doesn't reset

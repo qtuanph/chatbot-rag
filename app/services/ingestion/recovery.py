@@ -18,8 +18,6 @@ from app.models.core import Document, DocumentSection
 from app.adapters.vector_stores import build_vector_store
 from app.services.storage import build_storage
 from app.services.documents.registry import DocumentRegistry
-from app.core.config import settings
-
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +39,14 @@ class PipelineRecoveryManager:
         with SessionLocal() as session:
             # Find documents in processing state that haven't been updated in a while
             timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
-            rows = session.query(Document).filter(
-                Document.status == "processing",
-                Document.status_updated_at < timeout_threshold,
-            ).all()
+            rows = (
+                session.query(Document)
+                .filter(
+                    Document.status == "processing",
+                    Document.status_updated_at < timeout_threshold,
+                )
+                .all()
+            )
 
             stuck_documents = [str(doc.id) for doc in rows]
             if stuck_documents:
@@ -89,9 +91,7 @@ class PipelineRecoveryManager:
             report["vectors_found"] = vector_count
 
             # Count sections
-            section_count = session.query(DocumentSection).filter(
-                DocumentSection.document_id == document_id
-            ).count()
+            section_count = session.query(DocumentSection).filter(DocumentSection.document_id == document_id).count()
             report["sections_found"] = section_count
 
             if vector_count > 0 or section_count > 0:
@@ -108,7 +108,9 @@ class PipelineRecoveryManager:
                         report["actions"].append(f"promoted_to_ready (vectors={vector_count})")
                         logger.info(
                             "[%s] Promoted stuck document to ready: %d vectors, %d sections",
-                            document_id, vector_count, section_count,
+                            document_id,
+                            vector_count,
+                            section_count,
                         )
                     else:
                         # Mark as failed instead
@@ -175,9 +177,9 @@ class PipelineRecoveryManager:
             # Get all section IDs in PostgreSQL
             with SessionLocal() as session:
                 section_ids = set()
-                rows = session.query(DocumentSection.section_id).filter(
-                    DocumentSection.document_id == document_id
-                ).all()
+                rows = (
+                    session.query(DocumentSection.section_id).filter(DocumentSection.document_id == document_id).all()
+                )
                 section_ids = {str(row[0]) for row in rows}
 
             # Check if each vector has a matching section
@@ -223,7 +225,9 @@ class PipelineRecoveryManager:
                     except Exception as e:
                         logger.error(
                             "[%s] Failed to delete orphaned vector %s: %s",
-                            document_id, vec_id, e,
+                            document_id,
+                            vec_id,
+                            e,
                         )
                         report["error"] = str(e)
 
@@ -259,9 +263,9 @@ class PipelineRecoveryManager:
 
             # Count sections
             with SessionLocal() as session:
-                section_count = session.query(DocumentSection).filter(
-                    DocumentSection.document_id == document_id
-                ).count()
+                section_count = (
+                    session.query(DocumentSection).filter(DocumentSection.document_id == document_id).count()
+                )
                 report["total_sections"] = section_count
 
             # Check orphaned vectors
@@ -278,12 +282,15 @@ class PipelineRecoveryManager:
             if report["consistent"]:
                 logger.info(
                     "[%s] ✓ Consistency check passed: %d vectors, %d sections",
-                    document_id, vector_count, section_count,
+                    document_id,
+                    vector_count,
+                    section_count,
                 )
             else:
                 logger.warning(
                     "[%s] ✗ Consistency check failed: %s",
-                    document_id, report["issues"],
+                    document_id,
+                    report["issues"],
                 )
 
         except Exception as e:

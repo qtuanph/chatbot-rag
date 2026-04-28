@@ -78,12 +78,16 @@ def _verify_ingestion(
     if result["passed"]:
         logger.info(
             "[%s] ✓ Ingestion verified: qdrant_vectors=%d file_ok=%s",
-            document_id, qdrant_count, file_ok,
+            document_id,
+            qdrant_count,
+            file_ok,
         )
     else:
         logger.warning(
             "[%s] ✗ Ingestion verify FAILED: qdrant_vectors=%d file_ok=%s",
-            document_id, qdrant_count, file_ok,
+            document_id,
+            qdrant_count,
+            file_ok,
         )
 
     return result
@@ -94,9 +98,7 @@ def _verify_ingestion(
     bind=True,
     acks_late=True,
 )
-def parse_document_task(
-    self, task_id: str, document_id: str, file_path: str, user_id: str = None
-) -> dict:
+def parse_document_task(self, task_id: str, document_id: str, file_path: str, user_id: str = None) -> dict:
     """
     Celery task: download → parse → embed → store → verify → unload.
 
@@ -126,6 +128,7 @@ def parse_document_task(
         # ── Step 2: Load embedding model ─────────────────────────────────────
         # Model is loaded fresh per task; unloaded in finally block.
         import torch
+
         device_name = "GPU" if torch.cuda.is_available() else "CPU"
 
         _set_document_status(
@@ -209,8 +212,7 @@ def parse_document_task(
 
             if (
                 ingestion_result.validation_report
-                and ingestion_result.validation_report.node_count
-                < settings.ingestion_min_non_empty_nodes
+                and ingestion_result.validation_report.node_count < settings.ingestion_min_non_empty_nodes
             ):
                 raise ValueError(
                     f"Extraction quality too low: {ingestion_result.node_count} nodes "
@@ -223,11 +225,7 @@ def parse_document_task(
                 )
 
             metadata = dict(document.extra_metadata or {})
-            artifact_dict = (
-                ingestion_result.parse_metadata.to_dict()
-                if ingestion_result.parse_metadata
-                else {}
-            )
+            artifact_dict = ingestion_result.parse_metadata.to_dict() if ingestion_result.parse_metadata else {}
             artifact_dict.update(
                 {
                     "valid": ingestion_result.success,
@@ -252,11 +250,13 @@ def parse_document_task(
 
             # Invalidate cached doc IDs so next chat request picks up new document
             from app.services.retrieval.rag import invalidate_doc_ids_cache
+
             invalidate_doc_ids_cache()
 
             # Rebuild BM25 index from all Qdrant chunks (includes new document)
             logger.info("[%s] Rebuilding BM25 index from Qdrant...", document_id)
             from app.services.retrieval.bm25_index import update_bm25_index
+
             update_bm25_index([n.text for n in ingestion_result.nodes])
 
             logger.info("[%s] ✓ Document metadata persisted", document_id)
@@ -296,8 +296,8 @@ def parse_document_task(
         if db_session is not None:
             try:
                 db_session.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to close DB session: %s", e)
 
     return {
         "task_id": task_id,

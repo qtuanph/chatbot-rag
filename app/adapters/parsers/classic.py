@@ -33,49 +33,50 @@ class ClassicParser(BaseParser):
     ) -> Tuple[List[IngestedNode], ParsingMetadata]:
         """
         Parse document using format-specific fallback extractors.
-        
+
         Args:
             filename: Document filename (for format detection)
             content: Raw file bytes
-        
+
         Returns:
             Tuple of (IngestedNode list, ParsingMetadata)
-        
+
         Raises:
             ParsingException: If parsing fails
         """
         import time
+
         start_time = time.time()
-        
+
         source_format = extract_file_format(filename)
-        
+
         try:
             nodes = []
-            
+
             # Dispatch to format-specific extractor
-            if source_format in {'pdf', 'image'}:
+            if source_format in {"pdf", "image"}:
                 # For PDFs without Docling, attempt simple page-based extraction
                 nodes = self._extract_pdf_pages(filename, content)
-            elif source_format == 'docx':
+            elif source_format == "docx":
                 nodes = self._extract_docx_text(filename, content)
-            elif source_format == 'xlsx':
+            elif source_format == "xlsx":
                 nodes = self._extract_xlsx_sheets(filename, content)
-            elif source_format in {'markdown', 'text'}:
+            elif source_format in {"markdown", "text"}:
                 nodes = self._extract_text_markdown(filename, content)
             else:
                 # Try plain text as last resort
                 nodes = self._extract_text_markdown(filename, content)
-            
+
             if not nodes:
                 raise ParsingException(
                     f"No content extracted from {filename} (format: {source_format})",
                     error_code="CLASSIC_PARSER_NO_CONTENT",
-                    details={'filename': filename, 'source_format': source_format}
+                    details={"filename": filename, "source_format": source_format},
                 )
-            
+
             parse_time_ms = (time.time() - start_time) * 1000
             quality_score = 0.7  # Lower than Docling direct extraction
-            
+
             metadata = ParsingMetadata(
                 engine_used="classic",
                 source_format=source_format,
@@ -86,17 +87,17 @@ class ClassicParser(BaseParser):
                 node_count=len(nodes),
                 total_text_chars=sum(len(node.text) for node in nodes),
                 sections_data=self._build_sections_data(nodes),
-                warnings=[f"Using fallback parser (not Docling); quality may be lower"],
+                warnings=["Using fallback parser (not Docling); quality may be lower"],
             )
-            
-            logger.info(f"Parsed {filename} with classic parser: {len(nodes)} nodes (format: {source_format})")
+
+            logger.info("Parsed %s with classic parser: %d nodes (format: %s)", filename, len(nodes), source_format)
             return nodes, metadata
-        
+
         except Exception as e:
             raise ParsingException(
                 f"Classic parser failed for {filename}: {str(e)}",
                 error_code="CLASSIC_PARSER_FAILED",
-                details={'filename': filename, 'source_format': source_format, 'error': str(e)}
+                details={"filename": filename, "source_format": source_format, "error": str(e)},
             )
 
     def _extract_pdf_pages(self, filename: str, content: bytes) -> List[IngestedNode]:
@@ -120,12 +121,12 @@ class ClassicParser(BaseParser):
                         node_type=ParsedNodeType.PAGE,
                         page_number=page_num,
                         order=page_num - 1,
-                        metadata={'source_format': 'pdf', 'page_count': len(reader.pages)},
+                        metadata={"source_format": "pdf", "page_count": len(reader.pages)},
                     )
                     nodes.append(node)
         except Exception as e:
             logger.warning(f"PDF page extraction failed: {str(e)}")
-        
+
         return nodes
 
     def _extract_docx_text(self, filename: str, content: bytes) -> List[IngestedNode]:
@@ -135,37 +136,37 @@ class ClassicParser(BaseParser):
         except ImportError:
             logger.warning("python-docx not installed; cannot extract DOCX text")
             return []
-        
+
         nodes = []
         try:
             doc = DocxDocument(BytesIO(content))
             text_buffer = []
-            
+
             for para_idx, para in enumerate(doc.paragraphs):
                 if para.text.strip():
                     text_buffer.append(para.text)
-                    
+
                     # Create node per paragraph or every N paragraphs
                     if len(text_buffer) >= 5 or para_idx == len(doc.paragraphs) - 1:
                         node = IngestedNode(
                             node_id=str(uuid.uuid4()),
                             document_id=filename,
-                            text='\n'.join(text_buffer),
+                            text="\n".join(text_buffer),
                             node_type=ParsedNodeType.PARAGRAPH,
                             order=para_idx,
-                            metadata={'source_format': 'docx', 'paragraph_count': len(doc.paragraphs)},
+                            metadata={"source_format": "docx", "paragraph_count": len(doc.paragraphs)},
                         )
                         nodes.append(node)
                         text_buffer = []
-            
+
             # Handle tables
             for table_idx, table in enumerate(doc.tables):
                 rows = []
                 for row in table.rows:
-                    row_text = ' | '.join(cell.text for cell in row.cells)
+                    row_text = " | ".join(cell.text for cell in row.cells)
                     rows.append(row_text)
-                
-                table_text = '\n'.join(rows)
+
+                table_text = "\n".join(rows)
                 if table_text.strip():
                     node = IngestedNode(
                         node_id=str(uuid.uuid4()),
@@ -173,13 +174,13 @@ class ClassicParser(BaseParser):
                         text=table_text,
                         node_type=ParsedNodeType.TABLE,
                         order=len(nodes),
-                        metadata={'source_format': 'docx', 'table_index': table_idx},
+                        metadata={"source_format": "docx", "table_index": table_idx},
                     )
                     nodes.append(node)
-        
+
         except Exception as e:
             logger.warning(f"DOCX extraction failed: {str(e)}")
-        
+
         return nodes
 
     def _extract_xlsx_sheets(self, filename: str, content: bytes) -> List[IngestedNode]:
@@ -189,21 +190,21 @@ class ClassicParser(BaseParser):
         except ImportError:
             logger.warning("openpyxl not installed; cannot extract XLSX text")
             return []
-        
+
         nodes = []
         try:
             workbook = openpyxl.load_workbook(BytesIO(content), data_only=True)
-            
+
             for sheet_idx, sheet in enumerate(workbook.sheetnames):
                 ws = workbook[sheet]
                 rows = []
-                
+
                 for row_idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
-                    row_text = ' | '.join(str(cell) if cell is not None else '' for cell in row)
+                    row_text = " | ".join(str(cell) if cell is not None else "" for cell in row)
                     if row_text.strip():
                         rows.append(row_text)
-                
-                sheet_text = '\n'.join(rows)
+
+                sheet_text = "\n".join(rows)
                 if sheet_text.strip():
                     node = IngestedNode(
                         node_id=str(uuid.uuid4()),
@@ -211,28 +212,28 @@ class ClassicParser(BaseParser):
                         text=sheet_text,
                         node_type=ParsedNodeType.TABLE,
                         order=sheet_idx,
-                        metadata={'source_format': 'xlsx', 'sheet_name': sheet, 'sheet_index': sheet_idx},
+                        metadata={"source_format": "xlsx", "sheet_name": sheet, "sheet_index": sheet_idx},
                     )
                     nodes.append(node)
-        
+
         except Exception as e:
             logger.warning(f"XLSX extraction failed: {str(e)}")
-        
+
         return nodes
 
     def _extract_text_markdown(self, filename: str, content: bytes) -> List[IngestedNode]:
         """Extract text from plain text or Markdown files."""
         try:
-            text = content.decode('utf-8', errors='ignore')
+            text = content.decode("utf-8", errors="ignore")
         except Exception as e:
             logger.warning(f"Failed to decode text file {filename}: {str(e)}")
             return []
-        
+
         nodes = []
         if text.strip():
             # Simple paragraph-based splitting
-            paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-            
+            paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+
             for para_idx, para in enumerate(paragraphs):
                 node = IngestedNode(
                     node_id=str(uuid.uuid4()),
@@ -240,7 +241,7 @@ class ClassicParser(BaseParser):
                     text=para,
                     node_type=ParsedNodeType.PARAGRAPH,
                     order=para_idx,
-                    metadata={'source_format': 'text' if filename.endswith('.txt') else 'markdown'},
+                    metadata={"source_format": "text" if filename.endswith(".txt") else "markdown"},
                 )
                 nodes.append(node)
 
@@ -254,14 +255,16 @@ class ClassicParser(BaseParser):
         sections = []
         for i, node in enumerate(nodes):
             page_label = f"Trang {node.page_number}" if node.page_number else f"Phần {i + 1}"
-            sections.append({
-                "section_id": f"classic-{node.node_id}",
-                "parent_section_id": None,
-                "title": node.section_title or page_label,
-                "content": node.text,
-                "section_type": node.node_type.value if hasattr(node.node_type, 'value') else 'section',
-                "level": 1,
-                "order_index": i,
-                "page_range": str(node.page_number) if node.page_number else None,
-            })
+            sections.append(
+                {
+                    "section_id": f"classic-{node.node_id}",
+                    "parent_section_id": None,
+                    "title": node.section_title or page_label,
+                    "content": node.text,
+                    "section_type": node.node_type.value if hasattr(node.node_type, "value") else "section",
+                    "level": 1,
+                    "order_index": i,
+                    "page_range": str(node.page_number) if node.page_number else None,
+                }
+            )
         return sections

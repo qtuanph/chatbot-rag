@@ -6,6 +6,7 @@ Fine-tuned from BAAI/bge-reranker-v2-m3 for Vietnamese.
 
 Pipeline: dense+BM25 hybrid candidates → cross-encoder rerank → top-k for LLM context.
 """
+
 from __future__ import annotations
 
 import logging
@@ -37,8 +38,8 @@ class VietnameseReranker:
     def __init__(self):
         model_name = settings.retrieval_rerank_model
         logger.info("Loading reranker model: %s ...", model_name)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_name, trust_remote_code=True)
         self.model.eval()
         logger.info("Reranker model loaded: %s", model_name)
 
@@ -98,7 +99,8 @@ class VietnameseReranker:
 
         logger.info(
             "Reranked %d documents → top %d (best_score=%.4f)",
-            len(documents), len(result),
+            len(documents),
+            len(result),
             scored_docs[0][1] if scored_docs else 0,
         )
         return result

@@ -10,7 +10,6 @@ Tests cover:
 """
 
 import pytest
-from io import BytesIO
 from fastapi.testclient import TestClient
 from app.main import app
 from app.core.config import settings
@@ -103,7 +102,6 @@ class TestPaginationBounds:
     def test_document_list_response_has_pagination_fields(self):
         """DocumentListResponse should include pagination info."""
         from app.schemas.documents import DocumentListResponse
-        import inspect
         
         fields = DocumentListResponse.model_fields
         assert "offset" in fields, "Response should have offset field"
@@ -131,7 +129,6 @@ class TestCorrelationID:
     def test_correlation_id_in_auth_context(self):
         """AuthContext should have request_id field."""
         from app.api.deps import AuthContext
-        import inspect
         
         fields = AuthContext.__dataclass_fields__
         assert "request_id" in fields, "AuthContext should have request_id field"

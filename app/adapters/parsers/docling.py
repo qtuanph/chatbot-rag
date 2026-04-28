@@ -32,7 +32,7 @@ class DoclingParser(BaseParser):
 
     def __init__(
         self,
-        fallback_parser: Optional['BaseParser'] = None,
+        fallback_parser: Optional["BaseParser"] = None,
         min_quality_score: float = 0.5,
     ):
         self.fallback_parser = fallback_parser
@@ -50,11 +50,11 @@ class DoclingParser(BaseParser):
             import rapidocr_onnxruntime  # noqa: F401 — verify backend is installed
         except ImportError:
             raise RuntimeError(
-                "PaddleOCR backend not installed. "
-                "Install: pip install rapidocr_onnxruntime==1.4.4 rapidocr==3.8.1"
+                "PaddleOCR backend not installed. " "Install: pip install rapidocr_onnxruntime==1.4.4 rapidocr==3.8.1"
             )
 
         from docling.datamodel.pipeline_options import RapidOcrOptions
+
         opts = RapidOcrOptions(lang=["vi", "en"])
         logger.info("OCR backend: PaddleOCR (RapidOCR ONNX) [vi, en]")
         return opts
@@ -83,11 +83,13 @@ class DoclingParser(BaseParser):
 
             image_fmt = ImageFormatOption(pipeline_options=pipeline)
 
-            self.converter = DocumentConverter(format_options={
-                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline),
-                InputFormat.IMAGE: image_fmt,
-                InputFormat.DOCX: WordFormatOption(),
-            })
+            self.converter = DocumentConverter(
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline),
+                    InputFormat.IMAGE: image_fmt,
+                    InputFormat.DOCX: WordFormatOption(),
+                }
+            )
 
             logger.info(
                 "Docling+PaddleOCR initialized: force_full_page_ocr=True [vi,en] | GPU=%s",
@@ -110,6 +112,7 @@ class DoclingParser(BaseParser):
     ) -> Tuple[List[IngestedNode], ParsingMetadata]:
         """Parse document with Docling + PaddleOCR. Fails if OCR fails."""
         import time
+
         start_time = time.time()
 
         source_format = extract_file_format(filename)
@@ -120,7 +123,9 @@ class DoclingParser(BaseParser):
         if result:
             # Step 2a: Try Method D — extract directly from Docling items
             nodes, sections_data, ok = self._extract_from_docling_items(
-                result.document, filename, source_format,
+                result.document,
+                filename,
+                source_format,
             )
 
             if ok and nodes:
@@ -145,7 +150,9 @@ class DoclingParser(BaseParser):
 
                 logger.info(
                     "Parsed %s: %d nodes, %d sections (Docling+PaddleOCR)",
-                    filename, len(nodes), len(sections_data),
+                    filename,
+                    len(nodes),
+                    len(sections_data),
                 )
                 return nodes, metadata
 
@@ -153,7 +160,9 @@ class DoclingParser(BaseParser):
             markdown_content = result.document.export_to_markdown()
             if markdown_content:
                 nodes, sections_data, ok = self._extract_sections_from_markdown(
-                    markdown_content, filename, source_format,
+                    markdown_content,
+                    filename,
+                    source_format,
                 )
                 if ok and nodes:
                     quality_score = self._calculate_quality_score(nodes, len(markdown_content))
@@ -173,7 +182,8 @@ class DoclingParser(BaseParser):
                     metadata.sections_data = sections_data
                     logger.info(
                         "Parsed %s: %d nodes (Docling+PaddleOCR+sections)",
-                        filename, len(nodes),
+                        filename,
+                        len(nodes),
                     )
                     return nodes, metadata
 
@@ -192,7 +202,7 @@ class DoclingParser(BaseParser):
         raise ParsingException(
             f"Failed to parse {filename}: Docling+PaddleOCR could not extract content",
             error_code="PARSING_OCR_FAILED",
-            details={'filename': filename, 'source_format': source_format}
+            details={"filename": filename, "source_format": source_format},
         )
 
     # ── Docling conversion (single pass: always OCR) ────────────────────────
@@ -225,9 +235,10 @@ class DoclingParser(BaseParser):
                 result = self.converter.convert(tmp_path)
 
                 # Post-process: fix heading hierarchy via docling-hierarchical-pdf
-                if filename.lower().endswith('.pdf'):
+                if filename.lower().endswith(".pdf"):
                     try:
                         from hierarchical.postprocessor import ResultPostprocessor
+
                         ResultPostprocessor(result).process()
                         logger.info("Applied hierarchical heading post-processor")
                     except ImportError:
@@ -248,15 +259,15 @@ class DoclingParser(BaseParser):
 
     def _get_page_number(self, item) -> Optional[int]:
         """Extract page number from a Docling item's provenance."""
-        prov = getattr(item, 'prov', None)
+        prov = getattr(item, "prov", None)
         if not prov:
             return None
         for p in (prov if isinstance(prov, list) else [prov]):
-            page_no = getattr(p, 'page_no', None)
+            page_no = getattr(p, "page_no", None)
             if page_no is not None:
                 return int(page_no)
-            if isinstance(p, dict) and p.get('page_no') is not None:
-                return int(p['page_no'])
+            if isinstance(p, dict) and p.get("page_no") is not None:
+                return int(p["page_no"])
         return None
 
     def _format_page_range(self, page_start: Optional[int], page_end: Optional[int]) -> Optional[str]:
@@ -273,7 +284,7 @@ class DoclingParser(BaseParser):
 
     def _table_item_to_markdown(self, item) -> str:
         """Convert Docling TableItem to markdown table text."""
-        data = getattr(item, 'data', None)
+        data = getattr(item, "data", None)
         if not data or not data.table_cells:
             return ""
         num_cols = data.num_cols
@@ -284,7 +295,7 @@ class DoclingParser(BaseParser):
             col = cell.start_col_offset_idx
             if row not in rows:
                 rows[row] = {}
-            rows[row][col] = (getattr(cell, 'text', '') or '').strip()
+            rows[row][col] = (getattr(cell, "text", "") or "").strip()
 
         lines = []
         for row_idx in sorted(rows.keys()):
@@ -311,22 +322,22 @@ class DoclingParser(BaseParser):
     @staticmethod
     def _is_noise_section(title: str, content: str, page_start: int | None) -> bool:
         """Filter empty sections from cover pages, TOC, and noise."""
-        title = (title or '').strip()
-        content = (content or '').strip()
+        title = (title or "").strip()
+        content = (content or "").strip()
         # Empty section on first 2 pages → likely cover noise
         if not content and len(title) < 40 and page_start and page_start <= 2:
             return True
         # Explicit TOC markers with no content
-        if title.upper() in ('MỤC LỤC', 'TABLE OF CONTENTS', 'NỘI DUNG') and not content:
+        if title.upper() in ("MỤC LỤC", "TABLE OF CONTENTS", "NỘI DUNG") and not content:
             return True
         return False
 
     @staticmethod
     def _correct_vietnamese_heading_level(title: str, current_level: int) -> int:
         """Override level for Vietnamese heading patterns that post-processor may miss."""
-        t = (title or '').strip()
+        t = (title or "").strip()
         # Chương/Phần always = level 1
-        if re.match(r'(?i)^(chương|phần)\s+[\dIVX]+', t):
+        if re.match(r"(?i)^(chương|phần)\s+[\dIVX]+", t):
             return 1
         return current_level
 
@@ -354,21 +365,25 @@ class DoclingParser(BaseParser):
             heading_stack: dict[int, str] = {}
 
             for item, _tree_level in document.iterate_items():
-                item_label = getattr(item, 'label', '') or ''
-                item_text = getattr(item, 'text', None) or ''
+                item_label = getattr(item, "label", "") or ""
+                item_text = getattr(item, "text", None) or ""
                 page_no = self._get_page_number(item)
 
                 # SectionHeaderItem → start new section
-                if item_label == 'section_header':
+                if item_label == "section_header":
                     # Save previous section (skip noise)
-                    if current_section and not self._is_noise_section(
-                        current_section.get("title", ""),
-                        current_section.get("content", ""),
-                        current_section.get("page_start"),
-                    ) and self._should_persist_section(current_section):
+                    if (
+                        current_section
+                        and not self._is_noise_section(
+                            current_section.get("title", ""),
+                            current_section.get("content", ""),
+                            current_section.get("page_start"),
+                        )
+                        and self._should_persist_section(current_section)
+                    ):
                         sections_raw.append(current_section)
 
-                    level = getattr(item, 'level', 1) or 1
+                    level = getattr(item, "level", 1) or 1
                     title = item_text.strip()
 
                     # Vietnamese heading correction (supplement post-processor)
@@ -376,11 +391,11 @@ class DoclingParser(BaseParser):
 
                     # Update heading stack for breadcrumbs
                     heading_stack[level] = title
-                    for l in list(heading_stack.keys()):
-                        if l > level:
-                            del heading_stack[l]
+                    for heading_key in list(heading_stack.keys()):
+                        if heading_key > level:
+                            del heading_stack[heading_key]
 
-                    breadcrumb = [heading_stack[l] for l in sorted(heading_stack.keys())]
+                    breadcrumb = [heading_stack[heading_key] for heading_key in sorted(heading_stack.keys())]
 
                     # Find parent section
                     parent_section_id = None
@@ -407,12 +422,16 @@ class DoclingParser(BaseParser):
                     continue
 
                 # TitleItem → document title (treat as level 0 section)
-                elif item_label == 'title':
-                    if current_section and not self._is_noise_section(
-                        current_section.get("title", ""),
-                        current_section.get("content", ""),
-                        current_section.get("page_start"),
-                    ) and self._should_persist_section(current_section):
+                elif item_label == "title":
+                    if (
+                        current_section
+                        and not self._is_noise_section(
+                            current_section.get("title", ""),
+                            current_section.get("content", ""),
+                            current_section.get("page_start"),
+                        )
+                        and self._should_persist_section(current_section)
+                    ):
                         sections_raw.append(current_section)
                     heading_stack = {}  # Reset for document title
                     heading_stack[0] = item_text.strip()
@@ -431,7 +450,7 @@ class DoclingParser(BaseParser):
                     continue
 
                 # TableItem → convert to markdown table
-                elif item_label == 'table':
+                elif item_label == "table":
                     if current_section is None:
                         current_section = {
                             "title": "Nội dung mở đầu",
@@ -453,9 +472,19 @@ class DoclingParser(BaseParser):
                         current_section["page_end"] = page_no
 
                 # TextItem / ListItem / CodeItem / FormulaItem → append text
-                elif item_label in ('paragraph', 'text', 'caption', 'footnote',
-                                    'page_header', 'page_footer', 'reference',
-                                    'list_item', 'code', 'formula', 'marker'):
+                elif item_label in (
+                    "paragraph",
+                    "text",
+                    "caption",
+                    "footnote",
+                    "page_header",
+                    "page_footer",
+                    "reference",
+                    "list_item",
+                    "code",
+                    "formula",
+                    "marker",
+                ):
                     if current_section is None:
                         current_section = {
                             "title": "Nội dung mở đầu",
@@ -470,24 +499,28 @@ class DoclingParser(BaseParser):
                             "parent_section_id": None,
                         }
                     if item_text.strip():
-                        prefix = "- " if item_label == 'list_item' else ""
+                        prefix = "- " if item_label == "list_item" else ""
                         current_section["content"] += prefix + item_text.strip() + "\n\n"
                     if current_section is not None and page_no is not None:
                         current_section["page_end"] = page_no
 
                 # PictureItem → skip (future: image caption extraction)
-                elif item_label in ('picture',):
+                elif item_label in ("picture",):
                     if current_section is not None:
                         current_section["image_count"] += 1
                         if page_no is not None:
                             current_section["page_end"] = page_no
 
             # Don't forget the last section (skip noise)
-            if current_section and not self._is_noise_section(
-                current_section.get("title", ""),
-                current_section.get("content", ""),
-                current_section.get("page_start"),
-            ) and self._should_persist_section(current_section):
+            if (
+                current_section
+                and not self._is_noise_section(
+                    current_section.get("title", ""),
+                    current_section.get("content", ""),
+                    current_section.get("page_start"),
+                )
+                and self._should_persist_section(current_section)
+            ):
                 sections_raw.append(current_section)
 
             if not sections_raw:
@@ -508,58 +541,62 @@ class DoclingParser(BaseParser):
                 page_end = section.get("page_end")
 
                 # Create section record for PostgreSQL
-                sections_data.append({
-                    "section_id": section_id,
-                    "parent_section_id": section.get("parent_section_id"),
-                    "title": title,
-                    "content": content if content else None,
-                    "section_type": "section",
-                    "level": level,
-                    "order_index": sec_idx,
-                    "page_range": self._format_page_range(page_start, page_end),
-                    "image_count": section.get("image_count", 0),
-                    "table_count": section.get("table_count", 0),
-                    "chunk_count": 0,
-                    "breadcrumb": breadcrumb,
-                    "metadata": {
-                        "page_start": page_start,
-                        "page_end": page_end,
-                    },
-                })
+                sections_data.append(
+                    {
+                        "section_id": section_id,
+                        "parent_section_id": section.get("parent_section_id"),
+                        "title": title,
+                        "content": content if content else None,
+                        "section_type": "section",
+                        "level": level,
+                        "order_index": sec_idx,
+                        "page_range": self._format_page_range(page_start, page_end),
+                        "image_count": section.get("image_count", 0),
+                        "table_count": section.get("table_count", 0),
+                        "chunk_count": 0,
+                        "breadcrumb": breadcrumb,
+                        "metadata": {
+                            "page_start": page_start,
+                            "page_end": page_end,
+                        },
+                    }
+                )
 
                 # Split section content into chunks
-                chunks = self._split_text_to_chunks(
-                    content, chunk_size_tokens, chunk_overlap_tokens
-                )
+                chunks = self._split_text_to_chunks(content, chunk_size_tokens, chunk_overlap_tokens)
                 sections_data[-1]["chunk_count"] = len(chunks)
 
                 # Create IngestedNode for each chunk
                 for chunk_idx, chunk_text in enumerate(chunks):
-                    chunk_nodes.append(IngestedNode(
-                        node_id=str(uuid.uuid4()),
-                        document_id=document_id,
-                        text=chunk_text,
-                        node_type=ParsedNodeType.PARAGRAPH,
-                        page_number=page_start,
-                        section_title=title,
-                        parent_id=None,
-                        order=global_order,
-                        metadata={
-                            "source_format": source_format,
-                            "section_id": section_id,
-                            "section_level": level,
-                            "chunk_index": chunk_idx,
-                            "breadcrumb": breadcrumb,
-                            "page_number": page_start,
-                            "page_start": page_start,
-                            "page_end": page_end,
-                        },
-                    ))
+                    chunk_nodes.append(
+                        IngestedNode(
+                            node_id=str(uuid.uuid4()),
+                            document_id=document_id,
+                            text=chunk_text,
+                            node_type=ParsedNodeType.PARAGRAPH,
+                            page_number=page_start,
+                            section_title=title,
+                            parent_id=None,
+                            order=global_order,
+                            metadata={
+                                "source_format": source_format,
+                                "section_id": section_id,
+                                "section_level": level,
+                                "chunk_index": chunk_idx,
+                                "breadcrumb": breadcrumb,
+                                "page_number": page_start,
+                                "page_start": page_start,
+                                "page_end": page_end,
+                            },
+                        )
+                    )
                     global_order += 1
 
             logger.info(
                 "Extracted %d sections → %d chunks (Method D) from %s",
-                len(sections_data), len(chunk_nodes), document_id,
+                len(sections_data),
+                len(chunk_nodes),
+                document_id,
             )
             return chunk_nodes, sections_data, True
 
@@ -600,51 +637,55 @@ class DoclingParser(BaseParser):
                 level = section["level"]
                 breadcrumb = section["breadcrumb"]
 
-                sections_data.append({
-                    "section_id": section_id,
-                    "parent_section_id": section.get("parent_section_id"),
-                    "title": title,
-                    "content": content if content else None,
-                    "section_type": "section",
-                    "level": level,
-                    "order_index": sec_idx,
-                    "page_range": None,  # No page info in markdown path
-                    "image_count": section.get("image_count", 0),
-                    "table_count": section.get("table_count", 0),
-                    "chunk_count": 0,
-                    "breadcrumb": breadcrumb,
-                    "metadata": {},
-                })
-
-                chunks = self._split_text_to_chunks(
-                    content, chunk_size_tokens, chunk_overlap_tokens
+                sections_data.append(
+                    {
+                        "section_id": section_id,
+                        "parent_section_id": section.get("parent_section_id"),
+                        "title": title,
+                        "content": content if content else None,
+                        "section_type": "section",
+                        "level": level,
+                        "order_index": sec_idx,
+                        "page_range": None,  # No page info in markdown path
+                        "image_count": section.get("image_count", 0),
+                        "table_count": section.get("table_count", 0),
+                        "chunk_count": 0,
+                        "breadcrumb": breadcrumb,
+                        "metadata": {},
+                    }
                 )
+
+                chunks = self._split_text_to_chunks(content, chunk_size_tokens, chunk_overlap_tokens)
                 sections_data[-1]["chunk_count"] = len(chunks)
 
                 for chunk_idx, chunk_text in enumerate(chunks):
-                    chunk_nodes.append(IngestedNode(
-                        node_id=str(uuid.uuid4()),
-                        document_id=document_id,
-                        text=chunk_text,
-                        node_type=ParsedNodeType.PARAGRAPH,
-                        page_number=None,
-                        section_title=title,
-                        parent_id=None,
-                        order=global_order,
-                        metadata={
-                            "source_format": source_format,
-                            "section_id": section_id,
-                            "section_level": level,
-                            "chunk_index": chunk_idx,
-                            "breadcrumb": breadcrumb,
-                            "page_number": None,
-                        },
-                    ))
+                    chunk_nodes.append(
+                        IngestedNode(
+                            node_id=str(uuid.uuid4()),
+                            document_id=document_id,
+                            text=chunk_text,
+                            node_type=ParsedNodeType.PARAGRAPH,
+                            page_number=None,
+                            section_title=title,
+                            parent_id=None,
+                            order=global_order,
+                            metadata={
+                                "source_format": source_format,
+                                "section_id": section_id,
+                                "section_level": level,
+                                "chunk_index": chunk_idx,
+                                "breadcrumb": breadcrumb,
+                                "page_number": None,
+                            },
+                        )
+                    )
                     global_order += 1
 
             logger.info(
                 "Extracted %d sections → %d chunks (markdown fallback) from %s",
-                len(sections_data), len(chunk_nodes), document_id,
+                len(sections_data),
+                len(chunk_nodes),
+                document_id,
             )
             return chunk_nodes, sections_data, True
 
@@ -662,7 +703,7 @@ class DoclingParser(BaseParser):
         heading_stack: dict[int, str] = {}
 
         for line in lines:
-            heading_match = re.match(r'^(#{1,6})\s+(.+)$', line)
+            heading_match = re.match(r"^(#{1,6})\s+(.+)$", line)
             if heading_match:
                 if current_section and (
                     current_section["content"].strip()
@@ -675,10 +716,10 @@ class DoclingParser(BaseParser):
                 level = len(heading_match.group(1))
                 title = heading_match.group(2).strip()
                 heading_stack[level] = title
-                for l in list(heading_stack.keys()):
-                    if l > level:
-                        del heading_stack[l]
-                breadcrumb = [heading_stack[l] for l in sorted(heading_stack.keys())]
+                for heading_key in list(heading_stack.keys()):
+                    if heading_key > level:
+                        del heading_stack[heading_key]
+                breadcrumb = [heading_stack[heading_key] for heading_key in sorted(heading_stack.keys())]
 
                 current_section = {
                     "title": title,
@@ -722,14 +763,14 @@ class DoclingParser(BaseParser):
 
     # Vietnamese abbreviations that should NOT trigger sentence breaks
     _VI_ABBREVIATIONS = re.compile(
-        r'(?:Tp|TP|GS|PGS|TS|ThS|BS|DS|KS|KTS|ĐH|CĐ|TT|UBND|VNĐ|VN'
-        r'|vol|Vol|No|no|tr|Tr|pg|Pg|ch|Ch|kt|Kt'
-        r'|khoả|khoảng|độ|đồng|v.v'
-        r')\.\s*$',
+        r"(?:Tp|TP|GS|PGS|TS|ThS|BS|DS|KS|KTS|ĐH|CĐ|TT|UBND|VNĐ|VN"
+        r"|vol|Vol|No|no|tr|Tr|pg|Pg|ch|Ch|kt|Kt"
+        r"|khoả|khoảng|độ|đồng|v.v"
+        r")\.\s*$",
     )
 
     # Markdown table row pattern
-    _TABLE_ROW = re.compile(r'^\|.*\|$')
+    _TABLE_ROW = re.compile(r"^\|.*\|$")
 
     def _split_text_to_chunks(
         self,
@@ -800,50 +841,54 @@ class DoclingParser(BaseParser):
 
     def _split_into_blocks(self, text: str) -> List[str]:
         """Split text into blocks: paragraphs, tables, and list groups."""
-        lines = text.split('\n')
+        lines = text.split("\n")
         blocks: List[str] = []
         current_block: List[str] = []
 
         for line in lines:
             is_table = bool(self._TABLE_ROW.match(line.strip()))
-            is_list = line.strip().startswith(('- ', '* ', '+ ')) or re.match(r'^\d+\.\s', line.strip())
+            is_list = line.strip().startswith(("- ", "* ", "+ ")) or re.match(r"^\d+\.\s", line.strip())
 
             if is_table or is_list:
                 # Flush current paragraph block
                 if current_block:
-                    blocks.append('\n'.join(current_block))
+                    blocks.append("\n".join(current_block))
                     current_block = []
                 current_block.append(line)
             elif current_block and (
                 self._TABLE_ROW.match(current_block[-1].strip())
-                or current_block[-1].strip().startswith(('- ', '* ', '+ '))
-                or re.match(r'^\d+\.\s', current_block[-1].strip())
+                or current_block[-1].strip().startswith(("- ", "* ", "+ "))
+                or re.match(r"^\d+\.\s", current_block[-1].strip())
             ):
                 # Continuing a table/list block
                 current_block.append(line)
-            elif line.strip() == '':
+            elif line.strip() == "":
                 # Paragraph boundary
                 if current_block:
-                    blocks.append('\n'.join(current_block))
+                    blocks.append("\n".join(current_block))
                     current_block = []
             else:
                 current_block.append(line)
 
         if current_block:
-            blocks.append('\n'.join(current_block))
+            blocks.append("\n".join(current_block))
         return blocks
 
     def _is_atomic_block(self, block: str) -> bool:
         """Check if a block should not be further split (table or list group)."""
-        lines = block.strip().split('\n')
+        lines = block.strip().split("\n")
         if not lines:
             return False
         # Multi-line table or list group
         if len(lines) > 1:
-            table_lines = sum(1 for l in lines if self._TABLE_ROW.match(l.strip()))
+            table_lines = sum(1 for line_item in lines if self._TABLE_ROW.match(line_item.strip()))
             if table_lines >= 2:
                 return True
-            list_lines = sum(1 for l in lines if l.strip().startswith(('- ', '* ', '+ ')) or re.match(r'^\d+\.\s', l.strip()))
+            list_lines = sum(
+                1
+                for line_item in lines
+                if line_item.strip().startswith(("- ", "* ", "+ ")) or re.match(r"^\d+\.\s", line_item.strip())
+            )
             if list_lines >= 2:
                 return True
         return False
@@ -851,7 +896,7 @@ class DoclingParser(BaseParser):
     def _split_sentences(self, text: str) -> List[str]:
         """Split text into sentences with Vietnamese-aware boundary detection."""
         # Split on sentence-ending punctuation followed by space/newline
-        parts = re.split(r'(?<=[.!?。！？])\s+', text)
+        parts = re.split(r"(?<=[.!?。！？])\s+", text)
         sentences: List[str] = []
         for part in parts:
             part = part.strip()
@@ -859,7 +904,7 @@ class DoclingParser(BaseParser):
                 continue
             # Rejoin if the period was an abbreviation, not a sentence end
             if sentences and self._VI_ABBREVIATIONS.search(sentences[-1]):
-                sentences[-1] = sentences[-1] + ' ' + part
+                sentences[-1] = sentences[-1] + " " + part
             else:
                 sentences.append(part)
         return sentences
@@ -875,9 +920,7 @@ class DoclingParser(BaseParser):
             current_header = node.section_title
 
             try:
-                cleaned_text, predicted_header = rule_based_refiner.refine_text(
-                    original_text, current_header
-                )
+                cleaned_text, predicted_header = rule_based_refiner.refine_text(original_text, current_header)
             except Exception as e:
                 logger.warning("Rule-based refinement failed for node %d: %s", idx, e)
                 cleaned_text, predicted_header = original_text, current_header
@@ -885,22 +928,23 @@ class DoclingParser(BaseParser):
             node.text = cleaned_text
 
             if node.node_type == ParsedNodeType.SECTION:
-                level_match = re.match(r'^(#+)', original_text)
+                level_match = re.match(r"^(#+)", original_text)
                 level = len(level_match.group(1)) if level_match else 1
-                title = predicted_header or original_text.lstrip('#').strip()
+                title = predicted_header or original_text.lstrip("#").strip()
                 node.section_title = title
                 heading_stack[level] = title
-                for l in list(heading_stack.keys()):
-                    if l > level:
-                        del heading_stack[l]
+                for heading_key in list(heading_stack.keys()):
+                    if heading_key > level:
+                        del heading_stack[heading_key]
 
-            node.metadata['breadcrumb'] = [heading_stack[l] for l in sorted(heading_stack.keys())]
+            node.metadata["breadcrumb"] = [heading_stack[heading_key] for heading_key in sorted(heading_stack.keys())]
 
         return nodes
 
     def _refine_sections(self, sections_data: List[dict]) -> List[dict]:
         """Apply text refinement to section titles and content."""
         from app.services.ingestion.rule_based_refiner import rule_based_refiner
+
         for sec in sections_data:
             if sec.get("title"):
                 cleaned, _ = rule_based_refiner.refine_text(sec["title"], None)
@@ -909,28 +953,25 @@ class DoclingParser(BaseParser):
                 cleaned, _ = rule_based_refiner.refine_text(sec["content"], None)
                 sec["content"] = cleaned
             if sec.get("breadcrumb"):
-                sec["breadcrumb"] = [
-                    rule_based_refiner.refine_text(b, None)[0] if b else b
-                    for b in sec["breadcrumb"]
-                ]
+                sec["breadcrumb"] = [rule_based_refiner.refine_text(b, None)[0] if b else b for b in sec["breadcrumb"]]
         return sections_data
 
     def _infer_node_type(self, node) -> ParsedNodeType:
         """Infer node type from node text content."""
-        text = getattr(node, 'text', '') or ''
-        metadata = getattr(node, 'metadata', {}) or {}
+        text = getattr(node, "text", "") or ""
+        metadata = getattr(node, "metadata", {}) or {}
 
-        if metadata.get('node_type'):
+        if metadata.get("node_type"):
             try:
-                return ParsedNodeType(str(metadata['node_type']).lower())
+                return ParsedNodeType(str(metadata["node_type"]).lower())
             except ValueError:
                 pass
 
-        if '```' in text or 'def ' in text or 'class ' in text:
+        if "```" in text or "def " in text or "class " in text:
             return ParsedNodeType.CODE_BLOCK
-        elif '|' in text and text.count('\n') < 20:
+        elif "|" in text and text.count("\n") < 20:
             return ParsedNodeType.TABLE
-        elif text.startswith('#') or text.startswith('##'):
+        elif text.startswith("#") or text.startswith("##"):
             return ParsedNodeType.SECTION
         else:
             return ParsedNodeType.PARAGRAPH
@@ -949,8 +990,10 @@ class DoclingParser(BaseParser):
         hierarchical_nodes = sum(1 for n in nodes if n.parent_id)
         hierarchy_score = min(hierarchical_nodes / len(nodes), 1.0)
 
-        return min(max(
-            length_score * 0.5 + type_diversity * 0.25 + hierarchy_score * 0.25,
-            0.0,
-        ), 1.0)
-
+        return min(
+            max(
+                length_score * 0.5 + type_diversity * 0.25 + hierarchy_score * 0.25,
+                0.0,
+            ),
+            1.0,
+        )

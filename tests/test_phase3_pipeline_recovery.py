@@ -162,7 +162,7 @@ class TestStatusTransitions:
         
         # This test assumes vectors exist in Qdrant (mocked scenario)
         # The actual vector count would be checked in the real scenario
-        report = recovery_mgr.recover_stuck_document(doc_id, mark_failed=False)
+        recovery_mgr.recover_stuck_document(doc_id, mark_failed=False)
         
         # Cleanup
         with SessionLocal() as session:

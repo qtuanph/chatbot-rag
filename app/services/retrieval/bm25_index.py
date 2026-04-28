@@ -4,12 +4,12 @@ BM25 Index Management — builds and persists vocabulary from document corpus.
 Builds BM25 vocab + IDF from all chunks in Qdrant, persists to disk.
 Called during startup (lazy) or after document ingestion.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import time
-from functools import lru_cache
 
 from app.adapters.sparse_embeddings.vietnamese_bm25 import VietnameseBM25Encoder
 from app.core.config import settings

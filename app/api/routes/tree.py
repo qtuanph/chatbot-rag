@@ -19,7 +19,6 @@ from app.models.core import Document
 from app.services.auth.throttle import RequestThrottle
 from app.services.storage.document_store import SectionRepository
 
-
 router = APIRouter(tags=["tree"])
 logger = logging.getLogger(__name__)
 throttle = RequestThrottle()
@@ -48,6 +47,7 @@ def _verify_document_exists(document_id: str) -> Document:
         if not doc:
             raise http_errors.not_found("Document not found")
         return doc
+
 
 def _create_preview(text: str, query_lower: str) -> str:
     """Create a text preview around the matched query term."""
@@ -87,10 +87,7 @@ def _section_sort_key(section: dict) -> tuple[int, int, str]:
 
 @router.get("/tree/{document_id}")
 async def get_document_tree(
-    document_id: str,
-    offset: int = 0,
-    limit: int = 20,
-    auth: AuthContext = Depends(get_auth_context)
+    document_id: str, offset: int = 0, limit: int = 20, auth: AuthContext = Depends(get_auth_context)
 ):
     """
     Get hierarchical tree structure for a document with pagination.
@@ -139,32 +136,30 @@ async def get_document_tree(
                 "max_depth": 0,
                 "offset": 0,
                 "limit": limit,
-                "nodes": []
+                "nodes": [],
             }
 
-        child_counts = Counter(
-            sec.get("parent_section_id")
-            for sec in ordered_sections
-            if sec.get("parent_section_id")
-        )
+        child_counts = Counter(sec.get("parent_section_id") for sec in ordered_sections if sec.get("parent_section_id"))
 
-        page_sections = ordered_sections[offset:offset + limit]
+        page_sections = ordered_sections[offset : offset + limit]
 
         nodes_list = []
         for section in page_sections:
             breadcrumb = section.get("breadcrumb") or []
             page_range = section.get("page_range")
-            nodes_list.append({
-                "node_id": section.get("section_id", ""),
-                "title": section.get("title", ""),
-                "level": section.get("level", 0),
-                "breadcrumb": " > ".join(str(b) for b in breadcrumb) if breadcrumb else section.get("title", ""),
-                "parent_id": section.get("parent_section_id"),
-                "child_count": int(child_counts.get(section.get("section_id"), 0)),
-                "text_length": len(section.get("content") or ""),
-                "page_number": page_range or "?",
-                "page_range": page_range,
-            })
+            nodes_list.append(
+                {
+                    "node_id": section.get("section_id", ""),
+                    "title": section.get("title", ""),
+                    "level": section.get("level", 0),
+                    "breadcrumb": " > ".join(str(b) for b in breadcrumb) if breadcrumb else section.get("title", ""),
+                    "parent_id": section.get("parent_section_id"),
+                    "child_count": int(child_counts.get(section.get("section_id"), 0)),
+                    "text_length": len(section.get("content") or ""),
+                    "page_number": page_range or "?",
+                    "page_range": page_range,
+                }
+            )
 
         max_depth = max((int(sec.get("level") or 0) for sec in ordered_sections), default=0)
 
@@ -175,22 +170,16 @@ async def get_document_tree(
             "max_depth": max_depth,
             "offset": offset,
             "limit": limit,
-            "nodes": nodes_list
+            "nodes": nodes_list,
         }
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error("Error getting tree for %s: %s", document_id, e, exc_info=True)
         raise http_errors.internal_server_error("Failed to retrieve document tree") from None
 
 
 @router.get("/tree/{document_id}/nodes/{node_id}")
-async def get_node_details(
-    document_id: str,
-    node_id: str,
-    auth: AuthContext = Depends(get_auth_context)
-):
+async def get_node_details(document_id: str, node_id: str, auth: AuthContext = Depends(get_auth_context)):
     """
     Get full details of a single node.
 
@@ -244,12 +233,10 @@ async def get_node_details(
                 "node_type": section.get("section_type", "section"),
                 "order": section.get("order_index", 0),
                 "char_count": len(text),
-                "token_count": len(text.split())
-            }
+                "token_count": len(text.split()),
+            },
         }
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error("Error getting node %s for %s: %s", node_id, document_id, e, exc_info=True)
         raise http_errors.internal_server_error("Failed to retrieve node details") from None
@@ -259,7 +246,7 @@ async def get_node_details(
 async def search_nodes(
     document_id: str,
     query: str = Query(..., min_length=1, max_length=500),
-    auth: AuthContext = Depends(get_auth_context)
+    auth: AuthContext = Depends(get_auth_context),
 ):
     """
     Search nodes by title or content.
@@ -299,17 +286,17 @@ async def search_nodes(
             text = section.get("content") or ""
             preview_source = text if text else section.get("title", "")
             preview = _create_preview(preview_source, query_lower)
-            results.append({
-                "node_id": section.get("section_id", ""),
-                "title": section.get("title", ""),
-                "preview": preview,
-                "highlight": query,
-            })
+            results.append(
+                {
+                    "node_id": section.get("section_id", ""),
+                    "title": section.get("title", ""),
+                    "preview": preview,
+                    "highlight": query,
+                }
+            )
 
         return {"results": results}
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error("Error searching nodes in %s: %s", document_id, e, exc_info=True)
         raise http_errors.internal_server_error("Failed to search nodes") from None

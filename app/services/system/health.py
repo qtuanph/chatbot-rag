@@ -6,7 +6,6 @@ from time import perf_counter
 from typing import Any
 
 import boto3
-import httpx
 import psycopg
 import redis
 from botocore.client import Config
@@ -14,7 +13,6 @@ from botocore.exceptions import ClientError
 
 from app.core.celery_app import celery_app
 from app.core.config import settings
-
 
 _HEALTH_CACHE_TTL_SECONDS = 30.0
 _HEALTH_CACHE_LOCK = Lock()
@@ -40,7 +38,12 @@ def check_database() -> dict[str, Any]:
                 cur.fetchone()
         return {"status": "up", "latency_ms": _latency_ms(start), "dsn": _redact(settings.database_url)}
     except Exception:
-        return {"status": "down", "latency_ms": _latency_ms(start), "dsn": _redact(settings.database_url), "error": "database_unreachable"}
+        return {
+            "status": "down",
+            "latency_ms": _latency_ms(start),
+            "dsn": _redact(settings.database_url),
+            "error": "database_unreachable",
+        }
 
 
 def check_redis() -> dict[str, Any]:
@@ -51,7 +54,12 @@ def check_redis() -> dict[str, Any]:
         client.ping()
         return {"status": "up", "latency_ms": _latency_ms(start), "url": _redact(settings.redis_url)}
     except Exception:
-        return {"status": "down", "latency_ms": _latency_ms(start), "url": _redact(settings.redis_url), "error": "redis_unreachable"}
+        return {
+            "status": "down",
+            "latency_ms": _latency_ms(start),
+            "url": _redact(settings.redis_url),
+            "error": "redis_unreachable",
+        }
     finally:
         if client:
             client.close()
@@ -66,8 +74,8 @@ def check_storage() -> dict[str, Any]:
             endpoint_url=f"http{'s' if settings.s3_secure else ''}://{settings.s3_endpoint}",
             aws_access_key_id=settings.s3_access_key,
             aws_secret_access_key=settings.s3_secret_key,
-            config=Config(signature_version='s3v4', connect_timeout=2, read_timeout=2),
-            region_name='us-east-1'
+            config=Config(signature_version="s3v4", connect_timeout=2, read_timeout=2),
+            region_name="us-east-1",
         )
         client.head_bucket(Bucket=settings.s3_bucket)
         return {
@@ -177,10 +185,7 @@ def build_health_payload() -> dict[str, Any]:
     elif any(check["status"] == "degraded" for check in checks.values()):
         overall = "degraded"
 
-    public_checks = {
-        name: {"status": check["status"]}
-        for name, check in checks.items()
-    }
+    public_checks = {name: {"status": check["status"]} for name, check in checks.items()}
     payload = {"status": overall, "checks": public_checks}
 
     with _HEALTH_CACHE_LOCK:

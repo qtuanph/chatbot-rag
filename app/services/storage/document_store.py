@@ -29,14 +29,14 @@ class DocumentRepository:
     ) -> Dict[str, Any]:
         """
         Insert or update document record.
-        
+
         Args:
             document_id: Unique document ID
             user_id: User who uploaded document
             filename: Original filename
             status: Upload status (pending, processing, success, failed)
             artifact_metadata: JSON metadata from ingestion
-        
+
         Returns:
             Document record as dict
         """
@@ -81,23 +81,23 @@ class DocumentRepository:
             self.session.commit()
 
             return {
-                'document_id': str(document.id),
-                'user_id': user_id,
-                'filename': document.file_name,
-                'status': document.status,
-                'status_stage': document.status_stage,
-                'progress_percent': int(document.progress_percent),
-                'status_message': document.status_message,
-                'artifact_metadata': dict(document.extra_metadata or {}),
-                'created_at': document.created_at.isoformat() if document.created_at else None,
-                'updated_at': document.updated_at.isoformat() if document.updated_at else None,
+                "document_id": str(document.id),
+                "user_id": user_id,
+                "filename": document.file_name,
+                "status": document.status,
+                "status_stage": document.status_stage,
+                "progress_percent": int(document.progress_percent),
+                "status_message": document.status_message,
+                "artifact_metadata": dict(document.extra_metadata or {}),
+                "created_at": document.created_at.isoformat() if document.created_at else None,
+                "updated_at": document.updated_at.isoformat() if document.updated_at else None,
             }
         except Exception as e:
             self.session.rollback()
             raise DocumentStoreException(
                 f"Failed to upsert document {document_id}: {str(e)}",
                 error_code="DOCUMENT_STORE_UPSERT_FAILED",
-                details={'document_id': document_id, 'error': str(e)}
+                details={"document_id": document_id, "error": str(e)},
             )
 
     def get_document(self, document_id: str) -> Optional[Dict[str, Any]]:
@@ -107,15 +107,15 @@ class DocumentRepository:
             if document is None:
                 return None
             return {
-                'document_id': str(document.id),
-                'title': document.title,
-                'file_name': document.file_name,
-                'status': document.status,
-                'status_stage': document.status_stage,
-                'progress_percent': int(document.progress_percent),
-                'status_message': document.status_message,
-                'parse_error': document.parse_error,
-                'artifact_metadata': dict(document.extra_metadata or {}),
+                "document_id": str(document.id),
+                "title": document.title,
+                "file_name": document.file_name,
+                "status": document.status,
+                "status_stage": document.status_stage,
+                "progress_percent": int(document.progress_percent),
+                "status_message": document.status_message,
+                "parse_error": document.parse_error,
+                "artifact_metadata": dict(document.extra_metadata or {}),
             }
         except Exception as e:
             raise DocumentStoreException(
@@ -138,7 +138,7 @@ class DocumentRepository:
             if document is None:
                 return False
             document.status = status
-            document.parse_error = (error_msg[:2000] if error_msg else None)
+            document.parse_error = error_msg[:2000] if error_msg else None
             if stage is not None:
                 document.status_stage = stage
             if progress_percent is not None:
@@ -167,9 +167,7 @@ class SectionRepository:
     def store_sections(self, document_id: str, sections: List[dict]) -> List[str]:
         """Bulk insert sections for a document. Returns list of section DB IDs."""
         try:
-            self.session.query(DocumentSection).filter(
-                DocumentSection.document_id == document_id
-            ).delete()
+            self.session.query(DocumentSection).filter(DocumentSection.document_id == document_id).delete()
 
             ids = []
             for sec in sections:
@@ -245,10 +243,7 @@ class SectionRepository:
             self.session.query(DocumentSection)
             .filter(
                 DocumentSection.document_id == document_id,
-                (
-                    DocumentSection.title.ilike(pattern)
-                    | DocumentSection.content.ilike(pattern)
-                ),
+                (DocumentSection.title.ilike(pattern) | DocumentSection.content.ilike(pattern)),
             )
             .order_by(DocumentSection.order_index)
             .all()
@@ -258,9 +253,7 @@ class SectionRepository:
     def delete_sections(self, document_id: str) -> int:
         """Delete all sections for a document."""
         try:
-            count = self.session.query(DocumentSection).filter(
-                DocumentSection.document_id == document_id
-            ).delete()
+            count = self.session.query(DocumentSection).filter(DocumentSection.document_id == document_id).delete()
             self.session.commit()
             logger.info("Deleted %d sections for document %s", count, document_id)
             return count

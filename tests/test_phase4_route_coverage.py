@@ -9,20 +9,13 @@ Tests for API routes: auth, upload, tree, chat with focus on:
 - Response contracts
 """
 
-import json
-from datetime import datetime, timezone
 from uuid import uuid4
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
 from app.main import app
-from app.core.config import settings
-from app.db.session import SessionLocal
-from app.models.core import User, Role, Document
-from app.schemas.auth import LoginRequest, CreateUserRequest, TokenResponse
 
 client = TestClient(app)
 
@@ -435,7 +428,6 @@ class TestChat:
     def test_chat_rate_limiting(self, member_token):
         """Excessive chat requests should be rate limited."""
         # Send 100+ requests rapidly
-        limited = False
         for i in range(100):
             response = client.post(
                 "/api/v1/chat",
@@ -443,7 +435,6 @@ class TestChat:
                 headers={"Authorization": f"Bearer {member_token}"}
             )
             if response.status_code == 429:
-                limited = True
                 assert "error" in response.json()
                 break
         # May or may not hit limit depending on config

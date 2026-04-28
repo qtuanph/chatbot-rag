@@ -12,7 +12,6 @@ from app.models.core import Document, DocumentSection
 from app.services.documents.registry import DocumentRegistry
 from app.services.storage import build_storage
 
-
 logger = logging.getLogger(__name__)
 registry = DocumentRegistry()
 
@@ -51,7 +50,7 @@ def hard_delete_document(document_id: str) -> dict[str, bool]:
     # ── Step 1: Mark deleted in registry FIRST ───────────────────────────────
     # /status endpoint reads from registry → will immediately return 'deleted'
     try:
-        registry.delete(document_id)   # sets deleted=True, status='deleted'
+        registry.delete(document_id)  # sets deleted=True, status='deleted'
     except Exception:
         logger.warning("Failed to mark registry deleted for document %s", document_id, exc_info=True)
 
@@ -80,16 +79,15 @@ def hard_delete_document(document_id: str) -> dict[str, bool]:
         except Exception:
             logger.warning(
                 "Failed to delete object storage file for document %s",
-                document_id, exc_info=True,
+                document_id,
+                exc_info=True,
             )
 
     # ── Step 3.5: Delete sections from PostgreSQL ──────────────────────────────
     sections_deleted = False
     try:
         with SessionLocal() as session:
-            count = session.query(DocumentSection).filter(
-                DocumentSection.document_id == document_id
-            ).delete()
+            count = session.query(DocumentSection).filter(DocumentSection.document_id == document_id).delete()
             session.commit()
             sections_deleted = True
             if count > 0:
@@ -112,25 +110,29 @@ def hard_delete_document(document_id: str) -> dict[str, bool]:
         except Exception:
             logger.warning(
                 "Failed to delete Celery backend result for document %s",
-                document_id, exc_info=True,
+                document_id,
+                exc_info=True,
             )
 
-    registry.purge(document_id)   # removes all remaining Redis keys
+    registry.purge(document_id)  # removes all remaining Redis keys
     registry_deleted = True
 
     # Invalidate cached doc IDs so next chat request no longer sees deleted doc
     from app.services.retrieval.rag import invalidate_doc_ids_cache
+
     invalidate_doc_ids_cache()
 
     # Rebuild BM25 index — IDF values changed after document removal
     try:
         from app.services.retrieval.bm25_index import build_bm25_index_from_qdrant
+
         build_bm25_index_from_qdrant()
         logger.info("BM25 index rebuilt after deleting document %s", document_id)
     except Exception:
         logger.warning(
             "BM25 rebuild failed after deleting document %s",
-            document_id, exc_info=True,
+            document_id,
+            exc_info=True,
         )
 
     return {

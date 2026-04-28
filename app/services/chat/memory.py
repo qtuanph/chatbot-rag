@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
 
 import redis
 
@@ -58,16 +57,13 @@ class UserMemoryService:
                 .limit(50)
                 .all()
             )
-            memories = [
-                {"type": row.memory_type, "content": row.content}
-                for row in rows
-            ]
+            memories = [{"type": row.memory_type, "content": row.content} for row in rows]
 
         # Cache in Redis
         try:
             self._redis.setex(cache_key, _MEMORY_CACHE_TTL, json.dumps(memories, ensure_ascii=False))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to cache user memories: %s", e)
 
         return memories
 
@@ -108,8 +104,8 @@ class UserMemoryService:
     def _invalidate_cache(self, user_id: str) -> None:
         try:
             self._redis.delete(self._cache_key(user_id))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to invalidate memory cache: %s", e)
 
     def should_extract_memory(self, user_message: str) -> bool:
         """Quick heuristic to detect if user message contains feedback worth remembering."""

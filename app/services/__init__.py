@@ -21,7 +21,14 @@ from app.services.documents.registry import DocumentRecord, DocumentRegistry
 from app.services.documents.cleanup import hard_delete_document
 
 # Retrieval services
-from app.services.retrieval.rag import retrieve_context, build_answer, RagContext, RagNode, RagSection, invalidate_doc_ids_cache
+from app.services.retrieval.rag import (
+    retrieve_context,
+    build_answer,
+    RagContext,
+    RagNode,
+    RagSection,
+    invalidate_doc_ids_cache,
+)
 from app.services.retrieval.cache import QueryEmbeddingCache
 from app.services.retrieval.bm25_index import get_bm25_encoder, build_bm25_index_from_qdrant, update_bm25_index
 from app.services.retrieval.reranker import get_reranker, VietnameseReranker

@@ -63,23 +63,23 @@ class RuleBasedRefiner:
         # Fix sequences of single Vietnamese chars separated by spaces (OCR artifact)
         # Match 3+ consecutive single chars each followed by a space, then merge
         text = re.sub(
-            r'(?:[A-Za-zÀ-ỹ]\s+){2,}[A-Za-zÀ-ỹ]',
-            lambda m: re.sub(r'\s+', '', m.group(0)),
+            r"(?:[A-Za-zÀ-ỹ]\s+){2,}[A-Za-zÀ-ỹ]",
+            lambda m: re.sub(r"\s+", "", m.group(0)),
             text,
         )
 
         # Fix multiple spaces (common OCR error)
-        text = re.sub(r' {3,}', ' ', text)
+        text = re.sub(r" {3,}", " ", text)
 
         return text
 
     def _fix_whitespace(self, text: str) -> str:
         """Normalize whitespace"""
         # Replace multiple spaces with single space
-        text = re.sub(r' +', ' ', text)
+        text = re.sub(r" +", " ", text)
 
         # Fix newlines
-        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
 
         return text.strip()
 
@@ -93,16 +93,16 @@ class RuleBasedRefiner:
         3. HTML tags (h1, h2, h3)
         4. Uppercase lines (all caps, usually headers)
         """
-        lines = text.strip().split('\n')
+        lines = text.strip().split("\n")
         if not lines:
             return current_header
 
         # Pattern 1: Markdown header (# ## ###)
-        markdown_match = re.match(r'^#+\s*(.+)$', lines[0])
+        markdown_match = re.match(r"^#+\s*(.+)$", lines[0])
         if markdown_match:
             header = markdown_match.group(1).strip()
             # Remove leading # symbols
-            header = re.sub(r'^#+\s*', '', header)
+            header = re.sub(r"^#+\s*", "", header)
             if len(header) >= 3 and len(header) <= 150:
                 return header
 
@@ -110,28 +110,32 @@ class RuleBasedRefiner:
         # Characteristics: short (3-100 chars), doesn't end with period, has alphanum
         if len(lines) > 1:
             first_line = lines[0].strip()
-            if (3 <= len(first_line) <= 100 and
-                not first_line.endswith('.') and
-                not first_line.endswith(',') and
-                any(c.isalnum() for c in first_line)):
+            if (
+                3 <= len(first_line) <= 100
+                and not first_line.endswith(".")
+                and not first_line.endswith(",")
+                and any(c.isalnum() for c in first_line)
+            ):
                 return first_line
 
         # Pattern 3: HTML headers (<h1>, <h2>, <h3>)
-        html_match = re.search(r'<h([1-6])[^>]*>(.*?)</h\1>', text, re.IGNORECASE)
+        html_match = re.search(r"<h([1-6])[^>]*>(.*?)</h\1>", text, re.IGNORECASE)
         if html_match:
             header = html_match.group(2).strip()
             # Remove HTML tags
-            header = re.sub(r'<[^>]+>', '', header)
+            header = re.sub(r"<[^>]+>", "", header)
             if len(header) >= 3:
                 return header
 
         # Pattern 4: ALL CAPS line (often headers in documents)
         if len(lines) > 1:
             first_line = lines[0].strip()
-            if (first_line.isupper() and
-                len(first_line) >= 3 and
-                len(first_line) <= 100 and
-                not any(c.isdigit() for c in first_line)):  # Not "12345"
+            if (
+                first_line.isupper()
+                and len(first_line) >= 3
+                and len(first_line) <= 100
+                and not any(c.isdigit() for c in first_line)
+            ):
                 return first_line
 
         # Pattern 5: Generic headers to skip

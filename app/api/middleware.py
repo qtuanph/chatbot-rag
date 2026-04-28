@@ -3,6 +3,7 @@ Security Middleware for FastAPI Application
 
 This module provides additional security middleware for production deployments.
 """
+
 import logging
 import uuid
 from typing import Callable
@@ -13,7 +14,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 from app.core.error_response import build_error_response
-
 
 logger = logging.getLogger(__name__)
 
@@ -50,22 +50,20 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # Enforce HTTPS (only if enabled)
         if self.enable_hsts:
-            response.headers[
-                "Strict-Transport-Security"
-            ] = "max-age=31536000; includeSubDomains"
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
         # Content Security Policy
-        response.headers[
-            "Content-Security-Policy"
-        ] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+        )
 
         # Referrer policy
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
         # Permissions policy (restrict browser features)
-        response.headers[
-            "Permissions-Policy"
-        ] = "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=()"
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=()"
+        )
 
         return response
 
@@ -73,7 +71,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 class CorrelationIDMiddleware(BaseHTTPMiddleware):
     """
     Add correlation ID (X-Request-ID) to all requests and responses.
-    
+
     - If X-Request-ID header is present, use it
     - Otherwise, generate a new UUID
     - Store correlation ID in request state for logging/audit trail
@@ -85,16 +83,16 @@ class CorrelationIDMiddleware(BaseHTTPMiddleware):
         correlation_id = request.headers.get("X-Request-ID")
         if not correlation_id:
             correlation_id = str(uuid.uuid4())
-        
+
         # Store in request state for access in route handlers
         request.state.correlation_id = correlation_id
-        
+
         # Process request
         response = await call_next(request)
-        
+
         # Echo correlation ID in response
         response.headers["X-Request-ID"] = correlation_id
-        
+
         return response
 
 

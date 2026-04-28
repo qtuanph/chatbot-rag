@@ -53,10 +53,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         try:
             from sentence_transformers import SentenceTransformer  # type: ignore
         except ImportError:
-            raise ImportError(
-                "sentence-transformers is not installed. "
-                "Run: pip install sentence-transformers"
-            )
+            raise ImportError("sentence-transformers is not installed. " "Run: pip install sentence-transformers")
 
         if hardware.gpu_count > 0:
             # GPU path: PyTorch fp16 — halves VRAM usage and doubles inference speed.
@@ -163,6 +160,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
                 self._model = None  # type: ignore[assignment]
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     logger.info("Embedding model unloaded — CUDA cache cleared")

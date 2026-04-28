@@ -12,6 +12,7 @@ from enum import Enum
 
 class ParsedNodeType(str, Enum):
     """Types of parsed document nodes."""
+
     SECTION = "section"
     SUBSECTION = "subsection"
     PARAGRAPH = "paragraph"
@@ -24,6 +25,7 @@ class ParsedNodeType(str, Enum):
 @dataclass
 class ParsingMetadata:
     """Metadata about the parsing process."""
+
     engine_used: str  # "docling+items", "docling+sections", "classic"
     source_format: str  # "pdf", "docx", "txt", "markdown", "xlsx"
     docling_used: bool = False  # Whether Docling was used
@@ -44,13 +46,14 @@ class ParsingMetadata:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         data = asdict(self)
-        data['created_at'] = datetime.utcnow().isoformat()
+        data["created_at"] = datetime.utcnow().isoformat()
         return data
 
 
 @dataclass
 class IngestedNode:
     """Represents a single parsed node from a document."""
+
     node_id: str
     document_id: str
     text: str
@@ -68,15 +71,15 @@ class IngestedNode:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage/transmission."""
         return {
-            'node_id': self.node_id,
-            'document_id': self.document_id,
-            'text': self.text,
-            'node_type': self.node_type.value if isinstance(self.node_type, ParsedNodeType) else self.node_type,
-            'page_number': self.page_number,
-            'section_title': self.section_title,
-            'parent_id': self.parent_id,
-            'order': self.order,
-            'metadata': self.metadata,
+            "node_id": self.node_id,
+            "document_id": self.document_id,
+            "text": self.text,
+            "node_type": self.node_type.value if isinstance(self.node_type, ParsedNodeType) else self.node_type,
+            "page_number": self.page_number,
+            "section_title": self.section_title,
+            "parent_id": self.parent_id,
+            "order": self.order,
+            "metadata": self.metadata,
         }
 
 
@@ -94,14 +97,14 @@ class BaseParser(ABC):
     ) -> Tuple[List[IngestedNode], ParsingMetadata]:
         """
         Parse document content into structured nodes.
-        
+
         Args:
             filename: Name of the document (for format detection)
             content: Raw file bytes
-        
+
         Returns:
             Tuple of (list of IngestedNode, ParsingMetadata)
-        
+
         Raises:
             ParsingException: If parsing fails irreversibly
         """
@@ -111,6 +114,7 @@ class BaseParser(ABC):
 @dataclass
 class EmbeddingResult:
     """Result of embedding operation."""
+
     text: str
     embedding: List[float]
     dimension: int
@@ -132,14 +136,14 @@ class BaseEmbedding(ABC):
     def embed(self, text: str, normalize: bool = True) -> List[float]:
         """
         Embed a single text string.
-        
+
         Args:
             text: Text to embed
             normalize: Whether to normalize embeddings (L2 norm)
-        
+
         Returns:
             List of floats representing the embedding vector
-        
+
         Raises:
             EmbeddingException: If embedding fails
         """
@@ -154,15 +158,15 @@ class BaseEmbedding(ABC):
     ) -> List[List[float]]:
         """
         Embed multiple texts efficiently.
-        
+
         Args:
             texts: List of texts to embed
             batch_size: Batch size for processing
             normalize: Whether to normalize embeddings
-        
+
         Returns:
             List of embedding vectors
-        
+
         Raises:
             EmbeddingException: If embedding fails
         """
@@ -172,6 +176,7 @@ class BaseEmbedding(ABC):
 @dataclass
 class RetrievedDocument:
     """Result of vector store retrieval."""
+
     node_id: str
     document_id: str
     text: str
@@ -199,15 +204,15 @@ class BaseVectorStore(ABC):
     ) -> List[str]:
         """
         Store document nodes with embeddings.
-        
+
         Args:
             document_id: ID of the document
             nodes: List of IngestedNode objects
             embeddings: List of embedding vectors (must match nodes length)
-        
+
         Returns:
             List of stored node IDs
-        
+
         Raises:
             VectorStoreException: If store operation fails
         """
@@ -224,17 +229,17 @@ class BaseVectorStore(ABC):
     ) -> List[RetrievedDocument]:
         """
         Retrieve top-k documents by vector similarity.
-        
+
         Args:
             query_vector: Query embedding vector
             top_k: Number of results to return
             document_id_filter: Optional filter to specific document
             document_ids_filter: Optional filter to multiple document IDs
             section_ids_filter: Optional filter to multiple section IDs
-        
+
         Returns:
             List of RetrievedDocument objects with scores
-        
+
         Raises:
             VectorStoreException: If retrieve fails
         """
@@ -244,13 +249,13 @@ class BaseVectorStore(ABC):
     def delete(self, document_id: str) -> bool:
         """
         Delete all vectors for a document.
-        
+
         Args:
             document_id: ID of document to delete
-        
+
         Returns:
             True if deletion succeeded, False otherwise
-        
+
         Raises:
             VectorStoreException: If deletion fails
         """

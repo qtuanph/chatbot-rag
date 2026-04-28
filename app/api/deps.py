@@ -39,7 +39,7 @@ def get_auth_context(
     token = authorization.removeprefix("Bearer ").strip()
     # Get correlation ID from request state (set by CorrelationIDMiddleware)
     request_id = getattr(request.state, "correlation_id", "unknown")
-    
+
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         token_id = str(payload["jti"])

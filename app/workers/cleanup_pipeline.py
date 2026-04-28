@@ -41,12 +41,17 @@ def _verify_deletion(
     if result["passed"]:
         logger.info(
             "[%s] ✓ Deletion verified: qdrant=0 file_removed=%s db_gone=%s",
-            document_id, file_gone, db_gone,
+            document_id,
+            file_gone,
+            db_gone,
         )
     else:
         logger.warning(
             "[%s] ✗ Deletion verify FAILED: qdrant_remaining=%d file_removed=%s db_gone=%s",
-            document_id, qdrant_count, file_gone, db_gone,
+            document_id,
+            qdrant_count,
+            file_gone,
+            db_gone,
         )
 
     return result
@@ -57,9 +62,7 @@ def _verify_deletion(
     bind=True,
     acks_late=True,
 )
-def delete_document_task(
-    self, task_id: str, document_id: str, user_id: str | None = None
-) -> dict:
+def delete_document_task(self, task_id: str, document_id: str, user_id: str | None = None) -> dict:
     """
     Celery task: hard-delete document + all artifacts → verify cleanup.
 
@@ -97,7 +100,7 @@ def delete_document_task(
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key or None,
         collection_name=settings.qdrant_collection,
-        vector_size=1,       # dimension irrelevant for count — collection already exists
+        vector_size=1,  # dimension irrelevant for count — collection already exists
         timeout=settings.qdrant_timeout,
     )
     verify = _verify_deletion(document_id, file_path, vector_store, storage)

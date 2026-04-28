@@ -24,30 +24,30 @@ class Settings(BaseSettings):
     ingestion_min_non_empty_nodes: int = 1
     ingestion_min_total_text_chars: int = 80
     # Embedding pipeline tuning — 0 means auto-detect from hardware profile
-    ingestion_embedding_chunk_size: int = 32   # nodes per embed+store batch
-    ingestion_embed_parallelism: int = 0       # 0 = use hardware.embed_parallelism
+    ingestion_embedding_chunk_size: int = 32  # nodes per embed+store batch
+    ingestion_embed_parallelism: int = 0  # 0 = use hardware.embed_parallelism
 
     # Retrieval quality
-    retrieval_min_score: float = 0.35          # Drop chunks below this cosine similarity
+    retrieval_min_score: float = 0.35  # Drop chunks below this cosine similarity
 
     # 2-stage retrieval settings
-    retrieval_section_top_k: int = 3           # Stage 1: top sections to retrieve
-    retrieval_chunk_top_k: int = 5             # Stage 2: top chunks per section
-    retrieval_chunk_size: int = 400            # Target chunk size in tokens
-    retrieval_chunk_overlap: int = 75          # Overlap between chunks in tokens
+    retrieval_section_top_k: int = 3  # Stage 1: top sections to retrieve
+    retrieval_chunk_top_k: int = 5  # Stage 2: top chunks per section
+    retrieval_chunk_size: int = 400  # Target chunk size in tokens
+    retrieval_chunk_overlap: int = 75  # Overlap between chunks in tokens
     retrieval_section_min_score: float = 0.30  # Lower threshold for sections (coarser search)
 
     # Hybrid search (Dense + BM25) — always on, no toggle
-    retrieval_bm25_k1: float = 1.5             # BM25 term frequency saturation
-    retrieval_bm25_b: float = 0.75             # BM25 length normalization
+    retrieval_bm25_k1: float = 1.5  # BM25 term frequency saturation
+    retrieval_bm25_b: float = 0.75  # BM25 length normalization
 
     # Cross-encoder reranker — always on, no toggle
-    retrieval_rerank_top_k: int = 5            # Final number of chunks after reranking
+    retrieval_rerank_top_k: int = 5  # Final number of chunks after reranking
     retrieval_rerank_model: str = "AITeamVN/Vietnamese_Reranker"  # Vietnamese cross-encoder
 
     # Multi-query expansion
     retrieval_query_expansion_enabled: bool = False  # Default OFF — opt-in
-    retrieval_query_expansion_variants: int = 3       # Number of query variants to generate
+    retrieval_query_expansion_variants: int = 3  # Number of query variants to generate
 
     database_url: str = "replace-me"
     redis_url: str = "redis://redis:6379/0"
@@ -58,9 +58,11 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60
 
     max_upload_size_mb: int = 50
-    
+
     # Allowed file types for upload (MIME types)
-    allowed_file_types: str = "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,application/vnd.ms-excel,application/msword"
+    allowed_file_types: str = (
+        "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,application/vnd.ms-excel,application/msword"
+    )
     max_filename_length: int = 255
 
     # Rate limiting behavior
@@ -79,7 +81,9 @@ class Settings(BaseSettings):
 
     # Embedding — local/offline, on-premise
     embedding_model: str = "sentence-transformer"
-    embedding_hf_model: str = "AITeamVN/Vietnamese_Embedding_v2"  # 1024-dim, 8192 tokens, built-in Normalize layer, Vietnamese fine-tuned BGE-M3
+    embedding_hf_model: str = (
+        "AITeamVN/Vietnamese_Embedding_v2"  # 1024-dim, 8192 tokens, built-in Normalize layer, Vietnamese fine-tuned BGE-M3
+    )
     embedding_vector_size: int = 1024
     embedding_query_prefix: str = ""
     embedding_passage_prefix: str = ""
@@ -128,7 +132,7 @@ class Settings(BaseSettings):
             raise ValueError("INGESTION_MIN_NON_EMPTY_NODES must be >= 1")
         if self.ingestion_min_total_text_chars < 1:
             raise ValueError("INGESTION_MIN_TOTAL_TEXT_CHARS must be >= 1")
-        
+
         # Embedding validation
         self.vector_store = str(self.vector_store).strip().lower() or "qdrant"
         if self.vector_store not in {"qdrant"}:

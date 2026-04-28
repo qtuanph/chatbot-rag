@@ -6,7 +6,14 @@ from app.core.config import settings
 from app.core import http_errors
 from app.db.session import SessionLocal
 from app.models.core import Role, User
-from app.schemas.auth import CreateUserRequest, CreateUserResponse, LoginRequest, LogoutResponse, RoleResponse, TokenResponse
+from app.schemas.auth import (
+    CreateUserRequest,
+    CreateUserResponse,
+    LoginRequest,
+    LogoutResponse,
+    RoleResponse,
+    TokenResponse,
+)
 from app.services.auth.service import create_access_token, hash_password, verify_password
 from app.services.system.audit import safe_record_audit
 from app.api.deps import AuthContext, get_auth_context, require_admin
@@ -119,10 +126,8 @@ def create_user(payload: CreateUserRequest, _auth=Depends(require_admin)) -> Cre
 def get_roles(_auth=Depends(require_admin)) -> list[RoleResponse]:
     with SessionLocal() as session:
         roles = session.query(Role).order_by(Role.name.asc()).all()
-        return [
-            RoleResponse(id=str(role.id), name=role.name, description=role.description)
-            for role in roles
-        ]
+        return [RoleResponse(id=str(role.id), name=role.name, description=role.description) for role in roles]
+
 
 @router.get("/auth/me")
 def get_me(auth: AuthContext = Depends(get_auth_context)) -> dict:
@@ -144,10 +149,7 @@ def get_me(auth: AuthContext = Depends(get_auth_context)) -> dict:
 def get_users(_auth=Depends(require_admin)) -> list[CreateUserResponse]:
     with SessionLocal() as session:
         results = session.query(User, Role).join(Role, User.role_id == Role.id).all()
-        return [
-            CreateUserResponse(id=str(u.id), username=u.username, role=r.name)
-            for u, r in results
-        ]
+        return [CreateUserResponse(id=str(u.id), username=u.username, role=r.name) for u, r in results]
 
 
 @router.delete("/auth/users/{username}")

@@ -14,7 +14,6 @@ from app.core.config import settings
 from app.adapters.base import BaseEmbedding
 from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
-from app.core.exceptions import RetrievalException
 from app.services.retrieval.bm25_index import get_bm25_encoder
 from app.services.retrieval.cache import QueryEmbeddingCache
 
@@ -67,6 +66,7 @@ class RagContext:
 
 # ── Singleton adapters (lru_cache ensures one instance) ──────────────────
 
+
 @lru_cache(maxsize=1)
 def _get_embedding_service() -> BaseEmbedding:
     return build_embedding_service()
@@ -86,6 +86,7 @@ def _get_vector_store() -> QdrantVectorStore:
 @lru_cache(maxsize=1)
 def _get_query_cache() -> QueryEmbeddingCache:
     import redis
+
     client = redis.Redis.from_url(settings.redis_url, decode_responses=False)
     return QueryEmbeddingCache(client, model_name=settings.embedding_hf_model)
 
@@ -144,6 +145,7 @@ def invalidate_doc_ids_cache() -> None:
 
 
 # ── Main retrieval ───────────────────────────────────────────────────────
+
 
 def retrieve_context(
     session: Session,
@@ -239,7 +241,9 @@ def retrieve_context(
     _t2 = time.monotonic()
     logger.info(
         "[PERF-RAG] Multi-query search: %d queries, %d unique results in %.3fs",
-        len(queries), len(merged), _t2 - _t1,
+        len(queries),
+        len(merged),
+        _t2 - _t1,
     )
 
     # Sort merged results by score descending
@@ -257,9 +261,9 @@ def retrieve_context(
                 section_scores[sec_id] = item.score
                 section_doc_map[sec_id] = item.document_id
 
-    top_sections_ids = sorted(
-        section_scores, key=section_scores.get, reverse=True  # type: ignore[arg-type]
-    )[:section_top_k]
+    top_sections_ids = sorted(section_scores, key=section_scores.get, reverse=True)[  # type: ignore[arg-type]
+        :section_top_k
+    ]
 
     # Load section details from PostgreSQL.
     rag_sections: list[RagSection] = []
@@ -292,7 +296,9 @@ def retrieve_context(
     if len(filtered) < len(all_results):
         logger.debug(
             "Score filter: kept %d/%d chunks (threshold=%.2f)",
-            len(filtered), len(all_results), min_score,
+            len(filtered),
+            len(all_results),
+            min_score,
         )
 
     # Prioritise chunks that belong to top sections, then sort by score descending.
@@ -339,7 +345,8 @@ def retrieve_context(
         if len(filtered) > _MAX_RERANK_CANDIDATES:
             logger.debug(
                 "Reranker cap: %d → %d candidates",
-                len(filtered), _MAX_RERANK_CANDIDATES,
+                len(filtered),
+                _MAX_RERANK_CANDIDATES,
             )
             filtered = filtered[:_MAX_RERANK_CANDIDATES]
         if len(filtered) > rerank_top_k:
@@ -347,6 +354,7 @@ def retrieve_context(
             _pre_rerank_count = len(filtered)
             try:
                 from app.services.retrieval.reranker import get_reranker
+
                 reranker = get_reranker()
                 filtered = reranker.rerank(
                     query=primary_query,
@@ -356,12 +364,15 @@ def retrieve_context(
                 )
             except (RuntimeError, ValueError) as e:
                 logger.warning(
-                    "Reranker failed (%s), using score-based ranking", e,
+                    "Reranker failed (%s), using score-based ranking",
+                    e,
                 )
             _t_rerank_end = time.monotonic()
             logger.info(
                 "[PERF-RAG] Reranker: %.3fs (%d → %d)",
-                _t_rerank_end - _t_rerank, _pre_rerank_count, len(filtered),
+                _t_rerank_end - _t_rerank,
+                _pre_rerank_count,
+                len(filtered),
             )
     nodes: list[RagNode] = []
     for item in filtered[:limit]:
@@ -393,7 +404,9 @@ def retrieve_context(
 
     logger.debug(
         "Retrieved %d nodes from %d sections (single-query, limit=%d)",
-        len(nodes), len(top_sections_ids), limit,
+        len(nodes),
+        len(top_sections_ids),
+        limit,
     )
     return RagContext(nodes=nodes, sections=rag_sections if rag_sections else None)
 
@@ -433,20 +446,19 @@ def build_answer(query: str, context: RagContext, history: list[dict[str, str]] 
 
         context_blocks.append(f"{header}\n{full_text}")
 
-        citations.append({
-            "document_id": node.document_id,
-            "node_id": node.node_id,
-            "title": node.document_title,
-            "heading": node.heading,
-            "page_range": node.page_range,
-            "index": idx,
-        })
+        citations.append(
+            {
+                "document_id": node.document_id,
+                "node_id": node.node_id,
+                "title": node.document_title,
+                "heading": node.heading,
+                "page_range": node.page_range,
+                "index": idx,
+            }
+        )
 
     context_text = "\n\n".join(context_blocks)
 
-    answer = (
-        f"Câu hỏi: {query}\n\n"
-        f"Tài liệu tham khảo:\n{context_text}"
-    )
+    answer = f"Câu hỏi: {query}\n\n" f"Tài liệu tham khảo:\n{context_text}"
 
     return {"answer": answer, "citations": citations, "context": [node.__dict__ for node in sorted_nodes]}

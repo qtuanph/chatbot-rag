@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class IngestionResult:
     """Result of ingestion pipeline."""
+
     success: bool
     document_id: str
     node_count: int
@@ -58,7 +59,7 @@ class IngestionPipeline:
 
     def __init__(
         self,
-        parser_manager: 'ParserManager',
+        parser_manager: "ParserManager",
         embedding_service: BaseEmbedding | None = None,
         vector_store: BaseVectorStore | None = None,
         db_session: Session | None = None,
@@ -76,7 +77,7 @@ class IngestionPipeline:
         user_id: str,
         document_id: str,
         progress_callback: Optional[ProgressCallback] = None,
-    ) -> 'IngestionResult':
+    ) -> "IngestionResult":
         """
         Synchronous ingestion pipeline with chunked embed+store and progress reporting.
 
@@ -128,14 +129,16 @@ class IngestionPipeline:
                 warnings.extend(validation_report.warnings)
                 logger.warning(
                     "[%s] Validation: %d errors, %d warnings",
-                    document_id, len(errors), len(warnings),
+                    document_id,
+                    len(errors),
+                    len(warnings),
                 )
             else:
                 logger.info("[%s] Hierarchy valid (depth=%s)", document_id, validation_report.depth)
 
             # ── Step 2.5: Store Sections (if section data exists) ────────────
             section_count = 0
-            sections_data = getattr(parse_metadata, 'sections_data', None) or []
+            sections_data = getattr(parse_metadata, "sections_data", None) or []
             if sections_data and self.db_session:
                 _cb("sections", 37, f"Storing {len(sections_data)} sections…")
                 try:
@@ -144,12 +147,14 @@ class IngestionPipeline:
                     section_count = len(section_ids)
                     logger.info(
                         "[%s] Stored %d sections in PostgreSQL",
-                        document_id, section_count,
+                        document_id,
+                        section_count,
                     )
                 except Exception as sec_err:
                     logger.warning(
                         "[%s] Section storage failed (non-fatal): %s",
-                        document_id, sec_err,
+                        document_id,
+                        sec_err,
                     )
                     warnings.append(f"Section storage skipped: {sec_err}")
 
@@ -163,6 +168,7 @@ class IngestionPipeline:
 
                 # BM25 sparse encoder — always available, builds vocab on first use
                 from app.services.retrieval.bm25_index import get_bm25_encoder
+
                 bm25_encoder = get_bm25_encoder()
                 bm25_ready = bm25_encoder.is_ready
 
@@ -176,11 +182,11 @@ class IngestionPipeline:
                     # Generate BM25 sparse vectors for hybrid search
                     sparse_embs = None
                     if bm25_ready:
-                        sparse_embs = bm25_encoder.encode_batch_sparse_vectors(
-                            [n.text for n in chunk_nodes]
-                        )
+                        sparse_embs = bm25_encoder.encode_batch_sparse_vectors([n.text for n in chunk_nodes])
                     return self.vector_store.store(
-                        chunk_document_id, chunk_nodes, chunk_vecs,
+                        chunk_document_id,
+                        chunk_nodes,
+                        chunk_vecs,
                         sparse_embeddings=sparse_embs,
                     )
 
@@ -194,16 +200,18 @@ class IngestionPipeline:
                             vecs = self.embedding_service.embed_batch(chunk_texts)
 
                             if self.vector_store:
-                                pending_store_tasks.append((
-                                    chunk_idx,
-                                    chunk_nodes,
-                                    store_executor.submit(
-                                        _store_chunk,
-                                        document_id,
+                                pending_store_tasks.append(
+                                    (
+                                        chunk_idx,
                                         chunk_nodes,
-                                        vecs,
-                                    ),
-                                ))
+                                        store_executor.submit(
+                                            _store_chunk,
+                                            document_id,
+                                            chunk_nodes,
+                                            vecs,
+                                        ),
+                                    )
+                                )
                             else:
                                 pct = 40 + int(50 * (chunk_idx + 1) / n_chunks)  # 40% → 90%
                                 _cb(
@@ -213,7 +221,10 @@ class IngestionPipeline:
                                 )
                                 logger.info(
                                     "[%s] Chunk %d/%d embedded (%d nodes) — storage disabled",
-                                    document_id, chunk_idx + 1, n_chunks, len(chunk_nodes),
+                                    document_id,
+                                    chunk_idx + 1,
+                                    n_chunks,
+                                    len(chunk_nodes),
                                 )
 
                             while len(pending_store_tasks) >= store_parallelism:
@@ -228,12 +239,18 @@ class IngestionPipeline:
                                 )
                                 logger.info(
                                     "[%s] Chunk %d/%d embedded+stored (%d nodes)",
-                                    document_id, completed_idx + 1, n_chunks, len(completed_nodes),
+                                    document_id,
+                                    completed_idx + 1,
+                                    n_chunks,
+                                    len(completed_nodes),
                                 )
                         except Exception as e:
                             logger.error(
                                 "[%s] Chunk %d/%d embed failed: %s",
-                                document_id, chunk_idx + 1, n_chunks, e,
+                                document_id,
+                                chunk_idx + 1,
+                                n_chunks,
+                                e,
                             )
                             errors.append(f"Chunk {chunk_idx + 1} embed failed: {e}")
                             # Continue with remaining chunks — partial index beats total failure
@@ -252,12 +269,18 @@ class IngestionPipeline:
                             )
                             logger.info(
                                 "[%s] Chunk %d/%d embedded+stored (%d nodes)",
-                                document_id, completed_idx + 1, n_chunks, len(completed_nodes),
+                                document_id,
+                                completed_idx + 1,
+                                n_chunks,
+                                len(completed_nodes),
                             )
                         except Exception as e:
                             logger.error(
                                 "[%s] Chunk %d/%d store failed: %s",
-                                document_id, completed_idx + 1, n_chunks, e,
+                                document_id,
+                                completed_idx + 1,
+                                n_chunks,
+                                e,
                             )
                             errors.append(f"Chunk {completed_idx + 1} store failed: {e}")
             else:
@@ -286,7 +309,9 @@ class IngestionPipeline:
 
             logger.info(
                 "[%s] ✓ Ingestion complete: %d nodes in %.0fms",
-                document_id, result.node_count, duration_ms,
+                document_id,
+                result.node_count,
+                duration_ms,
             )
             return result
 

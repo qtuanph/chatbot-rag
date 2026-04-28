@@ -12,14 +12,12 @@ import httpx
 from app.adapters.ai.base import AIProvider
 from app.core.config import settings
 
-
 logger = logging.getLogger(__name__)
 
 _SYSTEM_INSTRUCTION = (
     # ── Identity ──
     "Bạn là trợ lý AI thân thiện cho hệ thống hỏi đáp tài liệu tiếng Việt.\n"
     "Bạn đọc tài liệu tham khảo, HIỂU nội dung, rồi kể lại bằng giọng điệu tự nhiên như đang nói chuyện.\n\n"
-
     # ── Style ──
     "## PHONG CÁCH\n"
     "- Nói chuyện tự nhiên, thân thiện, như đang trả lời bạn bè.\n"
@@ -27,19 +25,16 @@ _SYSTEM_INSTRUCTION = (
     "- KHÔNG cần liệt kê nguồn ở cuối câu trả lời.\n"
     "- Nếu cần nhắc tài liệu, chỉ nói 'Theo giáo trình...' hoặc 'Tài liệu có đề cập đến...'\n"
     "- Tóm tắt ngắn gọn. Ưu tiên trả lời trực tiếp câu hỏi.\n\n"
-
     # ── Vietnamese rules ──
     "## TIẾNG VIỆT\n"
     "- LUÔN giữ dấu cách giữa các từ: 'tài liệu' KHÔNG 'tàiliệu'\n"
     "- LUÔN có space sau # heading: `## Tiêu đề` (KHÔNG `##Tiêu đề`)\n"
     "- Dùng `**in đậm**` cho thuật ngữ, `- ` cho danh sách khi cần.\n\n"
-
     # ── Content rules ──
     "## NỘI DUNG\n"
     "- TỔNG HỢP và DIỄN GIẢI lại bằng lời văn của bạn. KHÔNG copy nguyên văn.\n"
     "- Nếu tài liệu không đủ thông tin, nói: 'Tài liệu hiện tại chưa đề cập đến vấn đề này...'\n"
     "- KHÔNG bịa đặt. KHÔNG dùng heading cấp 1.\n\n"
-
     # ── Few-shot example ──
     "## VÍ DỤ\n"
     "User: SEO là gì?\n"
@@ -48,7 +43,6 @@ _SYSTEM_INSTRUCTION = (
     "Tài liệu nhấn mạnh rằng SEO bao gồm 3 yếu tố chính: **nghiên cứu từ khóa**, "
     "**tối ưu nội dung** và **xây dựng liên kết**. Mục tiêu là thu hút lưu lượng truy cập "
     "tự nhiên mà không cần trả phí cho quảng cáo.\n\n"
-
     # ── Meta ──
     "## LƯU Ý\n"
     "- Trả lời bằng ngôn ngữ của câu hỏi.\n"
@@ -118,7 +112,7 @@ def strip_reasoning(text: str) -> str:
     # Then: strip reasoning markers
     match = _REASONING_END_MARKER.search(text)
     if match:
-        result = text[match.end():].strip()
+        result = text[match.end() :].strip()
         if result and len(result) >= 50:
             return result
 
@@ -151,7 +145,7 @@ class _ThoughtFilter:
             if self._in_thought:
                 end_idx = self._buffer.find(self._END)
                 if end_idx >= 0:
-                    self._buffer = self._buffer[end_idx + len(self._END):]
+                    self._buffer = self._buffer[end_idx + len(self._END) :]
                     self._in_thought = False
                 else:
                     break  # Still in thought, keep buffering
@@ -175,6 +169,7 @@ class _ThoughtFilter:
         remaining = self._buffer
         self._buffer = ""
         return "" if self._in_thought else remaining
+
 
 # Maximum conversation turns to include in context (for performance)
 _MAX_HISTORY_MESSAGES = 20
@@ -240,7 +235,7 @@ class GoogleAIProvider(AIProvider):
             "2. Normalize whitespace\n"
             "3. Detect if first line is a header/title\n\n"
             f"Text to refine:\n{text[:2000]}\n\n"
-            "Return JSON: {\"cleaned_text\": \"...\", \"detected_header\": \"...\" or null}"
+            'Return JSON: {"cleaned_text": "...", "detected_header": "..." or null}'
         )
 
         payload = {
@@ -248,9 +243,7 @@ class GoogleAIProvider(AIProvider):
             "generationConfig": {
                 "temperature": 0.1,
                 "maxOutputTokens": 512,
-                "thinkingConfig": {
-                    "thinkingLevel": "MINIMAL"
-                }
+                "thinkingConfig": {"thinkingLevel": "MINIMAL"},
             },
         }
 
@@ -267,9 +260,10 @@ class GoogleAIProvider(AIProvider):
                 return text, current_header
 
             import json as json_lib
+
             try:
-                json_start = response_text.find('{')
-                json_end = response_text.rfind('}') + 1
+                json_start = response_text.find("{")
+                json_end = response_text.rfind("}") + 1
                 if json_start >= 0 and json_end > json_start:
                     json_str = response_text[json_start:json_end]
                     result = json_lib.loads(json_str)
@@ -303,15 +297,11 @@ class GoogleAIProvider(AIProvider):
 
         payload = {
             "contents": contents,
-            "systemInstruction": {
-                "parts": [{"text": system_text}]
-            },
+            "systemInstruction": {"parts": [{"text": system_text}]},
             "generationConfig": {
                 "temperature": 0.3,
                 "maxOutputTokens": 8192,
-                "thinkingConfig": {
-                    "thinkingLevel": "MINIMAL"
-                }
+                "thinkingConfig": {"thinkingLevel": "MINIMAL"},
             },
         }
 
@@ -369,7 +359,7 @@ class GoogleAIProvider(AIProvider):
 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429 and attempt < 2:
-                    backoff = min(2 ** attempt + random.uniform(0, 1), 10)
+                    backoff = min(2**attempt + random.uniform(0, 1), 10)
                     logger.warning("Streaming rate limited, retrying in %.1fs...", backoff)
                     await asyncio.sleep(backoff)
                     continue
@@ -395,9 +385,7 @@ class GoogleAIProvider(AIProvider):
 
         raise RuntimeError("Google AI streaming failed after retries")
 
-    def _build_contents(
-        self, messages: list[dict[str, Any]], kwargs: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    def _build_contents(self, messages: list[dict[str, Any]], kwargs: dict[str, Any]) -> list[dict[str, Any]]:
         """Build Gemini-format multi-turn contents array.
 
         Converts conversation history into Gemini's expected format:

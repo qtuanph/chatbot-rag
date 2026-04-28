@@ -35,10 +35,12 @@ class QueryEmbeddingCache:
         self._r = redis_client
         # Include model name hash in cache key so swapping models
         # never serves stale vectors from a different model.
-        self._model_hash = hashlib.md5(model_name.encode("utf-8")).hexdigest()[:8] if model_name else "default"
+        self._model_hash = (
+            hashlib.md5(model_name.encode("utf-8"), usedforsecurity=False).hexdigest()[:8] if model_name else "default"
+        )
 
     def _key(self, text: str) -> str:
-        return f"{self.PREFIX}{self._model_hash}:{hashlib.md5(text.encode('utf-8')).hexdigest()}"
+        return f"{self.PREFIX}{self._model_hash}:{hashlib.md5(text.encode('utf-8'), usedforsecurity=False).hexdigest()}"
 
     def get(self, text: str) -> Optional[list[float]]:
         """Return cached embedding vector or None if not found."""

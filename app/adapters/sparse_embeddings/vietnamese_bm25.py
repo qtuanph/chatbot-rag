@@ -8,6 +8,7 @@ Used during:
 - Ingestion: encode_batch() to generate sparse vectors for storage
 - Retrieval: encode() to generate query sparse vector
 """
+
 from __future__ import annotations
 
 import json
@@ -17,22 +18,82 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from app.core.config import settings
-
 logger = logging.getLogger(__name__)
 
 # Vietnamese stop words — common words that don't contribute to relevance
-_VIETNAMESE_STOP_WORDS: frozenset[str] = frozenset({
-    "và", "của", "là", "có", "không", "được", "trong", "với",
-    "cho", "này", "đó", "những", "từ", "để", "một", "các",
-    "về", "nếu", "thì", "đã", "sẽ", "đang", "vẫn", "phải",
-    "nên", "bị", "bởi", "vì", "nhưng", "hay", "hoặc", "thành",
-    "ra", "vào", "lên", "xuống", "lại", "mà", "cũng", "đều",
-    "nào", "đâu", "sao", "thế", "khi", "nơi", "vậy", "gì",
-    "ai", "bao_giờ", "tại", "theo", "về", "cùng", "nữa",
-    "rất", "hơn", "nhất", "mỗi", "tất_cả", "riêng", "khác",
-    "như", "thường", "lúc", "ngay", "chỉ", "đã", "từng",
-})
+_VIETNAMESE_STOP_WORDS: frozenset[str] = frozenset(
+    {
+        "và",
+        "của",
+        "là",
+        "có",
+        "không",
+        "được",
+        "trong",
+        "với",
+        "cho",
+        "này",
+        "đó",
+        "những",
+        "từ",
+        "để",
+        "một",
+        "các",
+        "về",
+        "nếu",
+        "thì",
+        "đã",
+        "sẽ",
+        "đang",
+        "vẫn",
+        "phải",
+        "nên",
+        "bị",
+        "bởi",
+        "vì",
+        "nhưng",
+        "hay",
+        "hoặc",
+        "thành",
+        "ra",
+        "vào",
+        "lên",
+        "xuống",
+        "lại",
+        "mà",
+        "cũng",
+        "đều",
+        "nào",
+        "đâu",
+        "sao",
+        "thế",
+        "khi",
+        "nơi",
+        "vậy",
+        "gì",
+        "ai",
+        "bao_giờ",
+        "tại",
+        "theo",
+        "về",
+        "cùng",
+        "nữa",
+        "rất",
+        "hơn",
+        "nhất",
+        "mỗi",
+        "tất_cả",
+        "riêng",
+        "khác",
+        "như",
+        "thường",
+        "lúc",
+        "ngay",
+        "chỉ",
+        "đã",
+        "từng",
+    }
+)
 
 
 class VietnameseBM25Encoder:
@@ -44,8 +105,8 @@ class VietnameseBM25Encoder:
     def __init__(self, k1: float = 1.5, b: float = 0.75) -> None:
         self.k1 = k1
         self.b = b
-        self.vocab: dict[str, int] = {}   # term → integer index
-        self.idf: dict[str, float] = {}    # term → IDF value
+        self.vocab: dict[str, int] = {}  # term → integer index
+        self.idf: dict[str, float] = {}  # term → IDF value
         self.doc_count: int = 0
         self.avg_doc_len: float = 0.0
         self._tokenize_fn = None
@@ -56,6 +117,7 @@ class VietnameseBM25Encoder:
         """Lazy-load Underthesea tokenizer."""
         if self._tokenize_fn is None:
             from underthesea import word_tokenize
+
             self._tokenize_fn = word_tokenize
         return self._tokenize_fn
 
@@ -68,11 +130,7 @@ class VietnameseBM25Encoder:
 
         tokens = segmented.split()
         return [
-            t.lower()
-            for t in tokens
-            if t.lower() not in _VIETNAMESE_STOP_WORDS
-            and len(t) > 1
-            and not t.isnumeric()
+            t.lower() for t in tokens if t.lower() not in _VIETNAMESE_STOP_WORDS and len(t) > 1 and not t.isnumeric()
         ]
 
     # ── Vocabulary & IDF ──────────────────────────────────────────
@@ -97,14 +155,13 @@ class VietnameseBM25Encoder:
         self.vocab = {term: idx for idx, term in enumerate(sorted(df.keys()))}
 
         # Standard BM25 IDF: log(1 + (N - df + 0.5) / (df + 0.5))
-        self.idf = {
-            term: math.log(1 + (self.doc_count - freq + 0.5) / (freq + 0.5))
-            for term, freq in df.items()
-        }
+        self.idf = {term: math.log(1 + (self.doc_count - freq + 0.5) / (freq + 0.5)) for term, freq in df.items()}
 
         logger.info(
             "BM25 vocab built: %d terms, %d docs, avg_doc_len=%.1f",
-            len(self.vocab), self.doc_count, self.avg_doc_len,
+            len(self.vocab),
+            self.doc_count,
+            self.avg_doc_len,
         )
 
     def update_vocab(self, new_documents: list[str]) -> None:
@@ -115,7 +172,6 @@ class VietnameseBM25Encoder:
 
         # Rebuild is simpler and avoids complex incremental IDF math
         # In practice, this is called rarely (on document upload)
-        old_docs_count = self.doc_count
         self.build_vocab_and_idf.__func__(self, [])  # Reset
         # Actually just rebuild — we'd need the full corpus for correct IDF
         # For simplicity, call this after full re-index
@@ -201,6 +257,7 @@ class VietnameseBM25Encoder:
         if not result["indices"]:
             return None
         from qdrant_client.models import SparseVector
+
         return SparseVector(indices=result["indices"], values=result["values"])
 
     def encode_batch(self, texts: list[str]) -> list[dict[str, Any]]:

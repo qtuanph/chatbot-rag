@@ -7,7 +7,6 @@ Tự động tính toán optimal settings cho uvicorn, Celery, embedding.
 
 import logging
 import multiprocessing
-import os
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -30,6 +29,7 @@ def _detect_gpu_vram_gb() -> float:
     """Detect total GPU VRAM in GB (first GPU only)."""
     try:
         import torch
+
         if torch.cuda.is_available():
             props = torch.cuda.get_device_properties(0)
             return round(props.total_memory / 1024**3, 1)
@@ -85,6 +85,7 @@ class HardwareProfile:
         vram = 0.0
         try:
             import torch
+
             gpu = torch.cuda.device_count()
             if gpu > 0:
                 vram = _detect_gpu_vram_gb()

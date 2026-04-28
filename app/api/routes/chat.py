@@ -26,7 +26,6 @@ from app.services.chat.memory import UserMemoryService
 from app.services.retrieval.rag import build_answer, retrieve_context
 from app.services.auth.throttle import RequestThrottle
 
-
 router = APIRouter(tags=["chat"])
 store = ChatStore()
 memory_service = UserMemoryService()
@@ -90,11 +89,13 @@ def _deduplicate_citations(citations: list[dict[str, Any]]) -> list[dict[str, An
             ranges.append(f"{range_start}" if range_start == range_end else f"{range_start}-{range_end}")
             page_display = ", ".join(ranges)
 
-        result.append({
-            "document_id": doc_id,
-            "title": doc_titles.get(doc_id, "Tài liệu"),
-            "pages": page_display,
-        })
+        result.append(
+            {
+                "document_id": doc_id,
+                "title": doc_titles.get(doc_id, "Tài liệu"),
+                "pages": page_display,
+            }
+        )
 
     return result
 
@@ -172,9 +173,7 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
         limit=settings.effective_rate_limit(100),
         window_seconds=60,
     ):
-        raise http_errors.too_many_requests(
-            "Too many chat requests. Please wait a moment before trying again."
-        )
+        raise http_errors.too_many_requests("Too many chat requests. Please wait a moment before trying again.")
 
     # Validate query input
     _validate_query(request.query)
@@ -214,9 +213,12 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
 
         # Hydrate Redis from DB only if TTL expired (Redis empty)
         if not store.history_exists(scope_id, session_id):
-            db_msgs = session.query(ChatMessage).filter(
-                ChatMessage.session_id == session_id
-            ).order_by(ChatMessage.created_at.asc()).all()
+            db_msgs = (
+                session.query(ChatMessage)
+                .filter(ChatMessage.session_id == session_id)
+                .order_by(ChatMessage.created_at.asc())
+                .all()
+            )
             db_dicts = [{"role": m.role, "content": m.content} for m in db_msgs]
             store.hydrate_from_db(scope_id, session_id, db_dicts)
 
@@ -228,13 +230,15 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
             queries = [request.query]
             if settings.retrieval_query_expansion_enabled:
                 from app.services.retrieval.query_expand import expand_query
+
                 queries = await asyncio.wait_for(
                     expand_query(request.query),
                     timeout=3.0,
                 )
                 logger.info(
                     "[PERF] Query expansion: %d variants in %.3fs",
-                    len(queries), _time.monotonic() - t_session,
+                    len(queries),
+                    _time.monotonic() - t_session,
                 )
 
             context = await asyncio.to_thread(retrieve_context, session, queries, 20)
@@ -262,9 +266,7 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
 
         except Exception as e:
             logger.error("Error preparing chat context: %s", e, exc_info=True)
-            raise http_errors.internal_server_error(
-                "Failed to prepare chat context. Please try again."
-            ) from None
+            raise http_errors.internal_server_error("Failed to prepare chat context. Please try again.") from None
 
     async def generate() -> AsyncGenerator[str, None]:
         """
@@ -291,19 +293,20 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                     logger.info("[PERF] First AI chunk arrived: %.3fs (TTFT)", t_first_chunk - t_ai_start)
 
                 # Send SSE event with proper format
-                event_data = json.dumps({
-                    'chunk': chunk,
-                    'done': False
-                }, ensure_ascii=False)
+                event_data = json.dumps({"chunk": chunk, "done": False}, ensure_ascii=False)
                 yield f"data: {event_data}\n\n"
 
             # Stream completed successfully — clean reasoning, then save
             t_ai_done = _time.monotonic()
-            logger.info("[PERF] AI streaming done: %.3fs total, %d chunks, %d chars",
-                        t_ai_done - t_ai_start, chunk_count, len(full_answer))
+            logger.info(
+                "[PERF] AI streaming done: %.3fs total, %d chunks, %d chars",
+                t_ai_done - t_ai_start,
+                chunk_count,
+                len(full_answer),
+            )
             logger.info("[PERF] === END-TO-END: %.3fs ===", t_ai_done - t_start)
             clean_answer = strip_reasoning(full_answer.strip())
-            usage = getattr(provider, 'last_usage', {})
+            usage = getattr(provider, "last_usage", {})
             with SessionLocal() as session:
                 try:
                     session.add(
@@ -312,8 +315,8 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
                             role="assistant",
                             content=clean_answer,
                             citations=citations,
-                            tokens_in=usage.get('prompt_tokens'),
-                            tokens_out=usage.get('completion_tokens'),
+                            tokens_in=usage.get("prompt_tokens"),
+                            tokens_out=usage.get("completion_tokens"),
                             latency_ms=int((t_ai_done - t_start) * 1000),
                         )
                     )
@@ -330,49 +333,57 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
             # Async memory extraction — extract learnable facts from this turn
             try:
                 task = asyncio.create_task(
-                    memory_service.extract_memories_from_turn(
-                        auth.user_id, request.query, clean_answer
-                    )
+                    memory_service.extract_memories_from_turn(auth.user_id, request.query, clean_answer)
                 )
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
-            except Exception:
-                pass  # Memory extraction is best-effort, never block the response
+            except Exception as e:
+                logger.debug("Memory extraction failed (best-effort): %s", e)
 
             # Send final event with session info and citations
             # (usage already defined above before DB save)
             # Estimate cost: Gemini 2.5 Flash pricing
             # Input: $0.075/1M tokens, Output: $0.30/1M tokens
-            prompt_tokens = usage.get('prompt_tokens', 0)
-            completion_tokens = usage.get('completion_tokens', 0)
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            completion_tokens = usage.get("completion_tokens", 0)
             estimated_cost_usd = (prompt_tokens * 0.075 + completion_tokens * 0.30) / 1_000_000
 
-            final_data = json.dumps({
-                'chunk': '',
-                'done': True,
-                'session_id': session_id,
-                'citations': citations,
-                'stats': {
-                    'total_ms': int((t_ai_done - t_start) * 1000),
-                    'ttft_ms': int((t_first_chunk - t_ai_start) * 1000) if t_first_chunk else None,
-                    'chunks': chunk_count,
-                    'chars': len(clean_answer),
-                    'prompt_tokens': prompt_tokens,
-                    'completion_tokens': completion_tokens,
-                    'total_tokens': prompt_tokens + completion_tokens,
-                    'estimated_cost_usd': round(estimated_cost_usd, 6),
-                }
-            }, ensure_ascii=False)
+            final_data = json.dumps(
+                {
+                    "chunk": "",
+                    "done": True,
+                    "session_id": session_id,
+                    "citations": citations,
+                    "stats": {
+                        "total_ms": int((t_ai_done - t_start) * 1000),
+                        "ttft_ms": int((t_first_chunk - t_ai_start) * 1000) if t_first_chunk else None,
+                        "chunks": chunk_count,
+                        "chars": len(clean_answer),
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": prompt_tokens + completion_tokens,
+                        "estimated_cost_usd": round(estimated_cost_usd, 6),
+                    },
+                },
+                ensure_ascii=False,
+            )
             yield f"data: {final_data}\n\n"
 
             # Security: Don't log actual chat content (PII exposure risk)
-            logger.info("Streaming completed: user=%s session=%s chunks=%d chars=%d citations=%d",
-                       auth.user_id[:8], session_id[:8], chunk_count, len(full_answer), len(citations))
+            logger.info(
+                "Streaming completed: user=%s session=%s chunks=%d chars=%d citations=%d",
+                auth.user_id[:8],
+                session_id[:8],
+                chunk_count,
+                len(full_answer),
+                len(citations),
+            )
 
         except GeneratorExit:
             # Client disconnected - clean up silently
-            logger.info("Client disconnected: user=%s session=%s chunks=%d",
-                       auth.user_id[:8], session_id[:8], chunk_count)
+            logger.info(
+                "Client disconnected: user=%s session=%s chunks=%d", auth.user_id[:8], session_id[:8], chunk_count
+            )
             raise
 
         except Exception as e:
@@ -380,11 +391,7 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
 
             # Send user-friendly error message
             error_msg = _build_user_friendly_error(e)
-            error_data = json.dumps({
-                'chunk': '',
-                'done': True,
-                'error': error_msg
-            }, ensure_ascii=False)
+            error_data = json.dumps({"chunk": "", "done": True, "error": error_msg}, ensure_ascii=False)
             yield f"data: {error_data}\n\n"
 
     return StreamingResponse(
@@ -394,7 +401,7 @@ async def chat_stream(request: ChatRequest, auth: AuthContext = Depends(get_auth
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable Nginx buffering
-        }
+        },
     )
 
 
@@ -478,11 +485,7 @@ async def get_chat_messages(
             raise http_errors.forbidden("Chat session does not belong to this user")
 
         # Get total count
-        total = (
-            session.query(func.count(ChatMessage.id))
-            .filter(ChatMessage.session_id == session_id)
-            .scalar()
-        )
+        total = session.query(func.count(ChatMessage.id)).filter(ChatMessage.session_id == session_id).scalar()
 
         # Get messages: offset from the END (oldest messages)
         # This way offset=0 returns the newest messages
@@ -533,9 +536,7 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
         limit=settings.effective_rate_limit(100),
         window_seconds=60,
     ):
-        raise http_errors.too_many_requests(
-            "Too many chat requests. Please wait a moment before trying again."
-        )
+        raise http_errors.too_many_requests("Too many chat requests. Please wait a moment before trying again.")
 
     # Validate query input
     _validate_query(request.query)
@@ -572,9 +573,12 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
 
         # Hydrate Redis from DB only if TTL expired (Redis empty)
         if not store.history_exists(scope_id, session_id):
-            db_msgs = session.query(ChatMessage).filter(
-                ChatMessage.session_id == session_id
-            ).order_by(ChatMessage.created_at.asc()).all()
+            db_msgs = (
+                session.query(ChatMessage)
+                .filter(ChatMessage.session_id == session_id)
+                .order_by(ChatMessage.created_at.asc())
+                .all()
+            )
             db_dicts = [{"role": m.role, "content": m.content} for m in db_msgs]
             store.hydrate_from_db(scope_id, session_id, db_dicts)
 
@@ -583,6 +587,7 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
             queries = [request.query]
             if settings.retrieval_query_expansion_enabled:
                 from app.services.retrieval.query_expand import expand_query
+
                 queries = await asyncio.wait_for(
                     expand_query(request.query),
                     timeout=3.0,
@@ -601,9 +606,7 @@ async def chat(request: ChatRequest, auth: AuthContext = Depends(get_auth_contex
 
         except Exception as e:
             logger.error("Error preparing chat context: %s", e, exc_info=True)
-            raise http_errors.internal_server_error(
-                "Failed to prepare chat context. Please try again."
-            ) from None
+            raise http_errors.internal_server_error("Failed to prepare chat context. Please try again.") from None
 
         try:
             response = await provider.chat(
