@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS documents (
     status_updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     parse_error TEXT,
     metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     deleted_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
@@ -98,6 +99,7 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_stage VARCHAR(50) DEFAULT 
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS progress_percent INTEGER DEFAULT 0 NOT NULL;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_message VARCHAR(500);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
 
 -- Chat sessions: conversations per user
 CREATE TABLE IF NOT EXISTS chat_sessions (

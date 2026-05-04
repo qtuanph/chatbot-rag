@@ -162,7 +162,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.throttle = RequestThrottle()
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        client_ip = request.client.host if request.client else "unknown"
+        # Use X-Real-IP (set by nginx) or X-Forwarded-For to get the real client IP,
+        # not the Docker bridge IP from request.client.host
+        client_ip = (
+            request.headers.get("X-Real-IP")
+            or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            or (request.client.host if request.client else "unknown")
+        )
         throttle_key = f"throttle:global:{client_ip}"
 
         try:

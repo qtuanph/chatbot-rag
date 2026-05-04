@@ -10,6 +10,7 @@ This is NOT a standalone Next.js app. Read backend docs before making changes.
 3. `../docs/01_ARCHITECTURE.md` (architecture, data model, AI control)
 4. `../docs/03_API_CONTRACTS.md` (API contracts, security baseline)
 5. `../docs/02_WORKFLOWS.md` (chat session lifecycle, workflows)
+6. `../docs/06_NAMING_CONVENTIONS.md` (variable, function, file naming)
 
 ## Critical Coupling Points
 

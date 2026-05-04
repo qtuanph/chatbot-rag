@@ -40,7 +40,7 @@ async def upload_document(
         raise http_errors.bad_request("Filename is required")
     if len(file.filename) > settings.max_filename_length:
         raise http_errors.bad_request(f"Filename exceeds maximum length of {settings.max_filename_length} characters")
-    if "/" in file.filename or "\\" in file.filename or ".." in file.filename:
+    if "/" in file.filename or "\\" in file.filename or ".." in file.filename or "\x00" in file.filename:
         raise http_errors.bad_request("Filename contains invalid path characters")
 
     file_type = file.content_type or "application/octet-stream"
@@ -50,8 +50,9 @@ async def upload_document(
             f"File type '{file_type}' is not allowed. Allowed types: {', '.join(sorted(allowed_types))}"
         )
 
-    content_length = request.headers.get("content-length")
     max_size = settings.max_upload_size_mb * 1024 * 1024
+
+    content_length = request.headers.get("content-length")
     if content_length:
         try:
             if int(content_length) > max_size:
@@ -59,10 +60,19 @@ async def upload_document(
         except ValueError:
             pass
 
-    content = await file.read()
-    if len(content) > max_size:
-        raise http_errors.payload_too_large(f"File size exceeds maximum of {settings.max_upload_size_mb} MB")
-    if len(content) == 0:
+    # Stream-read file in chunks to avoid memory exhaustion on large files
+    chunks: list[bytes] = []
+    total_size = 0
+    while True:
+        chunk = await file.read(1024 * 1024)  # 1MB chunks
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > max_size:
+            raise http_errors.payload_too_large(f"File size exceeds maximum of {settings.max_upload_size_mb} MB")
+        chunks.append(chunk)
+    content = b"".join(chunks) if chunks else b""
+    if total_size == 0:
         raise http_errors.bad_request("File cannot be empty")
 
     # Delegate to service for duplicate check, storage, DB insert, and task enqueue

@@ -72,6 +72,25 @@ function statusLabel(status: string) {
   }
 }
 
+function stageLabel(stage: string): string | null {
+  switch (stage) {
+    case "queued":
+      return "Trong hàng đợi";
+    case "downloading":
+      return "Đang tải file";
+    case "parsing":
+      return "Đang trích xuất văn bản";
+    case "embedding":
+      return "Đang nhúng vector";
+    case "verifying":
+      return "Đang kiểm tra";
+    case "deleting":
+      return "Đang xóa";
+    default:
+      return null;
+  }
+}
+
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -296,6 +315,11 @@ export function DocumentTable() {
                         >
                           {statusLabel(doc.status)}
                         </Badge>
+                        {doc.status === "processing" && stageLabel(doc.stage) && (
+                          <span className="text-xs text-muted-foreground">
+                            {stageLabel(doc.stage)}
+                          </span>
+                        )}
                         {doc.status === "failed" && doc.status_message && (
                           <Tooltip>
                             <TooltipTrigger

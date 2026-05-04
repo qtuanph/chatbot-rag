@@ -30,8 +30,8 @@ class DocumentRegistry:
 
     def put(self, record: DocumentRecord) -> None:
         payload = json.dumps(asdict(record))
-        self.client.set(self._key(record.document_id), payload)
-        self.client.set(self._task_key(record.task_id), record.document_id)
+        self.client.set(self._key(record.document_id), payload, ex=86400)
+        self.client.set(self._task_key(record.task_id), record.document_id, ex=86400)
 
     def get_by_document_id(self, document_id: str) -> DocumentRecord | None:
         raw = self.client.get(self._key(document_id))

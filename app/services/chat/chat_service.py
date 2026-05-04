@@ -96,8 +96,8 @@ class ChatService:
         if len(query) > 5000:
             raise ValueError("Query too long (max 5000 characters)")
         sanitized = nh3.clean(query, tags=set(), attributes={})
-        if sanitized != query:
-            raise ValueError("Query contains invalid characters")
+        if len(sanitized) < len(query) * 0.8:
+            raise ValueError("Query contains potentially unsafe content")
 
     # ── Session management ──────────────────────────────────────────
 
@@ -154,7 +154,7 @@ class ChatService:
         latency_ms: int | None = None,
         model_used: str | None = None,
     ) -> None:
-        """Save assistant message to PostgreSQL + Redis."""
+        """Save assistant message to PostgreSQL + Redis. Redis only if PG succeeds."""
         try:
             self.repo.create_message(
                 session_id=session_id,
@@ -168,9 +168,13 @@ class ChatService:
             )
         except Exception as e:
             logger.error("Failed to save chat message: %s", e, exc_info=True)
+            return
 
-        scope_id = f"user:{user_id}"
-        self.store.append_message(scope_id, session_id, "assistant", content)
+        try:
+            scope_id = f"user:{user_id}"
+            self.store.append_message(scope_id, session_id, "assistant", content)
+        except Exception as e:
+            logger.warning("Failed to cache chat message in Redis: %s", e)
 
     # ── Memory extraction ────────────────────────────────────────────
 

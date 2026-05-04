@@ -107,6 +107,7 @@ class DocumentService:
             )
         except Exception as exc:
             logger.error("Failed to enqueue document task for %s: %s", document_id, exc, exc_info=True)
+            self.registry.purge(document_id)
             self.doc_repo.soft_delete(document_id)
             if hasattr(storage, "delete_object"):
                 storage.delete_object(object_uri)
@@ -337,7 +338,7 @@ class DocumentService:
             self.doc_repo.update_status(
                 document_id,
                 status="failed",
-                stage="retry_enqueue_failed",
+                stage="failed",
                 progress_percent=100,
                 status_message="Retry failed: could not enqueue task.",
             )

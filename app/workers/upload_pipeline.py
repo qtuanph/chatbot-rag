@@ -121,7 +121,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
         _set_document_status(
             document_id=document_id,
             status="processing",
-            stage="download",
+            stage="downloading",
             progress_percent=10,
             status_message="[1/4] Đang tải file an toàn từ S3 Object Storage xuống RAM...",
             parse_error="",
@@ -139,7 +139,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
         _set_document_status(
             document_id=document_id,
             status="processing",
-            stage="parse",
+            stage="parsing",
             progress_percent=15,
             status_message=f"[2/4] Đang khởi tạo Model trên {device_name} & Cắt file {filename} thành các Node...",
         )
@@ -194,7 +194,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
         _set_document_status(
             document_id=document_id,
             status="processing",
-            stage="verify",
+            stage="verifying",
             progress_percent=95,
             status_message="[4/4] Khâu cuối: Đang đối soát và verify kết quả trên Qdrant...",
         )
@@ -204,7 +204,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
         _set_document_status(
             document_id=document_id,
             status="processing",
-            stage="persist",
+            stage="verifying",
             progress_percent=95,
             status_message="Persisting ingestion artifact and finalizing document.",
         )
@@ -259,19 +259,25 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             invalidate_doc_ids_cache()
 
             # Rebuild BM25 index from all Qdrant chunks (includes new document)
-            logger.info("[%s] Rebuilding BM25 index from Qdrant...", document_id)
-            from app.utils.bm25_index import update_bm25_index
+            logger.info("[%s] Dispatching BM25 index rebuild...", document_id)
+            from app.workers.maintenance_tasks import rebuild_bm25_index_task
 
-            update_bm25_index([n.text for n in ingestion_result.nodes])
+            rebuild_bm25_index_task.delay()
 
             logger.info("[%s] ✓ Document metadata persisted", document_id)
 
     except SoftTimeLimitExceeded:
         logger.error("[%s] Task exceeded soft time limit", document_id)
+        if db_session is not None:
+            try:
+                db_session.close()
+            except Exception as e:
+                logger.warning("Failed to close DB session: %s", e)
+            db_session = None
         _set_document_status(
             document_id=document_id,
             status="failed",
-            stage="timeout",
+            stage="failed",
             progress_percent=0,
             status_message="Document processing timed out. Try a smaller file.",
             parse_error="SoftTimeLimitExceeded",
@@ -279,6 +285,12 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
         raise
 
     except Exception as exc:
+        if db_session is not None:
+            try:
+                db_session.close()
+            except Exception as e:
+                logger.warning("Failed to close DB session: %s", e)
+            db_session = None
         logger.error("[%s] ✗ Pipeline failed: %s", document_id, exc)
         _set_document_status(
             document_id=document_id,

@@ -82,13 +82,13 @@ Request: multipart form with file payload. Response (202):
 { "task_id": "task-uuid", "status": "queued", "document_id": "doc-uuid" }
 ```
 
-Status lifecycle: uploaded → queued → download → parse → persist → ready (or failed).
+Status lifecycle: uploaded → queued → downloading → parsing → embedding → verifying → ready (or failed).
 
 ```json
 {
-  "task_id": "task-uuid", "status": "processing", "stage": "parse",
+  "task_id": "task-uuid", "status": "processing", "stage": "parsing",
   "document_id": "doc-uuid", "status_message": "Parsing document with Docling.",
-  "progress": { "step": "parse", "percent": 40 }
+  "progress": { "step": "parsing", "percent": 40 }
 }
 ```
 
@@ -163,8 +163,8 @@ Chat features:
 - Auto-title: first user message truncated to 80 chars
 - Multi-turn: last 20 messages as Gemini contents array
 - Memory injection: active memories → systemInstruction
-- Memory extraction: async post-response via provider singleton → user_memories
-- Token tracking: usageMetadata from Gemini → persisted to ChatMessage + frontend stats bar
+- Memory extraction: Celery extract_memories_task (queue=default) post-response via provider singleton → user_memories — durable, survives API restart
+- Token tracking: usageMetadata from Gemini → persisted via Celery save_chat_message_task (async) to ChatMessage + frontend stats bar
 - Cost estimation: Configurable pricing via `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0 for free tier)
 - Input validation: nh3 HTML sanitization for query input
 - SSE abort: Frontend AbortController cancels stream on unmount/new message

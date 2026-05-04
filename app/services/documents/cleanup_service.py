@@ -52,6 +52,8 @@ class CleanupService:
         storage_deleted = False
         vectors_deleted = False
         registry_deleted = False
+        sections_deleted = False
+        critical_errors: list[str] = []
 
         record = registry.get_by_document_id(document_id)
 
@@ -66,12 +68,22 @@ class CleanupService:
             vector_store.delete(document_id)
             vectors_deleted = True
         except Exception:
+            critical_errors.append("vectors")
             logger.warning("Failed to delete vectors for document %s", document_id, exc_info=True)
 
-        # ── Step 3: Resolve object URI ───────────────────────────────────────────
-        if object_uri is None and record is not None:
-            object_uri = record.object_uri
+        # ── Step 3: Delete sections from PostgreSQL ──────────────────────────────
+        try:
+            count = self.section_repo.delete_sections(document_id)
+            sections_deleted = True
+            if count > 0:
+                logger.info("Deleted %d sections for document %s", count, document_id)
+        except Exception:
+            critical_errors.append("sections")
+            logger.warning("Failed to delete sections for document %s", document_id, exc_info=True)
 
+        # ── Step 4: Delete file from object storage ─────────────────────────────
+        if record is not None:
+            object_uri = record.object_uri
         if object_uri is None:
             doc = self.doc_repo.get_full_document(document_id)
             if doc is not None:
@@ -88,23 +100,14 @@ class CleanupService:
                     exc_info=True,
                 )
 
-        # ── Step 3.5: Delete sections from PostgreSQL ──────────────────────────────
-        sections_deleted = False
-        try:
-            count = self.section_repo.delete_sections(document_id)
-            sections_deleted = True
-            if count > 0:
-                logger.info("Deleted %d sections for document %s", count, document_id)
-        except Exception:
-            logger.warning("Failed to delete sections for document %s", document_id, exc_info=True)
-
-        # ── Step 4: Delete DB row ────────────────────────────────────────────────
+        # ── Step 5: Delete DB row ────────────────────────────────────────────────
         try:
             db_deleted = self.doc_repo.hard_delete(document_id)
         except Exception:
+            critical_errors.append("db_row")
             logger.warning("Failed to delete DB row for document %s", document_id, exc_info=True)
 
-        # ── Step 5: Purge Celery result + all Redis registry keys ────────────────
+        # ── Step 6: Purge Celery result + all Redis registry keys ────────────────
         if record is not None:
             try:
                 celery_app.backend.delete(record.task_id)
@@ -125,15 +128,22 @@ class CleanupService:
 
         # Rebuild BM25 index — IDF values changed after document removal
         try:
-            from app.utils.bm25_index import build_bm25_index_from_qdrant
+            from app.workers.maintenance_tasks import rebuild_bm25_index_task
 
-            build_bm25_index_from_qdrant()
-            logger.info("BM25 index rebuilt after deleting document %s", document_id)
+            rebuild_bm25_index_task.delay()
+            logger.info("BM25 index rebuild dispatched after deleting document %s", document_id)
         except Exception:
             logger.warning(
-                "BM25 rebuild failed after deleting document %s",
+                "BM25 rebuild dispatch failed after deleting document %s",
                 document_id,
                 exc_info=True,
+            )
+
+        # Critical failure: both DB row and vectors failed → document is in broken state
+        if "db_row" in critical_errors and "vectors" in critical_errors:
+            raise RuntimeError(
+                f"Hard-delete partially failed for {document_id}: {', '.join(critical_errors)}. "
+                "Document is in an inconsistent state."
             )
 
         return {

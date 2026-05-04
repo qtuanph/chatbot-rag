@@ -49,10 +49,10 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
 
             {/* Answer — stream live with markdown */}
             {message.content && (
-              <div className="rounded-2xl bg-muted px-4 py-2.5">
+              <div className={`rounded-2xl bg-muted px-4 py-2.5 ${isStreaming ? "streaming-active" : ""}`}>
                 <MarkdownRenderer content={message.content} />
                 {isStreaming && (
-                  <span className="inline-block w-1.5 h-4 bg-foreground/70 animate-pulse ml-0.5 align-text-bottom" />
+                  <span className="inline-block w-1.5 h-4 bg-foreground/70 ml-0.5 align-text-bottom [animation:cursor-blink_1s_step-end_infinite]" />
                 )}
               </div>
             )}

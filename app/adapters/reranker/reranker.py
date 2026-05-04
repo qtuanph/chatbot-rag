@@ -16,6 +16,7 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from app.core.config import settings
+from app.core.hardware import hardware
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class VietnameseReranker:
 
     def __init__(self):
         model_name = settings.retrieval_rerank_model
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = "cuda" if hardware.gpu_count > 0 else "cpu"
         logger.info("Loading reranker model: %s (device=%s) ...", model_name, self.device)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name, trust_remote_code=True)

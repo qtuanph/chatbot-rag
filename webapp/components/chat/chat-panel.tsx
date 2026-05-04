@@ -88,6 +88,8 @@ export function ChatPanel({
 
   // Load messages when sessionId changes (skip for just-created sessions)
   useEffect(() => {
+    setLastStats(null);
+
     if (!session || !sessionId) {
       setMessages([]);
       setHasMore(false);
@@ -129,7 +131,7 @@ export function ChatPanel({
     return () => {
       cancelled = true;
     };
-  }, [session, sessionId]);
+  }, [session, sessionId, justCreatedSessionId]);
 
   // Abort SSE stream on unmount
   useEffect(() => {
@@ -204,10 +206,11 @@ export function ChatPanel({
       try {
         // If no active session, create one first
         let sid = sessionId;
+        let isNewSession = false;
         if (!sid) {
           const newSession = await chatApi.createSession();
           sid = newSession.session_id;
-          onSessionCreated?.(sid);
+          isNewSession = true;
         }
 
         const res = await fetch(`${API_BASE}/chat/stream`, {
@@ -224,7 +227,12 @@ export function ChatPanel({
         });
 
         if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+          let detail = `HTTP ${res.status}`;
+          try {
+            const errBody = await res.json();
+            if (errBody.detail) detail = errBody.detail;
+          } catch { /* ignore parse error */ }
+          throw new Error(detail);
         }
 
         const reader = res.body?.getReader();
@@ -265,9 +273,11 @@ export function ChatPanel({
                     if (!sessionId) {
                       onSessionCreated?.(event.session_id);
                     }
-                    onSessionUpdate?.(event.session_id, {
-                      title: query.slice(0, 80) + (query.length > 80 ? "..." : ""),
-                    });
+                    if (isNewSession) {
+                      onSessionUpdate?.(event.session_id, {
+                        title: query.slice(0, 80) + (query.length > 80 ? "..." : ""),
+                      });
+                    }
                   }
                   if ("citations" in event && event.citations) {
                     citations = event.citations;
@@ -309,9 +319,10 @@ export function ChatPanel({
         );
       } finally {
         setStreaming(false);
+        onRefreshSessions();
       }
     },
-    [session, sessionId, streaming, onSessionCreated, onSessionUpdate],
+    [session, sessionId, streaming, onSessionCreated, onSessionUpdate, onRefreshSessions],
   );
 
   const handleSelectSession = useCallback(

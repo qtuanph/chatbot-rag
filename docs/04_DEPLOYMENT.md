@@ -11,8 +11,7 @@ Docker Compose with these services:
 | nginx | Reverse proxy — **port 80 (public entry)** | Public |
 | api | FastAPI backend | Internal via nginx |
 | webapp | Next.js 16 frontend | Internal via nginx |
-| upload-pipeline | Celery GPU worker — queues: ingestion | Internal |
-| cleanup-pipeline | Celery lightweight worker + beat — queues: cleanup | Internal |
+| butler | Celery multi worker — node-ingestion (solo, GPU) + node-default (prefork, CPU, beat) | Internal |
 | db | PostgreSQL 18 | Internal |
 | redis | Broker/result/cache | Internal |
 | rustfs | Object storage | Internal |
@@ -62,7 +61,7 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | AI_HTTP_MAX_CONNECTIONS | httpx connection pool (default 50) |
 | RATE_LIMIT_GLOBAL_RPM | Global rate limit, production only (default 300) |
 
-Docker Compose: keep webapp variables in root `.env` for single source of truth.
+Docker Compose: keep webapp variables in root `.env` for single source of truth. Butler worker routing configured in `ops/entrypoint-worker.sh` (no env vars needed).
 
 Compose defaults bind to 127.0.0.1. Production: front with ingress/reverse proxy + network policy.
 
@@ -129,21 +128,23 @@ AI provider: singleton via `@lru_cache(maxsize=1)` in `app/adapters/ai/__init__.
 |---------|------|--------|-------|
 | api | 4.0 | 6G | Docker deploy limits — increase for production |
 | redis | — | `REDIS_MAXMEMORY` env var (default 512mb) | allkeys-lru eviction |
-| upload-pipeline | — | — | GPU device reserved |
+| butler | — | — | GPU device reserved |
 
 ## Hardware Auto-Detection
 
 `app/core/hardware.py` — HardwareProfile singleton detected once at module load. **3-tier VRAM-aware scaling.**
 
-| Mode | Condition | uvicorn workers | celery pool | celery concurrency | Reason |
-|------|-----------|-----------------|-------------|-------------------|--------|
-| TIGHT GPU | CUDA + VRAM headroom < 6GB | 1 | solo | min(cpu, 4) | Prevent VRAM duplication |
-| COMFORTABLE GPU | CUDA + VRAM headroom ≥ 6GB | min(cpu, ram//2, 8) | prefork | min(cpu, 8) | Multi-worker safe |
-| CPU only | No CUDA | min(cpu, ram//2, 8) | prefork | min(cpu, 8) | Full throughput |
+| Mode | Condition | uvicorn workers | node-ingestion | node-default | Reason |
+|------|-----------|-----------------|----------------|-------------|--------|
+| TIGHT GPU | CUDA + VRAM headroom < 6GB | 1 | solo (1 task) | prefork min(cpu, 4) | Prevent VRAM duplication |
+| COMFORTABLE GPU | CUDA + VRAM headroom ≥ 6GB | min(cpu, ram//2, 8) | solo (1 task) | prefork min(cpu, 8) | GPU safety + CPU parallelism |
+| CPU only | No CUDA | min(cpu, ram//2, 8) | solo (1 task) | prefork min(cpu, 8) | Full throughput |
 
 VRAM headroom = total VRAM − 2GB (embedding + reranker). GTX 1650 4GB → TIGHT. RTX 4090 24GB → COMFORTABLE.
 
-Entrypoint: `ops/entrypoint-api.sh` reads `hardware.uvicorn_workers`. Worker: `ops/entrypoint-worker.sh` auto-selects pool type based on VRAM.
+Worker: `ops/entrypoint-worker.sh` runs `celery multi` with 2 nodes:
+- **node-ingestion**: `pool=solo`, queues=ingestion, GPU. Embedding model load/unload per task → always sequential.
+- **node-default**: `pool=prefork`, queues=cleanup,default, Beat scheduler. CPU-only tasks (chat, audit, memory) run in parallel.
 
 ## Redis Configuration
 
@@ -178,7 +179,14 @@ All values configurable via env vars. Defaults designed for dev laptop.
 | worker_disable_rate_limits | — | true | Rate limit at API level |
 | worker_prefetch_multiplier | — | 1 | Fair distribution |
 | task_acks_late | — | true | ACK after completion |
-| Queue routing | — | ingestion→upload, cleanup→cleanup-pipeline | VRAM-aware separation |
+| Queue routing | entrypoint script | ingestion,cleanup,default | `celery multi` with 2 nodes — node-ingestion (solo), node-default (prefork+Beat) |
+
+### Beat Schedule (Periodic Tasks)
+
+| Task | Schedule | Queue | Purpose |
+|------|----------|-------|---------|
+| `cleanup_old_chat_sessions_task` | Every 24h | cleanup | Hard-delete sessions older than `CHAT_SESSION_TTL_DAYS` (default 30) |
+| `cleanup_orphaned_vectors_task` | Every 24h | cleanup | Remove Qdrant vectors without matching DB sections |
 
 ## Observability Baseline
 

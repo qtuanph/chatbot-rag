@@ -10,12 +10,7 @@ import type { ChatSession } from "@/types/api";
 export function ChatView() {
   const { data: session } = useSession();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionIdState] = useState<string | null>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("chat_active_session") || null;
-    }
-    return null;
-  });
+  const [activeSessionId, setActiveSessionIdState] = useState<string | null>(null);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   // Track sessions just created locally — don't reload messages for them
   const justCreatedRef = useRef<string | null>(null);
@@ -38,6 +33,25 @@ export function ChatView() {
       return [];
     }
   }, []);
+
+  // Restore active session from localStorage after hydration
+  useEffect(() => {
+    const stored = localStorage.getItem("chat_active_session");
+    if (stored) setActiveSessionIdState(stored);
+  }, []);
+
+  // Clear stale session from localStorage when user changes
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    const prevUserId = localStorage.getItem("chat_user_id");
+    if (prevUserId && prevUserId !== userId) {
+      localStorage.removeItem("chat_active_session");
+      setActiveSessionIdState(null);
+      justCreatedRef.current = null;
+    }
+    localStorage.setItem("chat_user_id", userId);
+  }, [session?.user?.id]);
 
   // Load sessions on mount
   useEffect(() => {

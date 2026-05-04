@@ -1,7 +1,7 @@
 {
   "document": {
     "id": "00_QUICK_REFERENCE",
-    "version": "2026-04-28",
+    "version": "2026-05-04",
     "purpose": "Rules and patterns cheat sheet for AI/agent preflight. Read first, then task-specific docs.",
     "doc_guide": {
       "01_ARCHITECTURE.md": "System design, data model, storage, invariants, delete/version policy, AI control",
@@ -18,7 +18,7 @@
     },
     {
       "name": "four_stage_retrieval",
-      "rule": "Hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → cross-encoder reranking (top 5) → context assembly. Multi-query expansion opt-in. Doc IDs TTL-cached 60s."
+      "rule": "Hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → dedup → rerank (optional, off by default) → full section context assembly. Retrieve at chunk level, present full section content to LLM. Multi-query expansion opt-in. Doc IDs TTL-cached 60s."
     },
     {
       "name": "hard_delete_order",
@@ -194,13 +194,29 @@
     "compose_up": "docker compose up --build",
     "health": "curl http://localhost/api/v1/health",
     "api_logs": "docker compose logs -f api",
-    "worker_logs": "docker compose logs -f upload-pipeline"
+    "worker_logs": "docker compose logs -f butler"
   },
   "infrastructure": {
-    "hardware_auto_detect": "app/core/hardware.py — 3-tier: TIGHT GPU (VRAM<8GB→1 worker), COMFORTABLE GPU (VRAM≥8GB→multi-worker), CPU (min(cpu, ram//2, 8))",
+    "hardware_auto_detect": "app/core/hardware.py — 3-tier: TIGHT GPU (VRAM headroom<6GB→1 uvicorn worker), COMFORTABLE GPU (VRAM headroom≥6GB→multi-worker), CPU (min(cpu, ram//2, 8)). VRAM headroom = total VRAM − 2GB (embedding+reranker). Butler uses celery multi: node-ingestion (solo, GPU) + node-default (prefork, CPU, Beat)",
     "redis_config": "maxmemory via REDIS_MAXMEMORY env var (default 512mb for dev), allkeys-lru, save 60 1000, appendonly yes",
     "redis_db_separation": "DB 0: Celery broker, DB 1: result backend, DB 2: app cache",
-    "celery_config": "All values configurable via env vars: time limits, memory limit, visibility timeout, retry, max-tasks-per-child",
+    "celery_config": "All values configurable via env vars: time limits, memory limit, visibility timeout, retry, max-tasks-per-child. Butler uses celery multi with 2 nodes: node-ingestion (solo, GPU, ingestion queue) + node-default (prefork, CPU, cleanup+default queues, Beat scheduler). Routing configured in ops/entrypoint-worker.sh",
+    "celery_tasks": {
+      "ingestion_queue": [
+        "parse_document_task — document parsing/indexing (upload_pipeline.py)",
+        "rebuild_bm25_index_task — BM25 vocab rebuild from Qdrant after upload/delete (maintenance_tasks.py)"
+      ],
+      "cleanup_queue": [
+        "delete_document_task — 6-step hard delete (cleanup_pipeline.py)",
+        "cleanup_old_chat_sessions_task — session TTL cleanup (cleanup_pipeline.py, Beat daily)",
+        "cleanup_orphaned_vectors_task — remove Qdrant vectors without DB sections (maintenance_tasks.py, Beat daily)"
+      ],
+      "default_queue": [
+        "save_chat_message_task — async assistant message persistence (chat_tasks.py)",
+        "record_audit_task — fire-and-forget audit logging (maintenance_tasks.py)",
+        "extract_memories_task — async memory extraction, replaces asyncio.create_task (memory_tasks.py)"
+      ]
+    },
     "api_resource_limits": "4 CPUs, 6G RAM (Docker deploy limits) — increase for production"
   }
 }

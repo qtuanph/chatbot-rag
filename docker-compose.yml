@@ -29,17 +29,19 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu, utility, compute]
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')\""]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+    volumes:
+      - hf-cache:/root/.cache/huggingface
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - internal
 
-  upload-pipeline:
+  butler:
     image: chatbot-rag-app:latest
     env_file:
       - .env
@@ -54,38 +56,26 @@ services:
       qdrant:
         condition: service_healthy
     shm_size: '2gb'
-    volumes:
-      - hf-cache:/home/qtuanph/.cache/huggingface
-    restart: on-failure:3
     deploy:
       resources:
+        limits:
+          memory: 4G
         reservations:
           devices:
             - driver: nvidia
               count: all
               capabilities: [gpu, utility, compute]
-    networks:
-      - internal
-
-  cleanup-pipeline:
-    image: chatbot-rag-app:latest
-    env_file:
-      - .env
-    environment:
-      - CELERY_INCLUDE=cleanup
-    command: >
-      celery -A app.core.celery_app.celery_app worker
-      --loglevel=INFO
-      --queues=cleanup,default
-      -B
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+    volumes:
+      - hf-cache:/home/qtuanph/.cache/huggingface
     restart: unless-stopped
     networks:
       - internal
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   db:
     image: postgres:18.3-trixie
@@ -145,7 +135,7 @@ services:
     volumes:
       - rustfsdata:/data
     healthcheck:
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 9000"]
+      test: ["CMD-SHELL", "bash -c ': > /dev/tcp/127.0.0.1/9000'"]
       interval: 3s
       timeout: 3s
       retries: 10

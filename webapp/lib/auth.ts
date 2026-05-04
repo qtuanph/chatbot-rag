@@ -45,6 +45,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.accessToken = (user as { token: string }).token;
         token.role = (user as { role: string }).role;
         token.userId = user.id;
+        // Store token expiry for refresh detection (backend JWT expires in 60s * 60 = 3600s)
+        token.accessTokenExpires = Math.floor(Date.now() / 1000) + 3600;
+      }
+      // Token expired — force re-authentication by clearing access token
+      const now = Math.floor(Date.now() / 1000);
+      if (token.accessTokenExpires && now > token.accessTokenExpires - 300) {
+        // Within 5 minutes of expiry (or already expired), mark as needing refresh
+        token.expired = "true";
       }
       return token;
     },

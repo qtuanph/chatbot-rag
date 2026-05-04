@@ -1,6 +1,9 @@
 from functools import lru_cache
+import logging
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -43,7 +46,8 @@ class Settings(BaseSettings):
     retrieval_bm25_k1: float = 1.5  # BM25 term frequency saturation
     retrieval_bm25_b: float = 0.75  # BM25 length normalization
 
-    # Cross-encoder reranker — always on, no toggle
+    # Cross-encoder reranker — off by default (full section context makes LLM self-rank effectively)
+    retrieval_rerank_enabled: bool = False
     retrieval_rerank_top_k: int = 5  # Final number of chunks after reranking
     retrieval_rerank_model: str = "AITeamVN/Vietnamese_Reranker"  # Vietnamese cross-encoder
 
@@ -74,7 +78,7 @@ class Settings(BaseSettings):
 
     storage_backend: str = "s3"
     s3_endpoint: str = "rustfs:9000"
-    s3_access_key: str = "rustfs"
+    s3_access_key: str = ""
     s3_secret_key: str = "replace-me"
     s3_bucket: str = "rag-documents"
     s3_secure: bool = False
@@ -151,6 +155,8 @@ class Settings(BaseSettings):
         # Security: Validate other secrets
         if not self.s3_secret_key or self.s3_secret_key == "replace-me":
             raise ValueError("S3_SECRET_KEY must be configured")
+        if not self.s3_access_key:
+            raise ValueError("S3_ACCESS_KEY must be configured")
         if not self.database_url or self.database_url == "replace-me":
             raise ValueError("DATABASE_URL must be configured")
         self.api_v1_prefix = str(self.api_v1_prefix).strip() or "/api/v1"
@@ -215,7 +221,16 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    if not s.google_api_key:
+        logger.error("GOOGLE_API_KEY is not set — AI features will not work")
+    if s.rate_limit_relaxed_mode and s.app_env != "development":
+        logger.warning(
+            "RATE_LIMIT_RELAXED_MODE is enabled in %s environment — rate limits are relaxed. "
+            "Set RATE_LIMIT_RELAXED_MODE=false for production security.",
+            s.app_env,
+        )
+    return s
 
 
 settings = get_settings()

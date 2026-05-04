@@ -1,3 +1,4 @@
+import json
 import logging
 from contextlib import asynccontextmanager
 
@@ -45,8 +46,23 @@ async def lifespan(application: FastAPI):
         except Exception as e:
             logger.warning("Embedding model pre-warm failed (will lazy-load): %s", e)
 
+    def _warm_reranker():
+        start = time.time()
+        try:
+            from app.adapters.reranker import get_reranker
+
+            reranker = get_reranker()
+            reranker.rerank(
+                "warmup", [type("Doc", (), {"text": "warmup", "full_text": "warmup", "score": 0.0})()], top_k=1
+            )
+            elapsed = time.time() - start
+            logger.info("Reranker model pre-warmed in %.1fs", elapsed)
+        except Exception as e:
+            logger.warning("Reranker model pre-warm failed (will lazy-load): %s", e)
+
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, _warm_embedding)
+    loop.run_in_executor(None, _warm_reranker)
 
     # Security: Warn if running in production with insecure settings
     if settings.app_env == "production":
@@ -118,6 +134,24 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     )
 
 
+def _safe_validation_errors(errors: list[dict]) -> list[dict]:
+    """Make Pydantic validation errors JSON-serializable."""
+    safe = []
+    for err in errors:
+        entry = {k: v for k, v in err.items() if k != "ctx"}
+        if "ctx" in err:
+            ctx = {}
+            for ck, cv in err["ctx"].items():
+                try:
+                    json.dumps(cv)
+                    ctx[ck] = cv
+                except (TypeError, ValueError):
+                    ctx[ck] = str(cv)
+            entry["ctx"] = ctx
+        safe.append(entry)
+    return safe
+
+
 @app.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(
     request: Request,
@@ -129,7 +163,7 @@ async def request_validation_exception_handler(
             request,
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "Validation error",
-            details=exc.errors(),
+            details=_safe_validation_errors(exc.errors()),
         ),
     )
 

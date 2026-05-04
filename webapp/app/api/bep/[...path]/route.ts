@@ -1,4 +1,5 @@
 import { getToken } from "next-auth/jwt";
+import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
 
 const API_INTERNAL = process.env.API_INTERNAL_URL!;
@@ -25,32 +26,40 @@ async function proxyHandler(
   if (token?.accessToken) {
     headers.set("Authorization", `Bearer ${token.accessToken}`);
   }
+  const realIp = request.headers.get("x-real-ip");
+  if (realIp) headers.set("X-Real-IP", realIp);
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) headers.set("X-Forwarded-For", forwardedFor);
 
   // Build fetch options
-  const init: RequestInit = {
+  const init = {
     method: request.method,
     headers,
-  };
+    duplex: "half",
+  } as RequestInit & { duplex: string };
 
   // Detect SSE requests by URL path — skip timeout for long-lived connections
   const isSSERequest = path.some((segment) => segment === "stream");
   let controller: AbortController | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
   if (!isSSERequest) {
     controller = new AbortController();
     init.signal = controller.signal;
-    setTimeout(() => controller?.abort(), 30_000);
+    timeoutId = setTimeout(() => controller?.abort(), 30_000);
   }
 
   // Forward body for non-GET/HEAD requests (handles JSON, FormData, SSE)
+  let retryBody: Blob | null = null;
   if (request.method !== "GET" && request.method !== "HEAD") {
-    // Clone body before forwarding (needed for retry)
-    const bodyBlob = await request.blob();
-    init.body = bodyBlob;
+    // Clone body before forwarding — first fetch consumes the Blob
+    retryBody = await request.blob();
+    init.body = retryBody;
   }
 
   let backendRes: Response;
   try {
     backendRes = await fetch(backendUrl, init);
+    if (timeoutId) clearTimeout(timeoutId);
   } catch (err: unknown) {
     // Retry once on socket close (worker restart / transient error)
     const isSocketError =
@@ -58,14 +67,24 @@ async function proxyHandler(
       (err instanceof Error && /socket|closed|econnrefused|econnreset/i.test(err.message));
 
     if (isSocketError) {
+      let retryTimeout: ReturnType<typeof setTimeout> | null = null;
       try {
-        backendRes = await fetch(backendUrl, init);
+        // New AbortController for retry — previous signal is already aborted
+        const retryController = new AbortController();
+        retryTimeout = setTimeout(() => retryController.abort(), 30_000);
+        const retryInit = { ...init, signal: retryController.signal };
+        if (retryBody) {
+          retryInit.body = retryBody.slice(0, retryBody.size);
+        }
+        backendRes = await fetch(backendUrl, retryInit);
       } catch (retryErr: unknown) {
         const retryMsg = retryErr instanceof Error ? retryErr.message : "unknown";
         return new Response(
           JSON.stringify({ detail: `Backend service unavailable: ${retryMsg}` }),
           { status: 502, headers: { "content-type": "application/json" } },
         );
+      } finally {
+        if (retryTimeout) clearTimeout(retryTimeout);
       }
     } else {
       const errMsg = err instanceof Error ? err.message : "unknown error";
@@ -83,10 +102,7 @@ async function proxyHandler(
 
   // Redirect to login on 401 (token expired or invalid)
   if (backendRes.status === 401) {
-    return new Response(
-      JSON.stringify({ detail: "Authentication required" }),
-      { status: 401, headers: { "content-type": "application/json" } },
-    );
+    redirect("/login");
   }
 
   // SSE-specific headers to prevent buffering at every layer

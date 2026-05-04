@@ -2,35 +2,31 @@
   "permissions": {
     "allow": [
       "Bash",
+      "PowerShell",
       "Read",
       "Write",
       "Edit",
       "Glob",
       "Grep",
-      "mcp__playwright__*",
-      "mcp__exa__*",
-      "mcp__zread__*",
-      "mcp__codemap__*",
-      "mcp__sequential-thinking__*",
-      "mcp__next-devtools__*",
-      "mcp__shadcn__*",
-      "mcp__4_5v_mcp__*",
-      "mcp__web-reader__*",
-      "mcp__web_reader__*",
-      "mcp__web-search-prime__*",
-      "mcp__zai-mcp-server__*",
-      "mcp__plugin_engram_engram__*",
+      "NotebookEdit",
       "Skill",
       "WebSearch",
+      "mcp__plugin_engram_engram__*",
+      "mcp__sequential-thinking__*",
       "mcp__MCP_DOCKER__*",
-      "PowerShell(Stop-Process:*)"
+      "mcp__playwright__*",
+      "mcp__next-devtools__*",
+      "mcp__exa__*",
+      "mcp__web_reader__*",
+      "mcp__zai-mcp-server__*",
+      "mcp__4_5v_mcp__*"
     ]
   },
   "enabledMcpjsonServers": [
     "playwright",
-    "shadcn",
-    "codemap",
     "sequential-thinking",
-    "next-devtools"
-  ]
+    "next-devtools",
+    "shadcn"
+  ],
+  "enableAllProjectMcpServers": true
 }

@@ -22,15 +22,15 @@ class AuthService:
     def login(
         self, *, username: str, password: str, ip_address: str | None = None, user_agent: str | None = None
     ) -> dict:
-        """Authenticate user and return token + role. Raises on failure."""
+        """Authenticate user and return token + role. Raises ValueError on failure."""
         normalized = username.lower().strip()
-        user = self.repo.get_user_by_username(normalized)
+        user = self.repo.get_user_by_username(normalized, include_hash=True)
         if user is None or not verify_password(password, user["password_hash"]):
-            return None  # caller raises http_errors.unauthorized
+            raise ValueError("Invalid username or password")
 
         role = self.repo.get_role_by_id(user["role_id"])
         if role is None:
-            return None
+            raise ValueError("User has no assigned role")
 
         token = create_access_token(subject=user["id"], role=role["name"])
 
@@ -102,10 +102,10 @@ class AuthService:
         return self.repo.list_roles()
 
     def get_current_user(self, user_id: str) -> dict:
-        """Get current user info with role."""
+        """Get current user info with role. Raises ValueError if not found."""
         user = self.repo.get_user_by_id(user_id)
         if user is None:
-            return None
+            raise ValueError("User not found")
         role = self.repo.get_role_by_id(user["role_id"])
         return {
             "user_id": user["id"],

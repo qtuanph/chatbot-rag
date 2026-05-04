@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Request
 import jwt
 
 from app.api.deps import AuthContext, get_auth_context, get_auth_service, require_admin
@@ -32,42 +32,43 @@ def login(payload: LoginRequest, request: Request, service: AuthService = Depend
     ):
         raise http_errors.too_many_requests("Too many login attempts")
 
-    result = service.login(
-        username=normalized_username,
-        password=payload.password,
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-    )
-    if result is None:
-        raise http_errors.unauthorized("Invalid credentials")
+    try:
+        result = service.login(
+            username=normalized_username,
+            password=payload.password,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+    except ValueError as e:
+        raise http_errors.unauthorized(str(e)) from None
     return TokenResponse(access_token=result["access_token"], role=result["role"])
 
 
 @router.post("/auth/logout", response_model=LogoutResponse)
 def logout(
     request: Request,
-    authorization: str | None = Header(default=None),
+    auth: AuthContext = Depends(get_auth_context),
     service: AuthService = Depends(get_auth_service),
 ) -> LogoutResponse:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise http_errors.unauthorized("Missing bearer token")
+    # Decode token to get expiry for blacklist TTL
+    authorization = request.headers.get("authorization", "")
+    token = authorization.removeprefix("Bearer ").strip() if authorization.startswith("Bearer ") else ""
+    expires_at = 0
+    if token:
+        try:
+            payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+            expires_at = int(payload["exp"])
+        except (jwt.exceptions.PyJWTError, KeyError, TypeError, ValueError):
+            pass  # AuthContext already validated the token; proceed with logout
 
-    token = authorization.removeprefix("Bearer ").strip()
-    try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-        jti = str(payload["jti"])
-        expires_at = int(payload["exp"])
-
-        service.logout(
-            jti=jti,
-            expires_at=expires_at,
-            user_id=str(payload["sub"]),
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-        )
-        return LogoutResponse(status="logged_out")
-    except (jwt.exceptions.PyJWTError, KeyError, TypeError, ValueError):
-        raise http_errors.unauthorized("Invalid token") from None
+    service.logout(
+        jti=auth.token_id,
+        expires_at=expires_at,
+        user_id=auth.user_id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return LogoutResponse(status="logged_out")
 
 
 @router.post("/auth/users", response_model=CreateUserResponse)
@@ -103,10 +104,10 @@ def get_roles(_auth=Depends(require_admin), service: AuthService = Depends(get_a
 
 @router.get("/auth/me")
 def get_me(auth: AuthContext = Depends(get_auth_context), service: AuthService = Depends(get_auth_service)) -> dict:
-    result = service.get_current_user(auth.user_id)
-    if result is None:
-        raise http_errors.unauthorized("User not found")
-    return result
+    try:
+        return service.get_current_user(auth.user_id)
+    except ValueError as e:
+        raise http_errors.unauthorized(str(e)) from None
 
 
 @router.get("/auth/users", response_model=list[CreateUserResponse])

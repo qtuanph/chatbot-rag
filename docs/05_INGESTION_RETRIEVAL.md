@@ -31,7 +31,7 @@ Qdrant for retrieval. PostgreSQL for metadata/state. Redis for cache and queue. 
 10. **RuleBasedRefiner** (`app/utils/text_refiner.py`): Fixes OCR errors, detects headers (0GB VRAM, ~1ms per node).
 11. **Section storage**: SectionRepository stores in `document_sections` (order_index, parent_section_id, page span).
 12. **Embed + store**: Chunks embedded in parallel batches of 32 via ThreadPoolExecutor → upsert to Qdrant with named dense vector + BM25 sparse vector + `section_id`. progress_callback updates percent live.
-13. **BM25 rebuild + finalize**: Full BM25 vocab rebuild from Qdrant chunks. Persist ingestion artifact. Set status=ready. invalidate_doc_ids_cache().
+13. **BM25 rebuild + finalize**: Set status=ready. invalidate_doc_ids_cache(). Dispatch `rebuild_bm25_index_task` (queue=ingestion) — async BM25 vocab rebuild from Qdrant, runs after ingestion completes.
 
 ### OCR Backend
 
@@ -68,8 +68,8 @@ Model pre-downloaded during Docker build via BuildKit cache.
 6. **Hybrid search**: For each query, run dense + BM25 sparse in parallel → RRF fusion in Qdrant.
 7. **Stage 1 — Section grouping**: Merge results across queries (dedupe by node_id, keep max score). Group by section_id → top 3 sections (score ≥ 0.30). Load section details via `SectionRepository.get_sections_for_rag()`.
 8. **Stage 2 — Chunk re-ranking**: Prioritise chunks within top sections first, then remaining. Score filter ≥ 0.35. Dedup overlapping chunks (100-char signature).
-9. **Stage 3 — Cross-encoder reranking**: AITeamVN/Vietnamese_Reranker (`app/adapters/reranker/reranker.py`) scores (query, passage) pairs → top 5 chunks by relevance. Max 30 candidates sent to reranker. Errors propagate, no fallback.
-10. **Stage 4 — Context assembly**: Enriched context blocks with breadcrumb hierarchy + page ranges for LLM. Document titles via `DocumentRepository.get_titles_by_ids()`.
+9. **Stage 3 — Cross-encoder reranking** (optional, off by default): AITeamVN/Vietnamese_Reranker (`app/adapters/reranker/reranker.py`) scores (query, passage) pairs → top 5 chunks by relevance. Disabled via `RETRIEVAL_RERANK_ENABLED=false` — when sending full section context, LLM self-ranks effectively. Enable via env var if needed.
+10. **Stage 4 — Context assembly**: Map chunks → full section content from PostgreSQL. Deduplicate by section_id. Send complete section text (not chunk fragments) to LLM with breadcrumb hierarchy + page ranges. This ensures the LLM sees all content within a section, including details that may span multiple chunks.
 
 ### Hybrid Search: Dense + BM25
 
@@ -81,7 +81,7 @@ Model pre-downloaded during Docker build via BuildKit cache.
 | Qdrant config | Named vectors: "dense" + "sparse-bm25" (Modifier.IDF) |
 | BM25 params | k1=1.5, b=0.75 (standard defaults) |
 | BM25 vocab | Built from all Qdrant chunks, persisted to `data/bm25_vocab.json` |
-| Vocab rebuild | After every document upload/delete (full rebuild for correct IDF) |
+| Vocab rebuild | After every document upload/delete (full rebuild for correct IDF). Dispatched as async Celery task (`rebuild_bm25_index_task`, queue=ingestion) — does not block ingestion completion |
 | Vocab cache | TTL-based reload (120s) to pick up changes from Celery worker. Note: Redis 512mb maxmemory with allkeys-lru may evict cache keys under memory pressure |
 
 ### Cross-Encoder Reranker
@@ -158,8 +158,11 @@ Display order from `document_sections.order_index`, then page span. Qdrant does 
 | Doc ID TTL cache + invalidation | `app/services/retrieval/retrieval_service.py` |
 | Query embedding cache | `app/utils/query_cache.py` |
 | Hardware auto-detection | `app/core/hardware.py` |
-| Ingestion tasks | `app/workers/upload_pipeline.py` — includes BM25 rebuild after ingestion |
-| Cleanup tasks + beat | `app/workers/cleanup_pipeline.py` — uses CleanupService, includes BM25 rebuild after deletion |
+| Ingestion tasks | `app/workers/upload_pipeline.py` — dispatches rebuild_bm25_index_task after ingestion |
+| Cleanup tasks + beat | `app/workers/cleanup_pipeline.py` — uses CleanupService, dispatches rebuild_bm25_index_task after deletion |
+| Maintenance tasks | `app/workers/maintenance_tasks.py` — rebuild_bm25_index_task (ingestion queue), cleanup_orphaned_vectors_task (cleanup queue, Beat daily), record_audit_task (default queue) |
+| Chat tasks | `app/workers/chat_tasks.py` — save_chat_message_task on default queue (async assistant message persistence) |
+| Memory tasks | `app/workers/memory_tasks.py` — extract_memories_task on default queue (async memory extraction, replaces asyncio.create_task) |
 | User memory service | `app/services/chat/user_memory_service.py:UserMemoryService` — receives redis.Redis via DI, creates short-lived sessions per DB operation |
 | Memory service | `app/services/chat/memory_service.py:MemoryService` — receives UserMemoryService via DI |
 | AI provider (Google) | `app/adapters/ai/google.py:GoogleAIProvider` — singleton via lru_cache, x-goog-api-key header |

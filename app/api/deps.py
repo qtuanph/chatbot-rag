@@ -12,8 +12,11 @@ from app.db.session import SessionLocal
 from app.models.auth import Role, User
 from app.utils.token_blacklist import TokenBlacklist
 
-# Module-level singleton — reuse Redis connection across requests
+import redis as redis_lib
+
+# Module-level singletons — reuse Redis connections across requests
 _blacklist = TokenBlacklist()
+_redis_client = redis_lib.Redis.from_url(settings.redis_url, decode_responses=True)
 
 
 @dataclass(frozen=True)
@@ -148,10 +151,7 @@ def get_chat_service(repo=Depends(get_chat_repo)):
     from app.services.chat.user_memory_service import UserMemoryService
     from app.utils.chat_store import ChatStore
 
-    import redis as redis_lib
-
-    redis_client = redis_lib.Redis.from_url(settings.redis_url, decode_responses=True)
-    user_memory_service = UserMemoryService(redis_client=redis_client)
+    user_memory_service = UserMemoryService(redis_client=_redis_client)
     return ChatService(repo=repo, store=ChatStore(), user_memory_service=user_memory_service)
 
 
@@ -165,10 +165,7 @@ def get_memory_service(memory_repo=Depends(get_memory_repo)):
     from app.services.chat.memory_service import MemoryService
     from app.services.chat.user_memory_service import UserMemoryService
 
-    import redis as redis_lib
-
-    redis_client = redis_lib.Redis.from_url(settings.redis_url, decode_responses=True)
-    user_memory_service = UserMemoryService(redis_client=redis_client)
+    user_memory_service = UserMemoryService(redis_client=_redis_client)
     return MemoryService(repo=memory_repo, user_memory_service=user_memory_service)
 
 

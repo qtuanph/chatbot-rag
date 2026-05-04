@@ -2,13 +2,17 @@
 
 Single source of truth for system design, data model, and invariants. Security details in `03_API_CONTRACTS.md`.
 
+## Purpose
+
+Customer-facing document guidance chatbot. Users upload documents (guides, manuals, policies) and ask questions — the system retrieves relevant content and generates accurate, complete answers. Key principle: **preserve factual content** — definitions, steps, examples, and lists must be presented fully, not summarized away.
+
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
 | Frontend | Next.js 16 + shadcn/ui v4 + next-auth v5 (JWT) |
 | Backend | FastAPI async |
-| Workers | upload-pipeline (GPU, ingestion) + cleanup-pipeline (lightweight, deletion + beat) |
+| Workers | butler — `celery multi`: node-ingestion (solo, GPU) + node-default (prefork, CPU, Beat) |
 | Database | PostgreSQL 18 (metadata, auth, sessions, audit) |
 | Vectors | Qdrant (chunk vectors + retrieval payload) |
 | Object storage | RustFS (raw uploads + artifacts) |
@@ -83,11 +87,11 @@ graph TD
     Retriever --> Embedder[Vietnamese_Embedding_v2 → Qdrant]
     ChatSvc --> Memory[UserMemoryService → Redis + PostgreSQL]
     DocSvc --> Upload[Upload → Redis queue]
-    Upload --> Worker[upload-pipeline · GPU]
+    Upload --> Worker[butler · celery multi · GPU]
     Worker --> Parser[ParserManager → Docling Method D + PaddleOCR]
     Parser --> Sections[SectionRepository → PostgreSQL]
     Parser --> EmbedWorker[Vietnamese_Embedding_v2 → Qdrant]
-    Redis --> Cleanup[cleanup-pipeline + CleanupService + Beat]
+    Redis --> Cleanup[CleanupService → butler (node-default, cleanup queue)]
 ```
 
 ## Controller-Service-Repository Architecture
@@ -133,10 +137,11 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | Parse | Worker → Docling Method D + PaddleOCR (force_full_page_ocr=True) → sections + chunks | Items with page spans, heading levels |
 | Validate | HierarchyValidator (app/utils/) + RuleBasedRefiner (app/utils/text_refiner.py, 0GB VRAM, ~1ms) | Cleaned, validated text |
 | Store | SectionRepository → PostgreSQL → Embed → Qdrant | document_sections rows + vectors |
-| Retrieve | QueryCache → hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → cross-encoder rerank (top 5) → context assembly | Top sections + chunks with citations |
+| Retrieve | QueryCache → hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → dedup → rerank (optional, off by default) → **full section context assembly** | Top sections with full content sent to LLM (not chunks) |
 | Memory | UserMemoryService (redis.Redis + MemoryRepository via DI) → Redis cache → inject systemInstruction | Personalized prompt |
 | Stream | AI Provider → strip_reasoning() → SSE → proxy → Browser | Grounded answer with citations, token stats, cost estimate |
-| Extract | Post-response → async Gemini → user_memories | Learned facts for future turns |
+| Persist | Post-stream → Celery save_chat_message_task (queue=default) → PostgreSQL + Redis | Async message save, reduces latency before done:true |
+| Extract | Post-response → Celery extract_memories_task (queue=default) → async Gemini → user_memories | Durable memory extraction, survives API restart |
 
 ## Non-Negotiable Invariants
 
@@ -145,7 +150,7 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | API contracts | Keep upload/status/chat/document endpoints stable |
 | Async ingestion | Upload must never block on parsing |
 | Provider boundary | Route handlers never call provider SDKs directly |
-| Hierarchical retrieval | Never replace with flat chunk-only retrieval |
+| Hierarchical retrieval | Retrieve at chunk level, present at section level (full section content to LLM) |
 | Citation policy | Every grounded answer includes citations |
 | Delete policy | Hard-delete 6-step order (see below) |
 | Version policy | Latest active version preferred during retrieval |
@@ -239,11 +244,11 @@ Gemma 4 outputs chain-of-thought by default. 4 suppression layers:
 
 `app/core/hardware.py` — singleton detected once at startup. **3-tier VRAM-aware scaling.**
 
-| Mode | Condition | uvicorn workers | celery pool | celery concurrency | DB pool |
-|------|-----------|-----------------|-------------|-------------------|---------|
-| TIGHT GPU | CUDA + VRAM headroom < 6GB | 1 | solo | min(cpu, 4) | 10+10 |
-| COMFORTABLE GPU | CUDA + VRAM headroom ≥ 6GB | min(cpu, ram//2, 8) | prefork | min(cpu, 8) | auto |
-| CPU only | No CUDA | min(cpu, ram//2, 8) | prefork | min(cpu, 8) | auto |
+| Mode | Condition | uvicorn workers | node-ingestion | node-default | DB pool |
+|------|-----------|-----------------|----------------|-------------|---------|
+| TIGHT GPU | CUDA + VRAM headroom < 6GB | 1 | solo (1 task) | prefork min(cpu, 4) | 10+10 |
+| COMFORTABLE GPU | CUDA + VRAM headroom ≥ 6GB | min(cpu, ram//2, 8) | solo (1 task) | prefork min(cpu, 8) | auto |
+| CPU only | No CUDA | min(cpu, ram//2, 8) | solo (1 task) | prefork min(cpu, 8) | auto |
 
 VRAM headroom = total VRAM − 2GB (embedding ~1.1GB + reranker ~0.5GB). Example: GTX 1650 4GB → headroom 2GB → TIGHT. RTX 4090 24GB → headroom 22GB → COMFORTABLE.
 
@@ -252,6 +257,13 @@ DB pool size (`db_pool_size`) auto-scales: `max(10, uvicorn_workers * 5)`.
 ## Celery Configuration
 
 All values configurable via env vars (see `app/core/config.py`). Defaults designed for dev laptop (GTX 1650 4GB).
+
+Butler runs `celery multi` with 2 worker nodes in 1 container:
+
+| Node | Pool | Queues | GPU | Beat | Purpose |
+|------|------|--------|-----|------|---------|
+| node-ingestion | solo | ingestion | Yes | No | Embedding model load/unload per task — always sequential |
+| node-default | prefork | cleanup, default | No | Yes | CPU tasks (chat, audit, memory) run in parallel |
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
@@ -268,7 +280,7 @@ All values configurable via env vars (see `app/core/config.py`). Defaults design
 | Redis DB 0 | Celery broker | Task messages |
 | Redis DB 1 | Result backend | Task results |
 | Redis DB 2 | App cache | Query cache, rate limits, chat history |
-| Queue routing | ingestion → upload-pipeline, cleanup → cleanup-pipeline | VRAM-aware separation |
+| Queue routing | node-ingestion (solo): ingestion. node-default (prefork): cleanup, default. Beat on node-default | `ops/entrypoint-worker.sh` |
 
 ## Planned (Phase 2)
 

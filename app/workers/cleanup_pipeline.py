@@ -77,7 +77,7 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
         task_id=task_id,
         state="STARTED",
         meta={
-            "stage": "delete",
+            "stage": "deleting",
             "progress": {"step": "delete", "percent": 20},
             "document_id": document_id,
         },
@@ -120,7 +120,7 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
             "task_id": task_id,
             "document_id": document_id,
             "status": "deleted",
-            "stage": "deleted",
+            "stage": "deleting",
             "progress": {"step": "deleted", "percent": 100},
             "requested_by": user_id,
             "cleanup": cleanup_result,

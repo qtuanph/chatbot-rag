@@ -4,7 +4,7 @@ Follows Kotaemo's adapter pattern for clean, swappable implementations.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from enum import Enum
@@ -32,10 +32,10 @@ class ParsingMetadata:
     fallback_used: bool = False  # Whether fallback parser was triggered
     quality_score: float = 1.0  # 0.0–1.0 based on parse completeness
     parse_time_ms: float = 0.0  # Milliseconds spent parsing
-    warnings: List[str] = None  # Non-fatal issues encountered
+    warnings: list[str] = None  # Non-fatal issues encountered
     node_count: int = 0  # Number of nodes extracted
     total_text_chars: int = 0  # Total character count in extracted text
-    sections_data: List[Dict[str, Any]] = None  # Section records for PostgreSQL (RAG v2)
+    sections_data: list[dict[str, Any]] = None  # Section records for PostgreSQL (RAG v2)
 
     def __post_init__(self):
         if self.warnings is None:
@@ -43,7 +43,7 @@ class ParsingMetadata:
         if self.sections_data is None:
             self.sections_data = []
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         data = asdict(self)
         data["created_at"] = datetime.utcnow().isoformat()
@@ -58,17 +58,17 @@ class IngestedNode:
     document_id: str
     text: str
     node_type: ParsedNodeType
-    page_number: Optional[int] = None
-    section_title: Optional[str] = None
-    parent_id: Optional[str] = None  # For hierarchical documents
+    page_number: int | None = None
+    section_title: str | None = None
+    parent_id: str | None = None  # For hierarchical documents
     order: int = 0  # Position in parent or document
-    metadata: Dict[str, Any] = None  # Custom metadata (headings, tables, coordinates, etc.)
+    metadata: dict[str, Any] = None  # Custom metadata (headings, tables, coordinates, etc.)
 
     def __post_init__(self):
         if self.metadata is None:
             self.metadata = {}
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage/transmission."""
         return {
             "node_id": self.node_id,
@@ -94,13 +94,15 @@ class BaseParser(ABC):
         self,
         filename: str,
         content: bytes,
-    ) -> Tuple[List[IngestedNode], ParsingMetadata]:
+        document_id: str | None = None,
+    ) -> tuple[list[IngestedNode], ParsingMetadata]:
         """
         Parse document content into structured nodes.
 
         Args:
             filename: Name of the document (for format detection)
             content: Raw file bytes
+            document_id: UUID of the document (for node identity)
 
         Returns:
             Tuple of (list of IngestedNode, ParsingMetadata)
@@ -116,7 +118,7 @@ class EmbeddingResult:
     """Result of embedding operation."""
 
     text: str
-    embedding: List[float]
+    embedding: list[float]
     dimension: int
     model: str
 
@@ -133,7 +135,7 @@ class BaseEmbedding(ABC):
         pass
 
     @abstractmethod
-    def embed(self, text: str, normalize: bool = True) -> List[float]:
+    def embed(self, text: str, normalize: bool = True) -> list[float]:
         """
         Embed a single text string.
 
@@ -152,10 +154,10 @@ class BaseEmbedding(ABC):
     @abstractmethod
     def embed_batch(
         self,
-        texts: List[str],
+        texts: list[str],
         batch_size: int = 32,
         normalize: bool = True,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """
         Embed multiple texts efficiently.
 
@@ -181,7 +183,7 @@ class RetrievedDocument:
     document_id: str
     text: str
     score: float  # Relevance score (0-1 or 0-100 depending on store)
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class BaseVectorStore(ABC):
@@ -199,9 +201,9 @@ class BaseVectorStore(ABC):
     def store(
         self,
         document_id: str,
-        nodes: List[IngestedNode],
-        embeddings: List[List[float]],
-    ) -> List[str]:
+        nodes: list[IngestedNode],
+        embeddings: list[list[float]],
+    ) -> list[str]:
         """
         Store document nodes with embeddings.
 
@@ -221,12 +223,12 @@ class BaseVectorStore(ABC):
     @abstractmethod
     def retrieve(
         self,
-        query_vector: List[float],
+        query_vector: list[float],
         top_k: int = 5,
-        document_id_filter: Optional[str] = None,
-        document_ids_filter: Optional[List[str]] = None,
-        section_ids_filter: Optional[List[str]] = None,
-    ) -> List[RetrievedDocument]:
+        document_id_filter: str | None = None,
+        document_ids_filter: list[str | None] = None,
+        section_ids_filter: list[str | None] = None,
+    ) -> list[RetrievedDocument]:
         """
         Retrieve top-k documents by vector similarity.
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 
 from app.adapters.sparse_embeddings.vietnamese_bm25 import VietnameseBM25Encoder
@@ -21,6 +22,7 @@ _VOCAB_TTL = 120.0  # Reload vocab every 2 minutes to pick up new documents
 
 _cached_encoder: VietnameseBM25Encoder | None = None
 _cached_at: float = 0.0
+_encoder_lock = threading.Lock()
 
 
 def get_bm25_encoder() -> VietnameseBM25Encoder:
@@ -33,24 +35,24 @@ def get_bm25_encoder() -> VietnameseBM25Encoder:
     """
     global _cached_encoder, _cached_at
 
-    now = time.monotonic()
-    if _cached_encoder is not None and (now - _cached_at) < _VOCAB_TTL:
-        return _cached_encoder
-
-    encoder = VietnameseBM25Encoder(
-        k1=settings.retrieval_bm25_k1,
-        b=settings.retrieval_bm25_b,
-    )
-    loaded = encoder.load(_VOCAB_PATH)
-    if not loaded:
-        # Keep old encoder if it exists and reload failed (no vocab file yet)
-        if _cached_encoder is not None:
+    with _encoder_lock:
+        now = time.monotonic()
+        if _cached_encoder is not None and (now - _cached_at) < _VOCAB_TTL:
             return _cached_encoder
-        logger.info("BM25 vocab not found at %s — will build on first query", _VOCAB_PATH)
 
-    _cached_encoder = encoder
-    _cached_at = now
-    return encoder
+        encoder = VietnameseBM25Encoder(
+            k1=settings.retrieval_bm25_k1,
+            b=settings.retrieval_bm25_b,
+        )
+        loaded = encoder.load(_VOCAB_PATH)
+        if not loaded:
+            if _cached_encoder is not None:
+                return _cached_encoder
+            logger.info("BM25 vocab not found at %s — will build on first query", _VOCAB_PATH)
+
+        _cached_encoder = encoder
+        _cached_at = now
+        return encoder
 
 
 def build_bm25_index_from_qdrant() -> int:
@@ -104,8 +106,11 @@ def build_bm25_index_from_qdrant() -> int:
     if not all_texts:
         # No documents left — clear stale vocab so queries skip BM25
         if os.path.exists(_VOCAB_PATH):
-            os.remove(_VOCAB_PATH)
-            logger.info("BM25 vocab cleared (no chunks in Qdrant)")
+            try:
+                os.remove(_VOCAB_PATH)
+                logger.info("BM25 vocab cleared (no chunks in Qdrant)")
+            except OSError as e:
+                logger.warning("Failed to remove BM25 vocab file: %s", e)
         # Force reload on next get_bm25_encoder() call
         global _cached_encoder, _cached_at
         _cached_encoder = None

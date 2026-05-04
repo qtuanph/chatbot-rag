@@ -40,13 +40,21 @@ async def expand_query(query: str, n_variants: int | None = None) -> list[str]:
     )
 
     provider = build_ai_provider()
-    response = await provider.chat(
-        messages=[{"role": "user", "content": prompt}],
-        context=[],
-        citations=[],
-    )
+    try:
+        response = await provider.chat(
+            messages=[{"role": "user", "content": prompt}],
+            context=[],
+            citations=[],
+        )
+    except Exception as e:
+        logger.warning("Query expansion AI call failed: %s", e)
+        return [query]
 
-    variants = [line.strip().lstrip("0123456789.-) ") for line in response["answer"].split("\n") if line.strip()]
+    answer_text = response.get("answer", "") if isinstance(response, dict) else ""
+    if not answer_text:
+        return [query]
+
+    variants = [line.strip().lstrip("0123456789.-) ") for line in answer_text.split("\n") if line.strip()]
 
     # Deduplicate while preserving order
     seen = {query.lower()}

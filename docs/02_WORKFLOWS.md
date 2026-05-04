@@ -11,7 +11,7 @@ sequenceDiagram
     participant RustFS
     participant DB as PostgreSQL
     participant Redis
-    participant Worker as upload-pipeline (GPU)
+    participant Worker as butler (GPU)
     participant Pipeline as IngestionService
     participant Refiner as Rule-Based Refiner
     participant Qdrant
@@ -24,10 +24,10 @@ sequenceDiagram
     API-->>Browser: 202 { task_id }
 
     Redis->>Worker: dequeue (ack_late=True)
-    Worker->>DB: status=processing, stage=download, percent=10
+    Worker->>DB: status=processing, stage=downloading, percent=10
     Worker->>RustFS: download file bytes
 
-    Worker->>DB: stage=parse, percent=40
+    Worker->>DB: stage=parsing, percent=40
     Worker->>Pipeline: ingest(filename, bytes, progress_callback)
 
     Pipeline->>Pipeline: Docling iterate_items() — Method D
@@ -39,11 +39,12 @@ sequenceDiagram
     loop For each chunk of 32 nodes
         Pipeline->>Pipeline: embed_batch (ThreadPoolExecutor parallel)
         Pipeline->>Qdrant: upsert vectors with section_id metadata
-        Pipeline->>DB: stage=embed_store, percent=40→90 [callback]
+        Pipeline->>DB: stage=embedding, percent=40→90 [callback]
     end
 
-    Pipeline->>DB: stage=ready, percent=100 [callback]
+    Pipeline->>DB: stage=verifying, percent=100 [callback]
     Worker->>Worker: invalidate_doc_ids_cache()
+    Worker->>Redis: dispatch rebuild_bm25_index_task (queue=ingestion) — async BM25 vocab rebuild
 ```
 
 ### Upload Invariants
@@ -99,8 +100,8 @@ sequenceDiagram
         Provider-->>ChatSvc: text chunk (thought:true parts filtered)
         ChatSvc-->>Browser: SSE data: {"chunk": "...", "done": false}
     end
-    ChatSvc->>DB: save user + assistant ChatMessage to PostgreSQL (tokens_in, tokens_out, latency_ms)
-    ChatSvc->>Memory: extract_memories_from_turn() — async (tracked in _background_tasks)
+    ChatSvc->>DB: save_message_now() — synchronous save assistant message to PostgreSQL + Redis
+    ChatSvc->>Redis: enqueue extract_memories_task (queue=default) — async memory extraction via Celery (replaces asyncio.create_task)
     ChatSvc-->>Browser: SSE data: {"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "tokens", "model_used", "estimated_cost_usd"}}
 ```
 
@@ -116,13 +117,14 @@ sequenceDiagram
 | Provider swap safety | Chat route stays provider-agnostic via adapter |
 | Multi-turn | Last 20 messages via Gemini contents array (assistant→model) |
 | Memory injection | User memories loaded from Redis/PostgreSQL, injected into systemInstruction |
-| Memory extraction | Async post-response: heuristic triggers + Gemini → user_memories |
+| Memory extraction | Celery task (extract_memories_task, queue=default) post-response: heuristic triggers + Gemini → user_memories |
 | Thinking suppressed | 4 layers: thinkingConfig MINIMAL + thought:true filter + ThoughtFilter + strip_reasoning() |
 | Output bounds | maxOutputTokens: 8192, max_context_chars: 500000, streaming timeout 300s |
 | Clean saved text | strip_reasoning() applied to answer before saving to DB |
 | Token tracking | Gemini usageMetadata captured: prompt_tokens, completion_tokens, model_used persisted to ChatMessage |
 | Cost estimation | Configurable via `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0 for free tier) |
-| Async task tracking | Background memory extraction tracked in _background_tasks set, prevent GC |
+| Async task tracking | Memory extraction dispatched via Celery (extract_memories_task) — durable, survives API restart |
+| Async message save | Assistant message persisted synchronously via save_message_now() before done:true event — ensures message never lost on browser close. User message saved synchronously in prepare_chat() before streaming starts |
 | Frontend SSE abort | AbortController cancels stream on unmount or new message |
 | Session default | Empty "Chat mới" on page load, sidebar for history |
 
@@ -133,7 +135,7 @@ sequenceDiagram
     participant Client
     participant API
     participant Registry as Redis Registry
-    participant Cleanup as cleanup-pipeline
+    participant Cleanup as butler (cleanup queue)
     participant Qdrant
     participant RustFS
     participant DB
@@ -149,6 +151,7 @@ sequenceDiagram
     Cleanup->>RustFS: delete file object
     Cleanup->>DB: DocumentRepository.hard_delete() → DELETE document row
     Cleanup->>Cleanup: invalidate_doc_ids_cache()
+    Cleanup->>Redis: dispatch rebuild_bm25_index_task (queue=ingestion) — async BM25 vocab rebuild
     Cleanup->>Registry: registry.purge()
 ```
 
@@ -165,13 +168,14 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Beat as Celery Beat (cleanup-pipeline)
+    participant Beat as Celery Beat (butler)
     participant DB as PostgreSQL
     participant Redis
 
     Note over Beat: Runs daily (every 86400s)
     Beat->>DB: DELETE chat_sessions WHERE created_at < NOW() - TTL
     DB->>DB: CASCADE DELETE associated chat_messages
+    Beat->>Qdrant: cleanup_orphaned_vectors_task — remove vectors without DB sections
     Note over Redis: Redis keys expire via TTL naturally
 ```
 
@@ -180,7 +184,7 @@ sequenceDiagram
 | Rule | Detail |
 |------|--------|
 | TTL | `CHAT_SESSION_TTL_DAYS` (default: 30 days) |
-| Cleanup | Celery beat in cleanup-pipeline — hard delete |
+| Cleanup | Celery beat in butler — hard delete |
 | Cascade | Messages deleted automatically with session |
 | Persistence | Messages saved to PostgreSQL every turn; Redis is hot cache |
 | Ordering | GET /chat/sessions returns updated_at DESC for sidebar |

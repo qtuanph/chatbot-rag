@@ -39,11 +39,10 @@ class RequestThrottle:
     def allow(self, key: str, limit: int, window_seconds: int) -> bool:
         """
         Return True if request is within rate limit, False otherwise.
-
-        Args:
-            key:            Redis key for this rate limit bucket (e.g. "throttle:chat:user_id")
-            limit:          Maximum requests allowed in the window
-            window_seconds: Window duration in seconds
+        Fails open (returns True) on Redis errors to avoid blocking all traffic.
         """
-        count = int(self._script(keys=[key], args=[window_seconds]))
-        return count <= limit
+        try:
+            count = int(self._script(keys=[key], args=[window_seconds]))
+            return count <= limit
+        except Exception:
+            return True

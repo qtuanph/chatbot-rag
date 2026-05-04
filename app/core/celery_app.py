@@ -19,9 +19,9 @@ Broker reliability:
   - broker_connection_retry_on_startup=True: Don't crash if Redis unavailable.
 
 Queue routing:
-  - ingestion: upload-pipeline worker (GPU-bound embedding tasks)
-  - cleanup: cleanup-pipeline worker (lightweight delete + beat tasks)
-  - default: fallback queue
+  - ingestion: butler worker (GPU-bound embedding tasks)
+  - cleanup: butler worker (lightweight delete + beat tasks)
+  - default: fallback queue (chat message saves, etc.)
 
 Time limits (prevent hung parse tasks):
   - task_soft_time_limit: Raises SoftTimeLimitExceeded → worker catches it,
@@ -33,17 +33,19 @@ from celery import Celery
 
 from app.core.config import settings
 
-_all_modules = ["app.workers.upload_pipeline", "app.workers.cleanup_pipeline"]
-_include_map = {
-    "upload": ["app.workers.upload_pipeline"],
-    "cleanup": ["app.workers.cleanup_pipeline"],
-}
+_ALL_MODULES = [
+    "app.workers.upload_pipeline",
+    "app.workers.cleanup_pipeline",
+    "app.workers.chat_tasks",
+    "app.workers.maintenance_tasks",
+    "app.workers.memory_tasks",
+]
 
 celery_app = Celery(
     "chatbot_rag",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=_include_map.get(settings.celery_include, _all_modules),
+    include=_ALL_MODULES,
 )
 
 celery_app.conf.update(
@@ -71,6 +73,11 @@ celery_app.conf.update(
         "app.workers.upload_pipeline.parse_document_task": {"queue": "ingestion"},
         "app.workers.cleanup_pipeline.delete_document_task": {"queue": "cleanup"},
         "app.workers.cleanup_pipeline.cleanup_old_chat_sessions_task": {"queue": "cleanup"},
+        "app.workers.chat_tasks.save_chat_message_task": {"queue": "default"},
+        "app.workers.maintenance_tasks.rebuild_bm25_index_task": {"queue": "ingestion"},
+        "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task": {"queue": "cleanup"},
+        "app.workers.maintenance_tasks.record_audit_task": {"queue": "default"},
+        "app.workers.memory_tasks.extract_memories_task": {"queue": "default"},
     },
     task_default_queue="default",
     # ── Serialization ─────────────────────────────────────────────────────────
@@ -81,6 +88,10 @@ celery_app.conf.update(
     beat_schedule={
         "cleanup-old-chat-sessions": {
             "task": "app.workers.cleanup_pipeline.cleanup_old_chat_sessions_task",
+            "schedule": 86400.0,  # Every 24 hours
+        },
+        "cleanup-orphaned-vectors": {
+            "task": "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task",
             "schedule": 86400.0,  # Every 24 hours
         },
     },

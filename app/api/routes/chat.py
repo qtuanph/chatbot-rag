@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import time as _time
@@ -23,8 +22,6 @@ from app.utils.throttle import RequestThrottle
 router = APIRouter(tags=["chat"])
 throttle = RequestThrottle()
 logger = logging.getLogger(__name__)
-
-_background_tasks: set[asyncio.Task] = set()
 
 
 @router.post("/chat/stream")
@@ -86,9 +83,12 @@ async def chat_stream(
             clean_answer = strip_reasoning(full_answer.strip())
             usage = getattr(provider, "last_usage", {})
 
-            service.save_assistant_message(
+            from app.workers.chat_tasks import save_message_now
+
+            save_message_now(
                 session_id=session_id,
                 user_id=auth.user_id,
+                role="assistant",
                 content=clean_answer,
                 citations=citations,
                 tokens_in=usage.get("prompt_tokens"),
@@ -97,13 +97,17 @@ async def chat_stream(
                 model_used=getattr(provider, "model_name", settings.google_model),
             )
 
-            # Async memory extraction
+            # Async memory extraction via Celery (durable, survives API restart)
             try:
-                task = asyncio.create_task(service.extract_memories(auth.user_id, request.query, clean_answer))
-                _background_tasks.add(task)
-                task.add_done_callback(_background_tasks.discard)
+                from app.workers.memory_tasks import extract_memories_task
+
+                extract_memories_task.delay(
+                    user_id=auth.user_id,
+                    user_message=request.query,
+                    assistant_response=clean_answer,
+                )
             except Exception as e:
-                logger.debug("Memory extraction failed (best-effort): %s", e)
+                logger.debug("Memory extraction dispatch failed (best-effort): %s", e)
 
             prompt_tokens = usage.get("prompt_tokens", 0)
             completion_tokens = usage.get("completion_tokens", 0)
@@ -124,6 +128,7 @@ async def chat_stream(
                         "completion_tokens": completion_tokens,
                         "total_tokens": prompt_tokens + completion_tokens,
                         "estimated_cost_usd": round(estimated_cost_usd, 6),
+                        "model": provider.model_name,
                     },
                 },
                 ensure_ascii=False,

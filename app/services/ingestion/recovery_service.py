@@ -71,7 +71,7 @@ class RecoveryService:
                     self.doc_repo.update_status(
                         document_id,
                         status="ready",
-                        stage="complete",
+                        stage="ready",
                         progress_percent=100,
                         status_message="Recovered from partial processing.",
                     )
@@ -87,7 +87,7 @@ class RecoveryService:
                     self.doc_repo.update_status(
                         document_id,
                         status="failed",
-                        stage="recovery_marked_failed",
+                        stage="failed",
                         progress_percent=100,
                         status_message="Stuck in processing, marked as failed for retry.",
                     )
@@ -98,7 +98,7 @@ class RecoveryService:
                 self.doc_repo.update_status(
                     document_id,
                     status="failed",
-                    stage="recovery_no_vectors",
+                    stage="failed",
                     progress_percent=100,
                     status_message="Stuck: sections exist but no vectors. Marked failed.",
                 )
@@ -109,7 +109,7 @@ class RecoveryService:
             self.doc_repo.update_status(
                 document_id,
                 status="failed",
-                stage="recovery_no_data",
+                stage="failed",
                 progress_percent=100,
                 status_message="Stuck in processing with no data. Marked failed.",
             )
@@ -134,7 +134,7 @@ class RecoveryService:
 
             for point in vectors:
                 payload = point.get("payload", {})
-                section_id = payload.get("section_id")
+                section_id = (payload.get("metadata") or {}).get("section_id")
                 if section_id and str(section_id) not in section_ids:
                     orphaned.append(point.get("id"))
 

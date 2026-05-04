@@ -40,11 +40,34 @@ class ChatStore:
         return self.client.llen(self.history_key(scope_id, session_id)) > 0
 
     def hydrate_from_db(self, scope_id: str, session_id: str, db_messages: list[dict]) -> None:
-        """Load DB messages into Redis if TTL expired (key empty or missing)."""
+        """Load DB messages into Redis if TTL expired (key empty or missing).
+
+        Uses a Redis pipeline with setnx guard to prevent race condition where
+        concurrent requests both see an empty key and duplicate hydration work.
+        """
         key = self.history_key(scope_id, session_id)
-        if self.client.llen(key) > 0:
+        lock_key = f"{key}:hydrating"
+
+        messages = db_messages[-settings.chat_history_limit :]
+        if not messages:
             return
-        for msg in db_messages[-settings.chat_history_limit :]:
-            payload = json.dumps({"role": msg["role"], "content": msg["content"]})
-            self.client.rpush(key, payload)
-        self.client.expire(key, settings.chat_history_redis_ttl)
+
+        # Use setnx as a lightweight lock — first writer wins, others skip
+        acquired = self.client.set(lock_key, "1", nx=True, ex=30)
+        if not acquired:
+            return
+
+        # Double-check after acquiring lock — another request may have hydrated
+        if self.client.llen(key) > 0:
+            self.client.delete(lock_key)
+            return
+
+        try:
+            pipe = self.client.pipeline(transaction=False)
+            for msg in messages:
+                payload = json.dumps({"role": msg["role"], "content": msg["content"]})
+                pipe.rpush(key, payload)
+            pipe.expire(key, settings.chat_history_redis_ttl)
+            pipe.execute()
+        finally:
+            self.client.delete(lock_key)

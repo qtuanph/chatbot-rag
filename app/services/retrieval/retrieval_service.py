@@ -232,7 +232,8 @@ def retrieve_context(
     # Load section details via repository
     rag_sections: list[RagSection] = []
     if top_sections_ids:
-        section_rows = section_repo.get_sections_for_rag(doc_ids, top_sections_ids)
+        pairs = [(section_doc_map[sid], sid) for sid in top_sections_ids if sid in section_doc_map]
+        section_rows = section_repo.get_sections_for_rag(pairs)
         for row in section_rows:
             rag_sections.append(
                 RagSection(
@@ -287,8 +288,8 @@ def retrieve_context(
             logger.debug("Dedup: %d → %d chunks", len(filtered), len(deduped))
         filtered = deduped
 
-    # ── Stage 3: Cross-encoder reranking ────────────────────────────────
-    if filtered:
+    # ── Stage 3: Cross-encoder reranking (optional, off by default) ─────
+    if filtered and settings.retrieval_rerank_enabled:
         rerank_top_k = settings.retrieval_rerank_top_k
         _MAX_RERANK_CANDIDATES = settings.retrieval_max_rerank_candidates
         if len(filtered) > _MAX_RERANK_CANDIDATES:
@@ -362,7 +363,13 @@ def retrieve_context(
 
 
 def build_answer(query: str, context: RagContext, history: list[dict[str, str]] | None = None) -> dict:
-    """Build the answer seed from RAG context for AI provider."""
+    """Build the answer seed from RAG context for AI provider.
+
+    Strategy: retrieve at chunk level for precision, present at section level
+    for completeness. Full section content is sent to the LLM instead of
+    individual chunk text, so the LLM sees the complete context including
+    all details (examples, steps, lists) that may span multiple chunks.
+    """
     if not context.nodes:
         return {
             "answer": "Hiện tại tôi chưa có tài liệu nào để trả lời câu hỏi này. Vui lòng yêu cầu Admin upload thêm tài liệu vào hệ thống.",
@@ -379,30 +386,46 @@ def build_answer(query: str, context: RagContext, history: list[dict[str, str]] 
 
     context_blocks = []
     citations = []
-    for idx, node in enumerate(sorted_nodes, start=1):
-        full_text = node.full_text or ""
+    seen_sections: set[str] = set()
+    citation_idx = 0
 
+    for node in sorted_nodes:
         sec = section_map.get(node.section_id) if node.section_id else None
-        if sec and sec.breadcrumb:
-            breadcrumb_path = " > ".join(sec.breadcrumb)
+
+        # Prefer full section content over chunk text
+        if sec and sec.content and sec.section_id not in seen_sections:
+            seen_sections.add(sec.section_id)
+            citation_idx += 1
+            breadcrumb_path = " > ".join(sec.breadcrumb) if sec.breadcrumb else sec.title
             page_info = f" (trang {node.page_range})" if node.page_range else ""
-            header = f"**{breadcrumb_path}** — {node.document_title}{page_info}"
-        else:
+            context_blocks.append(f"**{breadcrumb_path}** — {node.document_title}{page_info}\n{sec.content}")
+            citations.append(
+                {
+                    "document_id": node.document_id,
+                    "node_id": node.node_id,
+                    "title": node.document_title,
+                    "heading": node.heading,
+                    "page_range": node.page_range,
+                    "index": citation_idx,
+                }
+            )
+        elif sec is None or not sec or not sec.content:
+            # Fallback: section missing/empty or no section_id — use chunk text
+            citation_idx += 1
             page_info = f" (trang {node.page_range})" if node.page_range else ""
             header = f"**{node.heading}** — {node.document_title}{page_info}"
-
-        context_blocks.append(f"{header}\n{full_text}")
-
-        citations.append(
-            {
-                "document_id": node.document_id,
-                "node_id": node.node_id,
-                "title": node.document_title,
-                "heading": node.heading,
-                "page_range": node.page_range,
-                "index": idx,
-            }
-        )
+            context_blocks.append(f"{header}\n{node.full_text or ''}")
+            citations.append(
+                {
+                    "document_id": node.document_id,
+                    "node_id": node.node_id,
+                    "title": node.document_title,
+                    "heading": node.heading,
+                    "page_range": node.page_range,
+                    "index": citation_idx,
+                }
+            )
+        # else: section already seen (dedup) — skip
 
     context_text = "\n\n".join(context_blocks)
 

@@ -15,38 +15,28 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _SYSTEM_INSTRUCTION = (
-    # ── Identity ──
-    "Bạn là trợ lý AI thân thiện cho hệ thống hỏi đáp tài liệu tiếng Việt.\n"
-    "Bạn đọc tài liệu tham khảo, HIỂU nội dung, rồi kể lại bằng giọng điệu tự nhiên như đang nói chuyện.\n\n"
-    # ── Style ──
-    "## PHONG CÁCH\n"
-    "- Nói chuyện tự nhiên, thân thiện, như đang trả lời bạn bè.\n"
-    "- KHÔNG dùng số thứ tự tham chiếu như [1], [2], [3].\n"
-    "- KHÔNG cần liệt kê nguồn ở cuối câu trả lời.\n"
-    "- Nếu cần nhắc tài liệu, chỉ nói 'Theo giáo trình...' hoặc 'Tài liệu có đề cập đến...'\n"
-    "- Tóm tắt ngắn gọn. Ưu tiên trả lời trực tiếp câu hỏi.\n\n"
-    # ── Vietnamese rules ──
+    "Bạn là trợ lý AI trả lời câu hỏi dựa trên tài liệu cung cấp.\n\n"
+    "## NGUYÊN TẮC\n"
+    "- Trả lời dựa trên nội dung tài liệu. Nếu tài liệu không có thông tin, nói rõ: "
+    "'Tài liệu hiện tại chưa đề cập đến vấn đề này.'\n"
+    "- Giữ nguyên nội dung chính xác: định nghĩa, hướng dẫn, các bước, ví dụ, số liệu. "
+    "Diễn đạt lại chỉ khi cần giải thích thêm, không thay thế nội dung gốc.\n"
+    "- Nếu câu hỏi hỏi về danh sách (ví dụ: 'các bước', 'các yếu tố', 'các tính năng'), "
+    "trình bày đầy đủ từng mục, không tóm tắt bỏ bớt.\n\n"
+    "## ĐỊNH DẠNG\n"
+    "- Dùng **in đậm** cho thuật ngữ quan trọng.\n"
+    "- Dùng danh sách gạch đầu dòng `- ` khi trình bày nhiều mục.\n"
+    "- Giữ cấu trúc của tài liệu (heading, số thứ tự) khi cần thiết.\n\n"
+    "## GIỌNG ĐIỆU\n"
+    "- Chuyên nghiệp, rõ ràng, thân thiện.\n"
+    "- Ưu tiên trả lời trực tiếp, rồi giải thích thêm nếu cần.\n"
+    "- Nếu cần nhắc tài liệu, nói 'Theo tài liệu...'\n\n"
     "## TIẾNG VIỆT\n"
-    "- LUÔN giữ dấu cách giữa các từ: 'tài liệu' KHÔNG 'tàiliệu'\n"
-    "- LUÔN có space sau # heading: `## Tiêu đề` (KHÔNG `##Tiêu đề`)\n"
-    "- Dùng `**in đậm**` cho thuật ngữ, `- ` cho danh sách khi cần.\n\n"
-    # ── Content rules ──
-    "## NỘI DUNG\n"
-    "- TỔNG HỢP và DIỄN GIẢI lại bằng lời văn của bạn. KHÔNG copy nguyên văn.\n"
-    "- Nếu tài liệu không đủ thông tin, nói: 'Tài liệu hiện tại chưa đề cập đến vấn đề này...'\n"
-    "- KHÔNG bịa đặt. KHÔNG dùng heading cấp 1.\n\n"
-    # ── Few-shot example ──
-    "## VÍ DỤ\n"
-    "User: SEO là gì?\n"
-    "Assistant: SEO (Search Engine Optimization) là quá trình tối ưu hóa nội dung và cấu trúc "
-    "trang web để cải thiện vị trí hiển thị trên công cụ tìm kiếm như Google. "
-    "Tài liệu nhấn mạnh rằng SEO bao gồm 3 yếu tố chính: **nghiên cứu từ khóa**, "
-    "**tối ưu nội dung** và **xây dựng liên kết**. Mục tiêu là thu hút lưu lượng truy cập "
-    "tự nhiên mà không cần trả phí cho quảng cáo.\n\n"
-    # ── Meta ──
+    "- Giữ dấu cách giữa các từ.\n"
+    "- Trả lời bằng ngôn ngữ của câu hỏi.\n\n"
     "## LƯU Ý\n"
-    "- Trả lời bằng ngôn ngữ của câu hỏi.\n"
-    "- Nếu không có tài liệu, hướng dẫn người dùng liên hệ Admin."
+    "- KHÔNG bịa đặt thông tin không có trong tài liệu.\n"
+    "- Nếu không có tài liệu đính kèm, hướng dẫn người dùng liên hệ Admin."
 )
 
 # --- Gemma 4 Thinking Mode Suppression ---
@@ -63,29 +53,9 @@ _THOUGHT_BLOCK = re.compile(
     re.DOTALL,
 )
 
-# Chain-of-thought reasoning markers (fallback for non-tagged CoT)
+# Chain-of-thought reasoning end marker (model-specific)
 _REASONING_END_MARKER = re.compile(
     r"Final\s*Polish\s*[:：]\s*\n",
-    re.IGNORECASE,
-)
-
-_REASONING_LINE_MARKER = re.compile(
-    r"^\s*(?:"
-    r"Question\s*[:：]|"
-    r"Source\s*Material\s*[:：]|"
-    r"Document\s*\[\d+\]\s*[:：]|"
-    r"Definition\s*[:：]|"
-    r"Context\s*[:：]|"
-    r"Objectives?\s*[:：]|"
-    r"Heading\s*[:：]|"
-    r"Structure\s*[:：]|"
-    r"Drafting|"
-    r"Self[-\s]Correction|"
-    r"Final\s*Polish\s*[:：]|"
-    r"Analysis\s*[:：]|"
-    r"Planning\s*[:：]|"
-    r"Step\s+\d+"
-    r")",
     re.IGNORECASE,
 )
 
@@ -101,29 +71,23 @@ def strip_reasoning(text: str) -> str:
     """Remove chain-of-thought reasoning from model output.
 
     Gemma 4 thinking mode may output its reasoning process as visible text.
-    This function strips that reasoning and returns only the final answer.
+    Only strips definitive model markers — never document content like
+    'Step 1', 'Analysis:', or 'Context:' which are common in Vietnamese docs.
     """
     if not text or len(text) < 100:
         return text
 
-    # First: strip <|channel>thought...<channel|> blocks
+    # Strip <|channel>thought...<channel|> blocks (definitive model reasoning)
     text = strip_thought_blocks(text)
 
-    # Then: strip reasoning markers
+    # Strip content before 'Final Polish:' marker (model-specific reasoning end)
     match = _REASONING_END_MARKER.search(text)
     if match:
         result = text[match.end() :].strip()
         if result and len(result) >= 50:
             return result
 
-    lines = text.split("\n")
-    cleaned = [line for line in lines if not _REASONING_LINE_MARKER.match(line)]
-    result = "\n".join(cleaned).strip()
-
-    if len(result) < len(text) * 0.3:
-        return text
-
-    return result
+    return text
 
 
 class _ThoughtFilter:
@@ -207,11 +171,19 @@ class GoogleAIProvider(AIProvider):
         """Return the model identifier for analytics/token tracking."""
         return self.model
 
-    def _get_client(self, timeout: float | None = None) -> httpx.AsyncClient:
-        """Get or create a reusable httpx client."""
+    def _get_client(self) -> httpx.AsyncClient:
+        """Get or create a reusable httpx client for streaming chat (default 300s timeout)."""
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=timeout or settings.ai_stream_timeout, limits=self._limits)
+            self._client = httpx.AsyncClient(timeout=settings.ai_stream_timeout, limits=self._limits)
         return self._client
+
+    async def _get_refine_client(self) -> httpx.AsyncClient:
+        """Get a client for text refinement with short 30s timeout."""
+        if not hasattr(self, "_refine_client"):
+            self._refine_client = httpx.AsyncClient(timeout=30.0, limits=self._limits)
+        elif self._refine_client.is_closed:  # type: ignore
+            self._refine_client = httpx.AsyncClient(timeout=30.0, limits=self._limits)
+        return self._refine_client  # type: ignore
 
     async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> dict[str, Any]:
         """
@@ -255,7 +227,7 @@ class GoogleAIProvider(AIProvider):
         url = f"{self.base_url}/models/{self.model}:generateContent"
 
         try:
-            client = self._get_client(timeout=30.0)
+            client = await self._get_refine_client()
             response = await client.post(url, json=payload, headers=self._headers)
             response.raise_for_status()
             data = response.json()
