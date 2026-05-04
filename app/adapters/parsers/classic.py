@@ -5,7 +5,6 @@ Used when Docling parser is unavailable or fails.
 
 import logging
 import uuid
-from typing import List, Tuple
 from io import BytesIO
 
 from app.adapters.base import (
@@ -30,13 +29,15 @@ class ClassicParser(BaseParser):
         self,
         filename: str,
         content: bytes,
-    ) -> Tuple[List[IngestedNode], ParsingMetadata]:
+        document_id: str | None = None,
+    ) -> tuple[list[IngestedNode], ParsingMetadata]:
         """
         Parse document using format-specific fallback extractors.
 
         Args:
             filename: Document filename (for format detection)
             content: Raw file bytes
+            document_id: UUID of the document (for node identity)
 
         Returns:
             Tuple of (IngestedNode list, ParsingMetadata)
@@ -48,6 +49,7 @@ class ClassicParser(BaseParser):
 
         start_time = time.time()
 
+        doc_id = document_id or filename
         source_format = extract_file_format(filename)
 
         try:
@@ -55,17 +57,15 @@ class ClassicParser(BaseParser):
 
             # Dispatch to format-specific extractor
             if source_format in {"pdf", "image"}:
-                # For PDFs without Docling, attempt simple page-based extraction
-                nodes = self._extract_pdf_pages(filename, content)
+                nodes = self._extract_pdf_pages(filename, content, doc_id)
             elif source_format == "docx":
-                nodes = self._extract_docx_text(filename, content)
+                nodes = self._extract_docx_text(filename, content, doc_id)
             elif source_format == "xlsx":
-                nodes = self._extract_xlsx_sheets(filename, content)
+                nodes = self._extract_xlsx_sheets(filename, content, doc_id)
             elif source_format in {"markdown", "text"}:
-                nodes = self._extract_text_markdown(filename, content)
+                nodes = self._extract_text_markdown(filename, content, doc_id)
             else:
-                # Try plain text as last resort
-                nodes = self._extract_text_markdown(filename, content)
+                nodes = self._extract_text_markdown(filename, content, doc_id)
 
             if not nodes:
                 raise ParsingException(
@@ -100,7 +100,7 @@ class ClassicParser(BaseParser):
                 details={"filename": filename, "source_format": source_format, "error": str(e)},
             )
 
-    def _extract_pdf_pages(self, filename: str, content: bytes) -> List[IngestedNode]:
+    def _extract_pdf_pages(self, filename: str, content: bytes, doc_id: str) -> list[IngestedNode]:
         """Extract text from PDF on a page-by-page basis (simple fallback)."""
         try:
             from pypdf import PdfReader
@@ -114,14 +114,19 @@ class ClassicParser(BaseParser):
             for page_num, page in enumerate(reader.pages, start=1):
                 text = page.extract_text()
                 if text.strip():
+                    nid = str(uuid.uuid4())
                     node = IngestedNode(
-                        node_id=str(uuid.uuid4()),
-                        document_id=filename,
+                        node_id=nid,
+                        document_id=doc_id,
                         text=text,
                         node_type=ParsedNodeType.PAGE,
                         page_number=page_num,
                         order=page_num - 1,
-                        metadata={"source_format": "pdf", "page_count": len(reader.pages)},
+                        metadata={
+                            "source_format": "pdf",
+                            "page_count": len(reader.pages),
+                            "section_id": f"classic-{nid}",
+                        },
                     )
                     nodes.append(node)
         except Exception as e:
@@ -129,7 +134,7 @@ class ClassicParser(BaseParser):
 
         return nodes
 
-    def _extract_docx_text(self, filename: str, content: bytes) -> List[IngestedNode]:
+    def _extract_docx_text(self, filename: str, content: bytes, doc_id: str) -> list[IngestedNode]:
         """Extract text from DOCX files."""
         try:
             from docx import Document as DocxDocument
@@ -146,15 +151,19 @@ class ClassicParser(BaseParser):
                 if para.text.strip():
                     text_buffer.append(para.text)
 
-                    # Create node per paragraph or every N paragraphs
                     if len(text_buffer) >= 5 or para_idx == len(doc.paragraphs) - 1:
+                        nid = str(uuid.uuid4())
                         node = IngestedNode(
-                            node_id=str(uuid.uuid4()),
-                            document_id=filename,
+                            node_id=nid,
+                            document_id=doc_id,
                             text="\n".join(text_buffer),
                             node_type=ParsedNodeType.PARAGRAPH,
                             order=para_idx,
-                            metadata={"source_format": "docx", "paragraph_count": len(doc.paragraphs)},
+                            metadata={
+                                "source_format": "docx",
+                                "paragraph_count": len(doc.paragraphs),
+                                "section_id": f"classic-{nid}",
+                            },
                         )
                         nodes.append(node)
                         text_buffer = []
@@ -168,13 +177,18 @@ class ClassicParser(BaseParser):
 
                 table_text = "\n".join(rows)
                 if table_text.strip():
+                    nid = str(uuid.uuid4())
                     node = IngestedNode(
-                        node_id=str(uuid.uuid4()),
-                        document_id=filename,
+                        node_id=nid,
+                        document_id=doc_id,
                         text=table_text,
                         node_type=ParsedNodeType.TABLE,
                         order=len(nodes),
-                        metadata={"source_format": "docx", "table_index": table_idx},
+                        metadata={
+                            "source_format": "docx",
+                            "table_index": table_idx,
+                            "section_id": f"classic-{nid}",
+                        },
                     )
                     nodes.append(node)
 
@@ -183,7 +197,7 @@ class ClassicParser(BaseParser):
 
         return nodes
 
-    def _extract_xlsx_sheets(self, filename: str, content: bytes) -> List[IngestedNode]:
+    def _extract_xlsx_sheets(self, filename: str, content: bytes, doc_id: str) -> list[IngestedNode]:
         """Extract text from XLSX files (sheet by sheet)."""
         try:
             import openpyxl
@@ -206,13 +220,19 @@ class ClassicParser(BaseParser):
 
                 sheet_text = "\n".join(rows)
                 if sheet_text.strip():
+                    nid = str(uuid.uuid4())
                     node = IngestedNode(
-                        node_id=str(uuid.uuid4()),
-                        document_id=filename,
+                        node_id=nid,
+                        document_id=doc_id,
                         text=sheet_text,
                         node_type=ParsedNodeType.TABLE,
                         order=sheet_idx,
-                        metadata={"source_format": "xlsx", "sheet_name": sheet, "sheet_index": sheet_idx},
+                        metadata={
+                            "source_format": "xlsx",
+                            "sheet_name": sheet,
+                            "sheet_index": sheet_idx,
+                            "section_id": f"classic-{nid}",
+                        },
                     )
                     nodes.append(node)
 
@@ -221,7 +241,7 @@ class ClassicParser(BaseParser):
 
         return nodes
 
-    def _extract_text_markdown(self, filename: str, content: bytes) -> List[IngestedNode]:
+    def _extract_text_markdown(self, filename: str, content: bytes, doc_id: str) -> list[IngestedNode]:
         """Extract text from plain text or Markdown files."""
         try:
             text = content.decode("utf-8", errors="ignore")
@@ -235,19 +255,23 @@ class ClassicParser(BaseParser):
             paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
 
             for para_idx, para in enumerate(paragraphs):
+                nid = str(uuid.uuid4())
                 node = IngestedNode(
-                    node_id=str(uuid.uuid4()),
-                    document_id=filename,
+                    node_id=nid,
+                    document_id=doc_id,
                     text=para,
                     node_type=ParsedNodeType.PARAGRAPH,
                     order=para_idx,
-                    metadata={"source_format": "text" if filename.endswith(".txt") else "markdown"},
+                    metadata={
+                        "source_format": "text" if filename.endswith(".txt") else "markdown",
+                        "section_id": f"classic-{nid}",
+                    },
                 )
                 nodes.append(node)
 
         return nodes
 
-    def _build_sections_data(self, nodes: List[IngestedNode]) -> List[dict]:
+    def _build_sections_data(self, nodes: list[IngestedNode]) -> list[dict]:
         """Generate flat section records from classic parser nodes.
 
         Ensures the tree/detail page shows content even when Docling fails.

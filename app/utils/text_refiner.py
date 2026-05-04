@@ -6,7 +6,6 @@ Replaces Qwen LLM to reduce VRAM usage from 3GB to 0GB and speed from ~500ms to 
 
 import logging
 import re
-from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ class RuleBasedRefiner:
     - Accuracy: ⭐⭐⭐⭐ (sufficient for Word→PDF documents)
     """
 
-    def refine_text(self, text: str, current_header: Optional[str]) -> Tuple[str, Optional[str]]:
+    def refine_text(self, text: str, current_header: str | None) -> tuple[str, str | None]:
         """
         Refine text using rule-based heuristics.
 
@@ -61,9 +60,9 @@ class RuleBasedRefiner:
         Only targets OCR-style spaced letters, NOT normal word spacing.
         """
         # Fix sequences of single Vietnamese chars separated by spaces (OCR artifact)
-        # Match 3+ consecutive single chars each followed by a space, then merge
+        # Only match uppercase sequences (OCR artifacts) to avoid merging normal words
         text = re.sub(
-            r"(?:[A-Za-zÀ-ỹ]\s+){2,}[A-Za-zÀ-ỹ]",
+            r"(?:[A-ZÀ-Ỹ]\s+){2,}[A-ZÀ-Ỹ]",
             lambda m: re.sub(r"\s+", "", m.group(0)),
             text,
         )
@@ -83,7 +82,7 @@ class RuleBasedRefiner:
 
         return text.strip()
 
-    def _detect_header(self, text: str, current_header: Optional[str]) -> Optional[str]:
+    def _detect_header(self, text: str, current_header: str | None) -> str | None:
         """
         Detect header from text using patterns.
 

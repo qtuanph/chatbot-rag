@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -34,7 +33,7 @@ class MemoryRepository:
         )
         return [self._to_dict(r) for r in rows]
 
-    def get_by_id(self, memory_id: str) -> Optional[dict]:
+    def get_by_id(self, memory_id: str) -> dict | None:
         row = self.session.get(UserMemory, memory_id)
         return self._to_dict(row) if row else None
 
@@ -52,7 +51,7 @@ class MemoryRepository:
         content: str | None = None,
         memory_type: str | None = None,
         is_active: bool | None = None,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         memory = self.session.get(UserMemory, memory_id)
         if memory is None:
             return None

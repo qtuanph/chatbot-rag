@@ -4,7 +4,7 @@ Manages storage and retrieval of document embeddings.
 """
 
 import logging
-from typing import List, Optional, Dict, Any
+from typing import Any
 
 from app.adapters.base import (
     BaseVectorStore,
@@ -28,7 +28,7 @@ class QdrantVectorStore(BaseVectorStore):
     def __init__(
         self,
         url: str = "http://localhost:6333",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         collection_name: str = "documents_vectors",
         vector_size: int = 1024,  # Vietnamese_Embedding_v2 dimension
         timeout: int = 30,
@@ -175,10 +175,10 @@ class QdrantVectorStore(BaseVectorStore):
     def store(
         self,
         document_id: str,
-        nodes: List[IngestedNode],
-        embeddings: List[List[float]],
-        sparse_embeddings: List | None = None,
-    ) -> List[str]:
+        nodes: list[IngestedNode],
+        embeddings: list[list[float]],
+        sparse_embeddings: list | None = None,
+    ) -> list[str]:
         """
         Store document nodes and embeddings in Qdrant with optional sparse vectors.
 
@@ -259,13 +259,13 @@ class QdrantVectorStore(BaseVectorStore):
 
     def retrieve(
         self,
-        query_vector: List[float],
+        query_vector: list[float],
         top_k: int = 5,
-        document_id_filter: Optional[str] = None,
-        document_ids_filter: Optional[List[str]] = None,
-        section_ids_filter: Optional[List[str]] = None,
+        document_id_filter: str | None = None,
+        document_ids_filter: list[str | None] = None,
+        section_ids_filter: list[str | None] = None,
         sparse_vector=None,
-    ) -> List[RetrievedDocument]:
+    ) -> list[RetrievedDocument]:
         """
         Retrieve top-k documents using hybrid search (Dense + BM25 RRF fusion).
 
@@ -462,7 +462,7 @@ class QdrantVectorStore(BaseVectorStore):
                 details={"document_id": document_id, "error": str(e)},
             )
 
-    def delete_by_ids(self, point_ids: List[str | int]) -> bool:
+    def delete_by_ids(self, point_ids: list[str | int]) -> bool:
         """Delete specific Qdrant points by point IDs."""
         try:
             from qdrant_client.models import PointIdsList
@@ -533,12 +533,12 @@ class QdrantVectorStore(BaseVectorStore):
 
     def scroll(
         self,
-        filter: Optional[Dict[str, Any]] = None,
+        filter: dict[str, Any | None] = None,
         with_payload: bool = True,
         with_vector: bool = False,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Scroll through all points that match the filter.
 

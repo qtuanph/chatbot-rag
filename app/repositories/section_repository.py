@@ -1,7 +1,6 @@
 """Repository for document sections in PostgreSQL."""
 
 import logging
-from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -17,10 +16,14 @@ class SectionRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def store_sections(self, document_id: str, sections: List[dict]) -> List[str]:
-        """Bulk insert sections for a document. Returns list of section DB IDs."""
+    def store_sections(self, document_id: str, sections: list[dict]) -> list[str]:
+        """Bulk insert sections for a document. Returns list of section DB IDs.
+
+        Uses savepoint so that a failure during insert preserves old sections.
+        """
         try:
             self.session.query(DocumentSection).filter(DocumentSection.document_id == document_id).delete()
+            savepoint = self.session.begin_nested()
 
             ids = []
             for sec in sections:
@@ -41,9 +44,14 @@ class SectionRepository:
                     extra_metadata=sec.get("metadata", {}),
                 )
                 self.session.add(db_section)
-                self.session.flush()
-                ids.append(str(db_section.id))
 
+            self.session.flush()
+            ids = [
+                str(s.id)
+                for s in self.session.query(DocumentSection).filter(DocumentSection.document_id == document_id).all()
+            ]
+
+            savepoint.commit()
             self.session.commit()
             logger.info("Stored %d sections for document %s", len(ids), document_id)
             return ids
@@ -54,7 +62,7 @@ class SectionRepository:
                 error_code="SECTION_STORE_FAILED",
             )
 
-    def get_sections_by_document(self, document_id: str) -> List[dict]:
+    def get_sections_by_document(self, document_id: str) -> list[dict]:
         """Get all sections for a document, ordered by order_index."""
         rows = (
             self.session.query(DocumentSection)
@@ -64,7 +72,7 @@ class SectionRepository:
         )
         return [self._section_to_dict(s) for s in rows]
 
-    def get_sections_by_ids(self, document_id: str, section_ids: List[str]) -> List[dict]:
+    def get_sections_by_ids(self, document_id: str, section_ids: list[str]) -> list[dict]:
         """Get specific sections by section_id within a document."""
         rows = (
             self.session.query(DocumentSection)
@@ -77,7 +85,7 @@ class SectionRepository:
         )
         return [self._section_to_dict(s) for s in rows]
 
-    def get_section_by_section_id(self, document_id: str, section_id: str) -> Optional[dict]:
+    def get_section_by_section_id(self, document_id: str, section_id: str) -> dict | None:
         """Get a single section by section_id within a document."""
         row = (
             self.session.query(DocumentSection)
@@ -89,9 +97,10 @@ class SectionRepository:
         )
         return self._section_to_dict(row) if row else None
 
-    def search_sections_by_document(self, document_id: str, query: str) -> List[dict]:
+    def search_sections_by_document(self, document_id: str, query: str) -> list[dict]:
         """Search sections by title or content within a document."""
-        pattern = f"%{query}%"
+        escaped = query.replace("%", r"\%").replace("_", r"\_")
+        pattern = f"%{escaped}%"
         rows = (
             self.session.query(DocumentSection)
             .filter(
@@ -128,16 +137,21 @@ class SectionRepository:
                 error_code="SECTION_DELETE_FAILED",
             )
 
-    def get_sections_for_rag(self, doc_ids: list[str], section_ids: list[str]) -> list[dict]:
-        """Get sections by document IDs + section IDs for RAG retrieval."""
-        rows = (
-            self.session.query(DocumentSection)
-            .filter(
-                DocumentSection.document_id.in_(doc_ids),
-                DocumentSection.section_id.in_(section_ids),
-            )
-            .all()
-        )
+    def get_sections_for_rag(self, section_doc_pairs: list[tuple[str, str]]) -> list[dict]:
+        """Get sections by (document_id, section_id) pairs for RAG retrieval.
+
+        Prevents cross-product: section_ids like sec_0001 reset per document,
+        so querying doc_ids × section_ids can return sections from wrong documents.
+        """
+        if not section_doc_pairs:
+            return []
+        from sqlalchemy import or_
+
+        conditions = [
+            (DocumentSection.document_id == doc_id) & (DocumentSection.section_id == sec_id)
+            for doc_id, sec_id in section_doc_pairs
+        ]
+        rows = self.session.query(DocumentSection).filter(or_(*conditions)).all()
         return [self._section_to_dict(s) for s in rows]
 
     def get_section_ids_by_document(self, document_id: str) -> set[str]:

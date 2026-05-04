@@ -4,7 +4,7 @@ Ensures no orphans, cycles, or consistency issues before DB commit.
 """
 
 import logging
-from typing import List, Dict, Set, Tuple
+from typing import Set
 from dataclasses import dataclass
 
 from app.adapters.base import IngestedNode
@@ -17,8 +17,8 @@ class ValidationReport:
     """Report from hierarchy validation."""
 
     is_valid: bool
-    errors: List[str]
-    warnings: List[str]
+    errors: list[str]
+    warnings: list[str]
     node_count: int
     orphaned_nodes: int
     hierarchical_nodes: int  # Nodes with parent_id
@@ -29,7 +29,7 @@ class HierarchyValidator:
     """Validates document node hierarchies before persistence."""
 
     @staticmethod
-    def validate(nodes: List[IngestedNode]) -> ValidationReport:
+    def validate(nodes: list[IngestedNode]) -> ValidationReport:
         """
         Validate node hierarchy for consistency.
 
@@ -109,7 +109,7 @@ class HierarchyValidator:
         return report
 
     @staticmethod
-    def _detect_cycles(nodes: List[IngestedNode]) -> List[Tuple[str, str]]:
+    def _detect_cycles(nodes: list[IngestedNode]) -> list[tuple[str, str]]:
         """
         Detect cycles in parent-child relationships using DFS.
 
@@ -121,7 +121,7 @@ class HierarchyValidator:
         rec_stack: Set[str] = set()
         cycles = []
 
-        def dfs(node_id: str, path: List[str]) -> None:
+        def dfs(node_id: str, path: list[str]) -> None:
             visited.add(node_id)
             rec_stack.add(node_id)
             path.append(node_id)
@@ -145,14 +145,16 @@ class HierarchyValidator:
         return cycles
 
     @staticmethod
-    def _calculate_depth(nodes: List[IngestedNode]) -> int:
+    def _calculate_depth(nodes: list[IngestedNode]) -> int:
         """Calculate maximum hierarchy depth."""
         if not nodes:
             return 0
 
         parent_map = {node.node_id: node.parent_id for node in nodes}
 
-        def get_depth(node_id: str, memo: Dict = {}) -> int:
+        def get_depth(node_id: str, memo: dict | None = None) -> int:
+            if memo is None:
+                memo = {}
             if node_id in memo:
                 return memo[node_id]
 

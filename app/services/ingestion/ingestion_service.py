@@ -9,7 +9,7 @@ import math
 import time
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import TYPE_CHECKING, List, Callable, Optional
+from typing import TYPE_CHECKING, Callable
 from dataclasses import dataclass
 
 from app.adapters.base import IngestedNode, ParsingMetadata
@@ -33,14 +33,14 @@ class IngestionResult:
     success: bool
     document_id: str
     node_count: int
-    nodes: List[IngestedNode]
+    nodes: list[IngestedNode]
     total_text_chars: int
     parse_metadata: ParsingMetadata
     validation_report: ValidationReport
-    storage_ids: List[str]
+    storage_ids: list[str]
     section_count: int = 0  # Number of sections stored in PostgreSQL
-    errors: List[str] = None  # type: ignore[assignment]
-    warnings: List[str] = None  # type: ignore[assignment]
+    errors: list[str] = None  # type: ignore[assignment]
+    warnings: list[str] = None  # type: ignore[assignment]
     duration_ms: float = 0.0
 
 
@@ -78,7 +78,7 @@ class IngestionService:
         content: bytes,
         user_id: str,
         document_id: str,
-        progress_callback: Optional[ProgressCallback] = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> "IngestionResult":
         """
         Synchronous ingestion pipeline with chunked embed+store and progress reporting.
@@ -99,12 +99,12 @@ class IngestionService:
                                Called after each significant step and after each embed chunk.
         """
         start_time = time.time()
-        errors: List[str] = []
-        warnings: List[str] = []
-        nodes: List[IngestedNode] = []
-        parse_metadata: Optional[ParsingMetadata] = None
-        validation_report: Optional[ValidationReport] = None
-        storage_ids: List[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
+        nodes: list[IngestedNode] = []
+        parse_metadata: ParsingMetadata | None = None
+        validation_report: ValidationReport | None = None
+        storage_ids: list[str] = []
 
         def _cb(stage: str, percent: int, message: str = "") -> None:
             """Fire progress callback safely — never let a callback error crash the pipeline."""
@@ -117,14 +117,14 @@ class IngestionService:
         try:
             # ── Step 1: Parse ────────────────────────────────────────────────
             logger.info("[%s] Starting ingestion: %s", document_id, filename)
-            _cb("parse", 5, f"Parsing {filename}…")
+            _cb("parsing", 5, f"Parsing {filename}…")
 
-            nodes, parse_metadata = self.parser_manager.parse(filename, content)
+            nodes, parse_metadata = self.parser_manager.parse(filename, content, document_id=document_id)
             logger.info("[%s] Parsed: %d nodes from %s", document_id, len(nodes), filename)
-            _cb("parse", 30, f"Parsed {len(nodes)} sections")
+            _cb("parsing", 30, f"Parsed {len(nodes)} sections")
 
             # ── Step 2: Validate hierarchy ───────────────────────────────────
-            _cb("validate", 35, "Validating document structure…")
+            _cb("parsing", 35, "Validating document structure…")
             validation_report = self.validator.validate(nodes)
             if not validation_report.is_valid:
                 errors.extend(validation_report.errors)
@@ -142,23 +142,15 @@ class IngestionService:
             section_count = 0
             sections_data = getattr(parse_metadata, "sections_data", None) or []
             if sections_data and self.db_session:
-                _cb("sections", 37, f"Storing {len(sections_data)} sections…")
-                try:
-                    section_repo = self.section_repo or SectionRepository(self.db_session)
-                    section_ids = section_repo.store_sections(document_id, sections_data)
-                    section_count = len(section_ids)
-                    logger.info(
-                        "[%s] Stored %d sections in PostgreSQL",
-                        document_id,
-                        section_count,
-                    )
-                except Exception as sec_err:
-                    logger.warning(
-                        "[%s] Section storage failed (non-fatal): %s",
-                        document_id,
-                        sec_err,
-                    )
-                    warnings.append(f"Section storage skipped: {sec_err}")
+                _cb("parsing", 37, f"Storing {len(sections_data)} sections…")
+                section_repo = self.section_repo or SectionRepository(self.db_session)
+                section_ids = section_repo.store_sections(document_id, sections_data)
+                section_count = len(section_ids)
+                logger.info(
+                    "[%s] Stored %d sections in PostgreSQL",
+                    document_id,
+                    section_count,
+                )
 
             # ── Step 3: Embed + Store in chunks ──────────────────────────────
             if self.embedding_service and nodes:
@@ -217,7 +209,7 @@ class IngestionService:
                             else:
                                 pct = 40 + int(50 * (chunk_idx + 1) / n_chunks)  # 40% → 90%
                                 _cb(
-                                    "embed_store",
+                                    "embedding",
                                     pct,
                                     f"Indexing section {chunk_idx + 1}/{n_chunks}…",
                                 )
@@ -235,7 +227,7 @@ class IngestionService:
                                 storage_ids.extend(ids)
                                 pct = 40 + int(50 * (completed_idx + 1) / n_chunks)  # 40% → 90%
                                 _cb(
-                                    "embed_store",
+                                    "embedding",
                                     pct,
                                     f"Indexing section {completed_idx + 1}/{n_chunks}…",
                                 )
@@ -265,7 +257,7 @@ class IngestionService:
                             storage_ids.extend(ids)
                             pct = 40 + int(50 * (completed_idx + 1) / n_chunks)  # 40% → 90%
                             _cb(
-                                "embed_store",
+                                "embedding",
                                 pct,
                                 f"Indexing section {completed_idx + 1}/{n_chunks}…",
                             )
@@ -292,10 +284,25 @@ class IngestionService:
                     warnings.append("No nodes produced — empty document?")
 
             duration_ms = (time.time() - start_time) * 1000
-            _cb("ready", 100, "Ingestion complete")
+
+            # Determine success: fail if too many chunk errors (>50% of chunks)
+            total_chunks = locals().get("n_chunks", len(nodes) if nodes else 0)
+            error_threshold = max(1, int(total_chunks * 0.5)) if total_chunks > 0 else 1
+            has_critical_failure = len(errors) > error_threshold
+
+            if has_critical_failure:
+                _cb("failed", 0, f"{len(errors)} chunk errors exceeded threshold")
+                logger.warning(
+                    "[%s] Ingestion partial failure: %d/%d chunks failed",
+                    document_id,
+                    len(errors),
+                    n_chunks,
+                )
+            else:
+                _cb("ready", 100, "Ingestion complete")
 
             result = IngestionResult(
-                success=True,
+                success=not has_critical_failure,
                 document_id=document_id,
                 node_count=len(nodes),
                 nodes=nodes,

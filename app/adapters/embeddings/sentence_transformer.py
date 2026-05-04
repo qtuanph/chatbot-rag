@@ -7,7 +7,6 @@ GPU: PyTorch fp16. CPU: ONNX runtime (2-3x faster than PyTorch fp32).
 """
 
 import logging
-from typing import List
 
 from app.adapters.base import BaseEmbedding
 from app.core.hardware import hardware
@@ -92,7 +91,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
     def get_dimension(self) -> int:
         return self._dim
 
-    def embed(self, text: str, normalize: bool = True) -> List[float]:
+    def embed(self, text: str, normalize: bool = True) -> list[float]:
         """Embed a single text string."""
         text_with_prefix = self.query_prefix + text if self.query_prefix else text
         vectors = self._model.encode(
@@ -105,10 +104,10 @@ class SentenceTransformerEmbedding(BaseEmbedding):
 
     def embed_batch(
         self,
-        texts: List[str],
+        texts: list[str],
         batch_size: int = 32,
         normalize: bool = True,
-    ) -> List[List[float]]:
+    ) -> list[list[float]]:
         """
         Embed multiple texts using the local model.
 
@@ -132,7 +131,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         )
         return [v.tolist() for v in vectors]
 
-    def embed_query(self, text: str) -> List[float]:
+    def embed_query(self, text: str) -> list[float]:
         """
         Embed a query text (applies query_prefix if configured).
         Use this for retrieval queries instead of embed() when using E5-style models.

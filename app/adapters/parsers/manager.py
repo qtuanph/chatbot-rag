@@ -5,7 +5,6 @@ Classic parser is fallback when Docling is unavailable.
 """
 
 import logging
-from typing import List, Tuple
 from app.adapters.base import (
     IngestedNode,
     ParsingMetadata,
@@ -49,13 +48,15 @@ class ParserManager:
         self,
         filename: str,
         content: bytes,
-    ) -> Tuple[List[IngestedNode], ParsingMetadata]:
+        document_id: str | None = None,
+    ) -> tuple[list[IngestedNode], ParsingMetadata]:
         """
         Parse document using configured parser.
 
         Args:
             filename: Document filename
             content: Raw file bytes
+            document_id: UUID of the document (for node identity)
 
         Returns:
             Tuple of (IngestedNode list, ParsingMetadata)
@@ -65,13 +66,12 @@ class ParserManager:
         """
         if self.docling_parser:
             try:
-                return self.docling_parser.parse(filename, content)
+                return self.docling_parser.parse(filename, content, document_id)
             except ParsingException:
                 raise
         else:
-            # Use Classic parser directly (DOCX, XLSX, TXT only — no PDF OCR)
             try:
-                return self.classic_parser.parse(filename, content)
+                return self.classic_parser.parse(filename, content, document_id)
             except ParsingException as e:
                 logger.error("Classic parser failed: %s", e.message)
                 raise

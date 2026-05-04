@@ -5,7 +5,7 @@ Caches query embedding vectors in Redis so repeated questions (common during
 demos and training sessions) skip local model inference entirely.
 
 Key:   "qembed:{model_hash}:" + MD5(query_text) — model-aware for correctness
-Value: JSON-serialized List[float] (embedding vector)
+Value: JSON-serialized list[float] (embedding vector)
 TTL:   1 hour — query patterns are stable within a working session
 
 Usage:
@@ -20,7 +20,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +41,7 @@ class QueryEmbeddingCache:
     def _key(self, text: str) -> str:
         return f"{self.PREFIX}{self._model_hash}:{hashlib.md5(text.encode('utf-8'), usedforsecurity=False).hexdigest()}"
 
-    def get(self, text: str) -> Optional[list[float]]:
+    def get(self, text: str) -> list[float | None]:
         """Return cached embedding vector or None if not found."""
         try:
             raw = self._r.get(self._key(text))

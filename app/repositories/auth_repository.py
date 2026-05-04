@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -15,13 +14,17 @@ class AuthRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def get_user_by_username(self, username: str) -> Optional[dict]:
+    def get_user_by_username(self, username: str, include_hash: bool = False) -> dict | None:
         row = self.session.query(User).filter(User.username == username).one_or_none()
-        return self._user_to_dict(row) if row else None
+        if row is None:
+            return None
+        return self._user_to_dict(row) if include_hash else self._user_to_dict_safe(row)
 
-    def get_user_by_id(self, user_id: str) -> Optional[dict]:
+    def get_user_by_id(self, user_id: str, include_hash: bool = False) -> dict | None:
         row = self.session.get(User, user_id)
-        return self._user_to_dict(row) if row else None
+        if row is None:
+            return None
+        return self._user_to_dict(row) if include_hash else self._user_to_dict_safe(row)
 
     def create_user(self, *, username: str, password_hash: str, role_id: str) -> dict:
         user = User(username=username, password_hash=password_hash, role_id=role_id)
@@ -38,11 +41,11 @@ class AuthRepository:
         self.session.commit()
         return True
 
-    def get_role_by_name(self, name: str) -> Optional[dict]:
+    def get_role_by_name(self, name: str) -> dict | None:
         row = self.session.query(Role).filter(Role.name == name).one_or_none()
         return self._role_to_dict(row) if row else None
 
-    def get_role_by_id(self, role_id: str) -> Optional[dict]:
+    def get_role_by_id(self, role_id: str) -> dict | None:
         row = self.session.get(Role, role_id)
         return self._role_to_dict(row) if row else None
 
@@ -71,6 +74,17 @@ class AuthRepository:
             "id": str(user.id),
             "username": user.username,
             "password_hash": user.password_hash,
+            "role_id": str(user.role_id),
+            "is_active": user.is_active,
+            "created_at": user.created_at,
+            "updated_at": user.updated_at,
+        }
+
+    @staticmethod
+    def _user_to_dict_safe(user: User) -> dict:
+        return {
+            "id": str(user.id),
+            "username": user.username,
             "role_id": str(user.role_id),
             "is_active": user.is_active,
             "created_at": user.created_at,

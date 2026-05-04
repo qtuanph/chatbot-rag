@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -25,8 +25,8 @@ class DocumentRepository:
         user_id: str,
         filename: str,
         status: str = "pending",
-        artifact_metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        artifact_metadata: dict[str, Any | None] = None,
+    ) -> dict[str, Any]:
         """Insert or update document record."""
         try:
             metadata = dict(artifact_metadata or {})
@@ -88,7 +88,7 @@ class DocumentRepository:
                 details={"document_id": document_id, "error": str(e)},
             )
 
-    def get_document(self, document_id: str) -> Optional[Dict[str, Any]]:
+    def get_document(self, document_id: str) -> dict[str, Any | None]:
         """Get document record by ID."""
         try:
             document = self.session.get(Document, document_id)
@@ -115,10 +115,10 @@ class DocumentRepository:
         self,
         document_id: str,
         status: str,
-        error_msg: Optional[str] = None,
-        stage: Optional[str] = None,
-        progress_percent: Optional[int] = None,
-        status_message: Optional[str] = None,
+        error_msg: str | None = None,
+        stage: str | None = None,
+        progress_percent: int | None = None,
+        status_message: str | None = None,
     ) -> bool:
         """Update document status."""
         try:
@@ -145,7 +145,7 @@ class DocumentRepository:
                 error_code="DOCUMENT_STORE_UPDATE_FAILED",
             )
 
-    def find_by_sha256(self, sha256: str) -> Optional[dict]:
+    def find_by_sha256(self, sha256: str) -> dict | None:
         """Find a non-deleted document by SHA256 hash (for deduplication)."""
         document = (
             self.session.query(Document)
@@ -195,7 +195,7 @@ class DocumentRepository:
         self.session.commit()
         return self._doc_to_full_dict(document)
 
-    def list_paginated(self, offset: int = 0, limit: int = 20) -> Tuple[List[dict], int]:
+    def list_paginated(self, offset: int = 0, limit: int = 20) -> tuple[list[dict], int]:
         """List non-deleted documents with pagination. Returns (items, total)."""
         total = self.session.query(func.count(Document.id)).filter(Document.deleted_at.is_(None)).scalar() or 0
         rows = (
@@ -215,14 +215,14 @@ class DocumentRepository:
             return False
         document.deleted_at = datetime.now(timezone.utc)
         document.status = "failed"
-        document.status_stage = "enqueue_failed"
+        document.status_stage = "failed"
         document.progress_percent = 100
         document.status_message = "Failed to enqueue ingestion task."
         document.status_updated_at = datetime.now(timezone.utc)
         self.session.commit()
         return True
 
-    def reset_for_retry(self, document_id: str) -> Optional[dict]:
+    def reset_for_retry(self, document_id: str) -> dict | None:
         """Reset document status for retry. Returns updated dict or None."""
         document = self.session.get(Document, document_id)
         if document is None:
@@ -236,7 +236,7 @@ class DocumentRepository:
         self.session.commit()
         return self._doc_to_full_dict(document)
 
-    def get_full_document(self, document_id: str) -> Optional[dict]:
+    def get_full_document(self, document_id: str) -> dict | None:
         """Get full document details including all fields."""
         document = self.session.get(Document, document_id)
         return self._doc_to_full_dict(document) if document else None
@@ -267,6 +267,11 @@ class DocumentRepository:
             .all()
         )
         return {str(row[0]) for row in rows if row and row[0]}
+
+    def get_all_document_ids(self) -> list[str]:
+        """Return all non-deleted document IDs for bulk operations."""
+        rows = self.session.query(Document.id).filter(Document.deleted_at.is_(None)).all()
+        return [str(row[0]) for row in rows if row and row[0]]
 
     def get_titles_by_ids(self, doc_ids: list[str]) -> dict[str, str]:
         """Fetch document titles by IDs. Returns {doc_id: title}."""

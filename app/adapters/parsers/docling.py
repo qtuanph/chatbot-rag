@@ -6,7 +6,6 @@ If OCR fails → document parsing fails with clear error.
 
 import logging
 import uuid
-from typing import List, Tuple, Optional
 import os
 import tempfile
 import re
@@ -32,7 +31,7 @@ class DoclingParser(BaseParser):
 
     def __init__(
         self,
-        fallback_parser: Optional["BaseParser"] = None,
+        fallback_parser: "BaseParser" | None = None,
         min_quality_score: float = 0.5,
     ):
         self.fallback_parser = fallback_parser
@@ -109,7 +108,8 @@ class DoclingParser(BaseParser):
         self,
         filename: str,
         content: bytes,
-    ) -> Tuple[List[IngestedNode], ParsingMetadata]:
+        document_id: str | None = None,
+    ) -> tuple[list[IngestedNode], ParsingMetadata]:
         """Parse document with Docling + PaddleOCR. Fails if OCR fails."""
         import time
 
@@ -124,7 +124,7 @@ class DoclingParser(BaseParser):
             # Step 2a: Try Method D — extract directly from Docling items
             nodes, sections_data, ok = self._extract_from_docling_items(
                 result.document,
-                filename,
+                document_id or filename,
                 source_format,
             )
 
@@ -190,7 +190,7 @@ class DoclingParser(BaseParser):
         # Fallback parser for non-PDF formats (DOCX, XLSX, TXT, Markdown)
         if self.fallback_parser:
             try:
-                nodes, fallback_metadata = self.fallback_parser.parse(filename, content)
+                nodes, fallback_metadata = self.fallback_parser.parse(filename, content, document_id)
                 if nodes:
                     fallback_metadata.fallback_used = True
                     fallback_metadata.parse_time_ms = (time.time() - start_time) * 1000
@@ -211,7 +211,7 @@ class DoclingParser(BaseParser):
         self,
         filename: str,
         content: bytes,
-    ) -> Optional[object]:
+    ) -> object | None:
         """
         Convert document using Docling + PaddleOCR.
         Always runs OCR on every page (force_full_page_ocr=True).
@@ -232,7 +232,7 @@ class DoclingParser(BaseParser):
 
             try:
                 logger.info("Converting %s with PaddleOCR...", filename)
-                result = self.converter.convert(tmp_path)
+                result = self.converter.convert(tmp_path, timeout=120)
 
                 # Post-process: fix heading hierarchy via docling-hierarchical-pdf
                 if filename.lower().endswith(".pdf"):
@@ -259,7 +259,7 @@ class DoclingParser(BaseParser):
 
     # ── Method D: Extract directly from Docling items ────────────────────────
 
-    def _get_page_number(self, item) -> Optional[int]:
+    def _get_page_number(self, item) -> int | None:
         """Extract page number from a Docling item's provenance."""
         prov = getattr(item, "prov", None)
         if not prov:
@@ -272,7 +272,7 @@ class DoclingParser(BaseParser):
                 return int(p["page_no"])
         return None
 
-    def _format_page_range(self, page_start: Optional[int], page_end: Optional[int]) -> Optional[str]:
+    def _format_page_range(self, page_start: int | None, page_end: int | None) -> str | None:
         """Format a stable page span for display and ordering hints."""
         if page_start is None and page_end is None:
             return None
@@ -338,9 +338,12 @@ class DoclingParser(BaseParser):
     def _correct_vietnamese_heading_level(title: str, current_level: int) -> int:
         """Override level for Vietnamese heading patterns that post-processor may miss."""
         t = (title or "").strip()
-        # Chương/Phần always = level 1
-        if re.match(r"(?i)^(chương|phần)\s+[\dIVX]+", t):
+        # Top-level: Chương, Phần, Phụ lục
+        if re.match(r"(?i)^(chương|phần|phụ lục)\s*[\dIVX]+", t):
             return 1
+        # Second-level: Mục, Bài, Điều (standalone)
+        if re.match(r"(?i)^(mục|bài|điều)\s*[\dIVX]+", t):
+            return 2
         return current_level
 
     def _extract_from_docling_items(
@@ -348,7 +351,7 @@ class DoclingParser(BaseParser):
         document,
         document_id: str,
         source_format: str,
-    ) -> Tuple[List[IngestedNode], List[dict], bool]:
+    ) -> tuple[list[IngestedNode], list[dict], bool]:
         """
         Extract sections and chunks directly from Docling items.
         Preserves page numbers, heading levels, and table structures.
@@ -362,7 +365,7 @@ class DoclingParser(BaseParser):
             chunk_overlap_tokens = settings.retrieval_chunk_overlap
 
             # ── Phase 1: Build raw sections from iterate_items() ──────────
-            sections_raw: List[dict] = []
+            sections_raw: list[dict] = []
             current_section: dict | None = None
             heading_stack: dict[int, str] = {}
 
@@ -479,8 +482,6 @@ class DoclingParser(BaseParser):
                     "text",
                     "caption",
                     "footnote",
-                    "page_header",
-                    "page_footer",
                     "reference",
                     "list_item",
                     "code",
@@ -529,8 +530,8 @@ class DoclingParser(BaseParser):
                 return [], [], False
 
             # ── Phase 2: Build sections_data + chunks ─────────────────────
-            chunk_nodes: List[IngestedNode] = []
-            sections_data: List[dict] = []
+            chunk_nodes: list[IngestedNode] = []
+            sections_data: list[dict] = []
             global_order = 0
 
             for sec_idx, section in enumerate(sections_raw):
@@ -613,7 +614,7 @@ class DoclingParser(BaseParser):
         markdown_content: str,
         document_id: str,
         source_format: str,
-    ) -> Tuple[List[IngestedNode], List[dict], bool]:
+    ) -> tuple[list[IngestedNode], list[dict], bool]:
         """
         Fallback: Split markdown into Sections → Chunks for 2-stage retrieval.
         Page numbers will be None (heuristic matching removed).
@@ -628,8 +629,8 @@ class DoclingParser(BaseParser):
             if not sections_raw:
                 return [], [], False
 
-            chunk_nodes: List[IngestedNode] = []
-            sections_data: List[dict] = []
+            chunk_nodes: list[IngestedNode] = []
+            sections_data: list[dict] = []
             global_order = 0
 
             for sec_idx, section in enumerate(sections_raw):
@@ -697,10 +698,10 @@ class DoclingParser(BaseParser):
 
     # ── Shared utilities ─────────────────────────────────────────────────────
 
-    def _split_markdown_by_headings(self, markdown: str) -> List[dict]:
+    def _split_markdown_by_headings(self, markdown: str) -> list[dict]:
         """Split markdown content into sections based on heading levels."""
         lines = markdown.split("\n")
-        sections: List[dict] = []
+        sections: list[dict] = []
         current_section: dict | None = None
         heading_stack: dict[int, str] = {}
 
@@ -751,7 +752,7 @@ class DoclingParser(BaseParser):
                         "parent_section_id": None,
                     }
                 current_section["content"] += line + "\n"
-                if "|" in line and "---" not in line:
+                if self._TABLE_ROW.match(line.strip()):
                     current_section["table_count"] += 1
 
         if current_section and (
@@ -771,15 +772,16 @@ class DoclingParser(BaseParser):
         r")\.\s*$",
     )
 
-    # Markdown table row pattern
+    # Markdown table patterns
     _TABLE_ROW = re.compile(r"^\|.*\|$")
+    _TABLE_SEPARATOR = re.compile(r"^\|[\s\-:|]+\|$")
 
     def _split_text_to_chunks(
         self,
         text: str,
         chunk_size: int = 400,
         overlap: int = 75,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Recursive paragraph-first chunker optimized for Vietnamese documents.
 
@@ -793,14 +795,14 @@ class DoclingParser(BaseParser):
         if not text or not text.strip():
             return []
 
-        chars_per_chunk = chunk_size * 4
-        overlap_chars = overlap * 4
+        chars_per_chunk = chunk_size * 3  # Vietnamese: ~3 chars/token (compound words, syllable spaces)
+        overlap_chars = overlap * 3
 
         # Step 1: Split into paragraphs, preserving table/list blocks intact
         blocks = self._split_into_blocks(text)
 
         # Step 2: Within each block, split into sentences
-        units: List[str] = []
+        units: list[str] = []
         for block in blocks:
             if self._is_atomic_block(block):
                 # Tables and lists stay as one unit regardless of size
@@ -814,8 +816,8 @@ class DoclingParser(BaseParser):
             return [text.strip()] if text.strip() else []
 
         # Step 3: Accumulate into chunks with overlap
-        chunks: List[str] = []
-        current_chunk: List[str] = []
+        chunks: list[str] = []
+        current_chunk: list[str] = []
         current_length = 0
 
         for unit in units:
@@ -823,7 +825,7 @@ class DoclingParser(BaseParser):
             if current_length + unit_len > chars_per_chunk and current_chunk:
                 chunks.append("\n".join(current_chunk))
                 # Overlap: take complete sentences from the tail
-                overlap_units: List[str] = []
+                overlap_units: list[str] = []
                 overlap_len = 0
                 for u in reversed(current_chunk):
                     if overlap_len + len(u) > overlap_chars:
@@ -841,35 +843,51 @@ class DoclingParser(BaseParser):
                 chunks.append(chunk_text)
         return chunks
 
-    def _split_into_blocks(self, text: str) -> List[str]:
-        """Split text into blocks: paragraphs, tables, and list groups."""
+    def _split_into_blocks(self, text: str) -> list[str]:
+        """Split text into blocks: paragraphs, tables, and list groups.
+
+        Table detection requires structural evidence (separator line or 3+ consecutive
+        | lines) to avoid false positives on single | in math/technical text.
+        """
         lines = text.split("\n")
-        blocks: List[str] = []
-        current_block: List[str] = []
+        blocks: list[str] = []
+        current_block: list[str] = []
+        consecutive_table_lines = 0
+
+        def _flush_block():
+            nonlocal consecutive_table_lines
+            if current_block:
+                blocks.append("\n".join(current_block))
+                current_block.clear()
+            consecutive_table_lines = 0
 
         for line in lines:
-            is_table = bool(self._TABLE_ROW.match(line.strip()))
-            is_list = line.strip().startswith(("- ", "* ", "+ ")) or re.match(r"^\d+\.\s", line.strip())
+            stripped = line.strip()
+            is_table_row = bool(self._TABLE_ROW.match(stripped))
+            is_table_sep = bool(self._TABLE_SEPARATOR.match(stripped))
+            is_list = stripped.startswith(("- ", "* ", "+ ")) or re.match(r"^\d+\.\s", stripped)
 
-            if is_table or is_list:
-                # Flush current paragraph block
-                if current_block:
-                    blocks.append("\n".join(current_block))
+            if is_table_sep:
+                if not current_block:
                     current_block = []
+                current_block.append(line)
+                consecutive_table_lines = max(consecutive_table_lines, 3)
+            elif is_table_row and consecutive_table_lines >= 2:
+                current_block.append(line)
+                consecutive_table_lines += 1
+            elif is_list:
+                _flush_block()
                 current_block.append(line)
             elif current_block and (
-                self._TABLE_ROW.match(current_block[-1].strip())
-                or current_block[-1].strip().startswith(("- ", "* ", "+ "))
+                current_block[-1].strip().startswith(("- ", "* ", "+ "))
                 or re.match(r"^\d+\.\s", current_block[-1].strip())
             ):
-                # Continuing a table/list block
                 current_block.append(line)
-            elif line.strip() == "":
-                # Paragraph boundary
-                if current_block:
-                    blocks.append("\n".join(current_block))
-                    current_block = []
+            elif stripped == "":
+                _flush_block()
             else:
+                if consecutive_table_lines > 0 and consecutive_table_lines < 3:
+                    consecutive_table_lines = 0
                 current_block.append(line)
 
         if current_block:
@@ -895,11 +913,11 @@ class DoclingParser(BaseParser):
                 return True
         return False
 
-    def _split_sentences(self, text: str) -> List[str]:
+    def _split_sentences(self, text: str) -> list[str]:
         """Split text into sentences with Vietnamese-aware boundary detection."""
         # Split on sentence-ending punctuation followed by space/newline
         parts = re.split(r"(?<=[.!?。！？])\s+", text)
-        sentences: List[str] = []
+        sentences: list[str] = []
         for part in parts:
             part = part.strip()
             if not part:
@@ -911,7 +929,7 @@ class DoclingParser(BaseParser):
                 sentences.append(part)
         return sentences
 
-    def _refine_nodes(self, nodes: List[IngestedNode]) -> List[IngestedNode]:
+    def _refine_nodes(self, nodes: list[IngestedNode]) -> list[IngestedNode]:
         """Rule-based text refinement: fix OCR errors, normalize whitespace."""
         from app.utils.text_refiner import rule_based_refiner
 
@@ -929,10 +947,9 @@ class DoclingParser(BaseParser):
 
             node.text = cleaned_text
 
-            if node.node_type == ParsedNodeType.SECTION:
-                level_match = re.match(r"^(#+)", original_text)
-                level = len(level_match.group(1)) if level_match else 1
-                title = predicted_header or original_text.lstrip("#").strip()
+            if node.section_title:
+                level = node.metadata.get("section_level", 1) if node.metadata else 1
+                title = predicted_header or node.section_title
                 node.section_title = title
                 heading_stack[level] = title
                 for heading_key in list(heading_stack.keys()):
@@ -943,7 +960,7 @@ class DoclingParser(BaseParser):
 
         return nodes
 
-    def _refine_sections(self, sections_data: List[dict]) -> List[dict]:
+    def _refine_sections(self, sections_data: list[dict]) -> list[dict]:
         """Apply text refinement to section titles and content."""
         from app.utils.text_refiner import rule_based_refiner
 
@@ -978,7 +995,7 @@ class DoclingParser(BaseParser):
         else:
             return ParsedNodeType.PARAGRAPH
 
-    def _calculate_quality_score(self, nodes: List[IngestedNode], markdown_chars: int) -> float:
+    def _calculate_quality_score(self, nodes: list[IngestedNode], markdown_chars: int) -> float:
         """Calculate parse quality score (0-1)."""
         if not nodes:
             return 0.0
