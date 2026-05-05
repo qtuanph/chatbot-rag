@@ -8,7 +8,8 @@
       "02_WORKFLOWS.md": "Upload, chat, delete, session cleanup workflows with diagrams",
       "03_API_CONTRACTS.md": "Full route reference, security, rate limits, error handling",
       "04_DEPLOYMENT.md": "Docker topology, nginx, env vars, health probes, backup",
-      "05_INGESTION_RETRIEVAL.md": "13-step pipeline, PaddleOCR (mandatory), embedding specs, retrieval deep dive"
+      "05_INGESTION_RETRIEVAL.md": "13-step pipeline, PaddleOCR (mandatory), embedding specs, retrieval deep dive",
+      "06_NAMING_CONVENTIONS.md": "Variable, function, class, file naming standards"
     }
   },
   "core_invariants": [
@@ -27,6 +28,14 @@
     {
       "name": "api_gateway_proxy",
       "rule": "Browser never sees Bearer token. All calls via /api/bep/ → Next.js Route Handler → getToken() → backend."
+    },
+    {
+      "name": "id_first_boundaries",
+      "rule": "Cross-layer and worker payloads pass stable IDs/URIs only. Rehydrate rich state inside the owning layer."
+    },
+    {
+      "name": "provider_boundary",
+      "rule": "Routes never call provider factories, adapters, or SDKs. ChatService owns AI orchestration; routes own the HTTP response shell."
     }
   ],
   "data_location_map": [
@@ -98,11 +107,10 @@
       { "method": "DELETE", "path": "/auth/users/{username}", "auth": "admin" },
       { "method": "POST", "path": "/upload", "auth": "admin", "returns": "task_id" },
       { "method": "GET", "path": "/status/{task_id}", "auth": "jwt" },
-      { "method": "GET", "path": "/documents", "auth": "member" },
+      { "method": "GET", "path": "/documents", "auth": "admin" },
       { "method": "GET", "path": "/documents/{id}", "auth": "admin" },
       { "method": "DELETE", "path": "/documents/{id}", "auth": "admin" },
       { "method": "POST", "path": "/documents/{id}/retry", "auth": "admin" },
-      { "method": "POST", "path": "/chat", "auth": "member" },
       { "method": "POST", "path": "/chat/stream", "auth": "member" },
       { "method": "POST", "path": "/chat/sessions", "auth": "member" },
       { "method": "GET", "path": "/chat/sessions", "auth": "member" },
@@ -134,13 +142,16 @@
       "location": "app/api/routes/",
       "responsibility": "HTTP parsing, auth deps, response formatting, status codes. NO business logic, NO SessionLocal, NO direct DB queries."
     },
+    "canonical_dict_keys": {
+      "artifact_metadata": "Use 'artifact_metadata' in all dictionaries, schemas, and pipeline outputs representing arbitrary extra JSON metadata (replaces legacy 'extra_metadata', 'metadata')."
+    },
     "service": {
       "location": "app/services/{domain}/",
       "files": {
         "auth/auth_service.py": "AuthService — login, logout, user CRUD",
-        "chat/chat_service.py": "ChatService — prepare_chat (full orchestration), session mgmt, message persistence, extract_memories",
+        "chat/chat_service.py": "ChatService — prepare_chat, provider stream orchestration, session mgmt, message persistence, memory extraction dispatch",
         "chat/memory_service.py": "MemoryService — CRUD for user memories (receives UserMemoryService via DI)",
-        "chat/user_memory_service.py": "UserMemoryService — Redis + MemoryRepository via DI (no SessionLocal)",
+        "chat/user_memory_service.py": "UserMemoryService — Redis + MemoryRepository via DI in request paths; short-lived repo fallback only for worker context",
         "documents/document_service.py": "DocumentService — upload, status, delete, retry (uses build_vector_store factory)",
         "documents/tree_service.py": "TreeService — document tree exploration",
         "documents/cleanup_service.py": "CleanupService — hard delete orchestration (class, uses DocumentRepository + SectionRepository)",
@@ -212,7 +223,7 @@
         "cleanup_orphaned_vectors_task — remove Qdrant vectors without DB sections (maintenance_tasks.py, Beat daily)"
       ],
       "default_queue": [
-        "save_chat_message_task — async assistant message persistence (chat_tasks.py)",
+        "save_chat_message_task — compatibility wrapper; SSE path uses synchronous save before done:true (chat_tasks.py)",
         "record_audit_task — fire-and-forget audit logging (maintenance_tasks.py)",
         "extract_memories_task — async memory extraction, replaces asyncio.create_task (memory_tasks.py)"
       ]

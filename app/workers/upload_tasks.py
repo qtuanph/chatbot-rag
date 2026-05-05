@@ -1,45 +1,19 @@
 """Celery task definitions for document upload and ingestion pipeline."""
 
-import logging
-from datetime import datetime, timezone
-
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.models.document import Document
+from app.repositories.document_repository import DocumentRepository
 from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.adapters.storage import build_storage
 from app.services.ingestion.ingestion_service import IngestionService
-from app.adapters.parsers.manager import ParserManager
+from app.repositories.section_repository import SectionRepository
+import logging
 
 logger = logging.getLogger(__name__)
-
-
-def _set_document_status(
-    *,
-    document_id: str,
-    status: str,
-    stage: str,
-    progress_percent: int,
-    status_message: str,
-    parse_error: str | None = None,
-) -> None:
-    with SessionLocal() as session:
-        document = session.get(Document, document_id)
-        if document is None:
-            return
-        document.status = status
-        document.status_stage = stage
-        document.progress_percent = max(0, min(100, progress_percent))
-        document.status_message = status_message
-        document.status_updated_at = datetime.now(timezone.utc)
-        if parse_error is not None:
-            document.parse_error = parse_error[:2000] if parse_error else None
-        document.updated_at = datetime.now(timezone.utc)
-        session.commit()
 
 
 def _build_vector_store(embedding_service) -> QdrantVectorStore:
@@ -94,7 +68,7 @@ def _verify_ingestion(
 
 
 @celery_app.task(
-    name="app.workers.upload_pipeline.parse_document_task",
+    name="app.workers.upload_tasks.parse_document_task",
     bind=True,
     acks_late=True,
     autoretry_for=(ConnectionError, TimeoutError),
@@ -112,20 +86,21 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
     """
     storage = build_storage()
     content = b""
+    metadata: dict = {}
     embedding_service = None
     vector_store = None
     db_session = None
 
     try:
         # ── Step 1: Download ─────────────────────────────────────────────────
-        _set_document_status(
-            document_id=document_id,
-            status="processing",
-            stage="downloading",
-            progress_percent=10,
-            status_message="[1/4] Đang tải file an toàn từ S3 Object Storage xuống RAM...",
-            parse_error="",
-        )
+        with SessionLocal() as _s:
+            DocumentRepository(_s).update_status(
+                document_id,
+                status="processing",
+                stage="downloading",
+                progress_percent=10,
+                status_message="[1/4] Đang tải file an toàn từ S3 Object Storage xuống RAM...",
+            )
         logger.info("[%s] Downloading from %s...", document_id, file_path)
         content = storage.download_bytes(file_path)
         filename = file_path.rsplit("/", 1)[-1]
@@ -136,28 +111,29 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
 
         device_name = "GPU" if torch.cuda.is_available() else "CPU"
 
-        _set_document_status(
-            document_id=document_id,
-            status="processing",
-            stage="parsing",
-            progress_percent=15,
-            status_message=f"[2/4] Đang khởi tạo Model trên {device_name} & Cắt file {filename} thành các Node...",
-        )
+        with SessionLocal() as _s:
+            DocumentRepository(_s).update_status(
+                document_id,
+                status="processing",
+                stage="parsing",
+                progress_percent=15,
+                status_message=f"[2/4] Đang khởi tạo Model trên {device_name} & Cắt file {filename} thành các Node...",
+            )
         embedding_service = build_embedding_service()
         vector_store = _build_vector_store(embedding_service)
 
         # ── Step 3: Parse & embed ────────────────────────────────────────────
         logger.info("[%s] Parsing with pipeline...", document_id)
-        parser_manager = ParserManager()
 
         # Open a DB session for section storage during ingestion
         db_session = SessionLocal()
+        section_repo = SectionRepository(db_session)
 
         pipeline = IngestionService(
-            parser_manager=parser_manager,
             embedding_service=embedding_service,
             vector_store=vector_store,
             db_session=db_session,
+            section_repo=section_repo,
         )
 
         def _progress_callback(stage: str, percent: int, message: str = "") -> None:
@@ -168,13 +144,14 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             elif "Processing section" in message or "Processing chunk" in message:
                 translated_msg = "[3/4] Đang băm văn bản và nhúng (Embed) thành số liệu Vector..."
 
-            _set_document_status(
-                document_id=document_id,
-                status="processing",
-                stage=stage,
-                progress_percent=percent,
-                status_message=translated_msg or stage,
-            )
+            with SessionLocal() as _s:
+                DocumentRepository(_s).update_status(
+                    document_id,
+                    status="processing",
+                    stage=stage,
+                    progress_percent=percent,
+                    status_message=translated_msg or stage,
+                )
 
         ingestion_result = pipeline.ingest(
             filename=filename,
@@ -191,67 +168,65 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             raise ValueError("Vector store did not persist any node IDs for this document")
 
         # ── Step 4: Post-ingestion verification ──────────────────────────────
-        _set_document_status(
-            document_id=document_id,
-            status="processing",
-            stage="verifying",
-            progress_percent=95,
-            status_message="[4/4] Khâu cuối: Đang đối soát và verify kết quả trên Qdrant...",
-        )
+        with SessionLocal() as _s:
+            DocumentRepository(_s).update_status(
+                document_id,
+                status="processing",
+                stage="verifying",
+                progress_percent=95,
+                status_message="[4/4] Khâu cuối: Đang đối soát và verify kết quả trên Qdrant...",
+            )
         verify = _verify_ingestion(document_id, file_path, vector_store, storage)
 
         # ── Step 5: Persist metadata ─────────────────────────────────────────
-        _set_document_status(
-            document_id=document_id,
-            status="processing",
-            stage="verifying",
-            progress_percent=95,
-            status_message="Persisting ingestion artifact and finalizing document.",
-        )
+        with SessionLocal() as _s:
+            DocumentRepository(_s).update_status(
+                document_id,
+                status="processing",
+                stage="verifying",
+                progress_percent=95,
+                status_message="Persisting ingestion artifact and finalizing document.",
+            )
         logger.info("[%s] Storing ingestion metadata to PostgreSQL...", document_id)
 
-        with SessionLocal() as session:
-            document = session.get(Document, document_id)
-            if document is None:
-                raise ValueError(f"Document not found: {document_id}")
-
-            if (
-                ingestion_result.validation_report
-                and ingestion_result.validation_report.node_count < settings.ingestion_min_non_empty_nodes
-            ):
-                raise ValueError(
-                    f"Extraction quality too low: {ingestion_result.node_count} nodes "
-                    f"< {settings.ingestion_min_non_empty_nodes} minimum"
-                )
-            if ingestion_result.total_text_chars < settings.ingestion_min_total_text_chars:
-                raise ValueError(
-                    f"Extraction quality too low: {ingestion_result.total_text_chars} chars "
-                    f"< {settings.ingestion_min_total_text_chars} minimum"
-                )
-
-            metadata = dict(document.extra_metadata or {})
-            artifact_dict = ingestion_result.parse_metadata.to_dict() if ingestion_result.parse_metadata else {}
-            artifact_dict.update(
-                {
-                    "valid": ingestion_result.success,
-                    "node_count": ingestion_result.node_count,
-                    "total_chars": ingestion_result.total_text_chars,
-                    "errors": ingestion_result.errors,
-                    "warnings": ingestion_result.warnings,
-                    "duration_ms": ingestion_result.duration_ms,
-                    "verification": verify,
-                }
+        if (
+            ingestion_result.validation_report
+            and ingestion_result.validation_report.node_count < settings.ingestion_min_non_empty_nodes
+        ):
+            raise ValueError(
+                f"Extraction quality too low: {ingestion_result.node_count} nodes "
+                f"< {settings.ingestion_min_non_empty_nodes} minimum"
             )
-            metadata["ingestion_artifact"] = artifact_dict
-            document.extra_metadata = metadata
-            document.status = "ready"
-            document.status_stage = "ready"
-            document.progress_percent = 100
-            document.status_message = "Ingestion completed successfully."
-            document.status_updated_at = datetime.now(timezone.utc)
-            document.parse_error = None
-            document.updated_at = datetime.now(timezone.utc)
-            session.commit()
+        if ingestion_result.total_text_chars < settings.ingestion_min_total_text_chars:
+            raise ValueError(
+                f"Extraction quality too low: {ingestion_result.total_text_chars} chars "
+                f"< {settings.ingestion_min_total_text_chars} minimum"
+            )
+
+        artifact_dict = (
+            ingestion_result.parse_metadata.to_dict() if getattr(ingestion_result, "parse_metadata", None) else {}
+        )
+        artifact_dict.update(
+            {
+                "valid": ingestion_result.success,
+                "node_count": ingestion_result.node_count,
+                "total_chars": ingestion_result.total_text_chars,
+                "errors": ingestion_result.errors,
+                "warnings": ingestion_result.warnings,
+                "duration_ms": ingestion_result.duration_ms,
+                "verification": verify,
+            }
+        )
+        metadata = {"ingestion_artifact": artifact_dict}
+
+        with SessionLocal() as session:
+            doc_repo = DocumentRepository(session)
+            doc_repo.finalize_ingestion(
+                document_id,
+                artifact_dict=artifact_dict,
+                node_count=ingestion_result.node_count,
+                total_text_chars=ingestion_result.total_text_chars,
+            )
 
             # Invalidate cached doc IDs so next chat request picks up new document
             from app.services.retrieval.retrieval_service import invalidate_doc_ids_cache
@@ -274,14 +249,15 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             except Exception as e:
                 logger.warning("Failed to close DB session: %s", e)
             db_session = None
-        _set_document_status(
-            document_id=document_id,
-            status="failed",
-            stage="failed",
-            progress_percent=0,
-            status_message="Document processing timed out. Try a smaller file.",
-            parse_error="SoftTimeLimitExceeded",
-        )
+        with SessionLocal() as _s:
+            DocumentRepository(_s).update_status(
+                document_id,
+                status="failed",
+                stage="failed",
+                progress_percent=0,
+                status_message="Document processing timed out. Try a smaller file.",
+                parse_error="SoftTimeLimitExceeded",
+            )
         raise
 
     except Exception as exc:
@@ -292,14 +268,15 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 logger.warning("Failed to close DB session: %s", e)
             db_session = None
         logger.error("[%s] ✗ Pipeline failed: %s", document_id, exc)
-        _set_document_status(
-            document_id=document_id,
-            status="failed",
-            stage="failed",
-            progress_percent=100,
-            status_message="Ingestion failed.",
-            parse_error=str(exc),
-        )
+        with SessionLocal() as _s:
+            DocumentRepository(_s).update_status(
+                document_id,
+                status="failed",
+                stage="failed",
+                progress_percent=100,
+                status_message="Ingestion failed.",
+                parse_error=str(exc),
+            )
         raise
 
     finally:

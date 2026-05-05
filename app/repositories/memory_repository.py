@@ -1,9 +1,5 @@
-"""Repository for UserMemory data access."""
-
-from __future__ import annotations
-
-
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import UserMemory
 
@@ -11,40 +7,42 @@ from app.models.memory import UserMemory
 class MemoryRepository:
     """Data access layer for UserMemory model."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    def list_by_user(self, user_id: str) -> list[dict]:
-        rows = (
-            self.session.query(UserMemory)
-            .filter(UserMemory.user_id == user_id)
+    async def list_by_user(self, user_id: str) -> list[dict]:
+        stmt = (
+            select(UserMemory)
+            .where(UserMemory.user_id == user_id)
             .order_by(UserMemory.created_at.desc())
-            .all()
         )
+        result = await self.session.execute(stmt)
+        rows = result.scalars().all()
         return [self._to_dict(r) for r in rows]
 
-    def list_active_by_user(self, user_id: str, limit: int = 50) -> list[dict]:
-        rows = (
-            self.session.query(UserMemory)
-            .filter(UserMemory.user_id == user_id, UserMemory.is_active.is_(True))
+    async def list_active_by_user(self, user_id: str, limit: int = 50) -> list[dict]:
+        stmt = (
+            select(UserMemory)
+            .where(UserMemory.user_id == user_id, UserMemory.is_active.is_(True))
             .order_by(UserMemory.created_at.desc())
             .limit(limit)
-            .all()
         )
+        result = await self.session.execute(stmt)
+        rows = result.scalars().all()
         return [self._to_dict(r) for r in rows]
 
-    def get_by_id(self, memory_id: str) -> dict | None:
-        row = self.session.get(UserMemory, memory_id)
+    async def get_by_id(self, memory_id: str) -> dict | None:
+        row = await self.session.get(UserMemory, memory_id)
         return self._to_dict(row) if row else None
 
-    def create(self, *, user_id: str, memory_type: str, content: str) -> dict:
+    async def create(self, *, user_id: str, memory_type: str, content: str) -> dict:
         memory = UserMemory(user_id=user_id, memory_type=memory_type, content=content)
         self.session.add(memory)
-        self.session.commit()
-        self.session.refresh(memory)
+        await self.session.commit()
+        await self.session.refresh(memory)
         return self._to_dict(memory)
 
-    def update(
+    async def update(
         self,
         memory_id: str,
         *,
@@ -52,7 +50,7 @@ class MemoryRepository:
         memory_type: str | None = None,
         is_active: bool | None = None,
     ) -> dict | None:
-        memory = self.session.get(UserMemory, memory_id)
+        memory = await self.session.get(UserMemory, memory_id)
         if memory is None:
             return None
         if content is not None:
@@ -61,16 +59,16 @@ class MemoryRepository:
             memory.memory_type = memory_type
         if is_active is not None:
             memory.is_active = is_active
-        self.session.commit()
-        self.session.refresh(memory)
+        await self.session.commit()
+        await self.session.refresh(memory)
         return self._to_dict(memory)
 
-    def delete(self, memory_id: str) -> bool:
-        memory = self.session.get(UserMemory, memory_id)
+    async def delete(self, memory_id: str) -> bool:
+        memory = await self.session.get(UserMemory, memory_id)
         if memory is None:
             return False
-        self.session.delete(memory)
-        self.session.commit()
+        await self.session.delete(memory)
+        await self.session.commit()
         return True
 
     # ── Private helpers ──────────────────────────────────────────────

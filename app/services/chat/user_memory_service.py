@@ -1,15 +1,3 @@
-"""User memory service — ChatGPT-like persistent memory.
-
-Stores per-user facts, preferences, corrections, and instructions
-learned from conversations. Injected into system prompt for personalized responses.
-
-Memory types:
-  - preference: User preferences (e.g., "likes detailed answers")
-  - correction: User corrections (e.g., "don't use bullet points")
-  - instruction: Explicit instructions (e.g., "always cite sources")
-  - fact: Facts about user (e.g., "works in marketing")
-"""
-
 from __future__ import annotations
 
 import json
@@ -17,12 +5,12 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-import redis
-
+from redis import asyncio as aioredis
 from app.core.config import settings
 
 if TYPE_CHECKING:
     from app.adapters.ai.base import AIProvider
+    from app.repositories.memory_repository import MemoryRepository
 
 logger = logging.getLogger(__name__)
 
@@ -30,111 +18,64 @@ _MEMORY_CACHE_TTL = settings.memory_cache_ttl
 
 
 class UserMemoryService:
-    """Manages persistent user memories with Redis caching.
+    """Manages persistent user memories with Redis Hash caching."""
 
-    Receives redis_client via DI. Creates short-lived DB sessions per operation
-    (justified: called from both DI and non-DI contexts like background tasks).
-    """
-
-    def __init__(self, redis_client: redis.Redis) -> None:
+    def __init__(self, redis_client: aioredis.Redis, memory_repo: MemoryRepository) -> None:
         self._redis = redis_client
+        self._memory_repo = memory_repo
 
     def _cache_key(self, user_id: str) -> str:
-        return f"user_memories:{user_id}"
+        return f"user_memories:v2:{user_id}"
 
-    def get_active_memories(self, user_id: str) -> list[dict[str, str]]:
-        """Get active memories for a user (Redis cache → PostgreSQL fallback)."""
+    async def get_active_memories(self, user_id: str) -> list[dict[str, str]]:
+        """Retrieve memories from RedisJSON or DB fallback."""
         cache_key = self._cache_key(user_id)
-        try:
-            cached = self._redis.get(cache_key)
-            if cached:
-                return json.loads(cached)
-        except Exception:
-            logger.warning("Redis cache miss for user memories: %s", user_id)
+        memories = await self._redis.json().get(cache_key)
+        if memories:
+            return memories
 
-        from app.db.session import SessionLocal
-        from app.repositories.memory_repository import MemoryRepository
+        rows = await self._memory_repo.list_active_by_user(user_id)
+        memories = [{"type": r["memory_type"], "content": r["content"], "id": str(r["id"])} for r in rows]
 
-        with SessionLocal() as session:
-            repo = MemoryRepository(session)
-            rows = repo.list_active_by_user(user_id)
-            memories = [{"type": r["memory_type"], "content": r["content"]} for r in rows]
-
-        try:
-            self._redis.setex(cache_key, _MEMORY_CACHE_TTL, json.dumps(memories, ensure_ascii=False))
-        except Exception as e:
-            logger.debug("Failed to cache user memories: %s", e)
+        if memories:
+            await self._redis.json().set(cache_key, "$", memories)
+            await self._redis.expire(cache_key, _MEMORY_CACHE_TTL)
 
         return memories
 
-    def format_memories_for_prompt(self, user_id: str) -> str:
-        """Format user memories for injection into system prompt."""
-        memories = self.get_active_memories(user_id)
+    async def format_memories_for_prompt(self, user_id: str) -> str:
+        memories = await self.get_active_memories(user_id)
         if not memories:
             return ""
-
-        lines = []
-        for m in memories:
-            prefix = {
-                "preference": "Sở thích",
-                "correction": "Sửa đổi",
-                "instruction": "Chỉ dẫn",
-                "fact": "Thông tin",
-            }.get(m["type"], "Ghi nhớ")
-            lines.append(f"- [{prefix}] {m['content']}")
-
+        map_type = {"preference": "Sở thích", "correction": "Sửa đổi", "instruction": "Chỉ dẫn", "fact": "Thông tin"}
+        lines = [f"- [{map_type.get(m['type'], 'Ghi nhớ')}] {m['content']}" for m in memories]
         return "THÔNG TIN ĐÃ GHI NHỚ VỀ NGƯỜI DÙNG:\n" + "\n".join(lines)
 
-    def add_memory(self, user_id: str, memory_type: str, content: str) -> None:
-        """Store a new memory for the user via repository."""
-        from app.db.session import SessionLocal
-        from app.repositories.memory_repository import MemoryRepository
+    async def add_memory(self, user_id: str, memory_type: str, content: str) -> None:
+        """Add memory to DB and append to RedisJSON array."""
+        m = await self._memory_repo.create(user_id=user_id, memory_type=memory_type, content=content)
+        cache_key = self._cache_key(user_id)
+        msg = {"type": memory_type, "content": content, "id": str(m["id"])}
+        if not await self._redis.exists(cache_key):
+            await self._redis.json().set(cache_key, "$", [msg])
+            await self._redis.expire(cache_key, _MEMORY_CACHE_TTL)
+        else:
+            await self._redis.json().arrappend(cache_key, "$", msg)
 
-        with SessionLocal() as session:
-            repo = MemoryRepository(session)
-            repo.create(user_id=user_id, memory_type=memory_type, content=content)
-
-        self.invalidate_cache(user_id)
-        logger.info("Added %s memory for user %s: %s", memory_type, user_id[:8], content[:80])
-
-    def invalidate_cache(self, user_id: str) -> None:
-        """Invalidate Redis cache for a user's memories."""
-        try:
-            self._redis.delete(self._cache_key(user_id))
-        except Exception as e:
-            logger.debug("Failed to invalidate memory cache: %s", e)
+    async def invalidate_cache(self, user_id: str) -> None:
+        await self._redis.delete(self._cache_key(user_id))
 
     def should_extract_memory(self, user_message: str) -> bool:
-        """Quick heuristic to detect if user message contains feedback worth remembering."""
         if not user_message:
             return False
 
-        explicit_patterns = [
-            r"nhớ(?: là| rằng| cho tôi)?",
-            r"hãy nhớ",
-            r"remember",
-            r"ghi nhớ",
-            r"lưu ý",
-        ]
-        correction_patterns = [
-            r"sai(?: rồi| mất)?",
-            r"không(?: phải)? (?:vậy|thế|đúng)",
-            r"đừng",
-            r"không muốn",
-            r"tôi (?:thích|muốn|cần|yêu cầu)",
-            r"ý tôi là",
-            r"tôi nói (?:là|rằng)",
-            r"bạn (?:nên|phải|hãy)",
-            r"sửa lại",
-            r"cải thiện",
-            r"tốt hơn",
-        ]
+        explicit_patterns = [r"nhớ", r"remember", r"ghi nhớ", r"lưu ý"]
+        correction_patterns = [r"sai", r"không đúng", r"đừng", r"muốn", r"cần", r"nên"]
 
         msg_lower = user_message.lower()
         for pattern in explicit_patterns + correction_patterns:
             if re.search(pattern, msg_lower):
                 return True
-
         return False
 
     async def extract_memories_from_turn(
@@ -144,41 +85,30 @@ class UserMemoryService:
         assistant_response: str,
         ai_provider: AIProvider,
     ) -> None:
-        """Extract memorable facts from a conversation turn using Gemini."""
+        """Extract memorable facts using Gemini."""
         if not self.should_extract_memory(user_message):
             return
 
         try:
             extraction_prompt = (
-                "Phân tích tin nhắn người dùng sau và trích xuất các thông tin đáng nhớ. "
-                "Chỉ trích xuất nếu người dùng đưa ra sở thích, sửa đổi, chỉ dẫn, hoặc thông tin cá nhân.\n\n"
-                f"Tin nhắn người dùng: {user_message}\n\n"
-                "Trả về JSON array (hoặc mảng rỗng [] nếu không có gì đáng nhớ):\n"
-                '[{"type": "preference|correction|instruction|fact", "content": "..."}]\n\n'
-                "QUAN TRỌNG: Chỉ trả về JSON, không thêm gì khác."
+                "Trích xuất sở thích, sửa đổi, chỉ dẫn hoặc thông tin cá nhân từ tin nhắn người dùng.\n\n"
+                f"Tin nhắn: {user_message}\n\n"
+                "Trả về JSON array: "
+                '[{"type": "preference|correction|instruction|fact", "content": "..."}]'
             )
 
-            result = await ai_provider.chat(
-                [{"role": "user", "content": extraction_prompt}],
-                context=[],
-                citations=[],
-            )
+            result = await ai_provider.chat([{"role": "user", "content": extraction_prompt}], context=[], citations=[])
             text = result.get("answer", "")
             if not text:
                 return
 
             json_start = text.find("[")
             json_end = text.rfind("]") + 1
-            if json_start < 0 or json_end <= json_start:
-                return
-
-            memories = json.loads(text[json_start:json_end])
-            for m in memories:
-                if isinstance(m, dict) and m.get("content") and m.get("type"):
-                    content = str(m["content"]).strip()
-                    memory_type = str(m["type"]).strip()
-                    if content and memory_type in ("preference", "correction", "instruction", "fact"):
-                        self.add_memory(user_id, memory_type, content)
+            if json_start >= 0 and json_end > json_start:
+                memories = json.loads(text[json_start:json_end])
+                for m in memories:
+                    if isinstance(m, dict) and m.get("content") and m.get("type"):
+                        await self.add_memory(user_id, str(m["type"]), str(m["content"]))
 
         except Exception as e:
-            logger.warning("Memory extraction failed: %s", e, exc_info=True)
+            logger.warning("Memory extraction failed: %s", e)

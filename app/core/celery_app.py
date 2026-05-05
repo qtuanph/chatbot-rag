@@ -34,8 +34,8 @@ from celery import Celery
 from app.core.config import settings
 
 _ALL_MODULES = [
-    "app.workers.upload_pipeline",
-    "app.workers.cleanup_pipeline",
+    "app.workers.upload_tasks",
+    "app.workers.cleanup_tasks",
     "app.workers.chat_tasks",
     "app.workers.maintenance_tasks",
     "app.workers.memory_tasks",
@@ -70,9 +70,9 @@ celery_app.conf.update(
     result_expires=settings.celery_result_expires,
     # ── Queue routing ─────────────────────────────────────────────────────────
     task_routes={
-        "app.workers.upload_pipeline.parse_document_task": {"queue": "ingestion"},
-        "app.workers.cleanup_pipeline.delete_document_task": {"queue": "cleanup"},
-        "app.workers.cleanup_pipeline.cleanup_old_chat_sessions_task": {"queue": "cleanup"},
+        "app.workers.upload_tasks.parse_document_task": {"queue": "ingestion"},
+        "app.workers.cleanup_tasks.delete_document_task": {"queue": "cleanup"},
+        "app.workers.cleanup_tasks.cleanup_old_chat_sessions_task": {"queue": "cleanup"},
         "app.workers.chat_tasks.save_chat_message_task": {"queue": "default"},
         "app.workers.maintenance_tasks.rebuild_bm25_index_task": {"queue": "ingestion"},
         "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task": {"queue": "cleanup"},
@@ -87,7 +87,7 @@ celery_app.conf.update(
     # ── Beat schedule (periodic tasks) ────────────────────────────────────────
     beat_schedule={
         "cleanup-old-chat-sessions": {
-            "task": "app.workers.cleanup_pipeline.cleanup_old_chat_sessions_task",
+            "task": "app.workers.cleanup_tasks.cleanup_old_chat_sessions_task",
             "schedule": 86400.0,  # Every 24 hours
         },
         "cleanup-orphaned-vectors": {

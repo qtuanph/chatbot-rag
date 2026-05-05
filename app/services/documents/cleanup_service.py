@@ -26,18 +26,8 @@ class CleanupService:
         self.doc_repo = doc_repo
         self.section_repo = section_repo
 
-    def hard_delete_document(self, document_id: str) -> dict[str, bool]:
-        """
-        Hard-delete a document and all related artifacts.
-
-        Deletion order (important — do not reorder):
-          1. Mark deleted in registry first → /status reflects 'deleted' immediately
-          2. Delete vectors from Qdrant → retrieval stops working
-          3. Delete sections from PostgreSQL
-          4. Delete file from object storage (RustFS/S3)
-          5. Delete DB row → record gone
-          6. Purge all registry keys → cleanup Redis last
-        """
+    async def hard_delete_document(self, document_id: str) -> dict[str, bool]:
+        """Hard-delete document and all artifacts. Order: Vectors → Sections → File → DB → Registry."""
         storage = build_storage()
         vector_store = QdrantVectorStore(
             url=settings.qdrant_url,
@@ -47,109 +37,32 @@ class CleanupService:
             timeout=settings.qdrant_timeout,
         )
 
-        object_uri: str | None = None
-        db_deleted = False
-        storage_deleted = False
-        vectors_deleted = False
-        registry_deleted = False
-        sections_deleted = False
-        critical_errors: list[str] = []
+        record = await registry.get_by_document_id(document_id)
+        object_uri = record.object_uri if record else None
+        if not object_uri:
+            doc = await self.doc_repo.get_full_document(document_id)
+            object_uri = doc.get("file_path") if doc else None
 
-        record = registry.get_by_document_id(document_id)
+        # ── Execution (Direct, no silent fallbacks) ────────────────
+        # Vector store delete is currently sync (qdrant-client)
+        await asyncio.to_thread(vector_store.delete, document_id)
+        
+        await self.section_repo.delete_sections(document_id)
 
-        # ── Step 1: Mark deleted in registry FIRST ───────────────────────────────
-        try:
-            registry.delete(document_id)
-        except Exception:
-            logger.warning("Failed to mark registry deleted for document %s", document_id, exc_info=True)
+        if object_uri:
+            await asyncio.to_thread(storage.delete_object, object_uri)
 
-        # ── Step 2: Delete vectors ───────────────────────────────────────────────
-        try:
-            vector_store.delete(document_id)
-            vectors_deleted = True
-        except Exception:
-            critical_errors.append("vectors")
-            logger.warning("Failed to delete vectors for document %s", document_id, exc_info=True)
+        db_deleted = await self.doc_repo.hard_delete(document_id)
 
-        # ── Step 3: Delete sections from PostgreSQL ──────────────────────────────
-        try:
-            count = self.section_repo.delete_sections(document_id)
-            sections_deleted = True
-            if count > 0:
-                logger.info("Deleted %d sections for document %s", count, document_id)
-        except Exception:
-            critical_errors.append("sections")
-            logger.warning("Failed to delete sections for document %s", document_id, exc_info=True)
+        if record:
+            await asyncio.to_thread(celery_app.backend.delete, record.task_id)
 
-        # ── Step 4: Delete file from object storage ─────────────────────────────
-        if record is not None:
-            object_uri = record.object_uri
-        if object_uri is None:
-            doc = self.doc_repo.get_full_document(document_id)
-            if doc is not None:
-                object_uri = doc.get("file_path")
-
-        if object_uri and hasattr(storage, "delete_object"):
-            try:
-                storage.delete_object(object_uri)
-                storage_deleted = True
-            except Exception:
-                logger.warning(
-                    "Failed to delete object storage file for document %s",
-                    document_id,
-                    exc_info=True,
-                )
-
-        # ── Step 5: Delete DB row ────────────────────────────────────────────────
-        try:
-            db_deleted = self.doc_repo.hard_delete(document_id)
-        except Exception:
-            critical_errors.append("db_row")
-            logger.warning("Failed to delete DB row for document %s", document_id, exc_info=True)
-
-        # ── Step 6: Purge Celery result + all Redis registry keys ────────────────
-        if record is not None:
-            try:
-                celery_app.backend.delete(record.task_id)
-            except Exception:
-                logger.warning(
-                    "Failed to delete Celery backend result for document %s",
-                    document_id,
-                    exc_info=True,
-                )
-
-        registry.purge(document_id)
-        registry_deleted = True
-
-        # Invalidate cached doc IDs so next chat request no longer sees deleted doc
+        await registry.purge_async(document_id)
+        
         from app.services.retrieval.retrieval_service import invalidate_doc_ids_cache
+        await invalidate_doc_ids_cache()
 
-        invalidate_doc_ids_cache()
+        from app.workers.maintenance_tasks import rebuild_bm25_index_task
+        rebuild_bm25_index_task.delay()
 
-        # Rebuild BM25 index — IDF values changed after document removal
-        try:
-            from app.workers.maintenance_tasks import rebuild_bm25_index_task
-
-            rebuild_bm25_index_task.delay()
-            logger.info("BM25 index rebuild dispatched after deleting document %s", document_id)
-        except Exception:
-            logger.warning(
-                "BM25 rebuild dispatch failed after deleting document %s",
-                document_id,
-                exc_info=True,
-            )
-
-        # Critical failure: both DB row and vectors failed → document is in broken state
-        if "db_row" in critical_errors and "vectors" in critical_errors:
-            raise RuntimeError(
-                f"Hard-delete partially failed for {document_id}: {', '.join(critical_errors)}. "
-                "Document is in an inconsistent state."
-            )
-
-        return {
-            "db_deleted": db_deleted,
-            "sections_deleted": sections_deleted,
-            "storage_deleted": storage_deleted,
-            "vectors_deleted": vectors_deleted,
-            "registry_deleted": registry_deleted,
-        }
+        return {"deleted": db_deleted, "document_id": document_id}

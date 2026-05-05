@@ -8,15 +8,18 @@ import jwt
 
 from app.core.config import settings
 from app.core import http_errors
-from app.db.session import SessionLocal
-from app.models.auth import Role, User
+import redis.asyncio as redis
 from app.utils.token_blacklist import TokenBlacklist
-
-import redis as redis_lib
+from app.core.hardware import hardware
 
 # Module-level singletons — reuse Redis connections across requests
+_pool = redis.ConnectionPool.from_url(
+    settings.redis_url, 
+    decode_responses=True,
+    max_connections=hardware.redis_pool_size
+)
+_redis_client = redis.Redis(connection_pool=_pool)
 _blacklist = TokenBlacklist()
-_redis_client = redis_lib.Redis.from_url(settings.redis_url, decode_responses=True)
 
 
 @dataclass(frozen=True)
@@ -27,7 +30,7 @@ class AuthContext:
     request_id: str = ""
 
 
-def get_auth_context(
+async def get_auth_context(
     request: Request,
     authorization: str | None = Header(default=None),
 ) -> AuthContext | None:
@@ -49,21 +52,12 @@ def get_auth_context(
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         token_id = str(payload["jti"])
-        if _blacklist.is_revoked(token_id):
+        if await _blacklist.is_revoked(token_id):
             raise http_errors.unauthorized("Token revoked")
 
-        # Get role from JWT payload (embedded at login to avoid DB query per request)
-        role_name = payload.get("role", "")
+        role_name = payload.get("role")
         if not role_name:
-            # Fallback: query DB for legacy tokens without role claim
-            with SessionLocal() as session:
-                user = session.get(User, str(payload["sub"]))
-                if user is None or not user.is_active:
-                    raise http_errors.unauthorized("Invalid token")
-                role = session.get(Role, user.role_id)
-                if role is None:
-                    raise http_errors.unauthorized("Invalid token")
-                role_name = role.name
+            raise http_errors.unauthorized("Invalid token: missing role")
 
         return AuthContext(
             user_id=str(payload["sub"]),
@@ -75,7 +69,7 @@ def get_auth_context(
         raise http_errors.unauthorized("Invalid token") from None
 
 
-def require_admin(request: Request, auth: AuthContext | None = Depends(get_auth_context)) -> AuthContext:
+async def require_admin(request: Request, auth: AuthContext | None = Depends(get_auth_context)) -> AuthContext:
     """
     Require admin role.
     Allows OPTIONS requests to pass through for CORS preflight.
@@ -92,102 +86,74 @@ def require_admin(request: Request, auth: AuthContext | None = Depends(get_auth_
     return auth
 
 
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.session import AsyncSessionLocal, get_async_session
+
 # ── Repository factories ───────────────────────────────────────────────
 
-
-def get_auth_repo() -> Generator:
+async def get_auth_repo(session: AsyncSession = Depends(get_async_session)):
     from app.repositories.auth_repository import AuthRepository
+    return AuthRepository(session)
 
-    with SessionLocal() as session:
-        yield AuthRepository(session)
-
-
-def get_chat_repo() -> Generator:
+async def get_chat_repo(session: AsyncSession = Depends(get_async_session)):
     from app.repositories.chat_repository import ChatRepository
+    return ChatRepository(session)
 
-    with SessionLocal() as session:
-        yield ChatRepository(session)
-
-
-def get_analytics_repo() -> Generator:
+async def get_analytics_repo(session: AsyncSession = Depends(get_async_session)):
     from app.repositories.analytics_repository import AnalyticsRepository
+    return AnalyticsRepository(session)
 
-    with SessionLocal() as session:
-        yield AnalyticsRepository(session)
-
-
-def get_memory_repo() -> Generator:
+async def get_memory_repo(session: AsyncSession = Depends(get_async_session)):
     from app.repositories.memory_repository import MemoryRepository
+    return MemoryRepository(session)
 
-    with SessionLocal() as session:
-        yield MemoryRepository(session)
-
-
-def get_doc_repo() -> Generator:
+async def get_doc_repo(session: AsyncSession = Depends(get_async_session)):
     from app.repositories.document_repository import DocumentRepository
+    return DocumentRepository(session)
 
-    with SessionLocal() as session:
-        yield DocumentRepository(session)
-
-
-def get_section_repo() -> Generator:
+async def get_section_repo(session: AsyncSession = Depends(get_async_session)):
     from app.repositories.section_repository import SectionRepository
-
-    with SessionLocal() as session:
-        yield SectionRepository(session)
-
+    return SectionRepository(session)
 
 # ── Service factories ──────────────────────────────────────────────────
 
-
-def get_auth_service(repo=Depends(get_auth_repo)):
+async def get_auth_service(repo=Depends(get_auth_repo)):
     from app.services.auth.auth_service import AuthService
-
     return AuthService(repo=repo, blacklist=_blacklist)
 
-
-def get_chat_service(repo=Depends(get_chat_repo)):
+async def get_chat_service(repo=Depends(get_chat_repo), memory_repo=Depends(get_memory_repo)):
     from app.services.chat.chat_service import ChatService
     from app.services.chat.user_memory_service import UserMemoryService
     from app.utils.chat_store import ChatStore
 
-    user_memory_service = UserMemoryService(redis_client=_redis_client)
+    user_memory_service = UserMemoryService(redis_client=_redis_client, memory_repo=memory_repo)
     return ChatService(repo=repo, store=ChatStore(), user_memory_service=user_memory_service)
 
-
-def get_analytics_service(repo=Depends(get_analytics_repo)):
+async def get_analytics_service(repo=Depends(get_analytics_repo)):
     from app.services.analytics.analytics_service import AnalyticsService
-
     return AnalyticsService(repo=repo)
 
-
-def get_memory_service(memory_repo=Depends(get_memory_repo)):
+async def get_memory_service(memory_repo=Depends(get_memory_repo)):
     from app.services.chat.memory_service import MemoryService
     from app.services.chat.user_memory_service import UserMemoryService
 
-    user_memory_service = UserMemoryService(redis_client=_redis_client)
+    user_memory_service = UserMemoryService(redis_client=_redis_client, memory_repo=memory_repo)
     return MemoryService(repo=memory_repo, user_memory_service=user_memory_service)
 
-
-def get_document_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
+async def get_document_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
     from app.services.documents.document_service import DocumentService
-
     return DocumentService(doc_repo=doc_repo, section_repo=section_repo)
 
-
-def get_tree_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
+async def get_tree_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
     from app.services.documents.tree_service import TreeService
-
     return TreeService(doc_repo=doc_repo, section_repo=section_repo)
 
-
-def get_health_service():
+async def get_health_service():
     from app.services.system.health_service import HealthService
-
     return HealthService()
 
 
-def get_cleanup_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
+async def get_cleanup_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
     from app.services.documents.cleanup_service import CleanupService
 
     return CleanupService(doc_repo=doc_repo, section_repo=section_repo)

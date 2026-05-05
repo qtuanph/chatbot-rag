@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, File, Request, UploadFile, status
 
 from app.api.deps import AuthContext, get_document_service, require_admin
@@ -79,11 +81,11 @@ async def upload_document(
     from uuid import uuid4
 
     document_id = str(uuid4())
-    duplicate, next_version, sha256 = service.check_duplicate(content, file.filename)
+    duplicate, next_version, sha256 = await service.check_duplicate(content, file.filename)
     if duplicate is not None:
         raise http_errors.conflict("Document already exists")
 
-    task_id = service.create_and_enqueue(
+    task_id = await service.create_and_enqueue(
         document_id=document_id,
         filename=file.filename,
         content=content,
@@ -106,7 +108,7 @@ async def get_status(
     ):
         raise http_errors.too_many_requests("Too many status requests")
 
-    result = service.get_task_status(task_id)
+    result = await service.get_task_status(task_id)
     return TaskStatusResponse(
         task_id=result["task_id"],
         status=result["status"],
@@ -133,7 +135,7 @@ async def list_documents(
     ):
         raise http_errors.too_many_requests("Too many document list requests")
 
-    result = service.list_documents(offset=offset, limit=limit)
+    result = await service.list_documents(offset=offset, limit=limit)
     items = [
         DocumentSummaryResponse(
             document_id=row["document_id"],
@@ -159,7 +161,7 @@ async def get_document_detail(
     document_id: str, _auth=Depends(require_admin), service: DocumentService = Depends(get_document_service)
 ) -> DocumentDetailResponse:
     try:
-        doc = service.get_document_detail(document_id)
+        doc = await service.get_document_detail(document_id)
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None
     return DocumentDetailResponse(
@@ -175,7 +177,7 @@ async def get_document_detail(
         progress_percent=doc["progress_percent"],
         status_message=doc["status_message"],
         parse_error=doc["parse_error"],
-        metadata=doc["extra_metadata"],
+        metadata=doc["artifact_metadata"],
         deleted_at=doc["deleted_at"],
         created_at=doc["created_at"],
         updated_at=doc["updated_at"],
@@ -190,14 +192,13 @@ async def delete_document(
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentDeleteResponse:
     try:
-        return DocumentDeleteResponse(
-            **service.delete_document(
-                document_id=document_id,
-                user_id=_auth.user_id,
-                ip_address=request.client.host if request.client else None,
-                user_agent=request.headers.get("user-agent"),
-            )
+        result = await service.delete_document(
+            document_id=document_id,
+            user_id=_auth.user_id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
         )
+        return DocumentDeleteResponse(**result)
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None
     except RuntimeError as e:
@@ -212,14 +213,13 @@ async def retry_document(
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentRetryResponse:
     try:
-        return DocumentRetryResponse(
-            **service.retry_document(
-                document_id=document_id,
-                user_id=auth.user_id,
-                ip_address=request.client.host if request.client else None,
-                user_agent=request.headers.get("user-agent"),
-            )
+        result = await service.retry_document(
+            document_id=document_id,
+            user_id=auth.user_id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
         )
+        return DocumentRetryResponse(**result)
     except ValueError as e:
         msg = str(e)
         if "not found" in msg:

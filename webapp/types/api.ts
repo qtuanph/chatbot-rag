@@ -71,6 +71,7 @@ export interface ChatMessageItem {
   role: "user" | "assistant";
   content: string;
   citations: Citation[];
+  feedback: number; // 1 for like, -1 for dislike, 0 for none
   created_at: string;
 }
 

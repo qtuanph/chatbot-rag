@@ -7,6 +7,7 @@ Tự động tính toán optimal settings cho uvicorn, Celery, embedding.
 
 import logging
 import multiprocessing
+import torch
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -27,14 +28,9 @@ def _detect_ram_gb() -> float:
 
 def _detect_gpu_vram_gb() -> float:
     """Detect total GPU VRAM in GB (first GPU only)."""
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            props = torch.cuda.get_device_properties(0)
-            return round(props.total_memory / 1024**3, 1)
-    except (ImportError, RuntimeError):
-        pass
+    if torch.cuda.is_available():
+        props = torch.cuda.get_device_properties(0)
+        return round(props.total_memory / 1024**3, 1)
     return 0.0
 
 
@@ -54,6 +50,10 @@ class HardwareProfile:
         embed_parallelism:      Parallel embedding API calls
         db_pool_size:           SQLAlchemy pool_size (per worker)
         db_max_overflow:        SQLAlchemy max_overflow
+        qdrant_hnsw_m:          HNSW connectivity (higher = better recall, more RAM)
+        qdrant_hnsw_ef:         HNSW accuracy during search
+        qdrant_quantization:    Whether to enable Scalar Quantization
+        redis_pool_size:        Optimal Redis connection pool size
     """
 
     cpu_count: int
@@ -66,6 +66,10 @@ class HardwareProfile:
     embed_parallelism: int
     db_pool_size: int
     db_max_overflow: int
+    qdrant_hnsw_m: int
+    qdrant_hnsw_ef: int
+    qdrant_quantization: bool
+    redis_pool_size: int
 
     @classmethod
     def detect(cls) -> "HardwareProfile":
@@ -86,16 +90,8 @@ class HardwareProfile:
         """
         cpu = multiprocessing.cpu_count()
         ram = _detect_ram_gb()
-        gpu = 0
-        vram = 0.0
-        try:
-            import torch
-
-            gpu = torch.cuda.device_count()
-            if gpu > 0:
-                vram = _detect_gpu_vram_gb()
-        except ImportError:
-            pass
+        gpu = torch.cuda.device_count()
+        vram = _detect_gpu_vram_gb() if gpu > 0 else 0.0
 
         # VRAM headroom: total VRAM minus what embedding + reranker need (~2GB)
         vram_headroom = (vram - 2.0) if gpu > 0 else 0.0
@@ -123,6 +119,21 @@ class HardwareProfile:
         db_pool_size = max(10, uvicorn_workers * 5)
         db_max_overflow = db_pool_size
 
+        # Qdrant Optimization (RAM & GPU aware)
+        # High-end: m=32, ef=256, quantization=True (accurate & fast)
+        # Low-end:  m=16, ef=128, quantization=True (memory efficient)
+        if ram >= 32.0 or vram_headroom >= 12.0:
+            qdrant_hnsw_m = 32
+            qdrant_hnsw_ef = 256
+        else:
+            qdrant_hnsw_m = 16
+            qdrant_hnsw_ef = 128
+        
+        qdrant_quantization = ram < 64.0  # Always use SQ unless we have massive RAM
+
+        # Redis pool: shared across async tasks in a worker
+        redis_pool_size = max(20, uvicorn_workers * 10)
+
         profile = cls(
             cpu_count=cpu,
             ram_gb=ram,
@@ -134,6 +145,10 @@ class HardwareProfile:
             embed_parallelism=embed_parallelism,
             db_pool_size=db_pool_size,
             db_max_overflow=db_max_overflow,
+            qdrant_hnsw_m=qdrant_hnsw_m,
+            qdrant_hnsw_ef=qdrant_hnsw_ef,
+            qdrant_quantization=qdrant_quantization,
+            redis_pool_size=redis_pool_size,
         )
 
         # Print diagnostic banner
@@ -163,7 +178,7 @@ class HardwareProfile:
             celery_concurrency,
             f"{celery_concurrency}-{celery_autoscale_max}",
             embed_parallelism,
-            f"{db_pool_size}+{db_max_overflow}",
+            f"{db_pool_size}+{db_max_overflow} (Redis: {redis_pool_size})",
         )
         return profile
 

@@ -13,7 +13,7 @@ throttle = RequestThrottle()
 
 
 @router.get("/analytics/stats")
-def get_analytics_stats(
+async def get_analytics_stats(
     auth: AuthContext = Depends(get_auth_context),
     service: AnalyticsService = Depends(get_analytics_service),
 ) -> dict:
@@ -24,4 +24,4 @@ def get_analytics_stats(
         raise http_errors.too_many_requests("Too many requests. Please wait.")
 
     is_admin = auth.role == "admin"
-    return service.get_stats(is_admin=is_admin, user_id=auth.user_id)
+    return await service.get_stats(is_admin=is_admin, user_id=auth.user_id)

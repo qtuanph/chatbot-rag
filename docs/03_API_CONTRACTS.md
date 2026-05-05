@@ -54,6 +54,7 @@ Applied via `next.config.ts` `headers()` on all routes:
 | `PATCH /memories/{id}` | 20/min per user | `throttle:memory:update:{user_id}` |
 | `DELETE /memories/{id}` | 20/min per user | `throttle:memory:delete:{user_id}` |
 | `POST /chat/stream` | 30/min per user | existing chat throttle |
+| `POST /chat/messages/{id}/feedback` | 60/min per user | `throttle:feedback:{user_id}` |
 | `GET /analytics/stats` | 60/min per user | `throttle:analytics:{user_id}` |
 | SSE endpoint | nginx rate limit 100r/s burst=20 | nginx limit_req zone |
 
@@ -72,7 +73,7 @@ Applied via `next.config.ts` `headers()` on all routes:
 | HTTP status codes | Use `status.HTTP_*` constants, not raw numbers |
 | API layer errors | Use `app/core/http_errors.py` helpers, not direct HTTPException |
 | Service exceptions | Services raise `ValueError`/`RuntimeError` only — routes catch and translate to `http_errors.*` |
-| Route responsibility | Routes handle HTTP concerns only (SSE streaming, rate limiting, response formatting). ChatService.prepare_chat() handles full orchestration |
+| Route responsibility | Routes handle HTTP concerns only (auth, rate limiting, request parsing, response formatting). ChatService owns chat preparation, provider orchestration, and message persistence. |
 
 ## Upload Contract
 
@@ -100,13 +101,7 @@ Request:
 { "query": "question text", "session_id": "optional-session-id" }
 ```
 
-Non-streaming response:
-
-```json
-{ "session_id": "session-id", "answer": "grounded answer text", "citations": [] }
-```
-
-Streaming: SSE with `{"chunk": "...", "done": false}` chunks, final `{"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "chunks", "chars", "prompt_tokens", "completion_tokens", "total_tokens", "model_used", "estimated_cost_usd"}}`.
+Streaming only: SSE with `{"chunk": "...", "done": false}` chunks, final `{"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "chunks", "chars", "prompt_tokens", "completion_tokens", "total_tokens", "model", "estimated_cost_usd"}}`.
 
 ## Error Response Envelope
 
@@ -143,7 +138,7 @@ Validation: username 3-64 chars (normalized lowercase + trim), password 8-256 ch
 |--------|------|------|-------|
 | POST | `/upload` | Admin | multipart/form-data field `file` → `{task_id, document_id}` 202. Multi-file parallel supported |
 | GET | `/status/{task_id}` | JWT | Poll pipeline status |
-| GET | `/documents` | Member | List documents (excludes soft-deleted) |
+| GET | `/documents` | Admin | List documents (excludes soft-deleted) |
 | GET | `/documents/{document_id}` | Admin | Document detail |
 | DELETE | `/documents/{document_id}` | Admin | Trigger hard-delete worker |
 | POST | `/documents/{document_id}/retry` | Admin | Re-process failed document → task_id |
@@ -152,11 +147,11 @@ Validation: username 3-64 chars (normalized lowercase + trim), password 8-256 ch
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| POST | `/chat` | Member | Non-streaming, strip_reasoning() applied |
 | POST | `/chat/stream` | Member | SSE stream, thinkingConfig MINIMAL |
 | POST | `/chat/sessions` | Member | Create empty session → `{session_id, title, ...}` |
 | GET | `/chat/sessions` | Member | Sessions ordered by `updated_at DESC` |
 | GET | `/chat/messages?session_id=...` | Member | Messages ordered by `created_at ASC`, pagination with limit/offset |
+| POST | `/chat/messages/{message_id}/feedback` | Member | Record Like/Dislike feedback for a message |
 
 Chat features:
 - Session default: empty "Chat mới" on page load, sidebar for history
@@ -164,7 +159,7 @@ Chat features:
 - Multi-turn: last 20 messages as Gemini contents array
 - Memory injection: active memories → systemInstruction
 - Memory extraction: Celery extract_memories_task (queue=default) post-response via provider singleton → user_memories — durable, survives API restart
-- Token tracking: usageMetadata from Gemini → persisted via Celery save_chat_message_task (async) to ChatMessage + frontend stats bar
+- Token tracking: usageMetadata from Gemini → persisted synchronously before final SSE completion to ChatMessage + frontend stats bar
 - Cost estimation: Configurable pricing via `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0 for free tier)
 - Input validation: nh3 HTML sanitization for query input
 - SSE abort: Frontend AbortController cancels stream on unmount/new message
@@ -250,7 +245,7 @@ Rate limit: 60/min per user. Throttle key: `throttle:analytics:{user_id}`.
 | Auth model | Unchanged | Unchanged |
 | Retrieval pipeline | Unchanged | Unchanged |
 
-Provider abstraction normalizes request/response so `/chat` stays unchanged across phases.
+Provider abstraction normalizes request/response so `/chat/stream` stays unchanged across phases.
 
 ## Version Conflict Resolution
 

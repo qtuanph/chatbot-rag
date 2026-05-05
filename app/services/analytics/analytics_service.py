@@ -12,11 +12,11 @@ class AnalyticsService:
     def __init__(self, repo: AnalyticsRepository) -> None:
         self.repo = repo
 
-    def get_stats(self, *, is_admin: bool, user_id: str) -> dict:
+    async def get_stats(self, *, is_admin: bool, user_id: str) -> dict:
         """Get aggregated token/cost/latency stats, scoped by role."""
-        totals = self.repo.get_totals(is_admin, user_id)
-        total_sessions = self.repo.get_distinct_session_count(is_admin, user_id)
-        daily_rows = self.repo.get_daily_stats(is_admin, user_id, days_limit=30)
+        totals = await self.repo.get_totals(is_admin, user_id)
+        total_sessions = await self.repo.get_distinct_session_count(is_admin, user_id)
+        daily_rows = await self.repo.get_daily_stats(is_admin, user_id, days_limit=30)
 
         total_tokens_in = totals["tokens_in"]
         total_tokens_out = totals["tokens_out"]

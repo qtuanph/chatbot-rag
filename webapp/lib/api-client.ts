@@ -135,6 +135,12 @@ export const chatApi = {
     apiFetch<{ messages: ChatMessageItem[]; total: number; has_more: boolean }>(
       `/chat/messages?session_id=${encodeURIComponent(sessionId)}&limit=${limit}&offset=${offset}`
     ),
+
+  setMessageFeedback: (messageId: string, feedback: number): Promise<{ message_id: string; feedback: number }> =>
+    apiFetch<{ message_id: string; feedback: number }>(`/chat/messages/${messageId}/feedback`, {
+      method: "POST",
+      body: JSON.stringify({ feedback }),
+    }),
 };
 
 // --- Documents ---

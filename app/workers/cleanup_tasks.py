@@ -4,13 +4,12 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from celery.exceptions import SoftTimeLimitExceeded
-from sqlalchemy import delete as sa_delete
 
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.models.chat import ChatSession
-from app.models.document import Document
+from app.repositories.chat_repository import ChatRepository
+from app.repositories.document_repository import DocumentRepository
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,8 @@ def _verify_deletion(
     qdrant_count = vector_store.count(document_id)
     file_gone = (not storage.file_exists(file_path)) if file_path else True
     with SessionLocal() as session:
-        db_gone = session.get(Document, document_id) is None
+        doc_repo = DocumentRepository(session)
+        db_gone = doc_repo.get_full_document(document_id) is None
 
     result = {
         "qdrant_vectors_remaining": qdrant_count,
@@ -59,7 +59,7 @@ def _verify_deletion(
 
 
 @celery_app.task(
-    name="app.workers.cleanup_pipeline.delete_document_task",
+    name="app.workers.cleanup_tasks.delete_document_task",
     bind=True,
     acks_late=True,
     autoretry_for=(ConnectionError, TimeoutError),
@@ -93,15 +93,13 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
         from app.repositories.section_repository import SectionRepository
 
         storage = build_storage()
-        file_path: str | None = None
-        with SessionLocal() as session:
-            doc = session.get(Document, document_id)
-            if doc is not None:
-                file_path = doc.file_path
-
         with SessionLocal() as session:
             doc_repo = DocumentRepository(session)
             section_repo = SectionRepository(session)
+
+            doc_info = doc_repo.get_full_document(document_id)
+            file_path = doc_info.get("file_path") if doc_info else None
+
             cleanup_svc = CleanupService(doc_repo=doc_repo, section_repo=section_repo)
             cleanup_result = cleanup_svc.hard_delete_document(document_id)
 
@@ -133,7 +131,7 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
 
 
 @celery_app.task(
-    name="app.workers.cleanup_pipeline.cleanup_old_chat_sessions_task",
+    name="app.workers.cleanup_tasks.cleanup_old_chat_sessions_task",
     acks_late=True,
     ignore_result=True,  # Fire-and-forget beat task — no result stored
 )
@@ -147,12 +145,8 @@ def cleanup_old_chat_sessions_task() -> dict:
     logger.info("Cleaning up chat sessions older than %s (TTL=%d days)", cutoff, settings.chat_session_ttl_days)
 
     with SessionLocal() as session:
-        stmt = sa_delete(ChatSession).where(
-            ChatSession.created_at < cutoff,
-        )
-        result = session.execute(stmt)
-        session.commit()
-        count = result.rowcount
+        chat_repo = ChatRepository(session)
+        count = chat_repo.delete_sessions_older_than(cutoff)
 
     logger.info("Cleaned up %d old chat sessions", count)
     return {"deleted_count": count, "cutoff": cutoff.isoformat()}

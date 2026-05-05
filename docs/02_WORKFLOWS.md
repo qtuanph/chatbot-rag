@@ -12,7 +12,7 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant Redis
     participant Worker as butler (GPU)
-    participant Pipeline as IngestionService
+    participant Pipeline as DoclingParser
     participant Refiner as Rule-Based Refiner
     participant Qdrant
 
@@ -20,7 +20,7 @@ sequenceDiagram
     API->>API: validate auth and size
     API->>RustFS: store file
     API->>DB: INSERT document (status=pending)
-    API->>Redis: enqueue parse_document_task (queue=ingestion)
+    API->>Redis: enqueue parse_document_task (queue=ingestion, app.workers.upload_tasks)
     API-->>Browser: 202 { task_id }
 
     Redis->>Worker: dequeue (ack_late=True)
@@ -100,9 +100,9 @@ sequenceDiagram
         Provider-->>ChatSvc: text chunk (thought:true parts filtered)
         ChatSvc-->>Browser: SSE data: {"chunk": "...", "done": false}
     end
-    ChatSvc->>DB: save_message_now() — synchronous save assistant message to PostgreSQL + Redis
+    ChatSvc->>DB: save_assistant_message() — synchronous save assistant message to PostgreSQL + Redis
     ChatSvc->>Redis: enqueue extract_memories_task (queue=default) — async memory extraction via Celery (replaces asyncio.create_task)
-    ChatSvc-->>Browser: SSE data: {"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "tokens", "model_used", "estimated_cost_usd"}}
+    ChatSvc-->>Browser: SSE data: {"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "tokens", "model", "estimated_cost_usd"}}
 ```
 
 ### Chat Invariants
@@ -114,7 +114,7 @@ sequenceDiagram
 | 4-stage retrieval | Hybrid search (dense + BM25 RRF fusion in Qdrant) → section grouping (≥0.30) → cross-encoder reranking (top 5) → context assembly with citations |
 | Citation required | Return citation payload for every grounded answer |
 | Rate limiting | Atomic Lua script — 30 req/min per user |
-| Provider swap safety | Chat route stays provider-agnostic via adapter |
+| Provider swap safety | Chat route never calls provider factories/adapters. ChatService owns provider orchestration via the adapter boundary. |
 | Multi-turn | Last 20 messages via Gemini contents array (assistant→model) |
 | Memory injection | User memories loaded from Redis/PostgreSQL, injected into systemInstruction |
 | Memory extraction | Celery task (extract_memories_task, queue=default) post-response: heuristic triggers + Gemini → user_memories |
@@ -124,7 +124,7 @@ sequenceDiagram
 | Token tracking | Gemini usageMetadata captured: prompt_tokens, completion_tokens, model_used persisted to ChatMessage |
 | Cost estimation | Configurable via `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0 for free tier) |
 | Async task tracking | Memory extraction dispatched via Celery (extract_memories_task) — durable, survives API restart |
-| Async message save | Assistant message persisted synchronously via save_message_now() before done:true event — ensures message never lost on browser close. User message saved synchronously in prepare_chat() before streaming starts |
+| Message save | Assistant message persisted synchronously via `ChatService.save_assistant_message()` before done:true event — ensures message never lost on browser close. User message saved synchronously in prepare_chat() before streaming starts |
 | Frontend SSE abort | AbortController cancels stream on unmount or new message |
 | Session default | Empty "Chat mới" on page load, sidebar for history |
 
@@ -141,7 +141,7 @@ sequenceDiagram
     participant DB
 
     Client->>API: DELETE /api/v1/documents/{document_id}
-    API->>Redis: enqueue delete_document_task (queue=cleanup)
+    API->>Redis: enqueue delete_document_task (queue=cleanup, app.workers.cleanup_tasks)
     API-->>Client: 202 accepted
 
     Cleanup->>Cleanup: CleanupService orchestrates 6-step hard delete

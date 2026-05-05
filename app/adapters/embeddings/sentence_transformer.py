@@ -48,38 +48,16 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         self._model = self._load_model()
 
     def _load_model(self):
-        """Load SentenceTransformer model onto GPU (fp16) if available, else CPU with ONNX backend."""
-        try:
-            from sentence_transformers import SentenceTransformer  # type: ignore
-        except ImportError:
-            raise ImportError("sentence-transformers is not installed. " "Run: pip install sentence-transformers")
+        """Load model onto GPU (fp16) if available, else CPU with ONNX backend."""
+        from sentence_transformers import SentenceTransformer
 
         if hardware.gpu_count > 0:
-            # GPU path: PyTorch fp16 — halves VRAM usage and doubles inference speed.
             model = SentenceTransformer(self.model_name, device="cuda")
             model = model.half()
-            logger.info(
-                "Embedding model loaded: model=%s device=cuda fp16=True dim=%d",
-                self.model_name,
-                model.get_embedding_dimension(),
-            )
+            logger.info("Embedding: CUDA fp16 | %s", self.model_name)
         else:
-            # CPU path: try ONNX backend first (2-3x faster than PyTorch fp32),
-            # fall back to standard PyTorch if ONNX weights unavailable.
-            try:
-                model = SentenceTransformer(self.model_name, backend="onnx")
-                logger.info(
-                    "Embedding model loaded: model=%s device=cpu backend=onnx dim=%d",
-                    self.model_name,
-                    model.get_embedding_dimension(),
-                )
-            except Exception:
-                model = SentenceTransformer(self.model_name, device="cpu")
-                logger.info(
-                    "Embedding model loaded: model=%s device=cpu backend=pytorch dim=%d",
-                    self.model_name,
-                    model.get_embedding_dimension(),
-                )
+            model = SentenceTransformer(self.model_name, backend="onnx")
+            logger.info("Embedding: CPU ONNX | %s", self.model_name)
 
         self._dim = model.get_embedding_dimension()
         return model

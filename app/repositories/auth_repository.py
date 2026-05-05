@@ -1,9 +1,5 @@
-"""Repository for User and Role data access."""
-
-from __future__ import annotations
-
-
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.auth import Role, User
 
@@ -11,50 +7,58 @@ from app.models.auth import Role, User
 class AuthRepository:
     """Data access layer for User and Role models."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    def get_user_by_username(self, username: str, include_hash: bool = False) -> dict | None:
-        row = self.session.query(User).filter(User.username == username).one_or_none()
+    async def get_user_by_username(self, username: str, include_hash: bool = False) -> dict | None:
+        stmt = select(User).where(User.username == username)
+        result = await self.session.execute(stmt)
+        row = result.scalar_one_or_none()
         if row is None:
             return None
         return self._user_to_dict(row) if include_hash else self._user_to_dict_safe(row)
 
-    def get_user_by_id(self, user_id: str, include_hash: bool = False) -> dict | None:
-        row = self.session.get(User, user_id)
+    async def get_user_by_id(self, user_id: str, include_hash: bool = False) -> dict | None:
+        row = await self.session.get(User, user_id)
         if row is None:
             return None
         return self._user_to_dict(row) if include_hash else self._user_to_dict_safe(row)
 
-    def create_user(self, *, username: str, password_hash: str, role_id: str) -> dict:
+    async def create_user(self, *, username: str, password_hash: str, role_id: str) -> dict:
         user = User(username=username, password_hash=password_hash, role_id=role_id)
         self.session.add(user)
-        self.session.commit()
-        self.session.refresh(user)
+        await self.session.commit()
+        await self.session.refresh(user)
         return self._user_to_dict(user)
 
-    def delete_user(self, user_id: str) -> bool:
-        user = self.session.get(User, user_id)
+    async def delete_user(self, user_id: str) -> bool:
+        user = await self.session.get(User, user_id)
         if user is None:
             return False
-        self.session.delete(user)
-        self.session.commit()
+        await self.session.delete(user)
+        await self.session.commit()
         return True
 
-    def get_role_by_name(self, name: str) -> dict | None:
-        row = self.session.query(Role).filter(Role.name == name).one_or_none()
+    async def get_role_by_name(self, name: str) -> dict | None:
+        stmt = select(Role).where(Role.name == name)
+        result = await self.session.execute(stmt)
+        row = result.scalar_one_or_none()
         return self._role_to_dict(row) if row else None
 
-    def get_role_by_id(self, role_id: str) -> dict | None:
-        row = self.session.get(Role, role_id)
+    async def get_role_by_id(self, role_id: str) -> dict | None:
+        row = await self.session.get(Role, role_id)
         return self._role_to_dict(row) if row else None
 
-    def list_roles(self) -> list[dict]:
-        rows = self.session.query(Role).order_by(Role.name.asc()).all()
+    async def list_roles(self) -> list[dict]:
+        stmt = select(Role).order_by(Role.name.asc())
+        result = await self.session.execute(stmt)
+        rows = result.scalars().all()
         return [self._role_to_dict(r) for r in rows]
 
-    def list_users_with_roles(self) -> list[dict]:
-        rows = self.session.query(User, Role).join(Role, User.role_id == Role.id).all()
+    async def list_users_with_roles(self) -> list[dict]:
+        stmt = select(User, Role).join(Role, User.role_id == Role.id)
+        result = await self.session.execute(stmt)
+        rows = result.all()
         return [
             {
                 "id": str(u.id),

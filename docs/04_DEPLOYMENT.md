@@ -90,7 +90,7 @@ Config: `ops/nginx/nginx.conf` | Image: `nginx:stable-alpine3.23-perl`
 | Connection pooling | `keepalive 64` on both upstreams |
 | Rate limiting | `api_limit` 100r/s burst=100, `upload_limit` 2r/s |
 | SSE rate limit | `limit_req zone=api_limit burst=20 nodelay` on SSE endpoint |
-| Proxy failover | `proxy_next_upstream error timeout http_502 http_503` |
+| Proxy failover | `proxy_next_upstream error timeout http_502 http_503` with `proxy_next_upstream_non_idempotent off` so POST/PUT/PATCH/DELETE are not replayed by nginx |
 | WebSocket/HMR | `map $http_upgrade $connection_upgrade` for Next.js hot reload |
 | Upload size | `client_max_body_size 50m` (matches MAX_UPLOAD_SIZE_MB) |
 | Long timeout | `proxy_read_timeout 86400s` for SSE and HMR |
@@ -101,7 +101,7 @@ Config: `ops/nginx/nginx.conf` | Image: `nginx:stable-alpine3.23-perl`
 | Service | Probe |
 |---------|-------|
 | nginx | `/nginx_status` (127.0.0.1 only) |
-| API | `/api/v1/health` (via nginx) |
+| API | `/api/v1/health` (via nginx and container healthcheck) |
 | Workers | celery inspect ping (included in API health payload) |
 | PostgreSQL | pg_isready |
 | Redis | redis-cli ping |

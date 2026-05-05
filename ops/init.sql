@@ -54,7 +54,7 @@ $$ LANGUAGE plpgsql;
 
 -- Roles: admin, member (project-level, not tenant-based)
 CREATE TABLE IF NOT EXISTS roles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     name VARCHAR(50) NOT NULL UNIQUE,
     description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS roles (
 
 -- Users: DB-backed authentication
 CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     role_id UUID NOT NULL REFERENCES roles(id) ON DELETE RESTRICT,
     username VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Documents: uploaded files, parse state, and ingestion metadata
 CREATE TABLE IF NOT EXISTS documents (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     title VARCHAR(500) NOT NULL,
     file_name VARCHAR(500) NOT NULL,
     file_path VARCHAR(1000) NOT NULL,
@@ -103,7 +103,7 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(
 
 -- Chat sessions: conversations per user
 CREATE TABLE IF NOT EXISTS chat_sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     title VARCHAR(500),
     deleted_at TIMESTAMP WITH TIME ZONE,
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
 
 -- Chat messages: Q&A history with citations
 CREATE TABLE IF NOT EXISTS chat_messages (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
     session_id UUID NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
     role VARCHAR(20) NOT NULL,
     content TEXT NOT NULL,
@@ -122,6 +122,8 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     tokens_in INTEGER,
     tokens_out INTEGER,
     latency_ms INTEGER,
+    feedback SMALLINT DEFAULT 0 NOT NULL, -- 0: none, 1: like, -1: dislike
+    vector_ids TEXT[], -- Store Qdrant point IDs used for this response
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );

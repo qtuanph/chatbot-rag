@@ -118,6 +118,7 @@ export function ChatPanel({
               role: m.role,
               content: m.content,
               citations: m.citations?.length ? m.citations : undefined,
+              feedback: m.feedback,
             })),
           );
         }
@@ -162,6 +163,7 @@ export function ChatPanel({
         role: m.role,
         content: m.content,
         citations: m.citations?.length ? m.citations : undefined,
+        feedback: m.feedback,
       }));
 
       setMessages((prev) => [...olderMessages, ...prev]);

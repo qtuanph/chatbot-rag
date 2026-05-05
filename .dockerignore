@@ -1,31 +1,53 @@
+# Version control
 .git
+.gitattributes
+
+# Environment and Secrets
 .env
+*.secrets
+secrets/
+
+# Python
 .venv
-__pycache__
+venv/
+env/
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
-.pytest_cache
-.mypy_cache
-docs
-uploads
-FILEUPLOADTEST
+.pytest_cache/
+.mypy_cache/
+.python-version
+
+# Frontend (Excluded from Backend build context)
+webapp/
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+dist/
+**/dist/
+build/
+**/build/
+
+# Project docs and logs
+docs/
+uploads/
+FILEUPLOADTEST/
 *.md
 !README.md
-.python-version
 MEMORY.md
-tests
-ops/init.sql
-ops/nginx
-.gitattributes
-.mcp.json
 CLAUDE.md
 LICENSE
-node_modules
-.next
-dist
-build
-.vscode
-.idea
+
+# IDE and System
+.vscode/
+.idea/
 *.swp
 *.swo
+.DS_Store
+Thumbs.db
+
+# MCP
+.mcp.json
+.playwright-mcp/

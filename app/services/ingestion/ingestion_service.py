@@ -13,11 +13,11 @@ from typing import TYPE_CHECKING, Callable
 from dataclasses import dataclass
 
 from app.adapters.base import IngestedNode, ParsingMetadata
-from app.core.hardware import hardware
-from app.adapters.parsers.manager import ParserManager
+from app.adapters.parsers.docling import DoclingParser
 from app.utils.hierarchy_validator import HierarchyValidator, ValidationReport
 from app.core.config import settings
 from app.repositories.section_repository import SectionRepository
+from app.core.hardware import hardware
 
 if TYPE_CHECKING:
     from app.adapters.base import BaseEmbedding, BaseVectorStore
@@ -33,10 +33,9 @@ class IngestionResult:
     success: bool
     document_id: str
     node_count: int
-    nodes: list[IngestedNode]
     total_text_chars: int
-    parse_metadata: ParsingMetadata
-    validation_report: ValidationReport
+    parse_metadata: ParsingMetadata | None
+    validation_report: ValidationReport | None
     storage_ids: list[str]
     section_count: int = 0  # Number of sections stored in PostgreSQL
     errors: list[str] = None  # type: ignore[assignment]
@@ -51,7 +50,7 @@ ProgressCallback = Callable[[str, int, str], None]  # (stage, percent, message)
 class IngestionService:
     """
     Main ingestion orchestration:
-    1. Parse document (DoclingParser → ClassicParser fallback)
+    1. Parse document (Docling + PaddleOCR)
     2. Validate hierarchy
     3. Embed + store nodes in chunks (parallel embedding, incremental Qdrant writes)
     4. Report progress at each chunk via optional callback
@@ -59,13 +58,12 @@ class IngestionService:
 
     def __init__(
         self,
-        parser_manager: "ParserManager",
         embedding_service: BaseEmbedding | None = None,
         vector_store: BaseVectorStore | None = None,
         db_session: Session | None = None,
         section_repo: SectionRepository | None = None,
     ):
-        self.parser_manager = parser_manager
+        self.parser = DoclingParser()
         self.embedding_service = embedding_service
         self.vector_store = vector_store
         self.db_session = db_session
@@ -119,7 +117,7 @@ class IngestionService:
             logger.info("[%s] Starting ingestion: %s", document_id, filename)
             _cb("parsing", 5, f"Parsing {filename}…")
 
-            nodes, parse_metadata = self.parser_manager.parse(filename, content, document_id=document_id)
+            nodes, parse_metadata = self.parser.parse(filename, content, document_id=document_id)
             logger.info("[%s] Parsed: %d nodes from %s", document_id, len(nodes), filename)
             _cb("parsing", 30, f"Parsed {len(nodes)} sections")
 
@@ -151,8 +149,21 @@ class IngestionService:
                     document_id,
                     section_count,
                 )
-
+                
+                # Enrich nodes with section context for Qdrant payload (DB-less RAG)
+                section_map = {s["section_id"]: s for s in sections_data}
+                for node in nodes:
+                    sec_id = node.metadata.get("section_id")
+                    if sec_id and sec_id in section_map:
+                        sec = section_map[sec_id]
+                        node.metadata["section_content"] = sec.get("content", "")
+                        node.metadata["breadcrumb"] = sec.get("breadcrumb", [])
+                        node.metadata["level"] = sec.get("level", 0)
+                        node.metadata["image_count"] = sec.get("image_count", 0)
+                        node.metadata["table_count"] = sec.get("table_count", 0)
+            
             # ── Step 3: Embed + Store in chunks ──────────────────────────────
+            n_chunks = 0
             if self.embedding_service and nodes:
                 chunk_size = settings.ingestion_embedding_chunk_size
                 n_chunks = math.ceil(len(nodes) / chunk_size) or 1
@@ -160,11 +171,10 @@ class IngestionService:
                 store_parallelism = max(1, min(store_parallelism, 4))
                 pending_store_tasks: deque[tuple[int, list[IngestedNode], Future[list[str]]]] = deque()
 
-                # BM25 sparse encoder — always available, builds vocab on first use
+                # BM25 sparse encoder — always available, builds/updates vocab on the fly
                 from app.utils.bm25_index import get_bm25_encoder
 
                 bm25_encoder = get_bm25_encoder()
-                bm25_ready = bm25_encoder.is_ready
 
                 def _store_chunk(
                     chunk_document_id: str,
@@ -174,9 +184,9 @@ class IngestionService:
                     if not self.vector_store:
                         return []
                     # Generate BM25 sparse vectors for hybrid search
-                    sparse_embs = None
-                    if bm25_ready:
-                        sparse_embs = bm25_encoder.encode_batch_sparse_vectors([n.text for n in chunk_nodes])
+                    # The encoder will automatically update its vocabulary for new terms
+                    sparse_embs = bm25_encoder.encode_batch_sparse_vectors([n.text for n in chunk_nodes])
+                    
                     return self.vector_store.store(
                         chunk_document_id,
                         chunk_nodes,
@@ -283,10 +293,14 @@ class IngestionService:
                 elif not nodes:
                     warnings.append("No nodes produced — empty document?")
 
+            # Finalize BM25 vocabulary if any new terms were added
+            if self.embedding_service and nodes:
+                bm25_encoder.save()
+
             duration_ms = (time.time() - start_time) * 1000
 
             # Determine success: fail if too many chunk errors (>50% of chunks)
-            total_chunks = locals().get("n_chunks", len(nodes) if nodes else 0)
+            total_chunks = n_chunks
             error_threshold = max(1, int(total_chunks * 0.5)) if total_chunks > 0 else 1
             has_critical_failure = len(errors) > error_threshold
 
@@ -296,7 +310,7 @@ class IngestionService:
                     "[%s] Ingestion partial failure: %d/%d chunks failed",
                     document_id,
                     len(errors),
-                    n_chunks,
+                    total_chunks,
                 )
             else:
                 _cb("ready", 100, "Ingestion complete")
@@ -305,7 +319,6 @@ class IngestionService:
                 success=not has_critical_failure,
                 document_id=document_id,
                 node_count=len(nodes),
-                nodes=nodes,
                 total_text_chars=sum(len(n.text) for n in nodes),
                 parse_metadata=parse_metadata,
                 validation_report=validation_report,
@@ -333,11 +346,11 @@ class IngestionService:
                 success=False,
                 document_id=document_id,
                 node_count=len(nodes),
-                nodes=nodes,
                 total_text_chars=sum(len(n.text) for n in nodes) if nodes else 0,
                 parse_metadata=parse_metadata,
                 validation_report=validation_report,
                 storage_ids=[],
+                section_count=locals().get("section_count", 0),
                 errors=[str(e)] + errors,
                 warnings=warnings,
                 duration_ms=duration_ms,

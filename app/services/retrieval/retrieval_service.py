@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import logging
-import threading
 import time
-from dataclasses import dataclass
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -19,7 +17,11 @@ from app.utils.query_cache import QueryEmbeddingCache
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+from app.models.rag import RagNode, RagSection, RagContext
+from app.utils.document_registry import DocumentRegistry
+
 logger = logging.getLogger(__name__)
+registry = DocumentRegistry()
 
 
 def _format_page_range(page_start: int | None, page_end: int | None) -> str | None:
@@ -32,38 +34,6 @@ def _format_page_range(page_start: int | None, page_end: int | None) -> str | No
     if page_start == page_end:
         return str(page_start)
     return f"{page_start}-{page_end}"
-
-
-@dataclass(frozen=True)
-class RagNode:
-    node_id: str
-    parent_id: str | None
-    document_id: str
-    document_title: str
-    heading: str
-    summary: str | None
-    full_text: str
-    page_range: str | None
-    section_id: str | None = None
-    score: float = 0.0
-
-
-@dataclass(frozen=True)
-class RagSection:
-    section_id: str
-    document_id: str
-    title: str
-    content: str
-    level: int
-    image_count: int
-    table_count: int
-    breadcrumb: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class RagContext:
-    nodes: list[RagNode]
-    sections: list[RagSection] | None = None
 
 
 # ── Singleton adapters (lru_cache ensures one instance) ──────────────────
@@ -87,56 +57,52 @@ def _get_vector_store() -> QdrantVectorStore:
 
 @lru_cache(maxsize=1)
 def _get_query_cache() -> QueryEmbeddingCache:
-    import redis
-
-    client = redis.Redis.from_url(settings.redis_url, decode_responses=False)
-    return QueryEmbeddingCache(client, model_name=settings.embedding_hf_model)
+    return QueryEmbeddingCache(_redis_client, model_name=settings.embedding_hf_model)
 
 
-# ── TTL-cached document IDs ──────────────────────────────────────────────
+@lru_cache(maxsize=1)
+def _get_rag_result_cache() -> RagResultCache:
+    from app.utils.query_cache import RagResultCache
+    return RagResultCache(_redis_client)
 
-_doc_ids_cache: tuple[float, set[str]] | None = None
-_doc_ids_lock = threading.Lock()
-_DOC_IDS_TTL = settings.doc_ids_cache_ttl
+
+# ── Distributed Document ID Cache (Redis 8.x) ──────────────────────────
 
 
-def _latest_document_ids(session: Session) -> set[str]:
-    """Return latest-version document IDs with a 60-second TTL cache. Uses DocumentRepository."""
-    global _doc_ids_cache
-    with _doc_ids_lock:
-        if _doc_ids_cache is not None:
-            cached_at, cached_ids = _doc_ids_cache
-            if time.monotonic() - cached_at < _DOC_IDS_TTL:
-                return cached_ids
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+async def _latest_document_ids(session: AsyncSession) -> set[str]:
+    """Return active document IDs from Redis with DB fallback."""
+    cached = await registry.get_active_ids_async()
+    if cached:
+        return cached
 
     from app.repositories.document_repository import DocumentRepository
 
-    repo = DocumentRepository(session)
-    result = repo.get_latest_active_document_ids()
-    with _doc_ids_lock:
-        _doc_ids_cache = (time.monotonic(), result)
-    logger.debug("Refreshed document ID cache: %d docs", len(result))
-    return result
+    ids = await DocumentRepository(session).get_latest_active_document_ids()
+    if ids:
+        await registry.set_active_ids_async(ids)
+    return ids
 
 
 def invalidate_doc_ids_cache() -> None:
-    """Clear the cached document IDs. Call after document upload/delete."""
-    global _doc_ids_cache
-    with _doc_ids_lock:
-        _doc_ids_cache = None
+    registry.invalidate_active_ids()
 
 
 # ── Main retrieval ───────────────────────────────────────────────────────
 
 
-def retrieve_context(
-    session: Session,
+async def retrieve_context(
+    session: AsyncSession,
     query: str | list[str],
     limit: int = 15,
+    positive_point_ids: list[str] | None = None,
+    negative_point_ids: list[str] | None = None,
 ) -> RagContext:
     """Retrieve relevant document context for query/queries using 4-stage retrieval.
 
-    Stages: Hybrid search → Section grouping → Dedup → Cross-encoder rerank.
+    Stages: Result Cache → Hybrid search → Section grouping → Dedup → Assembly.
     """
     from app.repositories.document_repository import DocumentRepository
     from app.repositories.section_repository import SectionRepository
@@ -150,194 +116,123 @@ def retrieve_context(
 
     _t0 = time.monotonic()
 
-    doc_repo = DocumentRepository(session)
-    section_repo = SectionRepository(session)
-
-    latest_doc_ids = _latest_document_ids(session)
+    latest_doc_ids = await _latest_document_ids(session)
     if not latest_doc_ids:
         logger.debug("No active documents found")
         return RagContext(nodes=[])
 
-    doc_ids = list(latest_doc_ids)
-    title_by_id = doc_repo.get_titles_by_ids(doc_ids)
+    doc_ids = sorted(list(latest_doc_ids))
+    
+    # ── Stage 0: Search Result Cache ──────────────────────────────────────
+    rag_cache = _get_rag_result_cache()
+    if isinstance(query, str):
+        cached_result = await rag_cache.get(query, doc_ids)
+        if cached_result:
+            logger.info("[PERF-RAG] Search Result Cache Hit: %s", query)
+            # Reconstruct RagContext from dict
+            return RagContext(
+                nodes=[RagNode(**n) for n in cached_result.get("nodes", [])],
+                sections=[RagSection(**s) for s in cached_result.get("sections", [])] if cached_result.get("sections") else None
+            )
+
+    doc_repo = DocumentRepository(session)
+    title_by_id = await doc_repo.get_titles_by_ids(doc_ids)
     if not title_by_id:
         logger.debug("No document titles found")
         return RagContext(nodes=[])
 
-    _t1 = time.monotonic()
-    logger.info("[PERF-RAG] Doc IDs + titles: %.3fs", _t1 - _t0)
-
+    # ── Stage 1: Unified Multi-Intent Search ──────────────────────────────
     cache = _get_query_cache()
     svc = _get_embedding_service()
-    embed_fn = getattr(svc, "embed_query", None) or svc.embed
-
     vs = _get_vector_store()
     sparse_encoder = get_bm25_encoder()
 
-    section_top_k = settings.retrieval_section_top_k
-    section_min_score = settings.retrieval_section_min_score
-    min_score = settings.retrieval_min_score
-    fetch_k = min(80, max(50, section_top_k * settings.retrieval_chunk_top_k))
+    import asyncio
+    
+    async def _get_embedding(q_text: str):
+        v = await cache.get(q_text)
+        if v is None:
+            # Embedding models are usually thread-safe or process-safe but CPU-bound
+            # We wrap them to keep the loop moving
+            from fastapi.concurrency import run_in_threadpool
+            embed_fn = getattr(svc, "embed_query", None) or svc.embed
+            v = await run_in_threadpool(embed_fn, q_text)
+            await cache.set(q_text, v)
+        return v
 
-    merged: dict[str, tuple] = {}
+    # Embed all queries in parallel
+    query_vectors = await asyncio.gather(*[_get_embedding(q) for q in queries])
+    
+    sparse_vectors: list[Any] = []
+    if sparse_encoder.is_ready:
+        sparse_vectors = [sparse_encoder.encode_sparse_vector(q) for q in queries]
 
-    for q in queries:
-        query_vector = cache.get(q)
-        if query_vector is None:
-            query_vector = embed_fn(q)
-            cache.set(q, query_vector)
-
-        sparse_vector = None
-        if sparse_encoder.is_ready:
-            sparse_vector = sparse_encoder.encode_sparse_vector(q)
-
-        results = vs.retrieve(
-            query_vector=query_vector,
-            top_k=fetch_k,
-            document_ids_filter=list(title_by_id.keys()),
-            sparse_vector=sparse_vector,
-        )
-
-        for item in results:
-            nid = item.node_id
-            if nid not in merged or item.score > merged[nid][1]:
-                merged[nid] = (item, item.score)
-
-    _t2 = time.monotonic()
-    logger.info(
-        "[PERF-RAG] Multi-query search: %d queries, %d unique results in %.3fs",
-        len(queries),
-        len(merged),
-        _t2 - _t1,
+    # Single Unified call to Qdrant (Fusion + Hybrid + Filtering)
+    fetch_k = settings.retrieval_chunk_top_k * 3
+    all_results = await vs.retrieve(
+        query_vectors=query_vectors,
+        top_k=fetch_k,
+        document_ids_filter=list(title_by_id.keys()),
+        sparse_vectors=sparse_vectors,
+        positive_point_ids=positive_point_ids,
+        negative_point_ids=negative_point_ids,
     )
 
-    all_results = [item for item, _ in sorted(merged.values(), key=lambda x: x[1], reverse=True)]
+    _t1 = time.monotonic()
+    logger.info("[PERF-RAG] Unified Async Retrieval: %.3fs", _t1 - _t0)
 
-    # ── Stage 1: Identify top sections ────────────────────────────────────
-    section_scores: dict[str, float] = {}
-    section_doc_map: dict[str, str] = {}
+    # ── Stage 2: Deduplication & Context Assembly ─────────────────────────
+    # Dedup by text signature to avoid near-duplicate chunks from expansion
+    _seen_texts: dict[str, int] = {}
+    deduped_results: list[RetrievedDocument] = []
     for item in all_results:
-        if item.score < section_min_score:
+        if item.score < settings.retrieval_min_score:
             continue
-        sec_id = item.metadata.get("custom", {}).get("section_id")
-        if sec_id:
-            if sec_id not in section_scores or item.score > section_scores[sec_id]:
-                section_scores[sec_id] = item.score
-                section_doc_map[sec_id] = item.document_id
+        # Use first 150 chars as signature
+        sig = (item.text or "").strip()[:150]
+        if sig not in _seen_texts:
+            _seen_texts[sig] = len(deduped_results)
+            deduped_results.append(item)
+    
+    logger.debug("[RAG] Deduped %d -> %d chunks", len(all_results), len(deduped_results))
 
-    top_sections_ids = sorted(section_scores, key=section_scores.get, reverse=True)[  # type: ignore[arg-type]
-        :section_top_k
-    ]
-
-    # Load section details via repository
+    # Assemble sections from enriched payload (No DB calls!)
     rag_sections: list[RagSection] = []
-    if top_sections_ids:
-        pairs = [(section_doc_map[sid], sid) for sid in top_sections_ids if sid in section_doc_map]
-        section_rows = section_repo.get_sections_for_rag(pairs)
-        for row in section_rows:
+    seen_sec_ids: set[str] = set()
+    
+    for item in deduped_results:
+        sec_id = item.metadata.get("custom", {}).get("section_id")
+        if sec_id and sec_id not in seen_sec_ids:
+            seen_sec_ids.add(sec_id)
             rag_sections.append(
                 RagSection(
-                    section_id=row["section_id"],
-                    document_id=str(row["document_id"]),
-                    title=row["title"],
-                    content=row["content"] or "",
-                    level=row["level"],
-                    image_count=row["image_count"],
-                    table_count=row["table_count"],
-                    breadcrumb=tuple(row["breadcrumb"] or []),
+                    section_id=sec_id,
+                    document_id=item.document_id,
+                    title=item.metadata.get("section_title") or "Chương",
+                    content=item.metadata.get("section_content") or "",
+                    level=int(item.metadata.get("custom", {}).get("level", 0)),
+                    image_count=int(item.metadata.get("custom", {}).get("image_count", 0)),
+                    table_count=int(item.metadata.get("custom", {}).get("table_count", 0)),
+                    breadcrumb=tuple(item.metadata.get("breadcrumb") or []),
                 )
             )
+        if len(rag_sections) >= settings.retrieval_section_top_k:
+            break
 
-    # ── Stage 2: Re-rank in-memory ────────────────────────────────────────
-    filtered = [item for item in all_results if item.score >= min_score]
-    if len(filtered) < len(all_results):
-        logger.debug(
-            "Score filter: kept %d/%d chunks (threshold=%.2f)",
-            len(filtered),
-            len(all_results),
-            min_score,
-        )
-
-    if top_sections_ids and filtered:
-        top_sections_set = set(top_sections_ids)
-        in_section: list = []
-        out_section: list = []
-        for item in filtered:
-            sec_id = item.metadata.get("custom", {}).get("section_id")
-            if sec_id in top_sections_set:
-                in_section.append(item)
-            else:
-                out_section.append(item)
-        in_section.sort(key=lambda x: x.score, reverse=True)
-        out_section.sort(key=lambda x: x.score, reverse=True)
-        filtered = in_section + out_section
-
-    if filtered:
-        _seen_texts: dict[str, int] = {}
-        deduped: list = []
-        for item in filtered:
-            text_sig = (item.text or "")[:100]
-            if text_sig in _seen_texts:
-                prev_idx = _seen_texts[text_sig]
-                if item.score > deduped[prev_idx].score:
-                    deduped[prev_idx] = item
-            else:
-                _seen_texts[text_sig] = len(deduped)
-                deduped.append(item)
-        if len(deduped) < len(filtered):
-            logger.debug("Dedup: %d → %d chunks", len(filtered), len(deduped))
-        filtered = deduped
-
-    # ── Stage 3: Cross-encoder reranking (optional, off by default) ─────
-    if filtered and settings.retrieval_rerank_enabled:
-        rerank_top_k = settings.retrieval_rerank_top_k
-        _MAX_RERANK_CANDIDATES = settings.retrieval_max_rerank_candidates
-        if len(filtered) > _MAX_RERANK_CANDIDATES:
-            logger.debug(
-                "Reranker cap: %d → %d candidates",
-                len(filtered),
-                _MAX_RERANK_CANDIDATES,
-            )
-            filtered = filtered[:_MAX_RERANK_CANDIDATES]
-        if len(filtered) > rerank_top_k:
-            _t_rerank = time.monotonic()
-            _pre_rerank_count = len(filtered)
-            try:
-                from app.adapters.reranker import get_reranker
-
-                reranker = get_reranker()
-                filtered = reranker.rerank(
-                    query=primary_query,
-                    documents=filtered,
-                    text_attr="text",
-                    top_k=rerank_top_k,
-                )
-            except (RuntimeError, ValueError) as e:
-                logger.warning(
-                    "Reranker failed (%s), using score-based ranking",
-                    e,
-                )
-            _t_rerank_end = time.monotonic()
-            logger.info(
-                "[PERF-RAG] Reranker: %.3fs (%d → %d)",
-                _t_rerank_end - _t_rerank,
-                _pre_rerank_count,
-                len(filtered),
-            )
-
+    # ── Stage 3: Build RagNodes ───────────────────────────────────────────
     nodes: list[RagNode] = []
-    for item in filtered[:limit]:
-        heading = (
-            item.metadata.get("section_title")
-            or item.metadata.get("heading")
-            or item.metadata.get("node_type")
-            or "Nội dung"
-        )
+    for item in deduped_results[:limit]:
         custom_metadata = item.metadata.get("custom", {}) or {}
         page_start = custom_metadata.get("page_start") or item.metadata.get("page_number")
         page_end = custom_metadata.get("page_end") or page_start
         page_range = _format_page_range(page_start, page_end)
-        sec_id = item.metadata.get("custom", {}).get("section_id")
+        
+        heading = (
+            item.metadata.get("section_title")
+            or custom_metadata.get("heading")
+            or "Nội dung"
+        )
+        
         nodes.append(
             RagNode(
                 node_id=item.node_id,
@@ -345,90 +240,21 @@ def retrieve_context(
                 document_id=item.document_id,
                 document_title=title_by_id.get(item.document_id, "Tài liệu"),
                 heading=str(heading).strip(),
-                summary=(item.text[:280] if item.text else None),
-                full_text=item.text,
+                summary=None,
+                full_text=item.text or "",
                 page_range=page_range,
-                section_id=sec_id,
+                section_id=custom_metadata.get("section_id"),
                 score=item.score,
             )
         )
 
-    logger.debug(
-        "Retrieved %d nodes from %d sections (single-query, limit=%d)",
-        len(nodes),
-        len(top_sections_ids),
-        limit,
-    )
-    return RagContext(nodes=nodes, sections=rag_sections if rag_sections else None)
-
-
-def build_answer(query: str, context: RagContext, history: list[dict[str, str]] | None = None) -> dict:
-    """Build the answer seed from RAG context for AI provider.
-
-    Strategy: retrieve at chunk level for precision, present at section level
-    for completeness. Full section content is sent to the LLM instead of
-    individual chunk text, so the LLM sees the complete context including
-    all details (examples, steps, lists) that may span multiple chunks.
-    """
-    if not context.nodes:
-        return {
-            "answer": "Hiện tại tôi chưa có tài liệu nào để trả lời câu hỏi này. Vui lòng yêu cầu Admin upload thêm tài liệu vào hệ thống.",
-            "citations": [],
-            "context": [],
+    # Cache result if it's a single string query
+    if isinstance(query, str) and nodes:
+        # Convert to dict for JSON serialization in Redis
+        result_dict = {
+            "nodes": [n.to_dict() if hasattr(n, "to_dict") else n.__dict__ for n in nodes],
+            "sections": [s.to_dict() if hasattr(s, "to_dict") else s.__dict__ for s in rag_sections] if rag_sections else None
         }
+        await rag_cache.set(query, doc_ids, result_dict)
 
-    section_map: dict[str, RagSection] = {}
-    if context.sections:
-        for sec in context.sections:
-            section_map[sec.section_id] = sec
-
-    sorted_nodes = sorted(context.nodes, key=lambda n: n.score, reverse=True)
-
-    context_blocks = []
-    citations = []
-    seen_sections: set[str] = set()
-    citation_idx = 0
-
-    for node in sorted_nodes:
-        sec = section_map.get(node.section_id) if node.section_id else None
-
-        # Prefer full section content over chunk text
-        if sec and sec.content and sec.section_id not in seen_sections:
-            seen_sections.add(sec.section_id)
-            citation_idx += 1
-            breadcrumb_path = " > ".join(sec.breadcrumb) if sec.breadcrumb else sec.title
-            page_info = f" (trang {node.page_range})" if node.page_range else ""
-            context_blocks.append(f"**{breadcrumb_path}** — {node.document_title}{page_info}\n{sec.content}")
-            citations.append(
-                {
-                    "document_id": node.document_id,
-                    "node_id": node.node_id,
-                    "title": node.document_title,
-                    "heading": node.heading,
-                    "page_range": node.page_range,
-                    "index": citation_idx,
-                }
-            )
-        elif sec is None or not sec or not sec.content:
-            # Fallback: section missing/empty or no section_id — use chunk text
-            citation_idx += 1
-            page_info = f" (trang {node.page_range})" if node.page_range else ""
-            header = f"**{node.heading}** — {node.document_title}{page_info}"
-            context_blocks.append(f"{header}\n{node.full_text or ''}")
-            citations.append(
-                {
-                    "document_id": node.document_id,
-                    "node_id": node.node_id,
-                    "title": node.document_title,
-                    "heading": node.heading,
-                    "page_range": node.page_range,
-                    "index": citation_idx,
-                }
-            )
-        # else: section already seen (dedup) — skip
-
-    context_text = "\n\n".join(context_blocks)
-
-    answer = f"Câu hỏi: {query}\n\n" f"Tài liệu tham khảo:\n{context_text}"
-
-    return {"answer": answer, "citations": citations, "context": [node.__dict__ for node in sorted_nodes]}
+    return RagContext(nodes=nodes, sections=rag_sections if rag_sections else None)

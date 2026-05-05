@@ -226,14 +226,5 @@ class RecoveryService:
 
     def _find_stuck_documents(self, timeout_minutes: int = 30) -> list[str]:
         """Find documents stuck in 'processing' state via repository."""
-        from app.db.session import SessionLocal
-        from app.models.document import Document
-
-        with SessionLocal() as session:
-            timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
-            rows = (
-                session.query(Document)
-                .filter(Document.status == "processing", Document.status_updated_at < timeout_threshold)
-                .all()
-            )
-            return [str(doc.id) for doc in rows]
+        timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+        return self.doc_repo.find_stuck_documents(timeout_threshold)

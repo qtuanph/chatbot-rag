@@ -1,11 +1,8 @@
-"""Repository for document metadata in PostgreSQL."""
-
 import logging
 from datetime import datetime, timezone
-from typing import Any
 
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select, update, delete, and_
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DocumentStoreException
 from app.models.document import Document
@@ -16,117 +13,25 @@ logger = logging.getLogger(__name__)
 class DocumentRepository:
     """Repository for document metadata in PostgreSQL."""
 
-    def __init__(self, session: Session):
+    def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    def upsert_document(
-        self,
-        document_id: str,
-        user_id: str,
-        filename: str,
-        status: str = "pending",
-        artifact_metadata: dict[str, Any | None] = None,
-    ) -> dict[str, Any]:
-        """Insert or update document record."""
-        try:
-            metadata = dict(artifact_metadata or {})
-            document = self.session.get(Document, document_id)
-
-            if document is None:
-                document = Document(
-                    id=document_id,
-                    title=metadata.get("title") or filename,
-                    file_name=filename,
-                    file_path=metadata.get("file_path") or "",
-                    sha256=metadata.get("sha256") or "",
-                    file_type=metadata.get("file_type") or "application/octet-stream",
-                    file_size=int(metadata.get("file_size") or 0),
-                    version=int(metadata.get("version") or 1),
-                    status=status,
-                    status_stage=str(metadata.get("status_stage") or "uploaded"),
-                    progress_percent=int(metadata.get("progress_percent") or 0),
-                    status_message=metadata.get("status_message"),
-                    status_updated_at=datetime.now(timezone.utc),
-                    extra_metadata=metadata,
-                )
-                self.session.add(document)
-            else:
-                current_metadata = dict(document.extra_metadata or {})
-                current_metadata.update(metadata)
-                document.title = metadata.get("title") or filename
-                document.file_name = filename
-                document.status = status
-                if "status_stage" in metadata:
-                    document.status_stage = str(metadata["status_stage"])
-                if "progress_percent" in metadata:
-                    document.progress_percent = int(metadata["progress_percent"])
-                if "status_message" in metadata:
-                    document.status_message = metadata.get("status_message")
-                document.status_updated_at = datetime.now(timezone.utc)
-                document.extra_metadata = current_metadata
-                document.updated_at = datetime.now(timezone.utc)
-
-            self.session.commit()
-
-            return {
-                "document_id": str(document.id),
-                "user_id": user_id,
-                "filename": document.file_name,
-                "status": document.status,
-                "status_stage": document.status_stage,
-                "progress_percent": int(document.progress_percent),
-                "status_message": document.status_message,
-                "artifact_metadata": dict(document.extra_metadata or {}),
-                "created_at": document.created_at.isoformat() if document.created_at else None,
-                "updated_at": document.updated_at.isoformat() if document.updated_at else None,
-            }
-        except Exception as e:
-            self.session.rollback()
-            raise DocumentStoreException(
-                f"Failed to upsert document {document_id}: {str(e)}",
-                error_code="DOCUMENT_STORE_UPSERT_FAILED",
-                details={"document_id": document_id, "error": str(e)},
-            )
-
-    def get_document(self, document_id: str) -> dict[str, Any | None]:
-        """Get document record by ID."""
-        try:
-            document = self.session.get(Document, document_id)
-            if document is None:
-                return None
-            return {
-                "document_id": str(document.id),
-                "title": document.title,
-                "file_name": document.file_name,
-                "status": document.status,
-                "status_stage": document.status_stage,
-                "progress_percent": int(document.progress_percent),
-                "status_message": document.status_message,
-                "parse_error": document.parse_error,
-                "artifact_metadata": dict(document.extra_metadata or {}),
-            }
-        except Exception as e:
-            raise DocumentStoreException(
-                f"Failed to get document {document_id}: {str(e)}",
-                error_code="DOCUMENT_STORE_GET_FAILED",
-            )
-
-    def update_status(
+    async def update_status(
         self,
         document_id: str,
         status: str,
-        error_msg: str | None = None,
+        parse_error: str | None = None,
         stage: str | None = None,
         progress_percent: int | None = None,
         status_message: str | None = None,
     ) -> bool:
         """Update document status."""
         try:
-            document = self.session.get(Document, document_id)
+            document = await self.session.get(Document, document_id)
             if document is None:
                 return False
             document.status = status
-            document.parse_error = error_msg[:2000] if error_msg else None
+            document.parse_error = parse_error[:2000] if parse_error else None
             if stage is not None:
                 document.status_stage = stage
             if progress_percent is not None:
@@ -135,36 +40,39 @@ class DocumentRepository:
                 document.status_message = status_message
             document.status_updated_at = datetime.now(timezone.utc)
             document.updated_at = datetime.now(timezone.utc)
-            self.session.commit()
-            logger.info(f"Document {document_id} status → {status}")
+            await self.session.commit()
+            logger.info("Document %s status → %s", document_id, status)
             return True
         except Exception as e:
-            self.session.rollback()
+            await self.session.rollback()
             raise DocumentStoreException(
                 f"Failed to update status for {document_id}: {str(e)}",
                 error_code="DOCUMENT_STORE_UPDATE_FAILED",
             )
 
-    def find_by_sha256(self, sha256: str) -> dict | None:
+    async def find_by_sha256(self, sha256: str) -> dict | None:
         """Find a non-deleted document by SHA256 hash (for deduplication)."""
-        document = (
-            self.session.query(Document)
-            .filter(Document.sha256 == sha256, Document.deleted_at.is_(None))
+        stmt = (
+            select(Document)
+            .where(Document.sha256 == sha256, Document.deleted_at.is_(None))
             .order_by(Document.created_at.desc())
-            .first()
+            .limit(1)
         )
+        result = await self.session.execute(stmt)
+        document = result.scalar_one_or_none()
         return self._doc_to_full_dict(document) if document else None
 
-    def get_next_version(self, filename: str) -> int:
+    async def get_next_version(self, filename: str) -> int:
         """Get the next version number for a given filename."""
-        max_ver = (
-            self.session.query(func.coalesce(func.max(Document.version), 0))
-            .filter(Document.file_name == filename, Document.deleted_at.is_(None))
-            .scalar()
+        stmt = (
+            select(func.coalesce(func.max(Document.version), 0))
+            .where(Document.file_name == filename, Document.deleted_at.is_(None))
         )
+        result = await self.session.execute(stmt)
+        max_ver = result.scalar()
         return (max_ver or 0) + 1
 
-    def insert_document(
+    async def insert_document(
         self,
         *,
         document_id: str,
@@ -192,25 +100,30 @@ class DocumentRepository:
             status_message="File uploaded and awaiting queue.",
         )
         self.session.add(document)
-        self.session.commit()
+        await self.session.commit()
+        await self.session.refresh(document)
         return self._doc_to_full_dict(document)
 
-    def list_paginated(self, offset: int = 0, limit: int = 20) -> tuple[list[dict], int]:
+    async def list_paginated(self, offset: int = 0, limit: int = 20) -> tuple[list[dict], int]:
         """List non-deleted documents with pagination. Returns (items, total)."""
-        total = self.session.query(func.count(Document.id)).filter(Document.deleted_at.is_(None)).scalar() or 0
-        rows = (
-            self.session.query(Document)
-            .filter(Document.deleted_at.is_(None))
+        count_stmt = select(func.count(Document.id)).where(Document.deleted_at.is_(None))
+        count_result = await self.session.execute(count_stmt)
+        total = count_result.scalar() or 0
+
+        stmt = (
+            select(Document)
+            .where(Document.deleted_at.is_(None))
             .order_by(Document.created_at.desc())
             .offset(offset)
             .limit(limit)
-            .all()
         )
+        result = await self.session.execute(stmt)
+        rows = result.scalars().all()
         return [self._doc_to_full_dict(r) for r in rows], total
 
-    def soft_delete(self, document_id: str) -> bool:
+    async def soft_delete(self, document_id: str) -> bool:
         """Soft-delete a document by setting deleted_at."""
-        document = self.session.get(Document, document_id)
+        document = await self.session.get(Document, document_id)
         if document is None:
             return False
         document.deleted_at = datetime.now(timezone.utc)
@@ -219,12 +132,12 @@ class DocumentRepository:
         document.progress_percent = 100
         document.status_message = "Failed to enqueue ingestion task."
         document.status_updated_at = datetime.now(timezone.utc)
-        self.session.commit()
+        await self.session.commit()
         return True
 
-    def reset_for_retry(self, document_id: str) -> dict | None:
+    async def reset_for_retry(self, document_id: str) -> dict | None:
         """Reset document status for retry. Returns updated dict or None."""
-        document = self.session.get(Document, document_id)
+        document = await self.session.get(Document, document_id)
         if document is None:
             return None
         document.status = "pending"
@@ -233,66 +146,112 @@ class DocumentRepository:
         document.status_message = "Retrying: task queued for worker processing."
         document.parse_error = None
         document.status_updated_at = datetime.now(timezone.utc)
-        self.session.commit()
+        await self.session.commit()
+        await self.session.refresh(document)
         return self._doc_to_full_dict(document)
 
-    def get_full_document(self, document_id: str) -> dict | None:
+    async def get_full_document(self, document_id: str) -> dict | None:
         """Get full document details including all fields."""
-        document = self.session.get(Document, document_id)
+        document = await self.session.get(Document, document_id)
         return self._doc_to_full_dict(document) if document else None
 
-    def get_latest_active_document_ids(self) -> set[str]:
-        """Return IDs of latest-version, non-deleted, ready documents."""
-        from sqlalchemy import and_
+    async def finalize_ingestion(
+        self,
+        document_id: str,
+        *,
+        artifact_dict: dict,
+        node_count: int,
+        total_text_chars: int,
+    ) -> bool:
+        """Set document to ready state with ingestion artifact metadata."""
+        try:
+            document = await self.session.get(Document, document_id)
+            if document is None:
+                return False
 
-        latest_versions = (
-            self.session.query(
+            metadata = dict(document.extra_metadata or {})
+            metadata["ingestion_artifact"] = artifact_dict
+            document.extra_metadata = metadata
+            document.status = "ready"
+            document.status_stage = "ready"
+            document.progress_percent = 100
+            document.status_message = "Ingestion completed successfully."
+            document.status_updated_at = datetime.now(timezone.utc)
+            document.parse_error = None
+            document.updated_at = datetime.now(timezone.utc)
+            await self.session.commit()
+            return True
+        except Exception as e:
+            await self.session.rollback()
+            raise DocumentStoreException(
+                f"Failed to finalize ingestion for {document_id}: {str(e)}",
+                error_code="DOCUMENT_STORE_UPDATE_FAILED",
+            )
+
+    async def find_stuck_documents(self, timeout_threshold: datetime) -> list[str]:
+        """Find documents stuck in processing state before timeout_threshold."""
+        stmt = (
+            select(Document)
+            .where(Document.status == "processing", Document.status_updated_at < timeout_threshold)
+        )
+        result = await self.session.execute(stmt)
+        rows = result.scalars().all()
+        return [str(doc.id) for doc in rows]
+
+    async def get_latest_active_document_ids(self) -> set[str]:
+        """Return IDs of latest-version, non-deleted, ready documents."""
+        latest_versions_stmt = (
+            select(
                 Document.file_name.label("file_name"),
                 func.max(Document.version).label("max_version"),
             )
-            .filter(Document.deleted_at.is_(None), Document.status == "ready")
+            .where(Document.deleted_at.is_(None), Document.status == "ready")
             .group_by(Document.file_name)
-            .subquery()
-        )
-        rows = (
-            self.session.query(Document.id)
+        ).subquery()
+
+        stmt = (
+            select(Document.id)
             .join(
-                latest_versions,
+                latest_versions_stmt,
                 and_(
-                    Document.file_name == latest_versions.c.file_name,
-                    Document.version == latest_versions.c.max_version,
+                    Document.file_name == latest_versions_stmt.c.file_name,
+                    Document.version == latest_versions_stmt.c.max_version,
                 ),
             )
-            .filter(Document.deleted_at.is_(None), Document.status == "ready")
-            .all()
+            .where(Document.deleted_at.is_(None), Document.status == "ready")
         )
+        result = await self.session.execute(stmt)
+        rows = result.all()
         return {str(row[0]) for row in rows if row and row[0]}
 
-    def get_all_document_ids(self) -> list[str]:
+    async def get_all_document_ids(self) -> list[str]:
         """Return all non-deleted document IDs for bulk operations."""
-        rows = self.session.query(Document.id).filter(Document.deleted_at.is_(None)).all()
+        stmt = select(Document.id).where(Document.deleted_at.is_(None))
+        result = await self.session.execute(stmt)
+        rows = result.all()
         return [str(row[0]) for row in rows if row and row[0]]
 
-    def get_titles_by_ids(self, doc_ids: list[str]) -> dict[str, str]:
+    async def get_titles_by_ids(self, doc_ids: list[str]) -> dict[str, str]:
         """Fetch document titles by IDs. Returns {doc_id: title}."""
-        rows = (
-            self.session.query(Document.id, Document.title)
-            .filter(
+        stmt = (
+            select(Document.id, Document.title)
+            .where(
                 Document.deleted_at.is_(None),
                 Document.status == "ready",
                 Document.id.in_(doc_ids),
             )
-            .all()
         )
+        result = await self.session.execute(stmt)
+        rows = result.all()
         return {str(doc_id): title for doc_id, title in rows}
 
-    def hard_delete(self, document_id: str) -> bool:
+    async def hard_delete(self, document_id: str) -> bool:
         """Hard-delete a document row from PostgreSQL."""
-        document = self.session.get(Document, document_id)
+        document = await self.session.get(Document, document_id)
         if document is None:
             return False
-        self.session.delete(document)
-        self.session.commit()
+        await self.session.delete(document)
+        await self.session.commit()
         return True
 
     # ── Private helpers ──────────────────────────────────────────────
@@ -313,7 +272,31 @@ class DocumentRepository:
             "status_message": document.status_message,
             "status_updated_at": document.status_updated_at.isoformat() if document.status_updated_at else None,
             "parse_error": document.parse_error,
-            "extra_metadata": dict(document.extra_metadata or {}),
+            "artifact_metadata": dict(document.extra_metadata or {}),
+            "deleted_at": document.deleted_at.isoformat() if document.deleted_at else None,
+            "created_at": document.created_at.isoformat() if document.created_at else None,
+            "updated_at": document.updated_at.isoformat() if document.updated_at else None,
+        }
+
+    # ── Private helpers ──────────────────────────────────────────────
+
+    def _doc_to_full_dict(self, document: Document) -> dict:
+        return {
+            "id": str(document.id),
+            "title": document.title,
+            "file_name": document.file_name,
+            "file_path": document.file_path,
+            "sha256": document.sha256,
+            "file_type": document.file_type,
+            "file_size": document.file_size,
+            "version": document.version,
+            "status": document.status,
+            "status_stage": document.status_stage,
+            "progress_percent": int(document.progress_percent),
+            "status_message": document.status_message,
+            "status_updated_at": document.status_updated_at.isoformat() if document.status_updated_at else None,
+            "parse_error": document.parse_error,
+            "artifact_metadata": dict(document.extra_metadata or {}),
             "deleted_at": document.deleted_at.isoformat() if document.deleted_at else None,
             "created_at": document.created_at.isoformat() if document.created_at else None,
             "updated_at": document.updated_at.isoformat() if document.updated_at else None,

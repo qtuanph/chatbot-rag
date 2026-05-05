@@ -4,8 +4,10 @@ import logging
 
 from app.core.celery_app import celery_app
 from app.db.session import SessionLocal
+from app.utils.chat_store import ChatStore
 
 logger = logging.getLogger(__name__)
+_chat_store = ChatStore()
 
 
 def save_message_now(
@@ -22,7 +24,6 @@ def save_message_now(
 ) -> None:
     """Synchronous save — safe to call from SSE generator before yielding done:true."""
     from app.repositories.chat_repository import ChatRepository
-    from app.utils.chat_store import ChatStore
 
     with SessionLocal() as session:
         repo = ChatRepository(session)
@@ -37,9 +38,8 @@ def save_message_now(
             model_used=model_used,
         )
 
-    store = ChatStore()
     scope_id = f"user:{user_id}"
-    store.append_message(scope_id, session_id, role, content)
+    _chat_store.append_message(scope_id, session_id, role, content)
 
 
 @celery_app.task(

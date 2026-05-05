@@ -39,6 +39,15 @@
 | Utility functions | `verb_noun` | `hash_password`, `get_bm25_encoder` |
 | DI factories | `get_{dependency}` | `get_auth_service()`, `get_chat_repo()` |
 
+### ID-First Boundaries
+
+| Boundary | Rule | Example |
+|----------|------|---------|
+| Public API fields | Use full names | `document_id`, `session_id`, `user_id` |
+| Internal query locals | Short forms allowed only in tight query context | `doc_ids` inside retrieval repository code |
+| Worker payloads | Pass IDs/URIs, not rich dicts or ORM-like objects | `document_id`, `task_id`, `file_path` |
+| Section lookup | Pair document and section identity | `(document_id, section_id)` |
+
 ## React / TypeScript Frontend
 
 | Category | Rule | Example |
@@ -68,3 +77,15 @@
 3. **Consistent dict keys**: Same concept → same key name across codebase (e.g., always `artifact_metadata`, never `extra_metadata`).
 4. **Public API uses full names**: `document_ids` in public APIs, `doc_ids` only in internal query logic.
 5. **Short forms acceptable in**: loop variables (`msg` in logger), local temp variables.
+
+## 8. Dict Key Canonical Names
+
+To ensure consistency across the application when passing dictionaries around (especially JSON/metadata fields), use the following standardized keys:
+
+- **`artifact_metadata`**: Use this exact string for any dictionary key or API response field representing a document's extra/flexible metadata.
+  - ❌ `extra_metadata`
+  - ❌ `metadata`
+  - ✅ `artifact_metadata`
+- **`parse_error`**: Use for storing textual error tracebacks.
+  - ❌ `error_msg`
+  - ✅ `parse_error`

@@ -30,10 +30,10 @@ services:
               count: all
               capabilities: [gpu, utility, compute]
     volumes:
-      - hf-cache:/root/.cache/huggingface
+      - hf-cache:/home/qtuanph/.cache/huggingface
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -108,7 +108,7 @@ services:
       - internal
 
   redis:
-    image: redis:8.6.2-trixie
+    image: redis:8.8-m03-alpine
     command: redis-server --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes
     ports:
       - "127.0.0.1:6379:6379"
@@ -185,7 +185,7 @@ services:
       - internal
 
   nginx:
-    image: nginx:stable-alpine3.23-perl
+    image: nginx:stable-alpine
     ports:
       - "127.0.0.1:80:80"
     volumes:

@@ -2,6 +2,12 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { authApi } from "@/lib/api-client";
 
+type AuthUser = {
+  id?: string;
+  role?: string;
+  token?: string;
+};
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   providers: [
@@ -42,8 +48,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       // Initial sign in: persist token + role
       if (user) {
-        token.accessToken = (user as { token: string }).token;
-        token.role = (user as { role: string }).role;
+        const authUser = user as AuthUser;
+        token.accessToken = authUser.token;
+        token.role = authUser.role;
         token.userId = user.id;
         // Store token expiry for refresh detection (backend JWT expires in 60s * 60 = 3600s)
         token.accessTokenExpires = Math.floor(Date.now() / 1000) + 3600;
@@ -82,6 +89,16 @@ declare module "next-auth" {
   interface User {
     role?: string;
     token?: string;
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    accessToken?: string;
+    accessTokenExpires?: number;
+    expired?: string;
+    role?: string;
+    userId?: string;
   }
 }
 

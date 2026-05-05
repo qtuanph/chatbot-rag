@@ -18,7 +18,6 @@ from app.adapters.base import (
 )
 from app.core.file_formats import extract_file_format
 from app.core.exceptions import ParsingException
-from app.core.hardware import hardware
 
 logger = logging.getLogger(__name__)
 
@@ -29,80 +28,32 @@ class DoclingParser(BaseParser):
     OCR: PaddleOCR (RapidOCR ONNX backend) — MANDATORY for all documents.
     """
 
-    def __init__(
-        self,
-        fallback_parser: "BaseParser" | None = None,
-        min_quality_score: float = 0.5,
-    ):
-        self.fallback_parser = fallback_parser
+    def __init__(self, min_quality_score: float = 0.5):
         self.min_quality_score = min_quality_score
-        self.converter = None
-
         self._initialize_docling()
-
-    def _require_paddleocr(self):
-        """Build PaddleOCR options via RapidOcrOptions (ONNX backend).
-
-        PaddleOCR is MANDATORY — raises RuntimeError if not installed.
-        """
-        try:
-            import rapidocr_onnxruntime  # noqa: F401 — verify backend is installed
-        except ImportError:
-            raise RuntimeError(
-                "PaddleOCR backend not installed. " "Install: pip install rapidocr_onnxruntime==1.4.4 rapidocr==3.8.1"
-            )
-
-        from docling.datamodel.pipeline_options import RapidOcrOptions
-
-        opts = RapidOcrOptions(lang=["vi", "en"])
-        logger.info("OCR backend: PaddleOCR (RapidOCR ONNX) [vi, en]")
-        return opts
 
     def _initialize_docling(self) -> None:
         """Initialize Docling converter with MANDATORY PaddleOCR."""
-        try:
-            from docling.document_converter import (
-                DocumentConverter,
-                PdfFormatOption,
-                ImageFormatOption,
-                WordFormatOption,
-            )
-            from docling.datamodel.base_models import InputFormat
-            from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.document_converter import DocumentConverter, PdfFormatOption, ImageFormatOption, WordFormatOption
+        from docling.datamodel.base_models import InputFormat
+        from docling.datamodel.pipeline_options import PdfPipelineOptions, RapidOcrOptions
 
-            ocr_options = self._require_paddleocr()
+        ocr_options = RapidOcrOptions(lang=["vi", "en"])
+        pipeline = PdfPipelineOptions(
+            do_ocr=True,
+            force_full_page_ocr=True,
+            ocr_options=ocr_options,
+            do_table_structure=True,
+        )
 
-            # SINGLE converter: always OCR every page (force_full_page_ocr=True)
-            pipeline = PdfPipelineOptions(
-                do_ocr=True,
-                force_full_page_ocr=True,
-                ocr_options=ocr_options,
-                do_table_structure=True,
-            )
-
-            image_fmt = ImageFormatOption(pipeline_options=pipeline)
-
-            self.converter = DocumentConverter(
-                format_options={
-                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline),
-                    InputFormat.IMAGE: image_fmt,
-                    InputFormat.DOCX: WordFormatOption(),
-                }
-            )
-
-            logger.info(
-                "Docling+PaddleOCR initialized: force_full_page_ocr=True [vi,en] | GPU=%s",
-                hardware.gpu_count > 0,
-            )
-        except RuntimeError as e:
-            logger.critical("FATAL: %s", e)
-            raise
-        except ImportError:
-            logger.critical("FATAL: Docling not installed — cannot parse documents")
-            raise
-        except Exception as e:
-            logger.critical("FATAL: Docling+PaddleOCR initialization failed: %s", e)
-            raise
+        self.converter = DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline),
+                InputFormat.IMAGE: ImageFormatOption(pipeline_options=pipeline),
+                InputFormat.DOCX: WordFormatOption(),
+            }
+        )
+        logger.info("Docling+PaddleOCR initialized [vi, en]")
 
     def parse(
         self,
@@ -110,100 +61,43 @@ class DoclingParser(BaseParser):
         content: bytes,
         document_id: str | None = None,
     ) -> tuple[list[IngestedNode], ParsingMetadata]:
-        """Parse document with Docling + PaddleOCR. Fails if OCR fails."""
+        """Parse document with Docling + PaddleOCR."""
         import time
 
         start_time = time.time()
-
         source_format = extract_file_format(filename)
 
-        # Step 1: Convert with Docling + PaddleOCR
         result = self._convert_with_docling(filename, content)
+        if not result:
+            raise ParsingException(f"Docling conversion failed for {filename}")
 
-        if result:
-            # Step 2a: Try Method D — extract directly from Docling items
-            nodes, sections_data, ok = self._extract_from_docling_items(
-                result.document,
-                document_id or filename,
-                source_format,
-            )
-
-            if ok and nodes:
-                quality_score = self._calculate_quality_score(nodes, 0)
-                parse_time_ms = (time.time() - start_time) * 1000
-
-                metadata = ParsingMetadata(
-                    engine_used="docling+paddleocr",
-                    source_format=source_format,
-                    docling_used=True,
-                    fallback_used=False,
-                    quality_score=quality_score,
-                    parse_time_ms=parse_time_ms,
-                    node_count=len(nodes),
-                    total_text_chars=sum(len(n.text) for n in nodes),
-                    warnings=[],
-                )
-
-                nodes = self._refine_nodes(nodes)
-                sections_data = self._refine_sections(sections_data)
-                metadata.sections_data = sections_data
-
-                logger.info(
-                    "Parsed %s: %d nodes, %d sections (Docling+PaddleOCR)",
-                    filename,
-                    len(nodes),
-                    len(sections_data),
-                )
-                return nodes, metadata
-
-            # Step 2b: Fallback to markdown export from Docling result
-            markdown_content = result.document.export_to_markdown()
-            if markdown_content:
-                nodes, sections_data, ok = self._extract_sections_from_markdown(
-                    markdown_content,
-                    filename,
-                    source_format,
-                )
-                if ok and nodes:
-                    quality_score = self._calculate_quality_score(nodes, len(markdown_content))
-                    parse_time_ms = (time.time() - start_time) * 1000
-                    metadata = ParsingMetadata(
-                        engine_used="docling+paddleocr+sections",
-                        source_format=source_format,
-                        docling_used=True,
-                        fallback_used=False,
-                        quality_score=quality_score,
-                        parse_time_ms=parse_time_ms,
-                        node_count=len(nodes),
-                        total_text_chars=sum(len(n.text) for n in nodes),
-                        warnings=[],
-                    )
-                    nodes = self._refine_nodes(nodes)
-                    metadata.sections_data = sections_data
-                    logger.info(
-                        "Parsed %s: %d nodes (Docling+PaddleOCR+sections)",
-                        filename,
-                        len(nodes),
-                    )
-                    return nodes, metadata
-
-        # Fallback parser for non-PDF formats (DOCX, XLSX, TXT, Markdown)
-        if self.fallback_parser:
-            try:
-                nodes, fallback_metadata = self.fallback_parser.parse(filename, content, document_id)
-                if nodes:
-                    fallback_metadata.fallback_used = True
-                    fallback_metadata.parse_time_ms = (time.time() - start_time) * 1000
-                    logger.info("Parsed %s with classic parser: %d nodes", filename, len(nodes))
-                    return nodes, fallback_metadata
-            except Exception as e:
-                logger.warning("Classic parser failed for %s: %s", filename, e)
-
-        raise ParsingException(
-            f"Failed to parse {filename}: Docling+PaddleOCR could not extract content",
-            error_code="PARSING_OCR_FAILED",
-            details={"filename": filename, "source_format": source_format},
+        # Primary extraction: direct from items
+        nodes, sections_data, ok = self._extract_from_docling_items(
+            result.document, document_id or filename, source_format
         )
+
+        # Fallback within Docling: markdown export (if direct items fail)
+        if not ok or not nodes:
+            markdown_content = result.document.export_to_markdown()
+            nodes, sections_data, ok = self._extract_sections_from_markdown(markdown_content, filename, source_format)
+
+        if not ok or not nodes:
+            raise ParsingException(f"Failed to extract content from {filename}")
+
+        quality_score = self._calculate_quality_score(nodes, 0)
+        metadata = ParsingMetadata(
+            engine_used="docling+paddleocr",
+            source_format=source_format,
+            docling_used=True,
+            fallback_used=False,
+            quality_score=quality_score,
+            parse_time_ms=(time.time() - start_time) * 1000,
+            node_count=len(nodes),
+            total_text_chars=sum(len(n.text) for n in nodes),
+            sections_data=self._refine_sections(sections_data),
+        )
+
+        return self._refine_nodes(nodes), metadata
 
     # ── Docling conversion (single pass: always OCR) ────────────────────────
 
@@ -930,49 +824,23 @@ class DoclingParser(BaseParser):
         return sentences
 
     def _refine_nodes(self, nodes: list[IngestedNode]) -> list[IngestedNode]:
-        """Rule-based text refinement: fix OCR errors, normalize whitespace."""
-        from app.utils.text_refiner import rule_based_refiner
-
-        heading_stack: dict[int, str] = {}
-
-        for idx, node in enumerate(nodes):
-            original_text = node.text
-            current_header = node.section_title
-
-            try:
-                cleaned_text, predicted_header = rule_based_refiner.refine_text(original_text, current_header)
-            except Exception as e:
-                logger.warning("Rule-based refinement failed for node %d: %s", idx, e)
-                cleaned_text, predicted_header = original_text, current_header
-
-            node.text = cleaned_text
-
-            if node.section_title:
-                level = node.metadata.get("section_level", 1) if node.metadata else 1
-                title = predicted_header or node.section_title
-                node.section_title = title
-                heading_stack[level] = title
-                for heading_key in list(heading_stack.keys()):
-                    if heading_key > level:
-                        del heading_stack[heading_key]
-
-            node.metadata["breadcrumb"] = [heading_stack[heading_key] for heading_key in sorted(heading_stack.keys())]
-
+        """Simple text refinement: normalize whitespace and basic cleaning."""
+        for node in nodes:
+            # Fix common OCR artifacts and normalize spaces
+            text = node.text or ""
+            text = re.sub(r"[ \t]+", " ", text)
+            text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+            node.text = text.strip()
         return nodes
 
     def _refine_sections(self, sections_data: list[dict]) -> list[dict]:
-        """Apply text refinement to section titles and content."""
-        from app.utils.text_refiner import rule_based_refiner
-
+        """Normalize section titles and content."""
         for sec in sections_data:
-            if sec.get("title"):
-                cleaned, _ = rule_based_refiner.refine_text(sec["title"], None)
-                sec["title"] = cleaned
-            if sec.get("content"):
-                cleaned, _ = rule_based_refiner.refine_text(sec["content"], None)
-                sec["content"] = cleaned
-            if sec.get("breadcrumb"):
-                sec["breadcrumb"] = [rule_based_refiner.refine_text(b, None)[0] if b else b for b in sec["breadcrumb"]]
+            for field in ["title", "content"]:
+                if val := sec.get(field):
+                    sec[field] = re.sub(r"\s+", " ", val).strip()
+            if bread := sec.get("breadcrumb"):
+                sec["breadcrumb"] = [re.sub(r"\s+", " ", b).strip() if b else b for b in bread]
         return sections_data
 
     def _infer_node_type(self, node) -> ParsedNodeType:

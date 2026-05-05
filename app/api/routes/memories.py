@@ -27,7 +27,7 @@ def _to_response(row: dict) -> MemoryResponse:
 async def list_memories(
     auth: AuthContext = Depends(get_auth_context), service: MemoryService = Depends(get_memory_service)
 ) -> MemoryListResponse:
-    rows = service.list_memories(auth.user_id)
+    rows = await service.list_memories(auth.user_id)
     return MemoryListResponse(items=[_to_response(r) for r in rows])
 
 
@@ -42,7 +42,7 @@ async def create_memory(
     ):
         raise http_errors.too_many_requests("Too many memory creation requests")
     try:
-        result = service.create_memory(user_id=auth.user_id, memory_type=data.memory_type, content=data.content)
+        result = await service.create_memory(user_id=auth.user_id, memory_type=data.memory_type, content=data.content)
     except ValueError as e:
         raise http_errors.bad_request(str(e)) from None
     return _to_response(result)
@@ -60,7 +60,7 @@ async def update_memory(
     ):
         raise http_errors.too_many_requests("Too many memory update requests")
     try:
-        result = service.update_memory(
+        result = await service.update_memory(
             memory_id=memory_id,
             user_id=auth.user_id,
             content=data.content,
@@ -86,6 +86,6 @@ async def delete_memory(
     ):
         raise http_errors.too_many_requests("Too many memory delete requests")
     try:
-        service.delete_memory(memory_id=memory_id, user_id=auth.user_id)
+        await service.delete_memory(memory_id=memory_id, user_id=auth.user_id)
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None

@@ -6,6 +6,29 @@ Manages storage and retrieval of document embeddings.
 import logging
 from typing import Any
 
+from qdrant_client.models import (
+    Distance,
+    VectorParams,
+    ScalarQuantization,
+    ScalarQuantizationConfig,
+    ScalarType,
+    HnswConfigDiff,
+    SparseVectorParams,
+    SparseIndexParams,
+    Modifier,
+    PointStruct,
+    Prefetch,
+    FusionQuery,
+    Fusion,
+    RecommendQuery,
+    SearchParams,
+    QuantizationSearchParams,
+    Filter,
+    FieldCondition,
+    MatchValue,
+    MatchAny,
+)
+
 from app.adapters.base import (
     BaseVectorStore,
     IngestedNode,
@@ -48,89 +71,56 @@ class QdrantVectorStore(BaseVectorStore):
         self.collection_name = collection_name
         self.vector_size = vector_size
         self.timeout = timeout
-        self.client = None
+        self.client: Any = None
+        self._initialized = False
 
-        self._initialize_client()
-        self._ensure_collection()
-
-    def _initialize_client(self) -> None:
-        """Initialize Qdrant client."""
-        try:
-            from qdrant_client import QdrantClient
-
-            logger.info(f"Connecting to Qdrant at {self.url}...")
-
-            self.client = QdrantClient(
+    async def _get_client(self):
+        """Lazy initialization of AsyncQdrantClient."""
+        if self.client is None:
+            from qdrant_client import AsyncQdrantClient
+            self.client = AsyncQdrantClient(
                 url=self.url,
                 api_key=self.api_key,
                 timeout=self.timeout,
             )
+        
+        # One-time collection setup (using sync client for simplicity in setup)
+        if not self._initialized:
+            await self._ensure_collection_async()
+            self._initialized = True
+            
+        return self.client
 
-            # Test connection
-            health = self.client.get_collections()
-            logger.info(f"✓ Connected to Qdrant; {len(health.collections)} collections exist")
-
-        except ImportError as e:
-            raise VectorStoreConnectionException(
-                "qdrant-client not installed", error_code="QDRANT_IMPORT_ERROR", details={"error": str(e)}
-            )
-        except Exception as e:
-            raise VectorStoreConnectionException(
-                f"Failed to connect to Qdrant at {self.url}: {str(e)}",
-                error_code="QDRANT_CONNECTION_FAILED",
-                details={"url": self.url, "error": str(e)},
-            )
-
-    def _ensure_collection(self) -> None:
-        """Ensure collection exists with named dense + sparse vectors.
-
-        If collection exists but uses unnamed (legacy) vectors, it is deleted
-        and recreated. This handles the migration from unnamed to named vectors.
-        """
+    async def _ensure_collection_async(self) -> None:
+        """Ensure collection exists with dynamic hardware-optimized settings."""
         try:
-            from qdrant_client.models import (
-                Distance,
-                VectorParams,
-                ScalarQuantization,
-                ScalarQuantizationConfig,
-                ScalarType,
-                HnswConfigDiff,
-                SparseVectorParams,
-                SparseIndexParams,
-                Modifier,
-            )
-
-            # Check if collection exists
-            collections = self.client.get_collections()
+            from qdrant_client import QdrantClient
+            # Use sync client for metadata operations (faster/simpler setup)
+            sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout)
+            
+            from app.core.hardware import hardware
+            
+            collections = sync_client.get_collections()
             if any(col.name == self.collection_name for col in collections.collections):
-                # Check if collection has named vectors (not legacy unnamed)
-                info = self.client.get_collection(self.collection_name)
-                vectors_config = info.config.params.vectors
-                # Named vectors = dict, unnamed = single VectorParams
-                if isinstance(vectors_config, dict) and "dense" in vectors_config:
-                    logger.info("Collection '%s' exists with named vectors", self.collection_name)
+                # Check if collection is up-to-date with named vectors
+                info = sync_client.get_collection(self.collection_name)
+                if isinstance(info.config.params.vectors, dict) and "dense" in info.config.params.vectors:
                     return
-                # Legacy collection with unnamed vectors — must recreate
-                logger.warning(
-                    "Collection '%s' uses legacy unnamed vectors — deleting and recreating with named vectors",
-                    self.collection_name,
-                )
-                self.client.delete_collection(self.collection_name)
+                sync_client.delete_collection(self.collection_name)
 
-            # Create collection with named dense + sparse vectors for hybrid search
-
-            # Create collection with named dense + sparse vectors for hybrid search
             logger.info(
-                "Creating collection '%s' (dense + sparse-bm25, int8 quantized, HNSW m=16 ef_construct=128)...",
+                "Creating collection '%s' (m=%d, ef=%d, quant=%s)",
                 self.collection_name,
+                hardware.qdrant_hnsw_m,
+                hardware.qdrant_hnsw_ef,
+                hardware.qdrant_quantization,
             )
-            self.client.create_collection(
+            
+            # Use dynamic hardware settings
+            sync_client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config={
-                    "dense": VectorParams(
-                        size=self.vector_size,
-                        distance=Distance.COSINE,
-                    ),
+                    "dense": VectorParams(size=self.vector_size, distance=Distance.COSINE),
                 },
                 sparse_vectors_config={
                     "sparse-bm25": SparseVectorParams(
@@ -144,111 +134,88 @@ class QdrantVectorStore(BaseVectorStore):
                         quantile=0.99,
                         always_ram=True,
                     ),
-                ),
+                ) if hardware.qdrant_quantization else None,
                 hnsw_config=HnswConfigDiff(
-                    m=16,
-                    ef_construct=128,
+                    m=hardware.qdrant_hnsw_m,
+                    ef_construct=hardware.qdrant_hnsw_ef,
                 ),
             )
-            logger.info("Created collection '%s' with dense + sparse-bm25 vectors", self.collection_name)
-
+            
+            # Create payload indexes for faster filtering
+            for field in ["document_id", "metadata.section_id", "node_type"]:
+                sync_client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=field,
+                    field_schema="keyword",
+                )
+            
         except Exception as e:
-            raise VectorStoreOperationException(
-                f"Failed to ensure collection '{self.collection_name}': {str(e)}",
-                error_code="QDRANT_COLLECTION_CREATION_FAILED",
-                details={"collection": self.collection_name, "error": str(e)},
-            )
+            logger.error(f"Failed to ensure Qdrant collection: {e}")
+            raise VectorStoreOperationException(f"Qdrant setup failed: {e}")
 
-    def health_check(self) -> bool:
+    async def health_check(self) -> bool:
         """Check if Qdrant is reachable and collection exists."""
         try:
-            if not self.client:
-                return False
-
-            # Try to get collection info
-            self.client.get_collection(self.collection_name)
+            client = await self._get_client()
+            await client.get_collection(self.collection_name)
             return True
-        except Exception as e:
-            logger.warning(f"Qdrant health check failed: {str(e)}")
+        except Exception:
             return False
 
-    def store(
+    async def store(
         self,
         document_id: str,
         nodes: list[IngestedNode],
         embeddings: list[list[float]],
-        sparse_embeddings: list | None = None,
+        sparse_embeddings: list[Any] | None = None,
     ) -> list[str]:
         """
-        Store document nodes and embeddings in Qdrant with optional sparse vectors.
-
-        Args:
-            document_id: ID of document being stored
-            nodes: List of IngestedNode objects
-            embeddings: List of dense embedding vectors (must match nodes length)
-            sparse_embeddings: Optional list of SparseVector for BM25 hybrid search
-
-        Returns:
-            List of stored node IDs
+        Store multiple nodes and their embeddings in Qdrant.
+        Includes full section context in payload to avoid DB lookups during RAG.
         """
-        if len(nodes) != len(embeddings):
-            raise VectorStoreOperationException(
-                f"Node count ({len(nodes)}) != embedding count ({len(embeddings)})", error_code="QDRANT_MISMATCH"
-            )
-
         try:
-            from qdrant_client.models import PointStruct
-
+            client = await self._get_client()
             points = []
-            stored_ids = []
-
-            for idx, (node, embedding) in enumerate(zip(nodes, embeddings)):
+            for i, node in enumerate(nodes):
+                # Ensure we have a valid point ID
                 point_id = self._node_id_to_qdrant_id(node.node_id)
-
-                # Build payload with rich metadata
+                
+                # Build rich payload for "DB-less" RAG retrieval
                 payload = {
-                    "document_id": document_id,
                     "node_id": node.node_id,
+                    "document_id": document_id,
+                    "document_title": node.document_title,
                     "text": node.text,
-                    "node_type": node.node_type.value if hasattr(node.node_type, "value") else str(node.node_type),
                     "page_number": node.page_number,
-                    "section_title": node.section_title,
+                    "section_title": node.heading,
                     "parent_id": node.parent_id,
-                    "order": node.order,
+                    "node_type": node.node_type,
+                    "metadata": node.metadata or {},
+                    # Enhanced RAG fields: Store the full section context here
+                    "section_content": node.metadata.get("section_content", ""),
+                    "breadcrumb": node.metadata.get("breadcrumb", []),
                 }
 
-                # Add custom metadata
-                if node.metadata:
-                    payload["metadata"] = node.metadata
+                vectors = {"dense": embeddings[i]}
+                if sparse_embeddings and sparse_embeddings[i]:
+                    vectors["sparse-bm25"] = sparse_embeddings[i]
 
-                # Named dense vector + optional sparse vector
-                vector: dict = {"dense": embedding}
-                if sparse_embeddings and idx < len(sparse_embeddings):
-                    sparse_emb = sparse_embeddings[idx]
-                    if sparse_emb is not None:
-                        vector["sparse-bm25"] = sparse_emb
-
-                point = PointStruct(
-                    id=point_id,
-                    vector=vector,
-                    payload=payload,
+                points.append(
+                    PointStruct(
+                        id=point_id,
+                        vector=vectors,
+                        payload=payload,
+                    )
                 )
-                points.append(point)
-                stored_ids.append(node.node_id)
 
-            # Upsert points
-            self.client.upsert(
+            # Batch upsert
+            await client.upsert(
                 collection_name=self.collection_name,
                 points=points,
+                wait=True,
             )
 
-            logger.info(
-                "Stored %d nodes for document %s (sparse=%s)",
-                len(points),
-                document_id,
-                "yes" if sparse_embeddings else "no",
-            )
-            return stored_ids
+            return [str(p.id) for p in points]
 
         except Exception as e:
             raise VectorStoreOperationException(
@@ -257,171 +224,168 @@ class QdrantVectorStore(BaseVectorStore):
                 details={"document_id": document_id, "node_count": len(nodes), "error": str(e)},
             )
 
-    def retrieve(
+    async def retrieve(
         self,
-        query_vector: list[float],
+        query_vectors: list[list[float]],
         top_k: int = 5,
-        document_id_filter: str | None = None,
-        document_ids_filter: list[str | None] = None,
-        section_ids_filter: list[str | None] = None,
-        sparse_vector=None,
+        document_ids_filter: list[str] | None = None,
+        sparse_vectors: list[Any] | None = None,
+        positive_point_ids: list[str] | None = None,
+        negative_point_ids: list[str] | None = None,
     ) -> list[RetrievedDocument]:
         """
-        Retrieve top-k documents using hybrid search (Dense + BM25 RRF fusion).
-
-        When sparse_vector is provided, runs both dense (semantic) and sparse (BM25)
-        prefetch queries in parallel and fuses with Reciprocal Rank Fusion (RRF).
-        When sparse_vector is None, runs dense-only search.
-
-        Args:
-            query_vector: Dense query embedding vector
-            top_k: Number of results to return
-            document_id_filter: Optional filter to specific document
-            document_ids_filter: Optional filter to multiple documents
-            section_ids_filter: Optional filter to specific sections
-            sparse_vector: Optional SparseVector from VietnameseBM25Encoder for hybrid search
-
-        Returns:
-            List of RetrievedDocument objects with scores
-
-        Raises:
-            VectorStoreOperationException: If retrieval fails
+        Retrieve top-k documents using Unified Multi-Intent Search.
+        Supports Multi-Query expansion (multiple query_vectors) and Hybrid (Sparse) search
+        with native Server-Side Fusion (RRF).
         """
         try:
-            from qdrant_client.models import (
-                Filter,
-                FieldCondition,
-                MatchValue,
-                MatchAny,
-                SearchParams,
-                QuantizationSearchParams,
-            )
-
-            # Build filter conditions
+            # Build global filter
             query_conditions = []
             if document_ids_filter:
                 query_conditions.append(
-                    FieldCondition(
-                        key="document_id",
-                        match=MatchAny(any=document_ids_filter),
-                    )
+                    FieldCondition(key="document_id", match=MatchAny(any=document_ids_filter))
                 )
-            elif document_id_filter:
-                query_conditions.append(
-                    FieldCondition(
-                        key="document_id",
-                        match=MatchValue(value=document_id_filter),
-                    )
-                )
-
-            if section_ids_filter:
-                query_conditions.append(
-                    FieldCondition(
-                        key="metadata.section_id",
-                        match=MatchAny(any=section_ids_filter),
-                    )
-                )
-
             query_filter = Filter(must=query_conditions) if query_conditions else None
 
-            if sparse_vector is not None:
-                # ── Hybrid mode: Dense + BM25 with RRF fusion ─────────────
-                from qdrant_client.models import Prefetch, FusionQuery, Fusion
-
-                prefetch_list = [
-                    # Sparse (BM25) prefetch
+            # ── Unified Prefetch List ────────────────────────────────────────
+            prefetch_list = []
+            
+            # Handle multiple query vectors (Multi-Query Expansion)
+            for i, d_vec in enumerate(query_vectors):
+                # 1. Dense Search per query
+                prefetch_list.append(
                     Prefetch(
-                        query=sparse_vector,
-                        using="sparse-bm25",
-                        limit=min(top_k * 3, 60),
-                        filter=query_filter,
-                    ),
-                    # Dense (semantic) prefetch with int8 rescoring
-                    Prefetch(
-                        query=query_vector,
+                        query=d_vec,
                         using="dense",
-                        limit=min(top_k * 3, 60),
+                        limit=top_k * 2,
                         filter=query_filter,
-                        search_params=SearchParams(
-                            hnsw_ef=128,
-                            quantization=QuantizationSearchParams(
-                                ignore=False,
-                                rescore=True,
-                                oversampling=2.0,
-                            ),
-                        ),
-                    ),
-                ]
-
-                results = self.client.query_points(
-                    collection_name=self.collection_name,
-                    prefetch=prefetch_list,
-                    query=FusionQuery(fusion=Fusion.RRF),
-                    limit=top_k,
-                    with_payload=True,
-                    with_vectors=False,
-                ).points
-
-                logger.debug(
-                    "Hybrid retrieved %d documents (dense+sparse RRF, top %d)",
-                    len(results),
-                    top_k,
+                    )
                 )
-            else:
-                # ── Dense-only mode: single vector search ──────────────────
-                results = self.client.query_points(
-                    collection_name=self.collection_name,
-                    query=query_vector,
-                    using="dense",
-                    query_filter=query_filter,
-                    limit=top_k,
-                    with_payload=True,
-                    with_vectors=False,
-                    search_params=SearchParams(
-                        hnsw_ef=128,
-                        quantization=QuantizationSearchParams(
-                            ignore=False,
-                            rescore=True,
-                            oversampling=2.0,
-                        ),
-                    ),
-                ).points
+                
+                # 2. Sparse Search per query (if available)
+                if sparse_vectors and i < len(sparse_vectors) and sparse_vectors[i]:
+                    prefetch_list.append(
+                        Prefetch(
+                            query=sparse_vectors[i],
+                            using="sparse-bm25",
+                            limit=top_k * 2,
+                            filter=query_filter,
+                        )
+                    )
 
-                logger.debug(
-                    "Dense-only retrieved %d documents (top %d)",
-                    len(results),
-                    top_k,
+            # 3. Recommendation Signals (if any)
+            pos_ids = [self._node_id_to_qdrant_id(pid) for pid in (positive_point_ids or [])]
+            neg_ids = [self._node_id_to_qdrant_id(nid) for nid in (negative_point_ids or [])]
+            if pos_ids or neg_ids:
+                prefetch_list.append(
+                    Prefetch(
+                        query=RecommendQuery(positive=pos_ids, negative=neg_ids, strategy="best_score"),
+                        using="dense",
+                        limit=top_k * 2,
+                        filter=query_filter,
+                    )
                 )
 
-            # Convert to RetrievedDocument objects
-            retrieved = []
-            for point in results:
-                payload = point.payload or {}
-                retrieved_doc = RetrievedDocument(
-                    node_id=payload.get("node_id", str(point.id)),
-                    document_id=payload.get("document_id", "unknown"),
-                    text=payload.get("text", ""),
-                    score=point.score,
+            # 4. Execute Unified Query with RRF Fusion
+            client = await self._get_client()
+            response = await client.query_points(
+                collection_name=self.collection_name,
+                prefetch=prefetch_list,
+                query=FusionQuery(fusion=Fusion.RRF),
+                limit=top_k,
+                with_payload=True,
+            )
+            results = response.points
+
+            # Map to domain models
+            return [
+                RetrievedDocument(
+                    node_id=str(p.payload.get("node_id", p.id)),
+                    document_id=str(p.payload.get("document_id", "unknown")),
+                    text=str(p.payload.get("text", "")),
+                    score=p.score,
                     metadata={
-                        "page_number": payload.get("page_number"),
-                        "section_title": payload.get("section_title"),
-                        "parent_id": payload.get("parent_id"),
-                        "node_type": payload.get("node_type"),
-                        "custom": payload.get("metadata", {}),
+                        "page_number": p.payload.get("page_number"),
+                        "section_title": p.payload.get("section_title"),
+                        "section_content": p.payload.get("section_content", ""),
+                        "breadcrumb": p.payload.get("breadcrumb", []),
+                        "custom": p.payload.get("metadata", {}),
                     },
                 )
-                retrieved.append(retrieved_doc)
+                for p in results
+            ]
 
+        except Exception as e:
+            raise VectorStoreOperationException(
+                f"Hybrid multi-query retrieval failed: {e}",
+                error_code="QDRANT_QUERY_FAILED"
+            )
+
+    async def retrieve_grouped(
+        self,
+        query_vectors: list[list[float]],
+        group_by: str = "metadata.section_id",
+        group_size: int = 3,
+        top_groups: int = 5,
+        document_ids_filter: list[str] | None = None,
+    ) -> list[RetrievedDocument]:
+        """
+        Retrieve top groups (e.g., sections) using Qdrant's native grouping.
+        Useful for retrieving full sections with their best chunks.
+        """
+        try:
+            client = await self._get_client()
+            # Note: Grouping with Fusion (RRF) is currently complex in Qdrant API.
+            # We use the primary query vector for grouping.
+            query_vector = query_vectors[0]
+            
+            # Build filter
+            query_conditions = []
+            if document_ids_filter:
+                query_conditions.append(
+                    FieldCondition(key="document_id", match=MatchAny(any=document_ids_filter))
+                )
+            query_filter = Filter(must=query_conditions) if query_conditions else None
+
+            # Search with grouping
+            response = await client.search_groups(
+                collection_name=self.collection_name,
+                query=query_vector,
+                group_by=group_by,
+                group_size=group_size,
+                limit=top_groups,
+                query_filter=query_filter,
+                with_payload=True,
+            )
+            results = response.groups
+
+            retrieved = []
+            for group in results:
+                for point in group.hits:
+                    retrieved.append(
+                        RetrievedDocument(
+                            node_id=str(point.payload.get("node_id", point.id)),
+                            document_id=str(point.payload.get("document_id", "unknown")),
+                            text=str(point.payload.get("text", "")),
+                            score=point.score,
+                            metadata={
+                                "page_number": point.payload.get("page_number"),
+                                "section_title": point.payload.get("section_title"),
+                                "section_content": point.payload.get("section_content", ""),
+                                "breadcrumb": point.payload.get("breadcrumb", []),
+                                "custom": point.payload.get("metadata", {}),
+                            },
+                        )
+                    )
             return retrieved
 
         except Exception as e:
             raise VectorStoreOperationException(
-                f"Failed to retrieve from Qdrant: {str(e)}",
-                error_code="QDRANT_RETRIEVE_FAILED",
-                details={"top_k": top_k, "hybrid": sparse_vector is not None, "error": str(e)},
+                f"Grouped retrieval failed: {e}",
+                error_code="QDRANT_GROUP_FAILED"
             )
 
-    def delete(self, document_id: str) -> bool:
+    async def delete(self, document_id: str) -> bool:
         """
         Delete all vectors for a document.
 
@@ -447,7 +411,8 @@ class QdrantVectorStore(BaseVectorStore):
                 ]
             )
 
-            self.client.delete(
+            client = await self._get_client()
+            await client.delete(
                 collection_name=self.collection_name,
                 points_selector=delete_filter,
             )
@@ -462,7 +427,7 @@ class QdrantVectorStore(BaseVectorStore):
                 details={"document_id": document_id, "error": str(e)},
             )
 
-    def delete_by_ids(self, point_ids: list[str | int]) -> bool:
+    async def delete_by_ids(self, point_ids: list[str | int]) -> bool:
         """Delete specific Qdrant points by point IDs."""
         try:
             from qdrant_client.models import PointIdsList
@@ -479,7 +444,8 @@ class QdrantVectorStore(BaseVectorStore):
             if not normalized_ids:
                 return True
 
-            self.client.delete(
+            client = await self._get_client()
+            await client.delete(
                 collection_name=self.collection_name,
                 points_selector=PointIdsList(points=normalized_ids),
             )
@@ -491,17 +457,15 @@ class QdrantVectorStore(BaseVectorStore):
                 details={"point_ids": point_ids, "error": str(e)},
             )
 
-    def count(self, document_id: str) -> int:
+    async def count(self, document_id: str) -> int:
         """
-        Count vectors stored for a given document_id.
-
-        Used for post-ingestion verification (expect > 0) and
-        post-delete verification (expect == 0).
+        Count vectors stored for a given document_id (Async).
         """
         try:
             from qdrant_client.models import Filter, FieldCondition, MatchValue
+            client = await self._get_client()
 
-            result = self.client.count(
+            result = await client.count(
                 collection_name=self.collection_name,
                 count_filter=Filter(
                     must=[
@@ -531,7 +495,7 @@ class QdrantVectorStore(BaseVectorStore):
         qdrant_id = int.from_bytes(hash_bytes[:8], byteorder="big") & 0x7FFFFFFFFFFFFFFF
         return qdrant_id
 
-    def scroll(
+    async def scroll(
         self,
         filter: dict[str, Any | None] = None,
         with_payload: bool = True,
@@ -540,22 +504,11 @@ class QdrantVectorStore(BaseVectorStore):
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         """
-        Scroll through all points that match the filter.
-
-        Used by Tree API to fetch all nodes for a document.
-
-        Args:
-            filter: Qdrant filter dict (e.g., {"must": [{"key": "document_id", "match": {"value": "..."}}]})
-            with_payload: Whether to include payload in results
-            with_vector: Whether to include vector in results
-            limit: Maximum number of points to return
-            offset: Number of matching points to skip before collecting results
-
-        Returns:
-            List of point dicts with id, payload, and optionally vector
+        Scroll through all points that match the filter (Async).
         """
         try:
             from qdrant_client.models import Filter, FieldCondition, MatchValue
+            client = await self._get_client()
 
             # Convert filter dict to Qdrant Filter object
             qdrant_filter = None
@@ -578,7 +531,7 @@ class QdrantVectorStore(BaseVectorStore):
                     qdrant_filter = Filter(must=must_conditions)
 
             # Scroll through points
-            results = self.client.scroll(
+            results = await client.scroll(
                 collection_name=self.collection_name,
                 scroll_filter=qdrant_filter,
                 limit=limit,

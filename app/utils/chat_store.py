@@ -1,15 +1,15 @@
-from __future__ import annotations
-
-import json
-
-import redis
-
+from redis import asyncio as aioredis
 from app.core.config import settings
 
 
 class ChatStore:
-    def __init__(self) -> None:
-        self.client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    """Manages chat history using standard RedisJSON (from redis-py)."""
+
+    def __init__(self, client: aioredis.Redis | None = None) -> None:
+        if client:
+            self.client = client
+        else:
+            self.client = aioredis.from_url(settings.redis_url, decode_responses=True)
 
     def active_key(self, scope_id: str) -> str:
         return f"chat:active:{scope_id}"
@@ -17,57 +17,41 @@ class ChatStore:
     def history_key(self, scope_id: str, session_id: str) -> str:
         return f"chat:history:{scope_id}:{session_id}"
 
-    def set_active_session(self, scope_id: str, session_id: str) -> None:
-        self.client.set(self.active_key(scope_id), session_id)
+    async def set_active_session(self, scope_id: str, session_id: str) -> None:
+        await self.client.set(self.active_key(scope_id), session_id)
 
-    def get_active_session(self, scope_id: str) -> str | None:
-        return self.client.get(self.active_key(scope_id))
+    async def get_active_session(self, scope_id: str) -> str | None:
+        return await self.client.get(self.active_key(scope_id))
 
-    def append_message(self, scope_id: str, session_id: str, role: str, content: str) -> None:
+    async def append_message(self, scope_id: str, session_id: str, role: str, content: str) -> None:
         key = self.history_key(scope_id, session_id)
-        payload = json.dumps({"role": role, "content": content})
-        pipe = self.client.pipeline()
-        pipe.rpush(key, payload)
-        pipe.expire(key, settings.chat_history_redis_ttl)
-        pipe.execute()
+        msg = {"role": role, "content": content}
 
-    def get_history(self, scope_id: str, session_id: str) -> list[dict[str, str]]:
-        items = self.client.lrange(self.history_key(scope_id, session_id), 0, -1)
-        return [json.loads(item) for item in items]
+        if not await self.client.exists(key):
+            await self.client.json().set(key, "$", [msg])
+        else:
+            await self.client.json().arrappend(key, "$", msg)
+        await self.client.expire(key, settings.chat_history_redis_ttl)
 
-    def history_exists(self, scope_id: str, session_id: str) -> bool:
-        """Check if Redis has history for this session (avoids unnecessary DB query)."""
-        return self.client.llen(self.history_key(scope_id, session_id)) > 0
+    async def get_history(self, scope_id: str, session_id: str) -> list[dict[str, str]]:
+        history = await self.client.json().get(self.history_key(scope_id, session_id))
+        return history if history else []
 
-    def hydrate_from_db(self, scope_id: str, session_id: str, db_messages: list[dict]) -> None:
-        """Load DB messages into Redis if TTL expired (key empty or missing).
+    async def history_exists(self, scope_id: str, session_id: str) -> bool:
+        return await self.client.exists(self.history_key(scope_id, session_id)) > 0
 
-        Uses a Redis pipeline with setnx guard to prevent race condition where
-        concurrent requests both see an empty key and duplicate hydration work.
-        """
+    async def hydrate_from_db(self, scope_id: str, session_id: str, db_messages: list[dict]) -> None:
         key = self.history_key(scope_id, session_id)
         lock_key = f"{key}:hydrating"
 
-        messages = db_messages[-settings.chat_history_limit :]
-        if not messages:
+        if not await self.client.set(lock_key, "1", nx=True, ex=30):
             return
 
-        # Use setnx as a lightweight lock — first writer wins, others skip
-        acquired = self.client.set(lock_key, "1", nx=True, ex=30)
-        if not acquired:
-            return
+        if not await self.history_exists(scope_id, session_id):
+            formatted = [
+                {"role": m["role"], "content": m["content"]} for m in db_messages[-settings.chat_history_limit :]
+            ]
+            await self.client.json().set(key, "$", formatted)
+            await self.client.expire(key, settings.chat_history_redis_ttl)
 
-        # Double-check after acquiring lock — another request may have hydrated
-        if self.client.llen(key) > 0:
-            self.client.delete(lock_key)
-            return
-
-        try:
-            pipe = self.client.pipeline(transaction=False)
-            for msg in messages:
-                payload = json.dumps({"role": msg["role"], "content": msg["content"]})
-                pipe.rpush(key, payload)
-            pipe.expire(key, settings.chat_history_redis_ttl)
-            pipe.execute()
-        finally:
-            self.client.delete(lock_key)
+        await self.client.delete(lock_key)

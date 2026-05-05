@@ -24,7 +24,7 @@ throttle = RequestThrottle()
 
 
 @router.post("/auth/login", response_model=TokenResponse)
-def login(payload: LoginRequest, request: Request, service: AuthService = Depends(get_auth_service)) -> TokenResponse:
+async def login(payload: LoginRequest, request: Request, service: AuthService = Depends(get_auth_service)) -> TokenResponse:
     client_ip = request.client.host if request.client else "unknown"
     normalized_username = payload.username.lower().strip()
     if not throttle.allow(
@@ -33,7 +33,7 @@ def login(payload: LoginRequest, request: Request, service: AuthService = Depend
         raise http_errors.too_many_requests("Too many login attempts")
 
     try:
-        result = service.login(
+        result = await service.login(
             username=normalized_username,
             password=payload.password,
             ip_address=request.client.host if request.client else None,
@@ -45,7 +45,7 @@ def login(payload: LoginRequest, request: Request, service: AuthService = Depend
 
 
 @router.post("/auth/logout", response_model=LogoutResponse)
-def logout(
+async def logout(
     request: Request,
     auth: AuthContext = Depends(get_auth_context),
     service: AuthService = Depends(get_auth_service),
@@ -61,7 +61,7 @@ def logout(
         except (jwt.exceptions.PyJWTError, KeyError, TypeError, ValueError):
             pass  # AuthContext already validated the token; proceed with logout
 
-    service.logout(
+    await service.logout(
         jti=auth.token_id,
         expires_at=expires_at,
         user_id=auth.user_id,
@@ -72,7 +72,7 @@ def logout(
 
 
 @router.post("/auth/users", response_model=CreateUserResponse)
-def create_user(
+async def create_user(
     payload: CreateUserRequest, _auth=Depends(require_admin), service: AuthService = Depends(get_auth_service)
 ) -> CreateUserResponse:
     if not throttle.allow(
@@ -81,7 +81,7 @@ def create_user(
         raise http_errors.too_many_requests("Too many user creation requests")
 
     try:
-        result = service.create_user(
+        result = await service.create_user(
             username=payload.username,
             password=payload.password,
             role_name=payload.role,
@@ -97,29 +97,29 @@ def create_user(
 
 
 @router.get("/auth/roles", response_model=list[RoleResponse])
-def get_roles(_auth=Depends(require_admin), service: AuthService = Depends(get_auth_service)) -> list[RoleResponse]:
-    roles = service.list_roles()
+async def get_roles(_auth=Depends(require_admin), service: AuthService = Depends(get_auth_service)) -> list[RoleResponse]:
+    roles = await service.list_roles()
     return [RoleResponse(id=r["id"], name=r["name"], description=r["description"]) for r in roles]
 
 
 @router.get("/auth/me")
-def get_me(auth: AuthContext = Depends(get_auth_context), service: AuthService = Depends(get_auth_service)) -> dict:
+async def get_me(auth: AuthContext = Depends(get_auth_context), service: AuthService = Depends(get_auth_service)) -> dict:
     try:
-        return service.get_current_user(auth.user_id)
+        return await service.get_current_user(auth.user_id)
     except ValueError as e:
         raise http_errors.unauthorized(str(e)) from None
 
 
 @router.get("/auth/users", response_model=list[CreateUserResponse])
-def get_users(
+async def get_users(
     _auth=Depends(require_admin), service: AuthService = Depends(get_auth_service)
 ) -> list[CreateUserResponse]:
-    users = service.list_users()
+    users = await service.list_users()
     return [CreateUserResponse(id=u["id"], username=u["username"], role=u["role"]) for u in users]
 
 
 @router.delete("/auth/users/{username}")
-def delete_user(
+async def delete_user(
     username: str, _auth=Depends(require_admin), service: AuthService = Depends(get_auth_service)
 ) -> dict[str, str]:
     if not throttle.allow(
@@ -128,7 +128,7 @@ def delete_user(
         raise http_errors.too_many_requests("Too many user delete requests")
 
     try:
-        return service.delete_user(username=username, admin_user_id=_auth.user_id)
+        return await service.delete_user(username=username, admin_user_id=_auth.user_id)
     except ValueError as e:
         msg = str(e)
         if "not found" in msg:

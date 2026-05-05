@@ -19,22 +19,22 @@ class AuthService:
         self.repo = repo
         self.blacklist = blacklist
 
-    def login(
+    async def login(
         self, *, username: str, password: str, ip_address: str | None = None, user_agent: str | None = None
     ) -> dict:
         """Authenticate user and return token + role. Raises ValueError on failure."""
         normalized = username.lower().strip()
-        user = self.repo.get_user_by_username(normalized, include_hash=True)
+        user = await self.repo.get_user_by_username(normalized, include_hash=True)
         if user is None or not verify_password(password, user["password_hash"]):
             raise ValueError("Invalid username or password")
 
-        role = self.repo.get_role_by_id(user["role_id"])
+        role = await self.repo.get_role_by_id(user["role_id"])
         if role is None:
             raise ValueError("User has no assigned role")
 
         token = create_access_token(subject=user["id"], role=role["name"])
 
-        safe_record_audit(
+        await safe_record_audit(
             action="auth.login",
             actor_user_id=user["id"],
             subject_type="user",
@@ -46,12 +46,12 @@ class AuthService:
 
         return {"access_token": token, "role": role["name"], "user_id": user["id"]}
 
-    def logout(
+    async def logout(
         self, *, jti: str, expires_at: int, user_id: str, ip_address: str | None = None, user_agent: str | None = None
     ) -> None:
         """Revoke a JWT token."""
-        self.blacklist.revoke(jti, expires_at)
-        safe_record_audit(
+        await self.blacklist.revoke(jti, expires_at)
+        await safe_record_audit(
             action="auth.logout",
             actor_user_id=user_id,
             subject_type="token",
@@ -61,24 +61,24 @@ class AuthService:
             details={"expires_at": expires_at},
         )
 
-    def create_user(self, *, username: str, password: str, role_name: str, admin_user_id: str) -> dict:
+    async def create_user(self, *, username: str, password: str, role_name: str, admin_user_id: str) -> dict:
         """Create a new user. Returns user dict. Raises on conflict/invalid role."""
         from sqlalchemy.exc import IntegrityError
 
         normalized = username.lower().strip()
 
         # Check duplicate
-        existing = self.repo.get_user_by_username(normalized)
+        existing = await self.repo.get_user_by_username(normalized)
         if existing is not None:
             raise ValueError("Username already exists")
 
         # Validate role
-        role = self.repo.get_role_by_name(role_name)
+        role = await self.repo.get_role_by_name(role_name)
         if role is None:
             raise ValueError("Invalid role")
 
         try:
-            user = self.repo.create_user(
+            user = await self.repo.create_user(
                 username=normalized,
                 password_hash=hash_password(password),
                 role_id=role["id"],
@@ -86,7 +86,7 @@ class AuthService:
         except IntegrityError:
             raise ValueError("Username already exists") from None
 
-        safe_record_audit(
+        await safe_record_audit(
             action="auth.user.create",
             actor_user_id=admin_user_id,
             subject_type="user",
@@ -98,15 +98,15 @@ class AuthService:
 
         return {"id": user["id"], "username": user["username"], "role": role["name"]}
 
-    def list_roles(self) -> list[dict]:
-        return self.repo.list_roles()
+    async def list_roles(self) -> list[dict]:
+        return await self.repo.list_roles()
 
-    def get_current_user(self, user_id: str) -> dict:
+    async def get_current_user(self, user_id: str) -> dict:
         """Get current user info with role. Raises ValueError if not found."""
-        user = self.repo.get_user_by_id(user_id)
+        user = await self.repo.get_user_by_id(user_id)
         if user is None:
             raise ValueError("User not found")
-        role = self.repo.get_role_by_id(user["role_id"])
+        role = await self.repo.get_role_by_id(user["role_id"])
         return {
             "user_id": user["id"],
             "username": user["username"],
@@ -114,13 +114,13 @@ class AuthService:
             "is_active": user["is_active"],
         }
 
-    def list_users(self) -> list[dict]:
-        return self.repo.list_users_with_roles()
+    async def list_users(self) -> list[dict]:
+        return await self.repo.list_users_with_roles()
 
-    def delete_user(self, *, username: str, admin_user_id: str) -> dict:
+    async def delete_user(self, *, username: str, admin_user_id: str) -> dict:
         """Delete a user by username. Raises on not found or self-delete."""
         normalized = username.lower().strip()
-        user = self.repo.get_user_by_username(normalized)
+        user = await self.repo.get_user_by_username(normalized)
         if user is None:
             raise ValueError("User not found")
 
@@ -128,9 +128,9 @@ class AuthService:
         if user["id"] == admin_user_id:
             raise ValueError("Cannot delete your own account")
 
-        self.repo.delete_user(user["id"])
+        await self.repo.delete_user(user["id"])
 
-        safe_record_audit(
+        await safe_record_audit(
             action="auth.user.delete",
             actor_user_id=admin_user_id,
             subject_type="user",

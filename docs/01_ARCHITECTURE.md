@@ -88,7 +88,7 @@ graph TD
     ChatSvc --> Memory[UserMemoryService → Redis + PostgreSQL]
     DocSvc --> Upload[Upload → Redis queue]
     Upload --> Worker[butler · celery multi · GPU]
-    Worker --> Parser[ParserManager → Docling Method D + PaddleOCR]
+    Worker --> Parser[DoclingParser → Docling Method D + PaddleOCR]
     Parser --> Sections[SectionRepository → PostgreSQL]
     Parser --> EmbedWorker[Vietnamese_Embedding_v2 → Qdrant]
     Redis --> Cleanup[CleanupService → butler (node-default, cleanup queue)]
@@ -120,7 +120,7 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | Domain | Service | Repository |
 |--------|---------|-----------|
 | Auth | `AuthService` | `AuthRepository` |
-| Chat | `ChatService` (prepare_chat, extract_memories) | `ChatRepository` |
+| Chat | `ChatService` (prepare_chat, stream orchestration, session/history, persistence) | `ChatRepository` |
 | Documents | `DocumentService` (build_vector_store factory) | `DocumentRepository` (get_latest_active_document_ids, get_titles_by_ids, hard_delete) |
 | Sections | `TreeService` | `SectionRepository` (get_sections_for_rag, get_section_ids_by_document) |
 | Cleanup | `CleanupService` | `DocumentRepository` + `SectionRepository` |
@@ -135,12 +135,11 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | Upload | Browser → /api/bep/ → proxy → API → RustFS | File persisted, document row pending |
 | Queue | API → Redis → Worker | Async task, task_id returned (202) |
 | Parse | Worker → Docling Method D + PaddleOCR (force_full_page_ocr=True) → sections + chunks | Items with page spans, heading levels |
-| Validate | HierarchyValidator (app/utils/) + RuleBasedRefiner (app/utils/text_refiner.py, 0GB VRAM, ~1ms) | Cleaned, validated text |
 | Store | SectionRepository → PostgreSQL → Embed → Qdrant | document_sections rows + vectors |
 | Retrieve | QueryCache → hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → dedup → rerank (optional, off by default) → **full section context assembly** | Top sections with full content sent to LLM (not chunks) |
 | Memory | UserMemoryService (redis.Redis + MemoryRepository via DI) → Redis cache → inject systemInstruction | Personalized prompt |
-| Stream | AI Provider → strip_reasoning() → SSE → proxy → Browser | Grounded answer with citations, token stats, cost estimate |
-| Persist | Post-stream → Celery save_chat_message_task (queue=default) → PostgreSQL + Redis | Async message save, reduces latency before done:true |
+| Stream | ChatService → AI provider adapter → strip_reasoning() → SSE → proxy → Browser | Grounded answer with citations, token stats, cost estimate |
+| Persist | Post-stream → `ChatService.save_assistant_message()` before `done:true` → PostgreSQL + Redis | Synchronous assistant save so browser close does not lose the final answer |
 | Extract | Post-response → Celery extract_memories_task (queue=default) → async Gemini → user_memories | Durable memory extraction, survives API restart |
 
 ## Non-Negotiable Invariants
@@ -149,12 +148,17 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 |------|----------|
 | API contracts | Keep upload/status/chat/document endpoints stable |
 | Async ingestion | Upload must never block on parsing |
-| Provider boundary | Route handlers never call provider SDKs directly |
+| Provider boundary | Route handlers never call provider factories, provider adapters, or provider SDKs directly. Chat routes delegate generation orchestration to `ChatService`; `ChatService` may use provider adapters. |
+| ID-first boundaries | Cross-layer/service/worker payloads pass stable IDs and URIs. Rich objects are rehydrated inside the owning layer. |
 | Hierarchical retrieval | Retrieve at chunk level, present at section level (full section content to LLM) |
 | Citation policy | Every grounded answer includes citations |
 | Delete policy | Hard-delete 6-step order (see below) |
 | Version policy | Latest active version preferred during retrieval |
 | Rate limiting | Atomic Lua script — no INCR+EXPIRE race |
+
+## Refactor Conformance
+
+This architecture document is now the conformance target. Code must keep the ID-first boundaries, CSR layering, provider boundary, hard-delete order, and retrieval invariants in this file. Do not introduce a separate temporary conformance document.
 
 ## Delete Policy (Authoritative)
 
@@ -190,7 +194,7 @@ JWT auth (PyJWT) + role checks. Role cached in JWT payload to eliminate DB queri
 
 ChatGPT-like persistent memory. Types: `preference`, `correction`, `instruction`, `fact`.
 
-Flow: UserMemoryService (receives `redis.Redis` + `MemoryRepository` via DI) → load from Redis/PostgreSQL (cache TTL configurable via `MEMORY_CACHE_TTL`, default 5min) → inject into `systemInstruction` → AI generates response → async extract new memories via heuristic triggers + provider.chat() (uses cached singleton) → store in `user_memories`. MemoryService receives UserMemoryService via DI.
+Flow: UserMemoryService receives `redis.Redis` + `MemoryRepository` through DI in request paths. Celery tasks create the same service with short-lived repositories in worker context. Active memories are loaded from Redis/PostgreSQL (cache TTL configurable via `MEMORY_CACHE_TTL`, default 5min) → injected into `systemInstruction` → AI generates response → `extract_memories_task` runs heuristic triggers + provider.chat() (cached singleton) → stores into `user_memories`. `MemoryService` handles user-facing CRUD with injected `MemoryRepository` and invalidates UserMemoryService cache. New reusable request services must not hide database access internally.
 
 Frontend: Settings page `/settings` with full CRUD. Content limit: 1000 chars per memory.
 
@@ -211,7 +215,7 @@ Gemma 4 outputs chain-of-thought by default. 4 suppression layers:
 
 - Last N messages as Gemini `contents` array (assistant→model role mapping, configurable via `AI_MAX_HISTORY_MESSAGES`, default 20)
 - RAG context embedded into current user message
-- Messages persisted to PostgreSQL; Redis hot cache with configurable TTL (`CHAT_HISTORY_REDIS_TTL`, default 24h)
+- User messages are saved synchronously during `ChatService.prepare_chat()`. Assistant messages are saved synchronously by `ChatService.save_assistant_message()` before the final SSE `done:true` event. Redis remains the hot cache with configurable TTL (`CHAT_HISTORY_REDIS_TTL`, default 24h).
 - `ChatStore.hydrate_from_db()` reloads from DB on TTL expiry (checks Redis first via `history_exists()`)
 - Redis `append_message()` uses pipeline for atomic RPUSH + EXPIRE
 - Auto-title from first user message (80 chars)

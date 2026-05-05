@@ -27,10 +27,15 @@ def extract_memories_task(
         from app.core.config import settings
         from app.services.chat.user_memory_service import UserMemoryService
 
+        from app.db.session import SessionLocal
+        from app.repositories.memory_repository import MemoryRepository
+
         redis_client = redis_lib.Redis.from_url(settings.redis_url, decode_responses=True)
-        service = UserMemoryService(redis_client=redis_client)
         provider = build_ai_provider()
 
-        asyncio.run(service.extract_memories_from_turn(user_id, user_message, assistant_response, provider))
+        with SessionLocal() as session:
+            memory_repo = MemoryRepository(session)
+            service = UserMemoryService(redis_client=redis_client, memory_repo=memory_repo)
+            asyncio.run(service.extract_memories_from_turn(user_id, user_message, assistant_response, provider))
     except Exception as e:
         logger.debug("Memory extraction task failed (best-effort): %s", e)

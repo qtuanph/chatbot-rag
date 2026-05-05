@@ -6,6 +6,7 @@ from app.models.datasource import DataSource, DataSourceQueryAudit, DataSourceSc
 from app.models.audit import SecurityAudit
 from app.models.chat import ChatMessage, ChatSession
 from app.models.memory import UserMemory
+from app.models.rag import RagNode, RagSection, RagContext
 
 __all__ = [
     "Role",
@@ -20,4 +21,7 @@ __all__ = [
     "DataSourceSchemaCache",
     "DataSourceQueryAudit",
     "SecurityAudit",
+    "RagNode",
+    "RagSection",
+    "RagContext",
 ]

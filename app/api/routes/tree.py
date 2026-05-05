@@ -38,7 +38,7 @@ async def get_document_tree(
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
     try:
-        return service.get_document_tree(document_id=document_id, offset=offset, limit=limit)
+        return await service.get_document_tree(document_id=document_id, offset=offset, limit=limit)
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None
 
@@ -56,7 +56,7 @@ async def get_node_details(
     ):
         raise http_errors.too_many_requests("Too many node detail requests")
     try:
-        return service.get_node_details(document_id=document_id, node_id=node_id)
+        return await service.get_node_details(document_id=document_id, node_id=node_id)
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None
 
@@ -74,6 +74,6 @@ async def search_nodes(
     ):
         raise http_errors.too_many_requests("Too many tree search requests")
     try:
-        return service.search_nodes(document_id=document_id, query=query)
+        return await service.search_nodes(document_id=document_id, query=query)
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None

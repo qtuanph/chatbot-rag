@@ -10,16 +10,10 @@ Fix: Single Lua script executed atomically by Redis.
 Redis guarantees single-threaded script execution — no race condition possible.
 """
 
-from __future__ import annotations
-
 import redis
-
 from app.core.config import settings
 
-# Atomic rate-limit script:
-# - INCR counter
-# - Set TTL only on first request (count == 1) so window doesn't reset
-# Returns: current count after increment
+# Atomic rate-limit script (Lua)
 _RATE_LIMIT_SCRIPT = """
 local count = redis.call('INCR', KEYS[1])
 if count == 1 then
@@ -30,19 +24,13 @@ return count
 
 
 class RequestThrottle:
-    """Atomic sliding-window rate limiter backed by Redis."""
+    """Atomic sliding-window rate limiter using standard Lua scripting."""
 
     def __init__(self) -> None:
         self._client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
         self._script = self._client.register_script(_RATE_LIMIT_SCRIPT)
 
     def allow(self, key: str, limit: int, window_seconds: int) -> bool:
-        """
-        Return True if request is within rate limit, False otherwise.
-        Fails open (returns True) on Redis errors to avoid blocking all traffic.
-        """
-        try:
-            count = int(self._script(keys=[key], args=[window_seconds]))
-            return count <= limit
-        except Exception:
-            return True
+        """Return True if within limit, False otherwise. Fails if Redis fails."""
+        count = int(self._script(keys=[key], args=[window_seconds]))
+        return count <= limit

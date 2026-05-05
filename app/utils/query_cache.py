@@ -18,7 +18,6 @@ Usage:
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -32,8 +31,6 @@ class QueryEmbeddingCache:
 
     def __init__(self, redis_client, model_name: str = "") -> None:
         self._r = redis_client
-        # Include model name hash in cache key so swapping models
-        # never serves stale vectors from a different model.
         self._model_hash = (
             hashlib.md5(model_name.encode("utf-8"), usedforsecurity=False).hexdigest()[:8] if model_name else "default"
         )
@@ -41,24 +38,56 @@ class QueryEmbeddingCache:
     def _key(self, text: str) -> str:
         return f"{self.PREFIX}{self._model_hash}:{hashlib.md5(text.encode('utf-8'), usedforsecurity=False).hexdigest()}"
 
-    def get(self, text: str) -> list[float | None]:
+    async def get(self, text: str) -> list[float] | None:
         """Return cached embedding vector or None if not found."""
         try:
-            raw = self._r.get(self._key(text))
-            if raw is None:
-                return None
-            vector = json.loads(raw)
-            logger.debug("Query cache HIT (len=%d)", len(vector))
-            return vector
+            return await self._r.json().get(self._key(text))
         except Exception:
-            logger.warning("Query cache GET failed", exc_info=True)
-            return None  # cache miss is always safe
+            return None
 
-    def set(self, text: str, vector: list[float]) -> None:
+    async def set(self, text: str, vector: list[float]) -> None:
         """Store embedding vector in cache with TTL."""
         try:
-            self._r.setex(self._key(text), self.TTL, json.dumps(vector))
-            logger.debug("Query cache SET (len=%d ttl=%ds)", len(vector), self.TTL)
+            key = self._key(text)
+            await self._r.json().set(key, "$", vector)
+            await self._r.expire(key, self.TTL)
         except Exception:
-            logger.warning("Query cache SET failed", exc_info=True)
-            # Never let cache write failure break the caller
+            pass
+
+
+class RagResultCache:
+    """Redis cache for the final RagContext results, skipping the entire pipeline."""
+
+    PREFIX = "rag_cache:"
+    TTL = 1800  # 30 minutes
+
+    def __init__(self, redis_client) -> None:
+        self._r = redis_client
+
+    def _key(self, query: str, document_ids: list[str] | None = None) -> str:
+        # Key includes query and document filters to ensure isolation
+        doc_hash = hashlib.md5(str(sorted(document_ids or [])).encode()).hexdigest()[:8]
+        query_hash = hashlib.md5(query.encode()).hexdigest()
+        return f"{self.PREFIX}{doc_hash}:{query_hash}"
+
+    async def get(self, query: str, document_ids: list[str] | None = None) -> Any | None:
+        """Retrieve cached RagContext if exists."""
+        try:
+            data = await self._r.get(self._key(query, document_ids))
+            if data:
+                import json
+                return json.loads(data)
+            return None
+        except Exception:
+            return None
+
+    async def set(self, query: str, document_ids: list[str] | None = None, result: Any = None) -> None:
+        """Cache the RagContext result."""
+        if not result:
+            return
+        try:
+            import json
+            key = self._key(query, document_ids)
+            await self._r.set(key, json.dumps(result), ex=self.TTL)
+        except Exception:
+            pass

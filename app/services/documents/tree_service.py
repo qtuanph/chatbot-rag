@@ -27,17 +27,17 @@ class TreeService:
         self.doc_repo = doc_repo
         self.section_repo = section_repo
 
-    def verify_document_exists(self, document_id: str) -> dict:
+    async def verify_document_exists(self, document_id: str) -> dict:
         """Verify document exists, return doc dict or raise ValueError."""
-        doc = self.doc_repo.get_full_document(document_id)
+        doc = await self.doc_repo.get_full_document(document_id)
         if not doc:
             raise ValueError("Document not found")
         return doc
 
-    def get_document_tree(self, *, document_id: str, offset: int = 0, limit: int = 20) -> dict:
+    async def get_document_tree(self, *, document_id: str, offset: int = 0, limit: int = 20) -> dict:
         """Get hierarchical tree structure with pagination."""
-        doc = self.verify_document_exists(document_id)
-        sections = self.section_repo.get_sections_by_document(document_id)
+        doc = await self.verify_document_exists(document_id)
+        sections = await self.section_repo.get_sections_by_document(document_id)
 
         ordered_sections = sorted(sections, key=self._section_sort_key)
         total_nodes = len(ordered_sections)
@@ -86,10 +86,10 @@ class TreeService:
             "nodes": nodes_list,
         }
 
-    def get_node_details(self, *, document_id: str, node_id: str) -> dict:
+    async def get_node_details(self, *, document_id: str, node_id: str) -> dict:
         """Get full details of a single node."""
-        self.verify_document_exists(document_id)
-        section = self.section_repo.get_section_by_section_id(document_id, node_id)
+        await self.verify_document_exists(document_id)
+        section = await self.section_repo.get_section_by_section_id(document_id, node_id)
 
         if not section:
             raise ValueError("Node not found")
@@ -113,10 +113,10 @@ class TreeService:
             },
         }
 
-    def search_nodes(self, *, document_id: str, query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
+    async def search_nodes(self, *, document_id: str, query: str, limit: int = MAX_SEARCH_RESULTS) -> dict:
         """Search nodes by title or content with context preview."""
-        self.verify_document_exists(document_id)
-        sections = self.section_repo.search_sections_by_document(document_id, query)
+        await self.verify_document_exists(document_id)
+        sections = await self.section_repo.search_sections_by_document(document_id, query)
 
         query_lower = query.lower()
         results = []

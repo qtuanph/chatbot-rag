@@ -65,11 +65,15 @@ Model pre-downloaded during Docker build via BuildKit cache.
 3. **Query embed**: MISS → local Vietnamese_Embedding_v2 → cache result.
 4. **Doc scope**: TTL-cached active doc IDs (60s). `DocumentRepository.get_latest_active_document_ids()` — returns set of latest-version ready doc IDs. Invalidated on upload/delete via `invalidate_doc_ids_cache()`.
 5. **Multi-query expansion** (opt-in, `RETRIEVAL_QUERY_EXPANSION_ENABLED=True`): Generate N query variants via AI provider. Each variant uses different vocabulary → broader recall.
-6. **Hybrid search**: For each query, run dense + BM25 sparse in parallel → RRF fusion in Qdrant.
-7. **Stage 1 — Section grouping**: Merge results across queries (dedupe by node_id, keep max score). Group by section_id → top 3 sections (score ≥ 0.30). Load section details via `SectionRepository.get_sections_for_rag()`.
-8. **Stage 2 — Chunk re-ranking**: Prioritise chunks within top sections first, then remaining. Score filter ≥ 0.35. Dedup overlapping chunks (100-char signature).
-9. **Stage 3 — Cross-encoder reranking** (optional, off by default): AITeamVN/Vietnamese_Reranker (`app/adapters/reranker/reranker.py`) scores (query, passage) pairs → top 5 chunks by relevance. Disabled via `RETRIEVAL_RERANK_ENABLED=false` — when sending full section context, LLM self-ranks effectively. Enable via env var if needed.
-10. **Stage 4 — Context assembly**: Map chunks → full section content from PostgreSQL. Deduplicate by section_id. Send complete section text (not chunk fragments) to LLM with breadcrumb hierarchy + page ranges. This ensures the LLM sees all content within a section, including details that may span multiple chunks.
+6. **Hybrid search (Multi-intent)**: For each query, run a 3-way prefetch in parallel:
+   - **Sparse (BM25)**: Keyword relevance.
+   - **Dense (Semantic)**: Standard query semantic similarity.
+   - **Recommendation (Feedback)**: Guiding results towards "Liked" chunks and away from "Disliked" ones using Qdrant's `RecommendQuery` with `strategy="best_score"`.
+7. **RRF Fusion**: Combine all 3 intents using Reciprocal Rank Fusion (RRF) via Qdrant Prefetch API. This ensures the search stays grounded in the user's query while respecting historical feedback.
+8. **Stage 1 — Section grouping**: Merge results across queries (dedupe by node_id, keep max score). Group by section_id → top 3 sections (score ≥ 0.30). Load section details via `SectionRepository.get_sections_for_rag()`.
+9. **Stage 2 — Chunk re-ranking**: Prioritise chunks within top sections first, then remaining. Score filter ≥ 0.35. Dedup overlapping chunks (100-char signature).
+10. **Stage 3 — Cross-encoder reranking** (optional, off by default): AITeamVN/Vietnamese_Reranker (`app/adapters/reranker/reranker.py`) scores (query, passage) pairs → top 5 chunks by relevance. Disabled via `RETRIEVAL_RERANK_ENABLED=false` — when sending full section context, LLM self-ranks effectively. Enable via env var if needed.
+11. **Stage 4 — Context assembly**: Map chunks → full section content from PostgreSQL. Deduplicate by section_id. Send complete section text (not chunk fragments) to LLM with breadcrumb hierarchy + page ranges. This ensures the LLM sees all content within a section, including details that may span multiple chunks.
 
 ### Hybrid Search: Dense + BM25
 
@@ -161,9 +165,9 @@ Display order from `document_sections.order_index`, then page span. Qdrant does 
 | Ingestion tasks | `app/workers/upload_pipeline.py` — dispatches rebuild_bm25_index_task after ingestion |
 | Cleanup tasks + beat | `app/workers/cleanup_pipeline.py` — uses CleanupService, dispatches rebuild_bm25_index_task after deletion |
 | Maintenance tasks | `app/workers/maintenance_tasks.py` — rebuild_bm25_index_task (ingestion queue), cleanup_orphaned_vectors_task (cleanup queue, Beat daily), record_audit_task (default queue) |
-| Chat tasks | `app/workers/chat_tasks.py` — save_chat_message_task on default queue (async assistant message persistence) |
+| Chat tasks | `app/workers/chat_tasks.py` — compatibility Celery wrapper; SSE path persists assistant messages synchronously before final done:true |
 | Memory tasks | `app/workers/memory_tasks.py` — extract_memories_task on default queue (async memory extraction, replaces asyncio.create_task) |
-| User memory service | `app/services/chat/user_memory_service.py:UserMemoryService` — receives redis.Redis via DI, creates short-lived sessions per DB operation |
+| User memory service | `app/services/chat/user_memory_service.py:UserMemoryService` — receives redis.Redis + MemoryRepository via DI in request paths; worker context may use short-lived repositories |
 | Memory service | `app/services/chat/memory_service.py:MemoryService` — receives UserMemoryService via DI |
 | AI provider (Google) | `app/adapters/ai/google.py:GoogleAIProvider` — singleton via lru_cache, x-goog-api-key header |
 | Provider factory | `app/adapters/ai/__init__.py:build_ai_provider()` — @lru_cache(maxsize=1) singleton |

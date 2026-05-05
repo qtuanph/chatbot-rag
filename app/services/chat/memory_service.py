@@ -15,10 +15,10 @@ class MemoryService:
         self.repo = repo
         self._user_memory_service = user_memory_service
 
-    def list_memories(self, user_id: str) -> list[dict]:
-        return self.repo.list_by_user(user_id)
+    async def list_memories(self, user_id: str) -> list[dict]:
+        return await self.repo.list_by_user(user_id)
 
-    def create_memory(self, *, user_id: str, memory_type: str, content: str) -> dict:
+    async def create_memory(self, *, user_id: str, memory_type: str, content: str) -> dict:
         if not content or not content.strip():
             raise ValueError("Memory content cannot be empty")
         if memory_type not in VALID_MEMORY_TYPES:
@@ -26,11 +26,11 @@ class MemoryService:
         if len(content) > 1000:
             raise ValueError("Memory content too long (max 1000 characters)")
 
-        result = self.repo.create(user_id=user_id, memory_type=memory_type, content=content.strip())
-        self._user_memory_service.invalidate_cache(user_id)
+        result = await self.repo.create(user_id=user_id, memory_type=memory_type, content=content.strip())
+        await self._user_memory_service.invalidate_cache(user_id)
         return result
 
-    def update_memory(
+    async def update_memory(
         self,
         *,
         memory_id: str,
@@ -39,18 +39,18 @@ class MemoryService:
         memory_type: str | None = None,
         is_active: bool | None = None,
     ) -> dict:
-        existing = self.repo.get_by_id(memory_id)
+        existing = await self.repo.get_by_id(memory_id)
         if existing is None or existing["user_id"] != user_id:
             raise ValueError("Memory not found")
 
-        result = self.repo.update(memory_id, content=content, memory_type=memory_type, is_active=is_active)
-        self._user_memory_service.invalidate_cache(user_id)
+        result = await self.repo.update(memory_id, content=content, memory_type=memory_type, is_active=is_active)
+        await self._user_memory_service.invalidate_cache(user_id)
         return result
 
-    def delete_memory(self, *, memory_id: str, user_id: str) -> None:
-        existing = self.repo.get_by_id(memory_id)
+    async def delete_memory(self, *, memory_id: str, user_id: str) -> None:
+        existing = await self.repo.get_by_id(memory_id)
         if existing is None or existing["user_id"] != user_id:
             raise ValueError("Memory not found")
 
-        self.repo.delete(memory_id)
-        self._user_memory_service.invalidate_cache(user_id)
+        await self.repo.delete(memory_id)
+        await self._user_memory_service.invalidate_cache(user_id)

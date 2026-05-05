@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, asdict
-
-import redis
+import redis.asyncio as redis
+import redis as sync_redis
 
 from app.core.config import settings
 
@@ -19,6 +18,8 @@ class DocumentRecord:
 
 
 class DocumentRegistry:
+    """Document status registry using native RedisJSON for atomic state management."""
+
     def __init__(self) -> None:
         self.client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
 
@@ -28,37 +29,70 @@ class DocumentRegistry:
     def _task_key(self, task_id: str) -> str:
         return f"task:{task_id}"
 
-    def put(self, record: DocumentRecord) -> None:
-        payload = json.dumps(asdict(record))
-        pipe = self.client.pipeline()
-        pipe.set(self._key(record.document_id), payload, ex=86400)
-        pipe.set(self._task_key(record.task_id), record.document_id, ex=86400)
-        pipe.execute()
+    async def put(self, record: DocumentRecord) -> None:
+        """Store record using JSON.SET."""
+        async with self.client.pipeline(transaction=True) as pipe:
+            await pipe.json().set(self._key(record.document_id), "$", asdict(record))
+            await pipe.expire(self._key(record.document_id), 86400)
+            await pipe.set(self._task_key(record.task_id), record.document_id, ex=86400)
+            await pipe.execute()
 
-    def get_by_document_id(self, document_id: str) -> DocumentRecord | None:
-        raw = self.client.get(self._key(document_id))
-        if not raw:
-            return None
-        return DocumentRecord(**json.loads(raw))
+    async def get_by_document_id(self, document_id: str) -> DocumentRecord | None:
+        """Retrieve record using JSON.GET."""
+        raw = await self.client.json().get(self._key(document_id))
+        return DocumentRecord(**raw) if raw else None
 
-    def get_by_task_id(self, task_id: str) -> DocumentRecord | None:
-        document_id = self.client.get(self._task_key(task_id))
-        if not document_id:
-            return None
-        return self.get_by_document_id(document_id)
+    async def get_by_task_id(self, task_id: str) -> DocumentRecord | None:
+        """Resolve document_id from task_id and return record."""
+        document_id = await self.client.get(self._task_key(task_id))
+        return await self.get_by_document_id(document_id) if document_id else None
 
-    def update(self, record: DocumentRecord) -> None:
-        self.put(record)
+    async def update(self, record: DocumentRecord) -> None:
+        await self.put(record)
 
-    def delete(self, document_id: str) -> None:
-        record = self.get_by_document_id(document_id)
+    async def delete(self, document_id: str) -> None:
+        """Mark record as deleted in RedisJSON."""
+        key = self._key(document_id)
+        if await self.client.exists(key):
+            await self.client.json().set(key, "$.deleted", True)
+            await self.client.json().set(key, "$.status", "deleted")
+
+    async def get_active_ids_async(self) -> set[str]:
+        """Return cached active document IDs (Async)."""
+        return set(await self.client.smembers("rag:active_doc_ids"))
+
+    async def set_active_ids_async(self, ids: list[str] | set[str]) -> None:
+        """Cache active document IDs (Async)."""
+        if ids:
+            async with self.client.pipeline(transaction=True) as pipe:
+                await pipe.sadd("rag:active_doc_ids", *list(ids))
+                await pipe.expire("rag:active_doc_ids", int(settings.doc_ids_cache_ttl))
+                await pipe.execute()
+
+    async def invalidate_active_ids_async(self) -> None:
+        """Clear the active document IDs cache (Async)."""
+        await self.client.delete("rag:active_doc_ids")
+
+    async def purge_async(self, document_id: str) -> None:
+        """Remove record and task mapping from Redis (Async)."""
+        record = await self.get_by_document_id(document_id)
         if record:
-            record.deleted = True
-            record.status = "deleted"
-            self.put(record)
+            await self.client.delete(self._key(document_id), self._task_key(record.task_id))
+        await self.invalidate_active_ids_async()
 
-    def purge(self, document_id: str) -> None:
-        record = self.get_by_document_id(document_id)
-        self.client.delete(self._key(document_id))
-        if record is not None:
-            self.client.delete(self._task_key(record.task_id))
+    # --- Synchronous methods for Celery workers ---
+    def get_active_ids(self) -> set[str]:
+        client = sync_redis.Redis.from_url(settings.redis_url, decode_responses=True)
+        return set(client.smembers("rag:active_doc_ids"))
+
+    def set_active_ids(self, ids: list[str] | set[str]) -> None:
+        if ids:
+            client = sync_redis.Redis.from_url(settings.redis_url, decode_responses=True)
+            pipe = client.pipeline()
+            pipe.sadd("rag:active_doc_ids", *list(ids))
+            pipe.expire("rag:active_doc_ids", int(settings.doc_ids_cache_ttl))
+            pipe.execute()
+
+    def invalidate_active_ids(self) -> None:
+        client = sync_redis.Redis.from_url(settings.redis_url, decode_responses=True)
+        client.delete("rag:active_doc_ids")

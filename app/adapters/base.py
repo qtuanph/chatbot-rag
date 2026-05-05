@@ -193,72 +193,39 @@ class BaseVectorStore(ABC):
     """
 
     @abstractmethod
-    def health_check(self) -> bool:
+    async def health_check(self) -> bool:
         """Check if vector store is reachable and healthy."""
         pass
 
     @abstractmethod
-    def store(
+    async def store(
         self,
         document_id: str,
         nodes: list[IngestedNode],
         embeddings: list[list[float]],
+        sparse_embeddings: list[Any] | None = None,
     ) -> list[str]:
         """
         Store document nodes with embeddings.
-
-        Args:
-            document_id: ID of the document
-            nodes: List of IngestedNode objects
-            embeddings: List of embedding vectors (must match nodes length)
-
-        Returns:
-            List of stored node IDs
-
-        Raises:
-            VectorStoreException: If store operation fails
         """
         pass
 
     @abstractmethod
-    def retrieve(
+    async def retrieve(
         self,
-        query_vector: list[float],
+        query_vectors: list[list[float]],
         top_k: int = 5,
-        document_id_filter: str | None = None,
-        document_ids_filter: list[str | None] = None,
-        section_ids_filter: list[str | None] = None,
+        document_ids_filter: list[str] | None = None,
+        sparse_vectors: list[Any] | None = None,
     ) -> list[RetrievedDocument]:
         """
         Retrieve top-k documents by vector similarity.
-
-        Args:
-            query_vector: Query embedding vector
-            top_k: Number of results to return
-            document_id_filter: Optional filter to specific document
-            document_ids_filter: Optional filter to multiple document IDs
-            section_ids_filter: Optional filter to multiple section IDs
-
-        Returns:
-            List of RetrievedDocument objects with scores
-
-        Raises:
-            VectorStoreException: If retrieve fails
         """
         pass
 
     @abstractmethod
-    def delete(self, document_id: str) -> bool:
+    async def delete(self, document_id: str) -> bool:
         """
         Delete all vectors for a document.
-
-        Args:
-            document_id: ID of document to delete
-
-        Returns:
-            True if deletion succeeded, False otherwise
-
-        Raises:
-            VectorStoreException: If deletion fails
         """
         pass

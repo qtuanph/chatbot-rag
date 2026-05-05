@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import json
-import random
 import re
 from typing import Any, AsyncGenerator
 
@@ -165,6 +163,7 @@ class GoogleAIProvider(AIProvider):
             keepalive_expiry=30.0,
         )
         self._client: httpx.AsyncClient | None = None
+        self._refine_client: httpx.AsyncClient | None = None
 
     @property
     def model_name(self) -> str:
@@ -179,11 +178,9 @@ class GoogleAIProvider(AIProvider):
 
     async def _get_refine_client(self) -> httpx.AsyncClient:
         """Get a client for text refinement with short 30s timeout."""
-        if not hasattr(self, "_refine_client"):
+        if self._refine_client is None or self._refine_client.is_closed:
             self._refine_client = httpx.AsyncClient(timeout=30.0, limits=self._limits)
-        elif self._refine_client.is_closed:  # type: ignore
-            self._refine_client = httpx.AsyncClient(timeout=30.0, limits=self._limits)
-        return self._refine_client  # type: ignore
+        return self._refine_client
 
     async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> dict[str, Any]:
         """
@@ -200,77 +197,41 @@ class GoogleAIProvider(AIProvider):
         return {"answer": full_answer or "Không thể tạo câu trả lời lúc này. Vui lòng thử lại.", "citations": citations}
 
     async def refine_text(self, text: str, current_header: str | None = None) -> tuple[str, str | None]:
-        """
-        Refine text using Gemini to fix OCR errors and detect headers.
-        """
-        if not text or not text.strip():
-            return text, current_header
-
+        """Refine text using Gemini."""
         prompt = (
-            "You are a text refinement tool for documents. Your tasks:\n"
-            "1. Fix common OCR errors (e.g., 'M Ụ C T I Ê U' → 'MỤC TIÊU')\n"
-            "2. Normalize whitespace\n"
-            "3. Detect if first line is a header/title\n\n"
-            f"Text to refine:\n{text[:2000]}\n\n"
+            "You are a text refinement tool. Tasks: 1. Fix OCR errors 2. Normalize whitespace 3. Detect header.\n"
+            f"Text:\n{text[:2000]}\n"
             'Return JSON: {"cleaned_text": "...", "detected_header": "..." or null}'
         )
-
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.1,
-                "maxOutputTokens": 512,
-                "thinkingConfig": {"thinkingLevel": "MINIMAL"},
-            },
+            "generationConfig": {"temperature": 0.1, "thinkingConfig": {"thinkingLevel": "MINIMAL"}},
         }
-
         url = f"{self.base_url}/models/{self.model}:generateContent"
 
+        client = await self._get_refine_client()
+        response = await client.post(url, json=payload, headers=self._headers)
+        response.raise_for_status()
+
+        data = response.json()
+        res_text = self._extract_text(data)
+        if not res_text:
+            return text, current_header
+
         try:
-            client = await self._get_refine_client()
-            response = await client.post(url, json=payload, headers=self._headers)
-            response.raise_for_status()
-            data = response.json()
-
-            response_text = self._extract_text(data)
-            if not response_text:
-                return text, current_header
-
-            import json as json_lib
-
-            try:
-                json_start = response_text.find("{")
-                json_end = response_text.rfind("}") + 1
-                if json_start >= 0 and json_end > json_start:
-                    json_str = response_text[json_start:json_end]
-                    result = json_lib.loads(json_str)
-                    cleaned = result.get("cleaned_text", text).strip()
-                    header = result.get("detected_header") or current_header
-                    return cleaned, header
-            except Exception as e:
-                logger.warning("Failed to parse refinement JSON: %s", e)
-                return text, current_header
-
-        except Exception as e:
-            logger.warning("Text refinement failed, using fallback: %s", e)
+            res = json.loads(res_text[res_text.find("{") : res_text.rfind("}") + 1])
+            return res.get("cleaned_text", text).strip(), res.get("detected_header") or current_header
+        except:
             return text, current_header
 
     async def chat_stream(self, messages: list[dict[str, Any]], **kwargs: Any) -> AsyncGenerator[str, None]:
-        """
-        Stream chat responses from Google Gemini API.
-        Uses multi-turn contents array for conversation history support.
-
-        After streaming completes, token usage is available via `self.last_usage`.
-        """
-        self.last_usage: dict[str, int] = {}
+        """Stream responses from Gemini."""
+        self.last_usage = {}
         contents = self._build_contents(messages, kwargs)
 
-        # Build system instruction with optional user memories
         system_text = _SYSTEM_INSTRUCTION
-        user_memories = kwargs.get("user_memories", "")
-        if user_memories:
-            # Inject memories as a dedicated section within the prompt structure
-            system_text = f"{_SYSTEM_INSTRUCTION}\n\n## CÁ NHÂN HÓA\n{user_memories}\nHãy ưu tiên áp dụng các ghi nhớ này khi trả lời."
+        if mems := kwargs.get("user_memories"):
+            system_text += f"\n\n## CÁ NHÂN HÓA\n{mems}\nƯu tiên áp dụng các ghi nhớ này."
 
         payload = {
             "contents": contents,
@@ -283,153 +244,52 @@ class GoogleAIProvider(AIProvider):
         }
 
         url = f"{self.base_url}/models/{self.model}:streamGenerateContent?alt=sse"
+        client = self._get_client()
 
-        for attempt in range(3):
-            try:
-                client = self._get_client()
-
-                async with client.stream("POST", url, json=payload, headers=self._headers) as response:
-                    response.raise_for_status()
-
-                    chunk_count = 0
-                    thought_filter = _ThoughtFilter()
-
-                    async for line in response.aiter_lines():
-                        if not line.strip():
-                            continue
-
-                        try:
-                            if line.startswith("data: "):
-                                json_str = line[6:]
-                                data = json.loads(json_str)
-
-                                usage = data.get("usageMetadata")
-                                if usage:
-                                    self.last_usage = {
-                                        "prompt_tokens": usage.get("promptTokenCount", 0),
-                                        "completion_tokens": usage.get("candidatesTokenCount", 0),
-                                        "total_tokens": usage.get("totalTokenCount", 0),
-                                    }
-
-                                text = self._extract_text(data)
-                                if text:
-                                    filtered = thought_filter.feed(text)
-                                    if filtered:
-                                        chunk_count += 1
-                                        yield filtered
-                        except json.JSONDecodeError as e:
-                            logger.warning("Failed to parse SSE line: %s (line: %s)", e, line[:200])
-                            continue
-                        except Exception as e:
-                            logger.warning("Error processing SSE chunk: %s", e)
-                            continue
-
-                    remaining = thought_filter.flush()
-                    if remaining:
-                        chunk_count += 1
-                        yield remaining
-
-                return
-
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 429 and attempt < 2:
-                    backoff = min(2**attempt + random.uniform(0, 1), 10)
-                    logger.warning("Streaming rate limited, retrying in %.1fs...", backoff)
-                    await asyncio.sleep(backoff)
+        async with client.stream("POST", url, json=payload, headers=self._headers) as response:
+            response.raise_for_status()
+            thought_filter = _ThoughtFilter()
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
                     continue
-                elif e.response.status_code >= 500 and attempt < 2:
-                    logger.warning("Streaming server error %s, retrying...", e.response.status_code)
-                    await asyncio.sleep(1)
-                    continue
-                else:
-                    raise RuntimeError(f"Google AI streaming failed: {e.response.status_code}") from None
 
-            except httpx.TimeoutException:
-                if attempt < 2:
-                    logger.warning("Streaming timeout, retrying...")
-                    continue
-                raise RuntimeError("Google AI streaming timed out after 300s") from None
+                data = json.loads(line[6:])
+                if usage := data.get("usageMetadata"):
+                    self.last_usage = {
+                        "prompt_tokens": usage.get("promptTokenCount", 0),
+                        "completion_tokens": usage.get("candidatesTokenCount", 0),
+                        "total_tokens": usage.get("totalTokenCount", 0),
+                    }
 
-            except GeneratorExit:
-                logger.info("Client disconnected during streaming")
-                raise
+                if txt := self._extract_text(data):
+                    if filtered := thought_filter.feed(txt):
+                        yield filtered
 
-            except Exception as exc:
-                raise RuntimeError(f"Google AI streaming request failed: {exc}") from None
-
-        raise RuntimeError("Google AI streaming failed after retries")
+            if final := thought_filter.flush():
+                yield final
 
     def _build_contents(self, messages: list[dict[str, Any]], kwargs: dict[str, Any]) -> list[dict[str, Any]]:
-        """Build Gemini-format multi-turn contents array.
+        """Build Gemini multi-turn contents."""
+        context = "\n\n".join(self._build_context_blocks(kwargs.get("context") or []))
+        contents = []
 
-        Converts conversation history into Gemini's expected format:
-        [{"role": "user", "parts": [{"text": "..."}]},
-         {"role": "model", "parts": [{"text": "..."}]},
-         ...]
-
-        The RAG context is embedded into the current (last) user message.
-        """
-        context_nodes = kwargs.get("context") or []
-        context_blocks = self._build_context_blocks(context_nodes)
-        context_text = "\n\n".join(context_blocks) if context_blocks else ""
-
-        contents: list[dict[str, Any]] = []
-
-        # Previous conversation history (all messages except the last one)
-        history = messages[:-1] if messages else []
-        # Limit to last N messages for performance
-        if len(history) > _MAX_HISTORY_MESSAGES:
-            history = history[-_MAX_HISTORY_MESSAGES:]
-
+        history = messages[:-1][-settings.ai_max_history_messages :]
         for msg in history:
-            role = "model" if msg.get("role") == "assistant" else "user"
-            content = str(msg.get("content", "")).strip()
-            # Strip thought blocks from previous assistant responses
-            # to prevent model from continuing thinking mode
-            if role == "model":
-                content = strip_thought_blocks(content)
-            if content:
-                contents.append({"role": role, "parts": [{"text": content}]})
+            role = "model" if msg["role"] == "assistant" else "user"
+            txt = strip_thought_blocks(msg["content"]).strip()
+            if txt:
+                contents.append({"role": role, "parts": [{"text": txt}]})
 
-        # Build current user message with RAG context
-        user_query = ""
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                user_query = str(msg.get("content", "")).strip()
-                break
-
-        if not user_query:
-            return [{"role": "user", "parts": [{"text": "Vui lòng đặt câu hỏi."}]}]
-
-        if context_text:
-            current_text = (
-                f"Dựa vào tài liệu sau để trả lời câu hỏi. "
-                f"Chỉ sử dụng thông tin từ tài liệu, không bịa đặt.\n\n"
-                f"{context_text}\n\n"
-                f"---\nCâu hỏi: {user_query}"
-            )
-        else:
-            current_text = user_query
-
-        contents.append({"role": "user", "parts": [{"text": current_text}]})
-
+        user_query = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+        query_text = f"Tài liệu:\n{context}\n---\nCâu hỏi: {user_query}" if context else user_query
+        contents.append({"role": "user", "parts": [{"text": query_text}]})
         return contents
 
     @staticmethod
     def _extract_text(data: dict[str, Any]) -> str:
-        """Extract text from Google AI response, skipping thinking parts."""
+        """Extract text parts from Gemini response."""
         try:
-            candidates = data.get("candidates") or []
-            for candidate in candidates:
-                content = candidate.get("content") or {}
-                parts = content.get("parts") or []
-                for part in parts:
-                    # Skip thinking/reasoning parts (Gemma 4 thinking mode)
-                    if part.get("thought"):
-                        continue
-                    text = part.get("text")
-                    if text and text.strip():
-                        return text.strip()
-            return ""
-        except Exception:
+            parts = data["candidates"][0]["content"]["parts"]
+            return "".join(p["text"] for p in parts if not p.get("thought")).strip()
+        except:
             return ""
