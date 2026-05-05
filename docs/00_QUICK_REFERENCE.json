@@ -1,7 +1,7 @@
 {
   "document": {
     "id": "00_QUICK_REFERENCE",
-    "version": "2026-05-04",
+    "version": "2026-05-05",
     "purpose": "Rules and patterns cheat sheet for AI/agent preflight. Read first, then task-specific docs.",
     "doc_guide": {
       "01_ARCHITECTURE.md": "System design, data model, storage, invariants, delete/version policy, AI control",
@@ -11,6 +11,12 @@
       "05_INGESTION_RETRIEVAL.md": "13-step pipeline, PaddleOCR (mandatory), embedding specs, retrieval deep dive",
       "06_NAMING_CONVENTIONS.md": "Variable, function, class, file naming standards"
     }
+  },
+  "v4_performance_tier": {
+    "semantic_cache": "Similarity match > 98% (dist < 0.02) via Redis Vector Search",
+    "binary_history": "MessagePack serialization for sub-millisecond chat hydration",
+    "decoupled_audit": "XADD stream logging (<1ms) with background AuditStreamWorker",
+    "bloom_duplicate": "BF.EXISTS check for O(1) document upload skipping"
   },
   "core_invariants": [
     {
@@ -36,6 +42,10 @@
     {
       "name": "provider_boundary",
       "rule": "Routes never call provider factories, adapters, or SDKs. ChatService owns AI orchestration; routes own the HTTP response shell."
+    },
+    {
+      "name": "v4_speed_layer",
+      "rule": "Semantic Cache (Redis) → MessagePack History → Hybrid Search → Audit Stream. All high-frequency IO is non-blocking or cached."
     }
   ],
   "data_location_map": [
@@ -43,9 +53,12 @@
     { "data": "chunks", "storage": "Qdrant", "notes": "~400 token chunks with section_id metadata. Named dense + sparse-bm25 vectors." },
     { "data": "bm25_vocab", "storage": "disk", "notes": "data/bm25_vocab.json — rebuilt on upload/delete. TTL cache 120s. Underthesea tokenization + IDF." },
     { "data": "documents", "storage": "PostgreSQL", "table": "documents", "notes": "status: pending→processing→ready/failed" },
-    { "data": "chat_messages", "storage": "PostgreSQL + Redis", "notes": "DB persisted (tokens_in, tokens_out, latency_ms, model_used); Redis hot cache (pipeline atomic). hydrate_from_db() on expiry." },
+    { "data": "chat_messages", "storage": "PostgreSQL + Redis (MessagePack)", "notes": "DB persisted; Redis hot cache uses MessagePack binary serialization for speed/RAM." },
     { "data": "chat_sessions", "storage": "PostgreSQL", "table": "chat_sessions", "notes": "Hard-deleted after 30 days by Celery Beat. Sidebar ordered by updated_at DESC." },
     { "data": "uploaded_files", "storage": "RustFS", "notes": "Hard-deleted on user delete request" },
+    { "data": "semantic_cache", "storage": "Redis (HNSW)", "notes": "Redis Vector Search for rapid intent matching." },
+    { "data": "audit_stream", "storage": "Redis Stream", "key": "audit:stream", "notes": "Asynchronous event buffer." },
+    { "data": "duplicate_bloom", "storage": "Redis Bloom", "key": "bf:document:sha256", "notes": "O(1) SHA256 existence check." },
     { "data": "query_embedding_cache", "storage": "Redis", "notes": "MD5 keyed; TTL 1 hour" },
     { "data": "user_memories", "storage": "PostgreSQL + Redis", "table": "user_memories", "notes": "Redis cache 5min TTL; injected into AI systemInstruction" },
     { "data": "user_sessions", "storage": "JWT (PyJWT) + Redis blacklist", "notes": "Token revocation on logout. Role cached in JWT payload." }
@@ -208,7 +221,7 @@
     "worker_logs": "docker compose logs -f butler"
   },
   "infrastructure": {
-    "hardware_auto_detect": "app/core/hardware.py — 3-tier: TIGHT GPU (VRAM headroom<6GB→1 uvicorn worker), COMFORTABLE GPU (VRAM headroom≥6GB→multi-worker), CPU (min(cpu, ram//2, 8)). VRAM headroom = total VRAM − 2GB (embedding+reranker). Butler uses celery multi: node-ingestion (solo, GPU) + node-default (prefork, CPU, Beat)",
+    "hardware_auto_detect": "app/core/hardware.py — PROD tier: 4-8 workers, 100+ DB/Redis pool for 200+ CCU. TIGHT tier: 1 worker for low VRAM (<6GB).",
     "redis_config": "maxmemory via REDIS_MAXMEMORY env var (default 512mb for dev), allkeys-lru, save 60 1000, appendonly yes",
     "redis_db_separation": "DB 0: Celery broker, DB 1: result backend, DB 2: app cache",
     "celery_config": "All values configurable via env vars: time limits, memory limit, visibility timeout, retry, max-tasks-per-child. Butler uses celery multi with 2 nodes: node-ingestion (solo, GPU, ingestion queue) + node-default (prefork, CPU, cleanup+default queues, Beat scheduler). Routing configured in ops/entrypoint-worker.sh",
@@ -224,8 +237,8 @@
       ],
       "default_queue": [
         "save_chat_message_task — compatibility wrapper; SSE path uses synchronous save before done:true (chat_tasks.py)",
-        "record_audit_task — fire-and-forget audit logging (maintenance_tasks.py)",
-        "extract_memories_task — async memory extraction, replaces asyncio.create_task (memory_tasks.py)"
+        "process_audit_stream — batch persist Redis stream to DB (audit_worker.py, Beat/Worker)",
+        "extract_memories_task — async memory extraction (memory_tasks.py)"
       ]
     },
     "api_resource_limits": "4 CPUs, 6G RAM (Docker deploy limits) — increase for production"

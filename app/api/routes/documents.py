@@ -19,11 +19,11 @@ from app.schemas.documents import (
     TaskStatusResponse,
     UploadAcceptedResponse,
 )
-from app.utils.throttle import RequestThrottle
+from app.utils.rate_limiter import RateLimiter
 from app.services.documents.document_service import DocumentService
 
 router = APIRouter(tags=["documents"])
-throttle = RequestThrottle()
+rate_limiter = RateLimiter()
 
 
 @router.post("/upload", response_model=UploadAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -33,8 +33,8 @@ async def upload_document(
     auth: AuthContext = Depends(require_admin),
     service: DocumentService = Depends(get_document_service),
 ) -> UploadAcceptedResponse:
-    if not throttle.allow(
-        f"throttle:upload:{auth.user_id}", limit=settings.effective_rate_limit(5), window_seconds=300
+    if not await rate_limiter.is_allowed(
+        f"upload:{auth.user_id}", limit=settings.effective_rate_limit(5), window_ms=300000
     ):
         raise http_errors.too_many_requests("Too many upload requests")
 
@@ -103,8 +103,8 @@ async def upload_document(
 async def get_status(
     task_id: str, _auth=Depends(require_admin), service: DocumentService = Depends(get_document_service)
 ) -> TaskStatusResponse:
-    if not throttle.allow(
-        f"throttle:status:{_auth.user_id}", limit=settings.effective_rate_limit(60), window_seconds=60
+    if not await rate_limiter.is_allowed(
+        f"status:{_auth.user_id}", limit=settings.effective_rate_limit(60), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many status requests")
 
@@ -130,8 +130,8 @@ async def list_documents(
 ) -> DocumentListResponse:
     offset = max(0, offset)
     limit = max(1, min(limit, 100))
-    if not throttle.allow(
-        f"throttle:documents:{_auth.user_id}", limit=settings.effective_rate_limit(30), window_seconds=60
+    if not await rate_limiter.is_allowed(
+        f"documents:{_auth.user_id}", limit=settings.effective_rate_limit(30), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many document list requests")
 

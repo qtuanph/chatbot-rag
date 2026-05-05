@@ -82,10 +82,6 @@ services:
     command:
       - postgres
       - -c
-      - app.app_rw_password=${APP_DB_PASSWORD:-replace-me}
-      - -c
-      - app.db_admin_password=${POSTGRES_PASSWORD:-replace-me}
-      - -c
       - timezone=Asia/Ho_Chi_Minh
       - -c
       - log_timezone=Asia/Ho_Chi_Minh
@@ -93,6 +89,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-ragbot}
       POSTGRES_USER: ${POSTGRES_USER:-db-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-replace-me}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-replace-me}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:

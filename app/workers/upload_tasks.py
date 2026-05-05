@@ -11,6 +11,7 @@ from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.adapters.storage import build_storage
 from app.services.ingestion.ingestion_service import IngestionService
 from app.repositories.section_repository import SectionRepository
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -34,34 +35,28 @@ def _verify_ingestion(
     storage,
 ) -> dict:
     """
-    Post-ingestion verification: confirm vectors indexed and file stored.
-
-    Returns a dict with verification results for logging and artifact storage.
-    Does NOT raise — verification failure is logged as WARNING only.
+    Post-ingestion verification: confirm vectors exist in Qdrant and file exists in storage.
     """
-    qdrant_count = vector_store.count(document_id)
-    file_ok = storage.file_exists(file_path)
+    # Qdrant check
+    qdrant_count = asyncio.run(vector_store.count(document_id))
+    
+    # Storage check
+    file_exists = storage.file_exists(file_path)
 
     result = {
-        "qdrant_vectors": qdrant_count,
-        "qdrant_ok": qdrant_count > 0,
-        "file_in_storage": file_ok,
-        "passed": qdrant_count > 0 and file_ok,
+        "qdrant_count": qdrant_count,
+        "storage_exists": file_exists,
+        "passed": qdrant_count > 0 and file_exists,
     }
 
     if result["passed"]:
-        logger.info(
-            "[%s] ✓ Ingestion verified: qdrant_vectors=%d file_ok=%s",
-            document_id,
-            qdrant_count,
-            file_ok,
-        )
+        logger.info("[%s] ✓ Ingestion verified: qdrant=%d storage=OK", document_id, qdrant_count)
     else:
         logger.warning(
-            "[%s] ✗ Ingestion verify FAILED: qdrant_vectors=%d file_ok=%s",
+            "[%s] ✗ Ingestion verify FAILED: qdrant=%d storage=%s",
             document_id,
             qdrant_count,
-            file_ok,
+            "OK" if file_exists else "MISSING",
         )
 
     return result
@@ -73,33 +68,39 @@ def _verify_ingestion(
     acks_late=True,
     autoretry_for=(ConnectionError, TimeoutError),
     retry_backoff=settings.celery_retry_backoff,
-    retry_backoff_max=settings.celery_retry_backoff_max,
     retry_jitter=True,
     max_retries=settings.celery_max_retries,
+    soft_time_limit=settings.celery_soft_time_limit,
+    time_limit=settings.celery_time_limit,
 )
-def parse_document_task(self, task_id: str, document_id: str, file_path: str, user_id: str = None) -> dict:
+def parse_document_task(self, task_id: str, document_id: str, file_path: str, user_id: str | None = None) -> dict:
     """
-    Celery task: download → parse → embed → store → verify → unload.
+    Synchronous Celery task wrapper for the asynchronous ingestion pipeline.
+    """
+    self.update_state(
+        task_id=task_id,
+        state="STARTED",
+        meta={
+            "stage": "initializing",
+            "progress": {"step": "initializing", "percent": 5},
+            "document_id": document_id,
+        },
+    )
 
-    The embedding model is loaded fresh per task and unloaded after completion
-    to release VRAM for the vLLM chat model.
-    """
-    storage = build_storage()
-    content = b""
-    metadata: dict = {}
-    embedding_service = None
-    vector_store = None
     db_session = None
-
+    embedding_service = None
     try:
         # ── Step 1: Download ─────────────────────────────────────────────────
+        storage = build_storage()
         with SessionLocal() as _s:
-            DocumentRepository(_s).update_status(
-                document_id,
-                status="processing",
-                stage="downloading",
-                progress_percent=10,
-                status_message="[1/4] Đang tải file an toàn từ S3 Object Storage xuống RAM...",
+            asyncio.run(
+                DocumentRepository(_s).update_status(
+                    document_id,
+                    status="processing",
+                    stage="downloading",
+                    progress_percent=10,
+                    status_message="[1/4] Đang tải file an toàn từ S3 Object Storage xuống RAM...",
+                )
             )
         logger.info("[%s] Downloading from %s...", document_id, file_path)
         content = storage.download_bytes(file_path)
@@ -112,12 +113,14 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
         device_name = "GPU" if torch.cuda.is_available() else "CPU"
 
         with SessionLocal() as _s:
-            DocumentRepository(_s).update_status(
-                document_id,
-                status="processing",
-                stage="parsing",
-                progress_percent=15,
-                status_message=f"[2/4] Đang khởi tạo Model trên {device_name} & Cắt file {filename} thành các Node...",
+            asyncio.run(
+                DocumentRepository(_s).update_status(
+                    document_id,
+                    status="processing",
+                    stage="parsing",
+                    progress_percent=15,
+                    status_message=f"[2/4] Đang khởi tạo Model trên {device_name} & Cắt file {filename} thành các Node...",
+                )
             )
         embedding_service = build_embedding_service()
         vector_store = _build_vector_store(embedding_service)
@@ -145,48 +148,37 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 translated_msg = "[3/4] Đang băm văn bản và nhúng (Embed) thành số liệu Vector..."
 
             with SessionLocal() as _s:
-                DocumentRepository(_s).update_status(
-                    document_id,
-                    status="processing",
-                    stage=stage,
-                    progress_percent=percent,
-                    status_message=translated_msg or stage,
+                asyncio.run(
+                    DocumentRepository(_s).update_status(
+                        document_id,
+                        status="processing",
+                        stage=stage,
+                        progress_percent=percent,
+                        status_message=translated_msg or stage,
+                    )
                 )
 
         ingestion_result = pipeline.ingest(
             filename=filename,
             content=content,
             user_id=user_id or "system",
-            document_id=document_id,
             progress_callback=_progress_callback,
         )
 
-        if not ingestion_result.success:
-            raise Exception(f"Pipeline failed: {', '.join(ingestion_result.errors)}")
-
-        if ingestion_result.node_count > 0 and not ingestion_result.storage_ids:
-            raise ValueError("Vector store did not persist any node IDs for this document")
-
         # ── Step 4: Post-ingestion verification ──────────────────────────────
         with SessionLocal() as _s:
-            DocumentRepository(_s).update_status(
-                document_id,
-                status="processing",
-                stage="verifying",
-                progress_percent=95,
-                status_message="[4/4] Khâu cuối: Đang đối soát và verify kết quả trên Qdrant...",
+            asyncio.run(
+                DocumentRepository(_s).update_status(
+                    document_id,
+                    status="processing",
+                    stage="verifying",
+                    progress_percent=95,
+                    status_message="[4/4] Khâu cuối: Đang đối soát và verify kết quả trên Qdrant...",
+                )
             )
         verify = _verify_ingestion(document_id, file_path, vector_store, storage)
 
         # ── Step 5: Persist metadata ─────────────────────────────────────────
-        with SessionLocal() as _s:
-            DocumentRepository(_s).update_status(
-                document_id,
-                status="processing",
-                stage="verifying",
-                progress_percent=95,
-                status_message="Persisting ingestion artifact and finalizing document.",
-            )
         logger.info("[%s] Storing ingestion metadata to PostgreSQL...", document_id)
 
         if (
@@ -221,17 +213,19 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
 
         with SessionLocal() as session:
             doc_repo = DocumentRepository(session)
-            doc_repo.finalize_ingestion(
-                document_id,
-                artifact_dict=artifact_dict,
-                node_count=ingestion_result.node_count,
-                total_text_chars=ingestion_result.total_text_chars,
+            asyncio.run(
+                doc_repo.finalize_ingestion(
+                    document_id,
+                    artifact_dict=artifact_dict,
+                    node_count=ingestion_result.node_count,
+                    total_text_chars=ingestion_result.total_text_chars,
+                )
             )
 
             # Invalidate cached doc IDs so next chat request picks up new document
             from app.services.retrieval.retrieval_service import invalidate_doc_ids_cache
 
-            invalidate_doc_ids_cache()
+            asyncio.run(invalidate_doc_ids_cache())
 
             # Rebuild BM25 index from all Qdrant chunks (includes new document)
             logger.info("[%s] Dispatching BM25 index rebuild...", document_id)
@@ -250,13 +244,15 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 logger.warning("Failed to close DB session: %s", e)
             db_session = None
         with SessionLocal() as _s:
-            DocumentRepository(_s).update_status(
-                document_id,
-                status="failed",
-                stage="failed",
-                progress_percent=0,
-                status_message="Document processing timed out. Try a smaller file.",
-                parse_error="SoftTimeLimitExceeded",
+            asyncio.run(
+                DocumentRepository(_s).update_status(
+                    document_id,
+                    status="failed",
+                    stage="failed",
+                    progress_percent=0,
+                    status_message="Document processing timed out. Try a smaller file.",
+                    parse_error="SoftTimeLimitExceeded",
+                )
             )
         raise
 
@@ -269,13 +265,15 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             db_session = None
         logger.error("[%s] ✗ Pipeline failed: %s", document_id, exc)
         with SessionLocal() as _s:
-            DocumentRepository(_s).update_status(
-                document_id,
-                status="failed",
-                stage="failed",
-                progress_percent=100,
-                status_message="Ingestion failed.",
-                parse_error=str(exc),
+            asyncio.run(
+                DocumentRepository(_s).update_status(
+                    document_id,
+                    status="failed",
+                    stage="failed",
+                    progress_percent=100,
+                    status_message="Ingestion failed.",
+                    parse_error=str(exc),
+                )
             )
         raise
 

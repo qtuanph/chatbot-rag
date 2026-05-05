@@ -1,14 +1,10 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from app.core.config import settings
 
-# Pool sizing from hardware profile — scales with uvicorn workers.
-try:
-    from app.core.hardware import hardware
-    _pool_size = hardware.db_pool_size
-    _max_overflow = hardware.db_max_overflow
-except Exception:
-    _pool_size = 10
-    _max_overflow = 10
+from app.core.hardware import hardware
+
+_pool_size = hardware.db_pool_size
+_max_overflow = hardware.db_max_overflow
 
 # Ensure asyncpg driver for PostgreSQL
 async_url = settings.database_url

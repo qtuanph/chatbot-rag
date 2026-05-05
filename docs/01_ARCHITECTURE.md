@@ -16,12 +16,12 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | Database | PostgreSQL 18 (metadata, auth, sessions, audit) |
 | Vectors | Qdrant (chunk vectors + retrieval payload) |
 | Object storage | RustFS (raw uploads + artifacts) |
-| Queue/Cache | Redis (Celery broker, embedding cache, rate limiting, chat hot cache with pipeline atomic ops) |
-| Embedding | AITeamVN/Vietnamese_Embedding_v2 (1024-dim, local, GPU fp16 / CPU ONNX) |
-| Reranker | AITeamVN/Vietnamese_Reranker (GPU auto / CPU fallback, cross-encoder, top 5) |
-| AI Provider | Google AI gemma-4-26b-a4b-it (singleton via lru_cache, x-goog-api-key header, httpx connection pool) |
-| Ingestion | Docling iterate_items() (Method D) + PaddleOCR (RapidOCR ONNX, vi+en, force_full_page_ocr=True) + Rule-based refiner |
-| Reverse proxy | nginx on port 80 (all traffic: SSE, NextAuth, API, static) |
+| Queue/Cache | Redis 8/9 (Celery, Streams, Semantic Cache, Rate Limiting, Chat history via MessagePack) |
+| Embedding | AITeamVN/Vietnamese_Embedding_v2 (1024-dim, local, GPU/CPU) |
+| Reranker | AITeamVN/Vietnamese_Reranker (Top 5, off by default) |
+| AI Provider | Google AI Gemma (singleton via lru_cache) |
+| Ingestion | Docling + PaddleOCR + Contextualizer (Global Vision) + DuplicateDetector (Bloom) |
+| Reverse proxy | nginx on port 80 (SSE, NextAuth, API, Rate Limited) |
 
 ## Storage Split
 
@@ -30,7 +30,7 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | PostgreSQL | Auth, roles, documents, **document_sections** (canonical tree order), chat sessions/messages, user_memories, audit |
 | Qdrant | Chunk vectors + payload with `section_id` metadata |
 | RustFS | Raw uploaded files + ingestion artifacts |
-| Redis | Celery broker/backend (DB 0/1), app cache (DB 2), query embedding cache (MD5, 1h TTL), rate limiting, user memory cache (5min TTL), chat hot history. maxmemory 512mb, allkeys-lru |
+| Redis | Celery broker/backend (DB 0/1), app cache (DB 2), query embedding cache, rate limiting, semantic cache (Vector Search), chat history (MessagePack), audit stream (XADD). allkeys-lru |
 
 ## Core PostgreSQL Tables
 
@@ -136,11 +136,12 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | Queue | API → Redis → Worker | Async task, task_id returned (202) |
 | Parse | Worker → Docling Method D + PaddleOCR (force_full_page_ocr=True) → sections + chunks | Items with page spans, heading levels |
 | Store | SectionRepository → PostgreSQL → Embed → Qdrant | document_sections rows + vectors |
-| Retrieve | QueryCache → hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → dedup → rerank (optional, off by default) → **full section context assembly** | Top sections with full content sent to LLM (not chunks) |
-| Memory | UserMemoryService (redis.Redis + MemoryRepository via DI) → Redis cache → inject systemInstruction | Personalized prompt |
-| Stream | ChatService → AI provider adapter → strip_reasoning() → SSE → proxy → Browser | Grounded answer with citations, token stats, cost estimate |
-| Persist | Post-stream → `ChatService.save_assistant_message()` before `done:true` → PostgreSQL + Redis | Synchronous assistant save so browser close does not lose the final answer |
-| Extract | Post-response → Celery extract_memories_task (queue=default) → async Gemini → user_memories | Durable memory extraction, survives API restart |
+| Retrieve | SemanticCache (similarity match) → exact cache → hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → full section context assembly |
+| Memory | UserMemoryService (redis_client shared pool) → Redis cache → inject systemInstruction | Personalized prompt |
+| Stream | ChatService → AI provider adapter → strip_reasoning() → SSE → Browser | Grounded answer with citations |
+| Persist | Post-stream → `ChatService.save_assistant_message()` → MessagePack binary storage in Redis | Fast persistence |
+| Audit | safe_record_audit → Redis Stream (XADD) → AuditStreamWorker → PostgreSQL | Decoupled logging |
+| Extract | Post-response → Celery extract_memories_task → user_memories | Durable memory extraction |
 
 ## Non-Negotiable Invariants
 
@@ -248,15 +249,12 @@ Gemma 4 outputs chain-of-thought by default. 4 suppression layers:
 
 `app/core/hardware.py` — singleton detected once at startup. **3-tier VRAM-aware scaling.**
 
-| Mode | Condition | uvicorn workers | node-ingestion | node-default | DB pool |
-|------|-----------|-----------------|----------------|-------------|---------|
-| TIGHT GPU | CUDA + VRAM headroom < 6GB | 1 | solo (1 task) | prefork min(cpu, 4) | 10+10 |
-| COMFORTABLE GPU | CUDA + VRAM headroom ≥ 6GB | min(cpu, ram//2, 8) | solo (1 task) | prefork min(cpu, 8) | auto |
-| CPU only | No CUDA | min(cpu, ram//2, 8) | solo (1 task) | prefork min(cpu, 8) | auto |
+| Mode | Condition | workers | DB pool | Redis pool | CCU |
+|------|-----------|---------|---------|------------|-----|
+| TIGHT | VRAM < 6GB | 1 | 20+20 | 50 | 50+ |
+| PROD | VRAM ≥ 6GB | 4-8 | 100+20 | 100+ | 200+ |
 
-VRAM headroom = total VRAM − 2GB (embedding ~1.1GB + reranker ~0.5GB). Example: GTX 1650 4GB → headroom 2GB → TIGHT. RTX 4090 24GB → headroom 22GB → COMFORTABLE.
-
-DB pool size (`db_pool_size`) auto-scales: `max(10, uvicorn_workers * 5)`.
+VRAM headroom = total VRAM − 2GB. TIGHT uses 1 worker to prevent OOM. PROD scales connection pools for high-concurrency chatbot workloads.
 
 ## Celery Configuration
 

@@ -6,11 +6,11 @@ from app.api.deps import AuthContext, get_auth_context, get_memory_service
 from app.core import http_errors
 from app.core.config import settings
 from app.schemas.memories import MemoryInput, MemoryListResponse, MemoryResponse, MemoryUpdate
-from app.utils.throttle import RequestThrottle
+from app.utils.rate_limiter import RateLimiter
 from app.services.chat.memory_service import MemoryService
 
 router = APIRouter(tags=["memories"])
-throttle = RequestThrottle()
+rate_limiter = RateLimiter()
 
 
 def _to_response(row: dict) -> MemoryResponse:
@@ -37,8 +37,8 @@ async def create_memory(
     auth: AuthContext = Depends(get_auth_context),
     service: MemoryService = Depends(get_memory_service),
 ) -> MemoryResponse:
-    if not throttle.allow(
-        f"throttle:memory:create:{auth.user_id}", limit=settings.effective_rate_limit(20), window_seconds=60
+    if not await rate_limiter.is_allowed(
+        f"memory:create:{auth.user_id}", limit=settings.effective_rate_limit(20), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many memory creation requests")
     try:
@@ -55,8 +55,8 @@ async def update_memory(
     auth: AuthContext = Depends(get_auth_context),
     service: MemoryService = Depends(get_memory_service),
 ) -> MemoryResponse:
-    if not throttle.allow(
-        f"throttle:memory:update:{auth.user_id}", limit=settings.effective_rate_limit(20), window_seconds=60
+    if not await rate_limiter.is_allowed(
+        f"memory:update:{auth.user_id}", limit=settings.effective_rate_limit(20), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many memory update requests")
     try:
@@ -81,8 +81,8 @@ async def delete_memory(
     auth: AuthContext = Depends(get_auth_context),
     service: MemoryService = Depends(get_memory_service),
 ) -> None:
-    if not throttle.allow(
-        f"throttle:memory:delete:{auth.user_id}", limit=settings.effective_rate_limit(20), window_seconds=60
+    if not await rate_limiter.is_allowed(
+        f"memory:delete:{auth.user_id}", limit=settings.effective_rate_limit(20), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many memory delete requests")
     try:

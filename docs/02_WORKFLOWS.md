@@ -1,134 +1,104 @@
-# 02 — Core Workflows
+# 02 — Workflows
 
-All system workflows with diagrams and invariants. Architecture and data model in `01_ARCHITECTURE.md`.
+Detailed step-by-step logic for the primary system workflows.
 
-## Workflow 1: Upload → Parse → Index → Ready
+## 1. Document Ingestion Workflow (Admin Only)
+
+The 14-step pipeline for turning raw files into searchable vectors. Runs in `node-ingestion` (solo pool).
 
 ```mermaid
 sequenceDiagram
-    participant Browser
-    participant API as FastAPI
-    participant RustFS
-    participant DB as PostgreSQL
-    participant Redis
-    participant Worker as butler (GPU)
-    participant Pipeline as DoclingParser
-    participant Refiner as Rule-Based Refiner
+    participant Admin
+    participant API
+    participant Bloom as DuplicateDetector (Bloom)
+    participant Storage as RustFS
+    participant Queue as Redis Queue
+    participant Worker as butler (node-ingestion)
+    participant Parser as Docling + PaddleOCR
+    participant Context as Contextualizer
     participant Qdrant
+    participant DB as PostgreSQL
 
-    Browser->>API: POST /api/v1/upload
-    API->>API: validate auth and size
-    API->>RustFS: store file
-    API->>DB: INSERT document (status=pending)
-    API->>Redis: enqueue parse_document_task (queue=ingestion, app.workers.upload_tasks)
-    API-->>Browser: 202 { task_id }
-
-    Redis->>Worker: dequeue (ack_late=True)
-    Worker->>DB: status=processing, stage=downloading, percent=10
-    Worker->>RustFS: download file bytes
-
-    Worker->>DB: stage=parsing, percent=40
-    Worker->>Pipeline: ingest(filename, bytes, progress_callback)
-
-    Pipeline->>Pipeline: Docling iterate_items() — Method D
-    Note over Pipeline: PaddleOCR: force_full_page_ocr=True (mandatory)
-    Pipeline->>Pipeline: Extract items: SectionHeader, Text, Table, ListItem...
-    Pipeline->>Refiner: refine_text via RuleBasedRefiner (app/utils/text_refiner.py, 0GB VRAM, ~1ms)
-    Pipeline->>DB: Store sections in document_sections table
-
-    loop For each chunk of 32 nodes
-        Pipeline->>Pipeline: embed_batch (ThreadPoolExecutor parallel)
-        Pipeline->>Qdrant: upsert vectors with section_id metadata
-        Pipeline->>DB: stage=embedding, percent=40→90 [callback]
+    Admin->>API: POST /api/v1/documents/upload
+    API->>Bloom: check SHA256 (O(1) skip)
+    alt is duplicate
+        Bloom-->>API: exists=true
+        API-->>Admin: 200 (duplicate info)
+    else is new
+        API->>Storage: save_bytes()
+        API->>DB: create document row (pending)
+        API->>Bloom: add(sha256)
+        API->>Queue: enqueue parse_document_task
+        API-->>Admin: 202 accepted (task_id)
     end
 
-    Pipeline->>DB: stage=verifying, percent=100 [callback]
-    Worker->>Worker: invalidate_doc_ids_cache()
-    Worker->>Redis: dispatch rebuild_bm25_index_task (queue=ingestion) — async BM25 vocab rebuild
+    Worker->>Storage: download_bytes()
+    Worker->>Parser: parse layout (Method D)
+    Parser-->>Worker: hierarchical nodes
+    Worker->>Context: contextualize(global_vision)
+    Context-->>Worker: enriched chunks (context prefixed)
+    Worker->>DB: SectionRepository.store_sections()
+    Worker->>Qdrant: parallel embed + store (dense + sparse)
+    Worker->>DB: finalize_ingestion() (status=ready)
 ```
 
-### Upload Invariants
+### Ingestion Invariants
 
 | Rule | Requirement |
 |------|-------------|
-| Non-blocking | Upload returns task_id immediately (202) |
-| Chunked embed | Embed + store in batches of 32, not all at once |
-| Pipelined store | Embedding of chunk N overlaps with Qdrant store of chunk N-1 |
-| Progress live | progress_percent updates after each chunk via callback |
-| Reliability | `task_acks_late=True` — task requeued if worker crashes |
+| **Duplicate Detection** | **Redis Bloom Filter (DuplicateDetector)** for O(1) checks before DB query |
+| Async processing | Upload returns 202 immediately after storage save |
+| Solo pool | Ingestion tasks run sequentially on `node-ingestion` to manage VRAM |
+| **Global Vision** | **Contextualizer** prepends document-level summary to every chunk for higher RAG accuracy |
+| Hierarchical | Docling structure preserved in `document_sections` |
+| DB-less RAG | Qdrant payload contains `section_content` to minimize DB lookups during chat |
+| Hybrid indexing | Both dense (1024-dim) and sparse (BM25) vectors stored |
 | Timeout | SoftTimeLimitExceeded at 25 min → status=failed |
 
-## Workflow 2: Chat → Retrieve → Generate → Response
+## 2. Chat → Retrieve → Generate → Response
 
 ```mermaid
 sequenceDiagram
     participant Browser
     participant API
-    participant Redis
-    participant Embedder as Vietnamese_Embedding_v2 Local
+    participant Cache as SemanticCache (Redis Vector)
+    participant ChatSvc
     participant Retriever
-    participant DB as PostgreSQL
     participant Qdrant
-    participant Memory as UserMemoryService
     participant Provider as AI Provider
 
-    Browser->>API: POST /api/v1/chat/stream (SSE)
-    API->>API: validate auth and payload
-    API->>ChatSvc: prepare_chat() — full orchestration
-    ChatSvc->>Redis: check rate limit (atomic Lua script)
-    ChatSvc->>Redis: query embedding cache lookup (MD5 key)
-    alt Cache HIT
-        Redis-->>ChatSvc: cached query vector
+    Browser->>API: POST /api/v1/chat/stream
+    API->>ChatSvc: prepare_chat()
+    ChatSvc->>Retriever: retrieve_context()
+    
+    Retriever->>Cache: semantic_cache.get(query_vector)
+    alt Cache HIT (Similarity > 98%)
+        Cache-->>Retriever: cached RagContext
+        Note over Retriever: Bypasses Qdrant & Embedding logic
     else Cache MISS
-        ChatSvc->>Embedder: embed(query_text)
-        Embedder-->>ChatSvc: query vector
-        ChatSvc->>Redis: cache.set(query, vector, TTL=1h)
+        Retriever->>Qdrant: hybrid search (dense + BM25 RRF fusion)
+        Retriever->>Retriever: section grouping & context assembly
+        Retriever->>Cache: semantic_cache.set(result)
     end
-    ChatSvc->>Retriever: retrieve_context(query_vector) via DocumentRepository + SectionRepository
-    Retriever->>Qdrant: hybrid search (dense + BM25 RRF fusion) top-50~80
-    Note over Retriever: Stage 1: section grouping → top sections (≥0.30)
-    Retriever->>DB: load section details via SectionRepository.get_sections_for_rag()
-    Note over Retriever: Stage 2: cross-encoder rerank → top 5 chunks
-    Note over Retriever: Stage 3: context assembly with breadcrumbs
-    Retriever-->>ChatSvc: top chunks with section context and citations
 
-    ChatSvc->>Memory: format_memories_for_prompt(user_id)
-    Memory-->>ChatSvc: formatted memory string for systemInstruction
-
-    loop For each chunk of response
-        ChatSvc->>Provider: chat_stream (maxOutputTokens=8192)
-        Provider-->>ChatSvc: text chunk (thought:true parts filtered)
-        ChatSvc-->>Browser: SSE data: {"chunk": "...", "done": false}
-    end
-    ChatSvc->>DB: save_assistant_message() — synchronous save assistant message to PostgreSQL + Redis
-    ChatSvc->>Redis: enqueue extract_memories_task (queue=default) — async memory extraction via Celery (replaces asyncio.create_task)
-    ChatSvc-->>Browser: SSE data: {"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "tokens", "model", "estimated_cost_usd"}}
+    Retriever-->>ChatSvc: RagContext
+    ChatSvc->>Provider: chat_stream (Gemma-4)
+    Provider-->>Browser: SSE Stream
 ```
 
 ### Chat Invariants
 
 | Rule | Requirement |
 |------|-------------|
-| Cache first | Check Redis for query embedding before calling model |
+| **Speed Layer** | **SemanticCache** (Redis Vector Search) checks for similarity > 98% (dist < 0.02) |
+| **Exact Cache** | Redis exact match check on raw query text for sub-millisecond response |
+| **Binary Serialization** | Chat history stored using **MessagePack** for extreme speed and low RAM |
 | Doc ID cache | TTL-cached 60s, invalidated on upload/delete |
-| 4-stage retrieval | Hybrid search (dense + BM25 RRF fusion in Qdrant) → section grouping (≥0.30) → cross-encoder reranking (top 5) → context assembly with citations |
-| Citation required | Return citation payload for every grounded answer |
-| Rate limiting | Atomic Lua script — 30 req/min per user |
-| Provider swap safety | Chat route never calls provider factories/adapters. ChatService owns provider orchestration via the adapter boundary. |
-| Multi-turn | Last 20 messages via Gemini contents array (assistant→model) |
-| Memory injection | User memories loaded from Redis/PostgreSQL, injected into systemInstruction |
-| Memory extraction | Celery task (extract_memories_task, queue=default) post-response: heuristic triggers + Gemini → user_memories |
+| 4-stage retrieval | Hybrid search → section grouping (≥0.30) → context assembly → citations |
 | Thinking suppressed | 4 layers: thinkingConfig MINIMAL + thought:true filter + ThoughtFilter + strip_reasoning() |
-| Output bounds | maxOutputTokens: 8192, max_context_chars: 500000, streaming timeout 300s |
-| Clean saved text | strip_reasoning() applied to answer before saving to DB |
-| Token tracking | Gemini usageMetadata captured: prompt_tokens, completion_tokens, model_used persisted to ChatMessage |
-| Cost estimation | Configurable via `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0 for free tier) |
-| Async task tracking | Memory extraction dispatched via Celery (extract_memories_task) — durable, survives API restart |
-| Message save | Assistant message persisted synchronously via `ChatService.save_assistant_message()` before done:true event — ensures message never lost on browser close. User message saved synchronously in prepare_chat() before streaming starts |
-| Frontend SSE abort | AbortController cancels stream on unmount or new message |
-| Session default | Empty "Chat mới" on page load, sidebar for history |
+| Rate limiting | **Sliding Window (Redis Lua)** — 30 req/min per user |
 
-## Workflow 3: Hard Delete
+## 3. Hard Delete Workflow
 
 ```mermaid
 sequenceDiagram
@@ -141,93 +111,56 @@ sequenceDiagram
     participant DB
 
     Client->>API: DELETE /api/v1/documents/{document_id}
-    API->>Redis: enqueue delete_document_task (queue=cleanup, app.workers.cleanup_tasks)
+    API->>Redis: enqueue delete_document_task
     API-->>Client: 202 accepted
 
     Cleanup->>Cleanup: CleanupService orchestrates 6-step hard delete
-    Cleanup->>Registry: registry.delete() → status='deleted'
-    Cleanup->>Qdrant: delete all vectors for document_id
-    Cleanup->>DB: SectionRepository.delete() → delete sections from document_sections
+    Cleanup->>Registry: registry.delete()
+    Cleanup->>Qdrant: delete all vectors
+    Cleanup->>DB: delete sections from document_sections
     Cleanup->>RustFS: delete file object
-    Cleanup->>DB: DocumentRepository.hard_delete() → DELETE document row
-    Cleanup->>Cleanup: invalidate_doc_ids_cache()
-    Cleanup->>Redis: dispatch rebuild_bm25_index_task (queue=ingestion) — async BM25 vocab rebuild
+    Cleanup->>DB: DELETE document row
     Cleanup->>Registry: registry.purge()
 ```
 
-### Delete Invariants
+## 4. Decoupled Audit Logging (New in V4)
 
-| Rule | Requirement |
-|------|-------------|
-| Hard delete | 6-step order (see 01_ARCHITECTURE.md for full detail) |
-| Registry first | `/status` returns 'deleted' immediately |
-| Sections before DB | Referential integrity |
-| No recovery | Irreversible — no trash/recycle |
-
-## Workflow 4: Chat Session Auto-Delete
+High-concurrency logging that never blocks the user.
 
 ```mermaid
 sequenceDiagram
-    participant Beat as Celery Beat (butler)
+    participant API
+    participant Stream as Redis Stream (audit:stream)
+    participant Worker as AuditStreamWorker (Celery)
     participant DB as PostgreSQL
-    participant Redis
 
-    Note over Beat: Runs daily (every 86400s)
-    Beat->>DB: DELETE chat_sessions WHERE created_at < NOW() - TTL
-    DB->>DB: CASCADE DELETE associated chat_messages
-    Beat->>Qdrant: cleanup_orphaned_vectors_task — remove vectors without DB sections
-    Note over Redis: Redis keys expire via TTL naturally
+    API->>Stream: XADD (audit:stream, payload)
+    Note over API: Returns in < 1ms
+    
+    loop Every 5-10s
+        Worker->>Stream: XREAD (batch_size=100)
+        Worker->>DB: Batch INSERT SecurityAudit
+        Worker->>Stream: XDEL (Acknowledge)
+    end
 ```
 
-### Session TTL Invariants
+### Audit Invariants
 
 | Rule | Detail |
 |------|--------|
-| TTL | `CHAT_SESSION_TTL_DAYS` (default: 30 days) |
-| Cleanup | Celery beat in butler — hard delete |
-| Cascade | Messages deleted automatically with session |
-| Persistence | Messages saved to PostgreSQL every turn; Redis is hot cache |
-| Ordering | GET /chat/sessions returns updated_at DESC for sidebar |
-| Config | `app/core/config.py` → `chat_session_ttl_days` |
+| **Zero Blocking** | API never writes to SecurityAudit table directly |
+| **Batch Write** | AuditStreamWorker groups events to minimize DB transaction overhead |
+| **Persistence** | Redis Stream acts as a reliable buffer until DB is ready |
 
-## Workflow 5: Analytics Data Flow
+## 5. Analytics Data Flow
 
-```mermaid
-sequenceDiagram
-    participant Chat as Chat Route
-    participant DB as PostgreSQL
-    participant API as Analytics Endpoint
-    participant Browser
+Tokens stored per ChatMessage → aggregated by SQL query → endpoint. Admin sees system-wide, members see own stats. Pricing configurable via `AI_INPUT_COST_PER_1M`.
 
-    Note over Chat: Every chat turn
-    Chat->>DB: INSERT ChatMessage (tokens_in, tokens_out, latency_ms, model_used)
-    Chat->>DB: estimated_cost_usd = tokens * pricing
+## Error Handling & Resilience
 
-    Note over API: GET /analytics/stats
-    Browser->>API: Request (JWT auth)
-    API->>API: Check role (admin=system-wide, member=own sessions)
-    API->>DB: Aggregate SUM(tokens), COUNT(messages), AVG(latency)
-    API->>DB: GROUP BY date → daily stats
-    API-->>Browser: {total_messages, total_tokens, avg_latency, estimated_cost_usd, daily[], pricing}
-```
-
-### Analytics Invariants
-
-| Rule | Detail |
-|------|--------|
-| Role scoping | Admin sees all sessions, member sees only own |
-| Pricing | `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0) |
-| Aggregation | Per-message tokens → SQL SUM/COUNT → endpoint |
-| Frontend | Admin: KPI cards + daily chart + cost comparison. Member: welcome screen |
-| Rate limit | 60/min per user |
-
-## Error Handling Baseline
-
-| Error | Handling |
-|-------|----------|
+| Strategy | Handling |
+|----------|----------|
+| **Circuit Breaker** | Trips to OPEN if Qdrant/GPU fails repeatedly, prevents loop hanging |
+| **Distributed Lock** | Redis Mutex prevents race conditions during session hydration |
+| **Rate Limiter** | Sliding window protects AI resources from abuse |
 | Parse failure | status=failed, parse_error set, SoftTimeLimitExceeded handled |
-| Chunk embed failure | Log error, continue remaining chunks (partial index) |
-| Retrieval timeout (5s) | Empty context, answer from LLM without grounding |
-| Provider timeout | Graceful error response |
-| Proxy socket close | Route Handler retries once; returns 502 JSON |
-| Worker crash mid-task | Auto-requeue via task_acks_late=True |

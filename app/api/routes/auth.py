@@ -17,18 +17,18 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.services.auth.auth_service import AuthService
-from app.utils.throttle import RequestThrottle
+from app.utils.rate_limiter import RateLimiter
 
 router = APIRouter(tags=["auth"])
-throttle = RequestThrottle()
+rate_limiter = RateLimiter()
 
 
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, request: Request, service: AuthService = Depends(get_auth_service)) -> TokenResponse:
     client_ip = request.client.host if request.client else "unknown"
     normalized_username = payload.username.lower().strip()
-    if not throttle.allow(
-        f"throttle:login:{client_ip}:{normalized_username}", limit=settings.effective_rate_limit(50), window_seconds=60
+    if not await rate_limiter.is_allowed(
+        f"login:{client_ip}:{normalized_username}", limit=settings.effective_rate_limit(10), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many login attempts")
 
@@ -75,8 +75,8 @@ async def logout(
 async def create_user(
     payload: CreateUserRequest, _auth=Depends(require_admin), service: AuthService = Depends(get_auth_service)
 ) -> CreateUserResponse:
-    if not throttle.allow(
-        f"throttle:user:create:{_auth.user_id}", limit=settings.effective_rate_limit(5), window_seconds=60
+    if not await rate_limiter.is_allowed(
+        f"user:create:{_auth.user_id}", limit=settings.effective_rate_limit(5), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many user creation requests")
 
@@ -122,8 +122,8 @@ async def get_users(
 async def delete_user(
     username: str, _auth=Depends(require_admin), service: AuthService = Depends(get_auth_service)
 ) -> dict[str, str]:
-    if not throttle.allow(
-        f"throttle:user:delete:{_auth.user_id}", limit=settings.effective_rate_limit(5), window_seconds=60
+    if not await rate_limiter.is_allowed(
+        f"user:delete:{_auth.user_id}", limit=settings.effective_rate_limit(5), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many user delete requests")
 

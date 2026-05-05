@@ -278,26 +278,3 @@ class DocumentRepository:
             "updated_at": document.updated_at.isoformat() if document.updated_at else None,
         }
 
-    # ── Private helpers ──────────────────────────────────────────────
-
-    def _doc_to_full_dict(self, document: Document) -> dict:
-        return {
-            "id": str(document.id),
-            "title": document.title,
-            "file_name": document.file_name,
-            "file_path": document.file_path,
-            "sha256": document.sha256,
-            "file_type": document.file_type,
-            "file_size": document.file_size,
-            "version": document.version,
-            "status": document.status,
-            "status_stage": document.status_stage,
-            "progress_percent": int(document.progress_percent),
-            "status_message": document.status_message,
-            "status_updated_at": document.status_updated_at.isoformat() if document.status_updated_at else None,
-            "parse_error": document.parse_error,
-            "artifact_metadata": dict(document.extra_metadata or {}),
-            "deleted_at": document.deleted_at.isoformat() if document.deleted_at else None,
-            "created_at": document.created_at.isoformat() if document.created_at else None,
-            "updated_at": document.updated_at.isoformat() if document.updated_at else None,
-        }

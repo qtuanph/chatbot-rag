@@ -162,6 +162,12 @@ class IngestionService:
                         node.metadata["image_count"] = sec.get("image_count", 0)
                         node.metadata["table_count"] = sec.get("table_count", 0)
             
+            # ── Step 2.6: Contextual Enrichment ─────────────────────────────
+            _cb("parsing", 39, "Enriching chunks with document context…")
+            from app.utils.contextualizer import Contextualizer
+            contextualizer = Contextualizer()
+            nodes = contextualizer.contextualize(filename, nodes)
+            
             # ── Step 3: Embed + Store in chunks ──────────────────────────────
             n_chunks = 0
             if self.embedding_service and nodes:
@@ -187,7 +193,7 @@ class IngestionService:
                     # The encoder will automatically update its vocabulary for new terms
                     sparse_embs = bm25_encoder.encode_batch_sparse_vectors([n.text for n in chunk_nodes])
                     
-                    return self.vector_store.store(
+                    return await self.vector_store.store(
                         chunk_document_id,
                         chunk_nodes,
                         chunk_vecs,
@@ -307,11 +313,17 @@ class IngestionService:
             if has_critical_failure:
                 _cb("failed", 0, f"{len(errors)} chunk errors exceeded threshold")
                 logger.warning(
-                    "[%s] Ingestion partial failure: %d/%d chunks failed",
+                    "[%s] Ingestion partial failure: %d/%d chunks failed. Rolling back DB sections.",
                     document_id,
                     len(errors),
                     total_chunks,
                 )
+                # Cleanup sections from DB to prevent orphaned data
+                if self.db_session and section_count > 0:
+                    section_repo = self.section_repo or SectionRepository(self.db_session)
+                    section_repo.delete_sections(document_id)
+                    section_count = 0
+                    logger.info("[%s] Rolled back %d sections from PostgreSQL", document_id, section_count)
             else:
                 _cb("ready", 100, "Ingestion complete")
 

@@ -12,13 +12,13 @@ import redis.asyncio as redis
 from app.utils.token_blacklist import TokenBlacklist
 from app.core.hardware import hardware
 
-# Module-level singletons — reuse Redis connections across requests
+# Module-level singletons — reuse Redis connections across processes/requests
 _pool = redis.ConnectionPool.from_url(
     settings.redis_url, 
     decode_responses=True,
     max_connections=hardware.redis_pool_size
 )
-_redis_client = redis.Redis(connection_pool=_pool)
+redis_client = redis.Redis(connection_pool=_pool)
 _blacklist = TokenBlacklist()
 
 
@@ -38,7 +38,6 @@ async def get_auth_context(
     Get authentication context from JWT token.
     Returns None for OPTIONS requests to support CORS preflight.
     """
-    # Skip auth for OPTIONS preflight requests (CORS)
     if request.method == "OPTIONS":
         return None
 
@@ -46,7 +45,6 @@ async def get_auth_context(
         raise http_errors.unauthorized("Missing bearer token")
 
     token = authorization.removeprefix("Bearer ").strip()
-    # Get correlation ID from request state (set by CorrelationIDMiddleware)
     request_id = getattr(request.state, "correlation_id", "unknown")
 
     try:
@@ -70,11 +68,7 @@ async def get_auth_context(
 
 
 async def require_admin(request: Request, auth: AuthContext | None = Depends(get_auth_context)) -> AuthContext:
-    """
-    Require admin role.
-    Allows OPTIONS requests to pass through for CORS preflight.
-    """
-    # Skip admin check for OPTIONS preflight requests (CORS)
+    """Require admin role."""
     if request.method == "OPTIONS":
         return None  # type: ignore
 
@@ -126,7 +120,7 @@ async def get_chat_service(repo=Depends(get_chat_repo), memory_repo=Depends(get_
     from app.services.chat.user_memory_service import UserMemoryService
     from app.utils.chat_store import ChatStore
 
-    user_memory_service = UserMemoryService(redis_client=_redis_client, memory_repo=memory_repo)
+    user_memory_service = UserMemoryService(redis_client=redis_client, memory_repo=memory_repo)
     return ChatService(repo=repo, store=ChatStore(), user_memory_service=user_memory_service)
 
 async def get_analytics_service(repo=Depends(get_analytics_repo)):
@@ -137,7 +131,7 @@ async def get_memory_service(memory_repo=Depends(get_memory_repo)):
     from app.services.chat.memory_service import MemoryService
     from app.services.chat.user_memory_service import UserMemoryService
 
-    user_memory_service = UserMemoryService(redis_client=_redis_client, memory_repo=memory_repo)
+    user_memory_service = UserMemoryService(redis_client=redis_client, memory_repo=memory_repo)
     return MemoryService(repo=memory_repo, user_memory_service=user_memory_service)
 
 async def get_document_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
@@ -152,8 +146,6 @@ async def get_health_service():
     from app.services.system.health_service import HealthService
     return HealthService()
 
-
 async def get_cleanup_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
     from app.services.documents.cleanup_service import CleanupService
-
     return CleanupService(doc_repo=doc_repo, section_repo=section_repo)

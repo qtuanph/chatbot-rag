@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 import redis.asyncio as redis
-import redis as sync_redis
 
 from app.core.config import settings
 
@@ -79,20 +78,3 @@ class DocumentRegistry:
         if record:
             await self.client.delete(self._key(document_id), self._task_key(record.task_id))
         await self.invalidate_active_ids_async()
-
-    # --- Synchronous methods for Celery workers ---
-    def get_active_ids(self) -> set[str]:
-        client = sync_redis.Redis.from_url(settings.redis_url, decode_responses=True)
-        return set(client.smembers("rag:active_doc_ids"))
-
-    def set_active_ids(self, ids: list[str] | set[str]) -> None:
-        if ids:
-            client = sync_redis.Redis.from_url(settings.redis_url, decode_responses=True)
-            pipe = client.pipeline()
-            pipe.sadd("rag:active_doc_ids", *list(ids))
-            pipe.expire("rag:active_doc_ids", int(settings.doc_ids_cache_ttl))
-            pipe.execute()
-
-    def invalidate_active_ids(self) -> None:
-        client = sync_redis.Redis.from_url(settings.redis_url, decode_responses=True)
-        client.delete("rag:active_doc_ids")

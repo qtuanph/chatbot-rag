@@ -177,7 +177,7 @@ class ChatRepository:
             select(ChatMessage.feedback, ChatMessage.vector_ids)
             .where(ChatMessage.session_id == session_id)
             .where(ChatMessage.feedback != 0)
-            .where(ChatMessage.vector_ids != None)
+            .where(ChatMessage.vector_ids.isnot(None))
             .order_by(ChatMessage.created_at.desc())
             .limit(limit)
         )

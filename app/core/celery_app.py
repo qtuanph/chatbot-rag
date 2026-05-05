@@ -39,6 +39,7 @@ _ALL_MODULES = [
     "app.workers.chat_tasks",
     "app.workers.maintenance_tasks",
     "app.workers.memory_tasks",
+    "app.workers.audit_worker",
 ]
 
 celery_app = Celery(
@@ -76,7 +77,7 @@ celery_app.conf.update(
         "app.workers.chat_tasks.save_chat_message_task": {"queue": "default"},
         "app.workers.maintenance_tasks.rebuild_bm25_index_task": {"queue": "ingestion"},
         "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task": {"queue": "cleanup"},
-        "app.workers.maintenance_tasks.record_audit_task": {"queue": "default"},
+        "app.workers.audit_worker.process_audit_stream": {"queue": "default"},
         "app.workers.memory_tasks.extract_memories_task": {"queue": "default"},
     },
     task_default_queue="default",
@@ -93,6 +94,11 @@ celery_app.conf.update(
         "cleanup-orphaned-vectors": {
             "task": "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task",
             "schedule": 86400.0,  # Every 24 hours
+        },
+        "process-audit-stream": {
+            "task": "app.workers.audit_worker.process_audit_stream",
+            "schedule": 10.0,  # Every 10 seconds
+            "args": (100,),    # Batch size
         },
     },
 )

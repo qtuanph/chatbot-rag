@@ -77,6 +77,10 @@ class AuthService:
         if role is None:
             raise ValueError("Invalid role")
 
+        # Validate password strength
+        if len(password) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+
         try:
             user = await self.repo.create_user(
                 username=normalized,

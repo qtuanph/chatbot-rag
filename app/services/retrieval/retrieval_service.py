@@ -14,11 +14,10 @@ from app.core.config import settings
 from app.utils.bm25_index import get_bm25_encoder
 from app.utils.query_cache import QueryEmbeddingCache
 
-if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
-
 from app.models.rag import RagNode, RagSection, RagContext
 from app.utils.document_registry import DocumentRegistry
+from app.adapters.base import RetrievedDocument
+from app.api.deps import redis_client as _redis_client
 
 logger = logging.getLogger(__name__)
 registry = DocumentRegistry()
@@ -66,6 +65,12 @@ def _get_rag_result_cache() -> RagResultCache:
     return RagResultCache(_redis_client)
 
 
+@lru_cache(maxsize=1)
+def _get_semantic_cache() -> SemanticCache:
+    from app.utils.semantic_cache import SemanticCache
+    return SemanticCache(vector_dim=settings.embedding_vector_size)
+
+
 # ── Distributed Document ID Cache (Redis 8.x) ──────────────────────────
 
 
@@ -86,8 +91,8 @@ async def _latest_document_ids(session: AsyncSession) -> set[str]:
     return ids
 
 
-def invalidate_doc_ids_cache() -> None:
-    registry.invalidate_active_ids()
+async def invalidate_doc_ids_cache() -> None:
+    await registry.invalidate_active_ids_async()
 
 
 # ── Main retrieval ───────────────────────────────────────────────────────
@@ -108,6 +113,7 @@ async def retrieve_context(
     from app.repositories.section_repository import SectionRepository
 
     queries = [query] if isinstance(query, str) else query
+    original_query = queries[0] if isinstance(query, str) else str(query)
     primary_query = queries[0]
 
     if not primary_query or len(primary_query.strip()) < 3:
@@ -123,13 +129,15 @@ async def retrieve_context(
 
     doc_ids = sorted(list(latest_doc_ids))
     
-    # ── Stage 0: Search Result Cache ──────────────────────────────────────
+    # ── Stage 0: Cache Layers (Exact & Semantic) ──────────────────────────
     rag_cache = _get_rag_result_cache()
+    semantic_cache = _get_semantic_cache()
+    
+    # 0.1 Exact Match Cache
     if isinstance(query, str):
-        cached_result = await rag_cache.get(query, doc_ids)
+        cached_result = await rag_cache.get(original_query, doc_ids)
         if cached_result:
-            logger.info("[PERF-RAG] Search Result Cache Hit: %s", query)
-            # Reconstruct RagContext from dict
+            logger.info("[PERF-RAG] Exact Cache Hit: %s", original_query)
             return RagContext(
                 nodes=[RagNode(**n) for n in cached_result.get("nodes", [])],
                 sections=[RagSection(**s) for s in cached_result.get("sections", [])] if cached_result.get("sections") else None
@@ -147,13 +155,9 @@ async def retrieve_context(
     vs = _get_vector_store()
     sparse_encoder = get_bm25_encoder()
 
-    import asyncio
-    
     async def _get_embedding(q_text: str):
         v = await cache.get(q_text)
         if v is None:
-            # Embedding models are usually thread-safe or process-safe but CPU-bound
-            # We wrap them to keep the loop moving
             from fastapi.concurrency import run_in_threadpool
             embed_fn = getattr(svc, "embed_query", None) or svc.embed
             v = await run_in_threadpool(embed_fn, q_text)
@@ -163,6 +167,16 @@ async def retrieve_context(
     # Embed all queries in parallel
     query_vectors = await asyncio.gather(*[_get_embedding(q) for q in queries])
     
+    # 0.2 Semantic Match Cache (only for primary query)
+    if isinstance(query, str) and query_vectors:
+        sem_cached = await semantic_cache.get(query_vectors[0])
+        if sem_cached:
+            logger.info("[PERF-RAG] Semantic Cache Hit: %s", original_query)
+            return RagContext(
+                nodes=[RagNode(**n) for n in sem_cached.get("nodes", [])],
+                sections=[RagSection(**s) for s in sem_cached.get("sections", [])] if sem_cached.get("sections") else None
+            )
+
     sparse_vectors: list[Any] = []
     if sparse_encoder.is_ready:
         sparse_vectors = [sparse_encoder.encode_sparse_vector(q) for q in queries]
@@ -250,11 +264,17 @@ async def retrieve_context(
 
     # Cache result if it's a single string query
     if isinstance(query, str) and nodes:
+        import dataclasses
         # Convert to dict for JSON serialization in Redis
         result_dict = {
-            "nodes": [n.to_dict() if hasattr(n, "to_dict") else n.__dict__ for n in nodes],
-            "sections": [s.to_dict() if hasattr(s, "to_dict") else s.__dict__ for s in rag_sections] if rag_sections else None
+            "nodes": [dataclasses.asdict(n) for n in nodes],
+            "sections": [dataclasses.asdict(s) for s in rag_sections] if rag_sections else None
         }
-        await rag_cache.set(query, doc_ids, result_dict)
+        # Background cache updates
+        await asyncio.gather(
+            rag_cache.set(original_query, doc_ids, result_dict),
+            semantic_cache.set(original_query, query_vectors[0], result_dict),
+            return_exceptions=True,
+        )
 
     return RagContext(nodes=nodes, sections=rag_sections if rag_sections else None)

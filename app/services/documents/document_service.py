@@ -23,12 +23,21 @@ class DocumentService:
         self.doc_repo = doc_repo
         self.section_repo = section_repo
         self.registry = DocumentRegistry()
+        from app.utils.duplicate_detector import DuplicateDetector
+        self.detector = DuplicateDetector()
 
     # ── Upload ──────────────────────────────────────────────────────
 
     async def check_duplicate(self, content: bytes, filename: str) -> tuple[dict | None, int, str]:
         """Check SHA256 duplicate + get next version. Returns (duplicate_doc, next_version)."""
         sha256 = hashlib.sha256(content).hexdigest()
+        
+        # 1. Fast check via Bloom Filter (O(1) skip DB)
+        if not await self.detector.exists(sha256):
+            next_version = await self.doc_repo.get_next_version(filename)
+            return None, next_version, sha256
+            
+        # 2. Potential duplicate: verify with DB
         duplicate = await self.doc_repo.find_by_sha256(sha256)
         next_version = await self.doc_repo.get_next_version(filename)
         return duplicate, next_version, sha256
@@ -51,6 +60,7 @@ class DocumentService:
         
         # Storage is currently sync in this codebase (Disk/S3 wrappers)
         # We use thread for CPU/IO bound sync storage call to not block event loop
+        import asyncio
         object_uri = await asyncio.to_thread(storage.save_bytes, document_id=document_id, filename=filename, content=content)
 
         await self.doc_repo.insert_document(
@@ -63,6 +73,9 @@ class DocumentService:
             file_size=len(content),
             version=next_version,
         )
+        
+        # Add to Bloom filter for future duplicate checks
+        await self.detector.add(sha256)
 
         await safe_record_audit(
             action="document.upload",
@@ -255,8 +268,7 @@ class DocumentService:
 
             vector_store = build_vector_store()
             try:
-                # Vector store is currently sync
-                await asyncio.to_thread(vector_store.delete, document_id)
+                await vector_store.delete(document_id)
                 logger.info("Retry: deleted vectors for document %s", document_id)
             except Exception:
                 logger.warning("Retry: no vectors to delete for document %s", document_id, exc_info=True)
@@ -282,7 +294,7 @@ class DocumentService:
             )
             await asyncio.to_thread(
                 celery_app.send_task,
-                "app.workers.upload_pipeline.parse_document_task",
+                "app.workers.upload_tasks.parse_document_task",
                 kwargs={
                     "task_id": new_task_id,
                     "document_id": document_id,

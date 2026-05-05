@@ -6,7 +6,7 @@ Authoritative pipeline details. Architecture in `01_ARCHITECTURE.md`, workflows 
 
 Qdrant for retrieval. PostgreSQL for metadata/state. Redis for cache and queue. No full-text PostgreSQL scan as retrieval path.
 
-## Ingestion Pipeline (13 Steps)
+## Ingestion Pipeline (14 Steps)
 
 1. **Upload**: Client uploads file → API saves to RustFS → inserts `documents` row (status=pending).
 2. **Enqueue**: API enqueues `parse_document_task` to Redis queue `ingestion`.
@@ -25,13 +25,16 @@ Qdrant for retrieval. PostgreSQL for metadata/state. Redis for cache and queue. 
    - `SectionHeaderItem` → section boundary, `TitleItem` → document title
    - `TextItem` → content, `TableItem` → markdown table, `ListItem` → bullet text
    - `PictureItem` → skip (future: image captioning)
-7. **Section extraction**: Items → sections with exact page spans → breadcrumbs from heading stack.
-8. **Chunk splitting**: Each section → ~400 token chunks with ~75 token overlap, linked via `section_id`.
-9. **HierarchyValidator** (`app/utils/hierarchy_validator.py`): Checks parent-child consistency.
-10. **RuleBasedRefiner** (`app/utils/text_refiner.py`): Fixes OCR errors, detects headers (0GB VRAM, ~1ms per node).
-11. **Section storage**: SectionRepository stores in `document_sections` (order_index, parent_section_id, page span).
-12. **Embed + store**: Chunks embedded in parallel batches of 32 via ThreadPoolExecutor → upsert to Qdrant with named dense vector + BM25 sparse vector + `section_id`. progress_callback updates percent live.
-13. **BM25 rebuild + finalize**: Set status=ready. invalidate_doc_ids_cache(). Dispatch `rebuild_bm25_index_task` (queue=ingestion) — async BM25 vocab rebuild from Qdrant, runs after ingestion completes.
+7. **Contextual Enrichment** (Global Vision):
+   - **Contextualizer** (`app/utils/contextualizer.py`) prepends document-level summary to every chunk.
+   - Significant improvement in RAG retrieval accuracy by providing global context to local chunks.
+8. **Section extraction**: Items → sections with exact page spans → breadcrumbs from heading stack.
+9. **Chunk splitting**: Each section → ~400 token chunks with ~75 token overlap, linked via `section_id`.
+10. **HierarchyValidator** (`app/utils/hierarchy_validator.py`): Checks parent-child consistency.
+11. **RuleBasedRefiner** (`app/utils/text_refiner.py`): Fixes OCR errors, detects headers (0GB VRAM, ~1ms per node).
+12. **Section storage**: SectionRepository stores in `document_sections` (order_index, parent_section_id, page span).
+13. **Embed + store**: Chunks embedded in parallel batches of 32 via ThreadPoolExecutor → upsert to Qdrant with named dense vector + BM25 sparse vector + `section_id`. progress_callback updates percent live.
+14. **BM25 rebuild + finalize**: Set status=ready. invalidate_doc_ids_cache(). Dispatch `rebuild_bm25_index_task` (queue=ingestion) — async BM25 vocab rebuild from Qdrant, runs after ingestion completes.
 
 ### OCR Backend
 
@@ -64,7 +67,8 @@ Model pre-downloaded during Docker build via BuildKit cache.
 2. **Query cache**: MD5-keyed Redis lookup. HIT → skip model inference (TTL=1h).
 3. **Query embed**: MISS → local Vietnamese_Embedding_v2 → cache result.
 4. **Doc scope**: TTL-cached active doc IDs (60s). `DocumentRepository.get_latest_active_document_ids()` — returns set of latest-version ready doc IDs. Invalidated on upload/delete via `invalidate_doc_ids_cache()`.
-5. **Multi-query expansion** (opt-in, `RETRIEVAL_QUERY_EXPANSION_ENABLED=True`): Generate N query variants via AI provider. Each variant uses different vocabulary → broader recall.
+5. **Semantic Cache** (Redis Vector Search): MISS on query cache → check semantic similarity (threshold < 0.02). HIT → return cached RagContext immediately (bypassing RAG pipeline).
+6. **Multi-query expansion** (opt-in, `RETRIEVAL_QUERY_EXPANSION_ENABLED=True`): Generate N query variants via AI provider. Each variant uses different vocabulary → broader recall.
 6. **Hybrid search (Multi-intent)**: For each query, run a 3-way prefetch in parallel:
    - **Sparse (BM25)**: Keyword relevance.
    - **Dense (Semantic)**: Standard query semantic similarity.
@@ -74,6 +78,7 @@ Model pre-downloaded during Docker build via BuildKit cache.
 9. **Stage 2 — Chunk re-ranking**: Prioritise chunks within top sections first, then remaining. Score filter ≥ 0.35. Dedup overlapping chunks (100-char signature).
 10. **Stage 3 — Cross-encoder reranking** (optional, off by default): AITeamVN/Vietnamese_Reranker (`app/adapters/reranker/reranker.py`) scores (query, passage) pairs → top 5 chunks by relevance. Disabled via `RETRIEVAL_RERANK_ENABLED=false` — when sending full section context, LLM self-ranks effectively. Enable via env var if needed.
 11. **Stage 4 — Context assembly**: Map chunks → full section content from PostgreSQL. Deduplicate by section_id. Send complete section text (not chunk fragments) to LLM with breadcrumb hierarchy + page ranges. This ensures the LLM sees all content within a section, including details that may span multiple chunks.
+12. **Cache Update**: New successful RAG result → store in Semantic Cache.
 
 ### Hybrid Search: Dense + BM25
 
@@ -164,7 +169,7 @@ Display order from `document_sections.order_index`, then page span. Qdrant does 
 | Hardware auto-detection | `app/core/hardware.py` |
 | Ingestion tasks | `app/workers/upload_pipeline.py` — dispatches rebuild_bm25_index_task after ingestion |
 | Cleanup tasks + beat | `app/workers/cleanup_pipeline.py` — uses CleanupService, dispatches rebuild_bm25_index_task after deletion |
-| Maintenance tasks | `app/workers/maintenance_tasks.py` — rebuild_bm25_index_task (ingestion queue), cleanup_orphaned_vectors_task (cleanup queue, Beat daily), record_audit_task (default queue) |
+| Maintenance tasks | `app/workers/maintenance_tasks.py` — rebuild_bm25_index_task (ingestion queue), cleanup_orphaned_vectors_task (cleanup queue, Beat daily) |
 | Chat tasks | `app/workers/chat_tasks.py` — compatibility Celery wrapper; SSE path persists assistant messages synchronously before final done:true |
 | Memory tasks | `app/workers/memory_tasks.py` — extract_memories_task on default queue (async memory extraction, replaces asyncio.create_task) |
 | User memory service | `app/services/chat/user_memory_service.py:UserMemoryService` — receives redis.Redis + MemoryRepository via DI in request paths; worker context may use short-lived repositories |

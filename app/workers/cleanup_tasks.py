@@ -1,5 +1,6 @@
 """Celery task definitions for document cleanup and maintenance."""
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -14,7 +15,7 @@ from app.repositories.document_repository import DocumentRepository
 logger = logging.getLogger(__name__)
 
 
-def _verify_deletion(
+async def _verify_deletion_async(
     document_id: str,
     file_path: str | None,
     vector_store,
@@ -22,14 +23,12 @@ def _verify_deletion(
 ) -> dict:
     """
     Post-delete verification: confirm vectors purged, file removed, DB row gone.
-
-    Returns verification dict. Does NOT raise — logs WARNING on failure.
     """
-    qdrant_count = vector_store.count(document_id)
-    file_gone = (not storage.file_exists(file_path)) if file_path else True
+    qdrant_count = await vector_store.count(document_id)
+    file_gone = await asyncio.to_thread(storage.file_exists, file_path) if file_path else True
     with SessionLocal() as session:
         doc_repo = DocumentRepository(session)
-        db_gone = doc_repo.get_full_document(document_id) is None
+    db_gone = asyncio.run(doc_repo.get_full_document(document_id)) is None
 
     result = {
         "qdrant_vectors_remaining": qdrant_count,
@@ -97,11 +96,11 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
             doc_repo = DocumentRepository(session)
             section_repo = SectionRepository(session)
 
-            doc_info = doc_repo.get_full_document(document_id)
+            doc_info = asyncio.run(doc_repo.get_full_document(document_id))
             file_path = doc_info.get("file_path") if doc_info else None
 
             cleanup_svc = CleanupService(doc_repo=doc_repo, section_repo=section_repo)
-            cleanup_result = cleanup_svc.hard_delete_document(document_id)
+            cleanup_result = asyncio.run(cleanup_svc.hard_delete_document(document_id))
 
         # ── Post-delete verification ──────────────────────────────────────────────
         # Build a minimal vector_store (no embedding needed for count/verify)
@@ -112,7 +111,8 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
             vector_size=1,  # dimension irrelevant for count — collection already exists
             timeout=settings.qdrant_timeout,
         )
-        verify = _verify_deletion(document_id, file_path, vector_store, storage)
+        # Use asyncio.run for sync Celery context
+        verify = asyncio.run(_verify_deletion_async(document_id, file_path, vector_store, storage))
 
         return {
             "task_id": task_id,
@@ -146,7 +146,7 @@ def cleanup_old_chat_sessions_task() -> dict:
 
     with SessionLocal() as session:
         chat_repo = ChatRepository(session)
-        count = chat_repo.delete_sessions_older_than(cutoff)
+        count = asyncio.run(chat_repo.delete_sessions_older_than(cutoff))
 
     logger.info("Cleaned up %d old chat sessions", count)
     return {"deleted_count": count, "cutoff": cutoff.isoformat()}

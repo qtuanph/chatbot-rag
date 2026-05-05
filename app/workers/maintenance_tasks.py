@@ -1,5 +1,6 @@
 """Celery tasks for maintenance operations — BM25 rebuild, orphan cleanup, audit logging."""
 
+import asyncio
 import logging
 
 from app.core.celery_app import celery_app
@@ -22,7 +23,7 @@ def rebuild_bm25_index_task() -> None:
     try:
         from app.utils.bm25_index import build_bm25_index_from_qdrant
 
-        count = build_bm25_index_from_qdrant()
+        count = asyncio.run(build_bm25_index_from_qdrant())
         logger.info("BM25 index rebuilt: %d chunks indexed", count)
     except Exception as e:
         logger.error("BM25 index rebuild failed: %s", e, exc_info=True)
@@ -49,7 +50,7 @@ def cleanup_orphaned_vectors_task() -> None:
             doc_ids = doc_repo.get_all_document_ids()
             total_cleaned = 0
             for doc_id in doc_ids:
-                result = recovery.cleanup_orphaned_vectors(document_id=doc_id)
+                result = asyncio.run(recovery.cleanup_orphaned_vectors(document_id=doc_id))
                 total_cleaned += result.get("cleaned", 0)
             logger.info(
                 "Orphaned vector cleanup complete: %d vectors removed across %d documents", total_cleaned, len(doc_ids)
@@ -59,30 +60,3 @@ def cleanup_orphaned_vectors_task() -> None:
         raise
 
 
-@celery_app.task(
-    name="app.workers.maintenance_tasks.record_audit_task",
-    acks_late=True,
-    ignore_result=True,
-    max_retries=1,
-)
-def record_audit_task(
-    *,
-    action: str,
-    user_id: str | None = None,
-    details: dict | None = None,
-    ip_address: str | None = None,
-    user_agent: str | None = None,
-) -> None:
-    """Fire-and-forget audit logging. Never blocks the caller."""
-    try:
-        from app.utils.audit import safe_record_audit
-
-        safe_record_audit(
-            action=action,
-            actor_user_id=user_id,
-            details=details,
-            ip_address=ip_address,
-            user_agent=user_agent,
-        )
-    except Exception as e:
-        logger.warning("Audit logging failed (fire-and-forget): %s", e)

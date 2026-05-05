@@ -56,7 +56,7 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Fix permissions for RapidOCR
-RUN chmod -R 777 /usr/local/lib/python3.12/site-packages/rapidocr/models/ 2>/dev/null; true
+RUN chown -R qtuanph:qtuanph /usr/local/lib/python3.12/site-packages/rapidocr/models/ 2>/dev/null; true
 
 USER qtuanph
 

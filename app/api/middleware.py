@@ -157,9 +157,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, requests_per_minute: int = 60):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
-        from app.utils.throttle import RequestThrottle
-
-        self.throttle = RequestThrottle()
+        from app.utils.rate_limiter import RateLimiter
+        self.rate_limiter = RateLimiter(key_prefix="global_limit:")
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Use X-Real-IP (set by nginx) or X-Forwarded-For to get the real client IP,
@@ -169,16 +168,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
             or (request.client.host if request.client else "unknown")
         )
-        throttle_key = f"throttle:global:{client_ip}"
+        throttle_key = f"global:{client_ip}"
 
         try:
-            allowed = self.throttle.allow(
-                throttle_key,
+            allowed = await self.rate_limiter.is_allowed(
+                client_ip, # RateLimiter adds prefix, identifier is client_ip
                 limit=self.requests_per_minute,
-                window_seconds=60,
+                window_ms=60000,
             )
         except Exception as exc:  # pragma: no cover - defensive fallback path
-            logger.warning("Global rate-limit fallback skipped (throttle unavailable): %s", exc)
+            logger.warning("Global rate-limit fallback skipped (rate_limiter unavailable): %s", exc)
             allowed = True
 
         if not allowed:

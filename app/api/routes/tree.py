@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, Query
 from app.api.deps import AuthContext, get_auth_context, get_tree_service
 from app.core import http_errors
 from app.core.config import settings
-from app.utils.throttle import RequestThrottle
+from app.utils.rate_limiter import RateLimiter
 from app.services.documents.tree_service import TreeService
 
 router = APIRouter(tags=["tree"])
-throttle = RequestThrottle()
+rate_limiter = RateLimiter()
 
 
 def _validate_uuid(uuid_str: str, field_name: str = "ID") -> None:
@@ -30,8 +30,8 @@ async def get_document_tree(
     service: TreeService = Depends(get_tree_service),
 ):
     _validate_uuid(document_id, "document ID")
-    if not throttle.allow(
-        f"throttle:tree:list:{auth.user_id}", limit=settings.effective_rate_limit(60), window_seconds=60
+    if not await rate_limiter.is_allowed(
+        f"tree:list:{auth.user_id}", limit=settings.effective_rate_limit(60), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many tree requests")
 
@@ -51,8 +51,8 @@ async def get_node_details(
     service: TreeService = Depends(get_tree_service),
 ):
     _validate_uuid(document_id, "document ID")
-    if not throttle.allow(
-        f"throttle:tree:detail:{auth.user_id}", limit=settings.effective_rate_limit(120), window_seconds=60
+    if not await rate_limiter.is_allowed(
+        f"tree:detail:{auth.user_id}", limit=settings.effective_rate_limit(120), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many node detail requests")
     try:
@@ -69,8 +69,8 @@ async def search_nodes(
     service: TreeService = Depends(get_tree_service),
 ):
     _validate_uuid(document_id, "document ID")
-    if not throttle.allow(
-        f"throttle:tree:search:{auth.user_id}", limit=settings.effective_rate_limit(60), window_seconds=60
+    if not await rate_limiter.is_allowed(
+        f"tree:search:{auth.user_id}", limit=settings.effective_rate_limit(60), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many tree search requests")
     try:

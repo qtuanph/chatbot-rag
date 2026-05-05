@@ -12,10 +12,10 @@ from app.core.config import settings
 from app.core import http_errors
 from app.schemas.chat import ChatRequest, MessageFeedbackRequest, MessageFeedbackResponse
 from app.services.chat.chat_service import ChatService
-from app.utils.throttle import RequestThrottle
+from app.utils.rate_limiter import RateLimiter
 
 router = APIRouter(tags=["chat"])
-throttle = RequestThrottle()
+rate_limiter = RateLimiter()
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +26,7 @@ async def chat_stream(
     service: ChatService = Depends(get_chat_service),
 ):
     """Streaming chat endpoint — SSE format."""
-    if not throttle.allow(f"throttle:chat:{auth.user_id}", limit=settings.effective_rate_limit(30), window_seconds=60):
+    if not await rate_limiter.is_allowed(auth.user_id, limit=settings.effective_rate_limit(30), window_ms=60000):
         raise http_errors.too_many_requests("Too many chat requests. Please wait a moment before trying again.")
 
     try:

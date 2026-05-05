@@ -14,11 +14,10 @@ import threading
 import time
 
 from app.adapters.sparse_embeddings.vietnamese_bm25 import VietnameseBM25Encoder
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_VOCAB_PATH = "data/bm25_vocab.json"
-_VOCAB_TTL = 120.0  # Reload vocab every 2 minutes to pick up new documents
 
 _cached_encoder: VietnameseBM25Encoder | None = None
 _cached_at: float = 0.0
@@ -37,46 +36,36 @@ def get_bm25_encoder() -> VietnameseBM25Encoder:
 
     with _encoder_lock:
         now = time.monotonic()
-        if _cached_encoder is not None and (now - _cached_at) < _VOCAB_TTL:
+        if _cached_encoder is not None and (now - _cached_at) < settings.retrieval_bm25_vocab_ttl:
             return _cached_encoder
 
         # Modern encoder handles its own persistence path
-        encoder = VietnameseBM25Encoder(vocab_path=_VOCAB_PATH)
+        encoder = VietnameseBM25Encoder(vocab_path=settings.retrieval_bm25_vocab_path)
         
         # encoder.load() is called in __init__, but we check if it actually has data
         if not encoder.is_ready:
             if _cached_encoder is not None:
                 return _cached_encoder
-            logger.info("BM25 vocab not found or empty at %s — will build on first query", _VOCAB_PATH)
+            logger.info("BM25 vocab not found or empty at %s — will build on first query", settings.retrieval_bm25_vocab_path)
 
         _cached_encoder = encoder
         _cached_at = now
         return encoder
 
 
-def build_bm25_index_from_qdrant() -> int:
-    """Build BM25 vocab from all chunks in Qdrant.
-
-    Scrolls through all points, tokenizes text to populate the stable vocabulary.
-    Persists the mapping to data/bm25_vocab.json.
-
-    Returns number of terms in vocabulary.
-    """
+async def build_bm25_index_from_qdrant() -> int:
+    """Build BM25 vocab from all chunks in Qdrant."""
     from app.services.retrieval.retrieval_service import _get_vector_store
 
     vs = _get_vector_store()
+    encoder = VietnameseBM25Encoder(vocab_path=settings.retrieval_bm25_vocab_path)
 
-    # Build fresh encoder (bypass cache)
-    encoder = VietnameseBM25Encoder(vocab_path=_VOCAB_PATH)
-
-    # Scroll all chunks from Qdrant via client directly
     batch_size = 500
     offset = None
     processed_count = 0
 
-    logger.info("Building BM25 vocabulary mapping from Qdrant...")
     while True:
-        results = vs.client.scroll(
+        results = await vs.client.scroll(
             collection_name=vs.collection_name,
             limit=batch_size,
             offset=offset,
@@ -104,9 +93,9 @@ def build_bm25_index_from_qdrant() -> int:
 
     if processed_count == 0:
         # No documents left — clear stale vocab
-        if os.path.exists(_VOCAB_PATH):
+        if os.path.exists(settings.retrieval_bm25_vocab_path):
             try:
-                os.remove(_VOCAB_PATH)
+                os.remove(settings.retrieval_bm25_vocab_path)
                 logger.info("BM25 vocab cleared (no chunks in Qdrant)")
             except OSError as e:
                 logger.warning("Failed to remove BM25 vocab file: %s", e)
@@ -126,12 +115,8 @@ def build_bm25_index_from_qdrant() -> int:
     return len(encoder.vocab)
 
 
-def update_bm25_index(new_texts: list[str]) -> None:
-    """Update BM25 index with new document chunks.
-
-    For correctness in a multi-process environment, we perform 
-    a full sync from Qdrant to ensure the vocabulary is complete.
-    """
+async def update_bm25_index(new_texts: list[str]) -> None:
+    """Update BM25 index with new document chunks."""
     if not new_texts:
         return
-    build_bm25_index_from_qdrant()
+    await build_bm25_index_from_qdrant()

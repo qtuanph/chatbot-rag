@@ -27,9 +27,9 @@ class RecoveryService:
         self.vector_store = build_vector_store()
         self.storage = build_storage()
 
-    def check_stuck_processing(self, timeout_minutes: int = 30) -> list[str]:
+    async def check_stuck_processing(self, timeout_minutes: int = 30) -> list[str]:
         """Find documents stuck in 'processing' state longer than timeout."""
-        stuck_documents = self._find_stuck_documents(timeout_minutes)
+        stuck_documents = await self._find_stuck_documents(timeout_minutes)
         if stuck_documents:
             logger.warning(
                 "Found %d documents stuck in processing (timeout=%dm): %s",
@@ -39,7 +39,7 @@ class RecoveryService:
             )
         return stuck_documents
 
-    def recover_stuck_document(self, document_id: str, mark_failed: bool = True) -> dict:
+    async def recover_stuck_document(self, document_id: str, mark_failed: bool = True) -> dict:
         """Recover a document stuck in processing state."""
         report = {
             "document_id": document_id,
@@ -50,7 +50,7 @@ class RecoveryService:
             "marked_failed": False,
         }
 
-        doc = self.doc_repo.get_full_document(document_id)
+        doc = await self.doc_repo.get_full_document(document_id)
         if doc is None:
             report["actions"].append("document_not_found")
             return report
@@ -59,16 +59,16 @@ class RecoveryService:
             report["actions"].append(f"not_in_processing_state (status={doc['status']})")
             return report
 
-        vector_count = self.vector_store.count(document_id)
+        vector_count = await self.vector_store.count(document_id)
         report["vectors_found"] = vector_count
 
-        section_count = self.section_repo.count_by_document(document_id)
+        section_count = await self.section_repo.count_by_document(document_id)
         report["sections_found"] = section_count
 
         if vector_count > 0 or section_count > 0:
             if vector_count > 0:
                 if not mark_failed:
-                    self.doc_repo.update_status(
+                    await self.doc_repo.update_status(
                         document_id,
                         status="ready",
                         stage="ready",
@@ -84,7 +84,7 @@ class RecoveryService:
                         section_count,
                     )
                 else:
-                    self.doc_repo.update_status(
+                    await self.doc_repo.update_status(
                         document_id,
                         status="failed",
                         stage="failed",
@@ -95,7 +95,7 @@ class RecoveryService:
                     report["actions"].append("marked_failed")
                     logger.warning("[%s] Marked stuck document as failed for retry", document_id)
             else:
-                self.doc_repo.update_status(
+                await self.doc_repo.update_status(
                     document_id,
                     status="failed",
                     stage="failed",
@@ -106,7 +106,7 @@ class RecoveryService:
                 report["actions"].append("marked_failed_no_vectors")
                 logger.warning("[%s] Marked stuck document as failed (no vectors found)", document_id)
         else:
-            self.doc_repo.update_status(
+            await self.doc_repo.update_status(
                 document_id,
                 status="failed",
                 stage="failed",
@@ -119,18 +119,18 @@ class RecoveryService:
 
         return report
 
-    def check_orphaned_vectors(self, document_id: str) -> list[str]:
+    async def check_orphaned_vectors(self, document_id: str) -> list[str]:
         """Find vector IDs that exist in Qdrant but have no corresponding section in PostgreSQL."""
         orphaned = []
         try:
-            vectors = self.vector_store.scroll(
+            vectors = await self.vector_store.scroll(
                 filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
                 with_payload=True,
                 with_vector=False,
                 limit=10000,
             )
 
-            section_ids = self.section_repo.get_section_ids_by_document(document_id)
+            section_ids = await self.section_repo.get_section_ids_by_document(document_id)
 
             for point in vectors:
                 payload = point.get("payload", {})
@@ -149,18 +149,18 @@ class RecoveryService:
 
         return orphaned
 
-    def cleanup_orphaned_vectors(self, document_id: str) -> dict:
+    async def cleanup_orphaned_vectors(self, document_id: str) -> dict:
         """Remove vectors that have no matching section in PostgreSQL."""
         report = {"document_id": document_id, "orphaned_count": 0, "cleaned": 0, "error": None}
 
         try:
-            orphaned = self.check_orphaned_vectors(document_id)
+            orphaned = await self.check_orphaned_vectors(document_id)
             report["orphaned_count"] = len(orphaned)
 
             if orphaned:
                 for vec_id in orphaned:
                     try:
-                        self.vector_store.delete_by_ids([vec_id])
+                        await self.vector_store.delete_by_ids([vec_id])
                         report["cleaned"] += 1
                     except Exception as e:
                         logger.error("[%s] Failed to delete orphaned vector %s: %s", document_id, vec_id, e)
@@ -174,18 +174,18 @@ class RecoveryService:
 
         return report
 
-    def validate_section_vector_consistency(self, document_id: str) -> dict:
+    async def validate_section_vector_consistency(self, document_id: str) -> dict:
         """Validate that vectors in Qdrant have matching sections in PostgreSQL."""
         report = {"document_id": document_id, "total_vectors": 0, "total_sections": 0, "consistent": True, "issues": []}
 
         try:
-            vector_count = self.vector_store.count(document_id)
+            vector_count = await self.vector_store.count(document_id)
             report["total_vectors"] = vector_count
 
-            section_count = self.section_repo.count_by_document(document_id)
+            section_count = await self.section_repo.count_by_document(document_id)
             report["total_sections"] = section_count
 
-            orphaned = self.check_orphaned_vectors(document_id)
+            orphaned = await self.check_orphaned_vectors(document_id)
             if orphaned:
                 report["consistent"] = False
                 report["issues"].append(f"orphaned_vectors: {len(orphaned)}")
@@ -208,10 +208,10 @@ class RecoveryService:
 
         return report
 
-    def idempotency_check(self, task_id: str) -> dict | None:
+    async def idempotency_check(self, task_id: str) -> dict | None:
         """Check if a task has already been processed."""
         try:
-            record = self.registry.get_by_task_id(task_id)
+            record = await self.registry.get_by_task_id(task_id)
             if record and record.status == "ready":
                 return {
                     "already_processed": True,
@@ -224,7 +224,7 @@ class RecoveryService:
 
         return None
 
-    def _find_stuck_documents(self, timeout_minutes: int = 30) -> list[str]:
+    async def _find_stuck_documents(self, timeout_minutes: int = 30) -> list[str]:
         """Find documents stuck in 'processing' state via repository."""
         timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
-        return self.doc_repo.find_stuck_documents(timeout_threshold)
+        return await self.doc_repo.find_stuck_documents(timeout_threshold)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -44,8 +45,7 @@ class CleanupService:
             object_uri = doc.get("file_path") if doc else None
 
         # ── Execution (Direct, no silent fallbacks) ────────────────
-        # Vector store delete is currently sync (qdrant-client)
-        await asyncio.to_thread(vector_store.delete, document_id)
+        await vector_store.delete(document_id)
         
         await self.section_repo.delete_sections(document_id)
 
@@ -60,7 +60,7 @@ class CleanupService:
         await registry.purge_async(document_id)
         
         from app.services.retrieval.retrieval_service import invalidate_doc_ids_cache
-        await invalidate_doc_ids_cache()
+        invalidate_doc_ids_cache()
 
         from app.workers.maintenance_tasks import rebuild_bm25_index_task
         rebuild_bm25_index_task.delay()
