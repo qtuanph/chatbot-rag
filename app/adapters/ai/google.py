@@ -221,7 +221,7 @@ class GoogleAIProvider(AIProvider):
         try:
             res = json.loads(res_text[res_text.find("{") : res_text.rfind("}") + 1])
             return res.get("cleaned_text", text).strip(), res.get("detected_header") or current_header
-        except:
+        except Exception:
             return text, current_header
 
     async def chat_stream(self, messages: list[dict[str, Any]], **kwargs: Any) -> AsyncGenerator[str, None]:
@@ -291,5 +291,5 @@ class GoogleAIProvider(AIProvider):
         try:
             parts = data["candidates"][0]["content"]["parts"]
             return "".join(p["text"] for p in parts if not p.get("thought")).strip()
-        except:
+        except Exception:
             return ""

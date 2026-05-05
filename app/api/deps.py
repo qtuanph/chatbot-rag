@@ -1,25 +1,39 @@
 """FastAPI dependency injection — auth context + service factories."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from fastapi import Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 import jwt
-import redis.asyncio as redis
 
 from app.core.config import settings
 from app.core import http_errors
+from app.core.redis import redis_client
 from app.db.session import get_async_session
 from app.utils.token_blacklist import TokenBlacklist
 from app.utils.document_registry import DocumentRegistry
 from app.utils.chat_store import ChatStore
-from app.core.hardware import hardware
+
+if TYPE_CHECKING:
+    from app.repositories.auth_repository import AuthRepository
+    from app.repositories.chat_repository import ChatRepository
+    from app.repositories.analytics_repository import AnalyticsRepository
+    from app.repositories.memory_repository import MemoryRepository
+    from app.repositories.document_repository import DocumentRepository
+    from app.repositories.section_repository import SectionRepository
+    from app.services.auth.auth_service import AuthService
+    from app.services.chat.chat_service import ChatService
+    from app.services.chat.memory_service import MemoryService
+    from app.services.analytics.analytics_service import AnalyticsService
+    from app.services.documents.document_service import DocumentService
+    from app.services.documents.tree_service import TreeService
+    from app.services.system.health_service import HealthService
+    from app.services.documents.cleanup_service import CleanupService
 
 # Module-level singletons — reuse Redis connections across processes/requests
-_pool = redis.ConnectionPool.from_url(
-    settings.redis_url, decode_responses=True, max_connections=hardware.redis_pool_size
-)
-redis_client = redis.Redis(connection_pool=_pool)
 _blacklist = TokenBlacklist(redis_client)
 _registry = DocumentRegistry(redis_client)
 _chat_store = ChatStore(redis_client)
@@ -125,13 +139,16 @@ async def get_section_repo(session: AsyncSession = Depends(get_async_session)):
 # ── Service factories ──────────────────────────────────────────────────
 
 
-async def get_auth_service(repo=Depends(get_auth_repo)):
+async def get_auth_service(repo: AuthRepository = Depends(get_auth_repo)) -> AuthService:
     from app.services.auth.auth_service import AuthService
 
     return AuthService(repo=repo, blacklist=_blacklist)
 
 
-async def get_chat_service(repo=Depends(get_chat_repo), memory_repo=Depends(get_memory_repo)):
+async def get_chat_service(
+    repo: ChatRepository = Depends(get_chat_repo),
+    memory_repo: MemoryRepository = Depends(get_memory_repo),
+) -> ChatService:
     from app.services.chat.chat_service import ChatService
     from app.services.chat.user_memory_service import UserMemoryService
 
@@ -139,13 +156,13 @@ async def get_chat_service(repo=Depends(get_chat_repo), memory_repo=Depends(get_
     return ChatService(repo=repo, store=_chat_store, user_memory_service=user_memory_service)
 
 
-async def get_analytics_service(repo=Depends(get_analytics_repo)):
+async def get_analytics_service(repo: AnalyticsRepository = Depends(get_analytics_repo)) -> AnalyticsService:
     from app.services.analytics.analytics_service import AnalyticsService
 
     return AnalyticsService(repo=repo)
 
 
-async def get_memory_service(memory_repo=Depends(get_memory_repo)):
+async def get_memory_service(memory_repo: MemoryRepository = Depends(get_memory_repo)) -> MemoryService:
     from app.services.chat.memory_service import MemoryService
     from app.services.chat.user_memory_service import UserMemoryService
 
@@ -153,25 +170,34 @@ async def get_memory_service(memory_repo=Depends(get_memory_repo)):
     return MemoryService(repo=memory_repo, user_memory_service=user_memory_service)
 
 
-async def get_document_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
+async def get_document_service(
+    doc_repo: DocumentRepository = Depends(get_doc_repo),
+    section_repo: SectionRepository = Depends(get_section_repo),
+) -> DocumentService:
     from app.services.documents.document_service import DocumentService
 
     return DocumentService(doc_repo=doc_repo, section_repo=section_repo, registry=_registry)
 
 
-async def get_tree_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
+async def get_tree_service(
+    doc_repo: DocumentRepository = Depends(get_doc_repo),
+    section_repo: SectionRepository = Depends(get_section_repo),
+) -> TreeService:
     from app.services.documents.tree_service import TreeService
 
     return TreeService(doc_repo=doc_repo, section_repo=section_repo)
 
 
-async def get_health_service():
+async def get_health_service() -> HealthService:
     from app.services.system.health_service import HealthService
 
     return HealthService()
 
 
-async def get_cleanup_service(doc_repo=Depends(get_doc_repo), section_repo=Depends(get_section_repo)):
+async def get_cleanup_service(
+    doc_repo: DocumentRepository = Depends(get_doc_repo),
+    section_repo: SectionRepository = Depends(get_section_repo),
+) -> CleanupService:
     from app.services.documents.cleanup_service import CleanupService
 
     return CleanupService(doc_repo=doc_repo, section_repo=section_repo, registry=_registry)

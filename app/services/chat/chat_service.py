@@ -41,8 +41,12 @@ class ChatService:
 
         # Parallel fetch for history and memories
         history_task = self.store.get_history(scope_id, resolved_session_id)
-        memories_task = self._user_memory_service.format_memories_for_prompt(user_id)
-        history, user_memories = await asyncio.gather(history_task, memories_task)
+        if self._user_memory_service:
+            memories_task = self._user_memory_service.format_memories_for_prompt(user_id)
+            history, user_memories = await asyncio.gather(history_task, memories_task)
+        else:
+            history = await history_task
+            user_memories = None
 
         # Multi-query expansion
         queries = [query]
@@ -83,6 +87,7 @@ class ChatService:
 
         full_answer = ""
         start_time = _time.monotonic()
+        _stream_buf = ""
 
         async for chunk in provider.chat_stream(
             [{"role": i["role"], "content": i["content"]} for i in history],
@@ -91,7 +96,19 @@ class ChatService:
             user_memories=prepared_chat["user_memories"],
         ):
             full_answer += chunk
-            yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
+            _stream_buf += chunk
+            # Word-boundary buffering: only yield when buffer ends at a
+            # safe boundary (space, newline, punctuation). This prevents
+            # Vietnamese compound words from appearing concatenated when
+            # BPE tokenizer splits them across streaming chunks.
+            if _stream_buf and _stream_buf[-1] in (" ", "\n", "\t", ".", ",", "!", "?", ";", ":", ")", "]", "}", "…"):
+                yield f"data: {json.dumps({'chunk': _stream_buf, 'done': False})}\n\n"
+                _stream_buf = ""
+
+        # Flush remaining buffer (partial word at end of stream)
+        if _stream_buf:
+            yield f"data: {json.dumps({'chunk': _stream_buf, 'done': False})}\n\n"
+            _stream_buf = ""
 
         ai_done_time = _time.monotonic()
         clean_answer = strip_reasoning(full_answer.strip())
@@ -106,6 +123,7 @@ class ChatService:
             await self.save_assistant_message(
                 session_id=session_id,
                 user_id=user_id,
+                role="assistant",
                 content=clean_answer,
                 citations=citations,
                 tokens_in=prompt_tokens,
@@ -130,6 +148,7 @@ class ChatService:
                 "chars": len(clean_answer),
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
                 "estimated_cost_usd": compute_cost(prompt_tokens, completion_tokens),
                 "model": provider.model_name,
             },
@@ -175,6 +194,7 @@ class ChatService:
         session = await self.repo.get_session(session_id)
 
         if session is None:
+            logger.info("Creating new chat session: session_id=%s, user_id=%s", session_id, user_id)
             session = await self.repo.create_session(session_id=session_id, user_id=user_id, title="Active chat")
         elif session.get("user_id") and str(session["user_id"]) != user_id:
             raise ValueError("Chat session does not belong to this user")
@@ -186,7 +206,9 @@ class ChatService:
 
         scope_id = f"user:{user_id}"
         await self.store.append_message(scope_id, session_id, "user", query)
+        logger.info("Saving user message to database: session_id=%s, user_id=%s", session_id, user_id)
         await self.repo.save_user_message(session_id, query)
+        logger.info("User message saved successfully: session_id=%s", session_id)
 
         if not await self.store.history_exists(scope_id, session_id):
             db_msgs = await self.repo.get_messages_for_history(session_id)
@@ -199,7 +221,11 @@ class ChatService:
     async def save_assistant_message(self, **kwargs) -> None:
         """Save assistant message to PostgreSQL + Redis."""
         try:
+            session_id = kwargs.get("session_id")
+            user_id = kwargs.get("user_id")
+            logger.info("Saving assistant message: session_id=%s, user_id=%s, role=%s", session_id, user_id, kwargs.get("role"))
             await self.repo.create_message(**kwargs)
+            logger.info("Successfully saved assistant message: session_id=%s", session_id)
         except Exception as e:
             logger.error("Failed to save chat message: %s", e, exc_info=True)
             raise RuntimeError("Failed to persist assistant message") from e

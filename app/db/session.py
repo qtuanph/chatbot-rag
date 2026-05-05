@@ -6,14 +6,13 @@ from app.core.hardware import hardware
 _pool_size = hardware.db_pool_size
 _max_overflow = hardware.db_max_overflow
 
-# Ensure asyncpg driver for PostgreSQL
+# Ensure psycopg driver for PostgreSQL (async support via psycopg v3)
 async_url = settings.database_url
-if "postgresql://" in async_url and "asyncpg" not in async_url:
-    async_url = async_url.replace("postgresql://", "postgresql+asyncpg://")
+if "postgresql://" in async_url and "psycopg" not in async_url:
+    async_url = async_url.replace("postgresql://", "postgresql+psycopg://")
 
 engine = create_async_engine(
     async_url,
-    connect_args={"server_settings": {"timezone": "Asia/Ho_Chi_Minh"}},
     pool_pre_ping=True,
     pool_size=_pool_size,
     max_overflow=_max_overflow,

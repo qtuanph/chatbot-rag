@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-from collections import Counter
 
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.section_repository import SectionRepository
@@ -35,12 +34,11 @@ class TreeService:
         return doc
 
     async def get_document_tree(self, *, document_id: str, offset: int = 0, limit: int = 20) -> dict:
-        """Get hierarchical tree structure with pagination."""
+        """Get hierarchical tree structure with DB-level pagination."""
         doc = await self.verify_document_exists(document_id)
-        sections = await self.section_repo.get_sections_by_document(document_id)
-
-        ordered_sections = sorted(sections, key=self._section_sort_key)
-        total_nodes = len(ordered_sections)
+        sections, total_nodes = await self.section_repo.get_sections_by_document_paginated(
+            document_id, offset=offset, limit=limit
+        )
 
         if total_nodes == 0:
             return {
@@ -53,11 +51,8 @@ class TreeService:
                 "nodes": [],
             }
 
-        child_counts = Counter(sec.get("parent_section_id") for sec in ordered_sections if sec.get("parent_section_id"))
-        page_sections = ordered_sections[offset : offset + limit]
-
         nodes_list = []
-        for section in page_sections:
+        for section in sections:
             breadcrumb = section.get("breadcrumb") or []
             page_range = section.get("page_range")
             nodes_list.append(
@@ -67,14 +62,13 @@ class TreeService:
                     "level": section.get("level", 0),
                     "breadcrumb": " > ".join(str(b) for b in breadcrumb) if breadcrumb else section.get("title", ""),
                     "parent_id": section.get("parent_section_id"),
-                    "child_count": int(child_counts.get(section.get("section_id"), 0)),
                     "text_length": len(section.get("content") or ""),
                     "page_number": page_range or "?",
                     "page_range": page_range,
                 }
             )
 
-        max_depth = max((int(sec.get("level") or 0) for sec in ordered_sections), default=0)
+        max_depth = max((int(sec.get("level") or 0) for sec in sections), default=0)
 
         return {
             "document_id": document_id,

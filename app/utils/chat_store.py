@@ -27,7 +27,8 @@ class ChatStore:
         await self.client.set(self.active_key(scope_id), session_id)
 
     async def get_active_session(self, scope_id: str) -> str | None:
-        return await self.client.get(self.active_key(scope_id))
+        raw = await self.client.get(self.active_key(scope_id))
+        return raw.decode() if isinstance(raw, bytes) else raw
 
     async def append_message(self, scope_id: str, session_id: str, role: str, content: str) -> None:
         """Append a message to the history list using RPUSH (Atomic)."""

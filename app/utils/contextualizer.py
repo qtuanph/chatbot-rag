@@ -4,7 +4,6 @@ Improves RAG accuracy by providing 'global vision' to each 'local' chunk.
 """
 
 import logging
-from typing import List
 from app.adapters.base import IngestedNode
 
 logger = logging.getLogger(__name__)
@@ -16,7 +15,7 @@ class Contextualizer:
     def __init__(self, max_context_chars: int = 500) -> None:
         self.max_context_chars = max_context_chars
 
-    def contextualize(self, filename: str, nodes: List[IngestedNode]) -> List[IngestedNode]:
+    def contextualize(self, filename: str, nodes: list[IngestedNode]) -> list[IngestedNode]:
         """
         Extract document context and prepend to each node's text.
         For now, we use a simple header; can be extended with LLM summary.

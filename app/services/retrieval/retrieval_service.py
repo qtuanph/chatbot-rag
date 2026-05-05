@@ -19,11 +19,11 @@ from app.utils.semantic_cache import SemanticCache
 from app.models.rag import RagNode, RagSection, RagContext
 from app.utils.document_registry import DocumentRegistry
 from app.adapters.base import RetrievedDocument
-from app.api.deps import redis_client as _redis_client
+from app.core.redis import redis_client
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
-registry = DocumentRegistry()
+registry = DocumentRegistry(redis_client)
 
 
 def _format_page_range(page_start: int | None, page_end: int | None) -> str | None:
@@ -59,14 +59,14 @@ def _get_vector_store() -> QdrantVectorStore:
 
 @lru_cache(maxsize=1)
 def _get_query_cache() -> QueryEmbeddingCache:
-    return QueryEmbeddingCache(_redis_client, model_name=settings.embedding_hf_model)
+    return QueryEmbeddingCache(redis_client, model_name=settings.embedding_hf_model)
 
 
 @lru_cache(maxsize=1)
 def _get_rag_result_cache() -> RagResultCache:
     from app.utils.query_cache import RagResultCache
 
-    return RagResultCache(_redis_client)
+    return RagResultCache(redis_client)
 
 
 @lru_cache(maxsize=1)

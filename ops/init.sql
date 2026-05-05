@@ -299,3 +299,47 @@ CREATE TABLE IF NOT EXISTS user_memories (
 CREATE INDEX IF NOT EXISTS ix_user_memories_user_active ON user_memories(user_id, is_active);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE user_memories TO app_rw;
+
+-- ============= MATERIALIZED VIEW: Daily Analytics =============
+-- Pre-aggregated daily stats for fast dashboard queries.
+-- Refreshed by Celery Beat every 5 minutes via refresh_mv_daily_stats task.
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_daily_stats AS
+SELECT
+    cm.created_at::date AS day,
+    cs.user_id,
+    COUNT(*) AS message_count,
+    COUNT(*) FILTER (WHERE cm.role = 'assistant') AS assistant_message_count,
+    COALESCE(SUM(cm.tokens_in) FILTER (WHERE cm.role = 'assistant'), 0) AS total_tokens_in,
+    COALESCE(SUM(cm.tokens_out) FILTER (WHERE cm.role = 'assistant'), 0) AS total_tokens_out,
+    COALESCE(AVG(cm.latency_ms) FILTER (WHERE cm.role = 'assistant' AND cm.latency_ms IS NOT NULL), 0) AS avg_latency_ms,
+    COUNT(DISTINCT cs.id) AS session_count
+FROM chat_messages cm
+JOIN chat_sessions cs ON cm.session_id = cs.id
+WHERE cs.deleted_at IS NULL
+GROUP BY cm.created_at::date, cs.user_id
+WITH DATA;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_daily_stats_day_user ON mv_daily_stats(day, user_id);
+
+-- ============= FUNCTION: Auto-create monthly partitions for chat_messages =============
+CREATE OR REPLACE FUNCTION create_monthly_partitions()
+RETURNS void AS $$
+DECLARE
+    current_month DATE := date_trunc('month', CURRENT_DATE);
+    next_month DATE := current_month + INTERVAL '1 month';
+    partition_name TEXT := to_char(current_month, 'YYYY_MM');
+BEGIN
+    -- Only create if table is partitioned
+    IF EXISTS (
+        SELECT 1 FROM pg_inherits
+        WHERE inhparent = 'chat_messages'::regclass
+    ) THEN
+        EXECUTE format(
+            'CREATE TABLE IF NOT EXISTS chat_messages_%s PARTITION OF chat_messages
+             FOR VALUES FROM (%L) TO (%L)',
+            partition_name, current_month, next_month
+        );
+        RAISE NOTICE 'Created partition chat_messages_% for %', partition_name, current_month;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;

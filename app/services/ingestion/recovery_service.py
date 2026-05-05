@@ -23,7 +23,9 @@ class RecoveryService:
     def __init__(self, doc_repo: DocumentRepository, section_repo: SectionRepository) -> None:
         self.doc_repo = doc_repo
         self.section_repo = section_repo
-        self.registry = DocumentRegistry()
+        from app.core.redis import redis_client
+
+        self.registry = DocumentRegistry(redis_client)
         self.vector_store = build_vector_store()
         self.storage = build_storage()
 

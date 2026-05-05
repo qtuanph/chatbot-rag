@@ -40,6 +40,7 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | S3_* | Object storage configuration |
 | QDRANT_URL | Qdrant endpoint |
 | QDRANT_COLLECTION | Vector collection name |
+| QDRANT_SEGMENT_NUMBER | Auto-set from `hnsw_m // 4` — segments processed in parallel |
 | EMBEDDING_MODEL | Embedding model selection |
 | EMBEDDING_VECTOR_SIZE | Qdrant dimension (default 1024) |
 | AI_PROVIDER | Chat generation backend |
@@ -60,6 +61,18 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | AI_STREAM_TIMEOUT | HTTP timeout for AI streaming (default 300s) |
 | AI_HTTP_MAX_CONNECTIONS | httpx connection pool (default 50) |
 | RATE_LIMIT_GLOBAL_RPM | Global rate limit, production only (default 300) |
+| RATE_LIMIT_RELAXED_MODE | Bypass rate limiting when true (default false) |
+| RATE_LIMIT_RELAXED_FLOOR | Minimum RPM even in relaxed mode (default 1000) |
+| CHAT_HISTORY_LIMIT | Redis messagepack history cap (default 20) |
+| CHAT_SESSION_TTL_DAYS | Session hard-delete TTL in days (default 30) |
+| AUDIT_STREAM_ENABLED | Enable Redis Stream audit logging (default true) |
+| AUDIT_STREAM_MAXLEN | Max entries retained in audit stream (default 50000) |
+| AUDIT_STREAM_NAME | Redis Stream key for audit events (default `audit:stream`) |
+| RETRIEVAL_SEMANTIC_CACHE_THRESHOLD | Cosine distance threshold for semantic cache hit (default 0.05) |
+| RETRIEVAL_SEMANTIC_CACHE_TTL | Semantic cache entry TTL in seconds (default 86400) |
+| MEMORY_CACHE_TTL | User memory Redis cache TTL in seconds (default 300) |
+| EMBEDDING_QUERY_PREFIX | Prefix added to query text before embedding (optional) |
+| EMBEDDING_PASSAGE_PREFIX | Prefix added to passage text before embedding (optional) |
 
 Docker Compose: keep webapp variables in root `.env` for single source of truth. Butler worker routing configured in `ops/entrypoint-worker.sh` (no env vars needed).
 
@@ -67,7 +80,7 @@ Compose defaults bind to 127.0.0.1. Production: front with ingress/reverse proxy
 
 ## Nginx Configuration
 
-Config: `ops/nginx/nginx.conf` | Image: `nginx:stable-alpine3.23-perl`
+Config: `ops/nginx/nginx.conf` | Image: `nginx:stable-alpine`
 
 ### Location Block Order (Critical)
 
@@ -100,20 +113,21 @@ Config: `ops/nginx/nginx.conf` | Image: `nginx:stable-alpine3.23-perl`
 
 | Service | Probe |
 |---------|-------|
-| nginx | `/nginx_status` (127.0.0.1 only) |
-| API | `/api/v1/health` (via nginx and container healthcheck) |
+| nginx | No container healthcheck (reverse proxy layer) |
+| API | `/api/v1/health` (via nginx and container healthcheck, 30s interval, 30s start_period) |
+| Butler | celery inspect ping (30s interval, 60s start_period) |
 | Workers | celery inspect ping (included in API health payload) |
-| PostgreSQL | pg_isready |
-| Redis | redis-cli ping |
-| Qdrant | /health |
+| PostgreSQL | pg_isready (3s interval) |
+| Redis | redis-cli ping (3s interval) |
+| Qdrant | TCP port 6333 check (3s interval) |
 
-Healthcheck cadence: 3s interval, 5s start_period. Startup ~25s.
+Healthcheck cadence varies by service: 3s for infrastructure (DB, Redis, Qdrant), 30s for application services (API, Butler).
 
 ## Connection Pool Sizing
 
 | Service | Pool | Overflow | Notes |
 |---------|------|----------|-------|
-| PostgreSQL (api) | `hardware.db_pool_size` | `hardware.db_max_overflow` | Auto-scales: 10+10 (1 worker) → 40+40 (8 workers) |
+| PostgreSQL (api) | `hardware.db_pool_size` | `hardware.db_max_overflow` | Auto-scales: `max(20, min(100, 250/workers))` |
 | PostgreSQL (celery) | — | — | ~4 |
 | httpx (Gemini) | `AI_HTTP_MAX_CONNECTIONS` (default 50) | `AI_HTTP_KEEPALIVE_CONNECTIONS` (default 10) | Shared singleton |
 | Redis | per-instance | — | ~7 instances |
@@ -187,6 +201,8 @@ All values configurable via env vars. Defaults designed for dev laptop.
 |------|----------|-------|---------|
 | `cleanup_old_chat_sessions_task` | Every 24h | cleanup | Hard-delete sessions older than `CHAT_SESSION_TTL_DAYS` (default 30) |
 | `cleanup_orphaned_vectors_task` | Every 24h | cleanup | Remove Qdrant vectors without matching DB sections |
+| `process_audit_stream` | Every 10s | default | Batch persist Redis Stream audit events to PostgreSQL (XREADGROUP consumer group) |
+| `refresh_mv_daily_stats` | Every 5min | default | Refresh `mv_daily_stats` materialized view for analytics |
 
 ## Observability Baseline
 

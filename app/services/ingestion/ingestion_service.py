@@ -9,7 +9,7 @@ import logging
 import math
 import time
 from typing import TYPE_CHECKING, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.adapters.base import IngestedNode, ParsingMetadata
 from app.adapters.parsers.docling import DoclingParser
@@ -37,8 +37,8 @@ class IngestionResult:
     validation_report: ValidationReport | None
     storage_ids: list[str]
     section_count: int = 0  # Number of sections stored in PostgreSQL
-    errors: list[str] = None  # type: ignore[assignment]
-    warnings: list[str] = None  # type: ignore[assignment]
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     duration_ms: float = 0.0
 
 
@@ -104,7 +104,7 @@ class IngestionService:
             # ── Step 1.5: Text Refinement (Sanitize & Clean OCR Artifacts) ───
             _cb("parsing", 32, "Refining extracted text...")
             from app.utils.text_refiner import rule_based_refiner
-            
+
             nodes = await asyncio.to_thread(rule_based_refiner.refine_nodes, nodes)
             sections_data = getattr(parse_metadata, "sections_data", None) or []
             if sections_data:

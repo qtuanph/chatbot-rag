@@ -6,7 +6,7 @@ Follows Kotaemo's adapter pattern for clean, swappable implementations.
 from abc import ABC, abstractmethod
 from typing import Any
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -46,7 +46,7 @@ class ParsingMetadata:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         data = asdict(self)
-        data["created_at"] = datetime.utcnow().isoformat()
+        data["created_at"] = datetime.now(timezone.utc).isoformat()
         return data
 
 

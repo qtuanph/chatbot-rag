@@ -11,15 +11,35 @@ logger = logging.getLogger(__name__)
 
 # Whitelist tags crucial for technical documentation structure
 ALLOWED_TAGS = {
-    "p", "br", "b", "i", "strong", "em",
-    "h1", "h2", "h3", "h4", "h5", "h6",
-    "ul", "ol", "li",
-    "table", "thead", "tbody", "tr", "th", "td",
-    "blockquote", "code", "pre"
+    "p",
+    "br",
+    "b",
+    "i",
+    "strong",
+    "em",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "ul",
+    "ol",
+    "li",
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "th",
+    "td",
+    "blockquote",
+    "code",
+    "pre",
 }
 
 # No attributes allowed to prevent XSS and style injection
 ALLOWED_ATTRIBUTES = {}
+
 
 class RuleBasedRefiner:
     """Applies high-speed HTML sanitization and regex heuristics to clean OCR text."""
@@ -28,10 +48,10 @@ class RuleBasedRefiner:
         # Pre-compile regex for performance
         # 1. Remove zero-width spaces and specific control characters
         self.re_zero_width = re.compile(r"[\u200B-\u200D\uFEFF]")
-        
+
         # 2. Normalize excessive consecutive blank lines (more than 2 -> exactly 2)
         self.re_blank_lines = re.compile(r"\n{3,}")
-        
+
         # 3. Fix fragmented words caused by soft hyphens or OCR line breaks
         # Example: "chuyển-\nđộng" -> "chuyển động"
         self.re_hyphen_break = re.compile(r"(\w+)-\n(\w+)")
@@ -72,6 +92,7 @@ class RuleBasedRefiner:
             if "content" in sec and sec["content"]:
                 sec["content"] = self.refine(sec["content"])
         return sections
+
 
 # Singleton instance for easy import
 

@@ -62,9 +62,26 @@ class Settings(BaseSettings):
     retrieval_query_expansion_variants: int = 3  # Number of query variants to generate
 
     database_url: str = "replace-me"
-    redis_url: str = "redis://redis:6379/2"  # App cache — DB 2 (separate from broker DB 0 and result DB 1)
-    celery_broker_url: str = "redis://redis:6379/0"
-    celery_result_backend: str = "redis://redis:6379/1"
+    redis_password: str = ""  # Set via REDIS_PASSWORD env var
+    redis_url: str = "redis://redis:6379/2"  # App cache — DB 2
+    redis_broker_db: int = 0  # Celery broker — DB 0
+    redis_result_db: int = 1  # Celery result — DB 1
+
+    @property
+    def redis_url_auth(self) -> str:
+        pwd = f":{self.redis_password}@" if self.redis_password else ""
+        return f"redis://{pwd}redis:6379/2"
+
+    @property
+    def celery_broker_url_auth(self) -> str:
+        pwd = f":{self.redis_password}@" if self.redis_password else ""
+        return f"redis://{pwd}redis:6379/{self.redis_broker_db}"
+
+    @property
+    def celery_result_backend_auth(self) -> str:
+        pwd = f":{self.redis_password}@" if self.redis_password else ""
+        return f"redis://{pwd}redis:6379/{self.redis_result_db}"
+
     jwt_secret: str = "replace-me"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
@@ -138,6 +155,7 @@ class Settings(BaseSettings):
     audit_stream_name: str = "audit:stream"
     audit_stream_batch_size: int = 100
     audit_stream_process_interval: float = 10.0  # Seconds
+    audit_stream_maxlen: int = 50000  # Max entries retained in stream (approx 50K)
 
     # Cache TTLs — configurable for deployment scale
     memory_cache_ttl: int = 300  # User memory Redis cache TTL (seconds)

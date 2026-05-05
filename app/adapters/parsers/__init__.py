@@ -1,6 +1,5 @@
-"""Document parsers: Docling (primary) + Classic (secondary for unsupported formats)."""
+"""Document parsers: Docling (primary)."""
 
 from app.adapters.parsers.docling import DoclingParser
-from app.adapters.parsers.classic import ClassicParser
 
-__all__ = ["DoclingParser", "ClassicParser"]
+__all__ = ["DoclingParser"]

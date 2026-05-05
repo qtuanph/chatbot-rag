@@ -7,7 +7,12 @@ from app.db.session import AsyncSessionLocal
 from app.utils.chat_store import ChatStore
 
 logger = logging.getLogger(__name__)
-_chat_store = ChatStore()
+
+
+def _get_chat_store() -> ChatStore:
+    from app.core.redis import redis_client
+
+    return ChatStore(redis_client)
 
 
 async def _save_message_async(
@@ -39,7 +44,8 @@ async def _save_message_async(
         )
 
     scope_id = f"user:{user_id}"
-    await _chat_store.append_message(scope_id, session_id, role, content)
+    chat_store = _get_chat_store()
+    await chat_store.append_message(scope_id, session_id, role, content)
 
 
 def save_message_now(**kwargs) -> None:

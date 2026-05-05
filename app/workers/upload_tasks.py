@@ -72,8 +72,8 @@ async def _verify_ingestion(
     retry_backoff=settings.celery_retry_backoff,
     retry_jitter=True,
     max_retries=settings.celery_max_retries,
-    soft_time_limit=settings.celery_soft_time_limit,
-    time_limit=settings.celery_time_limit,
+    soft_time_limit=settings.celery_task_soft_time_limit,
+    time_limit=settings.celery_task_time_limit,
 )
 def parse_document_task(self, task_id: str, document_id: str, file_path: str, user_id: str | None = None) -> dict:
     """
@@ -138,7 +138,6 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                             progress_percent=percent,
                             status_message=translated_msg or stage,
                         )
-
 
                 # ── Step 3: Parse & embed ────────────────────────────────────────────
                 logger.info("[%s] Parsing with pipeline...", document_id)

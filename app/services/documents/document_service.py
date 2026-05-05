@@ -162,9 +162,18 @@ class DocumentService:
             }
 
         # Fallback to Celery if DB record not yet created or stuck
-        result = await asyncio.to_thread(AsyncResult, task_id, app=celery_app)
-        state = result.state.lower()
-        info = result.info if isinstance(result.info, dict) else {}
+        def _get_result():
+            result = AsyncResult(task_id, app=celery_app)
+            return {
+                "state": result.state.lower(),
+                "info": result.info if isinstance(result.info, dict) else {},
+                "failed": result.failed(),
+                "result": result.result if result.successful() else None,
+            }
+
+        r = await asyncio.to_thread(_get_result)
+        state = r["state"]
+        info = r["info"]
 
         return {
             "task_id": task_id,
@@ -173,8 +182,8 @@ class DocumentService:
             "percent": info.get("progress", {}).get("percent", 0),
             "document_id": document_id or info.get("document_id"),
             "status_message": "Task in queue or initializing...",
-            "error": str(result.result) if result.failed() else None,
-            "result": result.result if result.successful() else None,
+            "error": str(r["result"]) if r["failed"] else None,
+            "result": r["result"] if not r["failed"] else None,
         }
 
     # ── List / Detail ───────────────────────────────────────────────

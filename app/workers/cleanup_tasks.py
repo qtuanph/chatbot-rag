@@ -9,10 +9,10 @@ from celery.exceptions import SoftTimeLimitExceeded
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
-from app.repositories.document_repository import DocumentRepository
 from app.repositories.chat_repository import ChatRepository
+from app.repositories.document_repository import DocumentRepository
 from app.utils.document_registry import DocumentRegistry
-from app.api.deps import redis_client
+from app.core.redis import redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -97,27 +97,29 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
         storage = build_storage()
         registry = DocumentRegistry(redis_client)
 
-        async with AsyncSessionLocal() as session:
-            doc_repo = DocumentRepository(session)
-            section_repo = SectionRepository(session)
+        async def _delete_async():
+            async with AsyncSessionLocal() as session:
+                doc_repo = DocumentRepository(session)
+                section_repo = SectionRepository(session)
 
-            doc_info = await doc_repo.get_full_document(document_id)
-            file_path = doc_info.get("file_path") if doc_info else None
+                doc_info = await doc_repo.get_full_document(document_id)
+                file_path = doc_info.get("file_path") if doc_info else None
 
-            cleanup_svc = CleanupService(doc_repo=doc_repo, section_repo=section_repo, registry=registry)
-            cleanup_result = await cleanup_svc.hard_delete_document(document_id)
+                cleanup_svc = CleanupService(doc_repo=doc_repo, section_repo=section_repo, registry=registry)
+                cleanup_result = await cleanup_svc.hard_delete_document(document_id)
 
-        # ── Post-delete verification ──────────────────────────────────────────────
-        # Build a minimal vector_store (no embedding needed for count/verify)
-        vector_store = QdrantVectorStore(
-            url=settings.qdrant_url,
-            api_key=settings.qdrant_api_key or None,
-            collection_name=settings.qdrant_collection,
-            vector_size=1,  # dimension irrelevant for count — collection already exists
-            timeout=settings.qdrant_timeout,
-        )
-        # Use asyncio.run for sync Celery context
-        verify = asyncio.run(_verify_deletion_async(document_id, file_path, vector_store, storage))
+            # ── Post-delete verification ──────────────────────────────────────────────
+            vector_store = QdrantVectorStore(
+                url=settings.qdrant_url,
+                api_key=settings.qdrant_api_key or None,
+                collection_name=settings.qdrant_collection,
+                vector_size=1,  # dimension irrelevant for count — collection already exists
+                timeout=settings.qdrant_timeout,
+            )
+            verify = await _verify_deletion_async(document_id, file_path, vector_store, storage)
+            return cleanup_result, verify
+
+        cleanup_result, verify = asyncio.run(_delete_async())
 
         return {
             "task_id": task_id,

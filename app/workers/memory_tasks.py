@@ -27,7 +27,7 @@ def extract_memories_task(
         from app.services.chat.user_memory_service import UserMemoryService
         from app.db.session import AsyncSessionLocal
         from app.repositories.memory_repository import MemoryRepository
-        from app.api.deps import redis_client
+        from app.core.redis import redis_client
 
         async with AsyncSessionLocal() as session:
             try:

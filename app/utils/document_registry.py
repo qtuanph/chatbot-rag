@@ -44,7 +44,7 @@ class DocumentRegistry:
     async def get_by_task_id(self, task_id: str) -> DocumentRecord | None:
         """Resolve document_id from task_id and return record."""
         document_id = await self.client.get(self._task_key(task_id))
-        return await self.get_by_document_id(document_id) if document_id else None
+        return await self.get_by_document_id(document_id.decode() if isinstance(document_id, bytes) else document_id) if document_id else None
 
     async def update(self, record: DocumentRecord) -> None:
         await self.put(record)

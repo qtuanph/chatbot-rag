@@ -119,7 +119,6 @@ async def build_bm25_index_from_qdrant() -> int:
     vocab_size = await asyncio.to_thread(_fit_task)
 
     # Stage 3: Update local cache immediately
-    global _cached_encoder, _cached_at
     _cached_encoder = encoder
     _cached_at = time.monotonic()
 

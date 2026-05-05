@@ -44,12 +44,15 @@ _ALL_MODULES = [
 
 celery_app = Celery(
     "chatbot_rag",
-    broker=settings.celery_broker_url,
-    backend=settings.celery_result_backend,
+    broker=settings.celery_broker_url_auth,
+    backend=settings.celery_result_backend_auth,
     include=_ALL_MODULES,
 )
 
 celery_app.conf.update(
+    # ── Broker URL (explicit override — Celery auto-reads CELERY_BROKER_URL env var without password) ──
+    broker_url=settings.celery_broker_url_auth,
+    result_backend=settings.celery_result_backend_auth,
     # ── Reliability ───────────────────────────────────────────────────────────
     task_acks_late=True,  # ACK after task completes, not when received
     task_reject_on_worker_lost=True,  # Requeue if worker dies mid-task
@@ -89,16 +92,16 @@ celery_app.conf.update(
     beat_schedule={
         "cleanup-old-chat-sessions": {
             "task": "app.workers.cleanup_tasks.cleanup_old_chat_sessions_task",
-            "schedule": 86400.0,  # Every 24 hours
+            "schedule": settings.chat_session_ttl_days * 86400.0,
         },
         "cleanup-orphaned-vectors": {
             "task": "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task",
-            "schedule": 86400.0,  # Every 24 hours
+            "schedule": settings.chat_session_ttl_days * 86400.0,
         },
         "process-audit-stream": {
             "task": "app.workers.audit_worker.process_audit_stream",
-            "schedule": 10.0,  # Every 10 seconds
-            "args": (100,),  # Batch size
+            "schedule": settings.audit_stream_process_interval,
+            "args": (settings.audit_stream_batch_size,),
         },
     },
 )

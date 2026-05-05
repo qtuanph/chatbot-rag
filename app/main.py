@@ -34,13 +34,13 @@ async def lifespan(application: FastAPI):
     import asyncio
     import time
 
-    def _warm_embedding():
+    async def _warm_embedding():
         start = time.time()
         try:
             from app.services.retrieval.retrieval_service import _get_embedding_service
 
             svc = _get_embedding_service()
-            svc.embed_query("warmup")
+            await svc.embed_query("warmup")
             elapsed = time.time() - start
             logger.info("Embedding model pre-warmed in %.1fs", elapsed)
         except Exception as e:
@@ -61,7 +61,7 @@ async def lifespan(application: FastAPI):
             logger.warning("Reranker model pre-warm failed (will lazy-load): %s", e)
 
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _warm_embedding)
+    loop.create_task(_warm_embedding())
     loop.run_in_executor(None, _warm_reranker)
 
     # Security: Warn if running in production with insecure settings

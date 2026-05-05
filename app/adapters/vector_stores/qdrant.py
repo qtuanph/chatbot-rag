@@ -26,6 +26,7 @@ from qdrant_client.models import (
     MatchValue,
     MatchAny,
     PayloadSchemaType,
+    OptimizersConfigDiff,
     SearchParams,
     QuantizationSearchParams,
 )
@@ -94,75 +95,84 @@ class QdrantVectorStore(BaseVectorStore):
 
     async def _ensure_collection_async(self) -> None:
         """Ensure collection exists with dynamic hardware-optimized settings."""
+        import asyncio
+
         try:
             from qdrant_client import QdrantClient
 
-            # Use sync client for metadata operations (faster/simpler setup)
-            sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout)
-
             from app.core.hardware import hardware
 
-            collections = sync_client.get_collections()
-            if any(col.name == self.collection_name for col in collections.collections):
-                # Check if collection is up-to-date with named vectors
-                info = sync_client.get_collection(self.collection_name)
-                if isinstance(info.config.params.vectors, dict) and "dense" in info.config.params.vectors:
-                    return
-                sync_client.delete_collection(self.collection_name)
+            def _setup():
+                sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout)
 
-            logger.info(
-                "Creating collection '%s' (m=%d, ef=%d, quant=%s)",
-                self.collection_name,
-                hardware.qdrant_hnsw_m,
-                hardware.qdrant_hnsw_ef,
-                hardware.qdrant_quantization,
-            )
+                collections = sync_client.get_collections()
+                if any(col.name == self.collection_name for col in collections.collections):
+                    info = sync_client.get_collection(self.collection_name)
+                    if isinstance(info.config.params.vectors, dict) and "dense" in info.config.params.vectors:
+                        return
+                    sync_client.delete_collection(self.collection_name)
 
-            # Use dynamic hardware settings
-            sync_client.create_collection(
-                collection_name=self.collection_name,
-                vectors_config={
-                    "dense": VectorParams(size=self.vector_size, distance=Distance.COSINE),
-                },
-                sparse_vectors_config={
-                    "sparse-bm25": SparseVectorParams(
-                        index=SparseIndexParams(on_disk=False),
-                        modifier=Modifier.IDF,
-                    ),
-                },
-                quantization_config=(
-                    ScalarQuantization(
-                        scalar=ScalarQuantizationConfig(
-                            type=ScalarType.INT8,
-                            quantile=0.99,
-                            always_ram=True,
+                logger.info(
+                    "Creating collection '%s' (m=%d, ef=%d, quant=%s)",
+                    self.collection_name,
+                    hardware.qdrant_hnsw_m,
+                    hardware.qdrant_hnsw_ef,
+                    hardware.qdrant_quantization,
+                )
+
+                sync_client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config={
+                        "dense": VectorParams(size=self.vector_size, distance=Distance.COSINE),
+                    },
+                    sparse_vectors_config={
+                        "sparse-bm25": SparseVectorParams(
+                            index=SparseIndexParams(on_disk=False),
+                            modifier=Modifier.IDF,
                         ),
-                    )
-                    if hardware.qdrant_quantization
-                    else None
-                ),
-                hnsw_config=HnswConfigDiff(
-                    m=hardware.qdrant_hnsw_m,
-                    ef_construct=hardware.qdrant_hnsw_ef,
-                ),
-            )
+                    },
+                    quantization_config=(
+                        ScalarQuantization(
+                            scalar=ScalarQuantizationConfig(
+                                type=ScalarType.INT8,
+                                quantile=0.99,
+                                always_ram=True,
+                            ),
+                        )
+                        if hardware.qdrant_quantization
+                        else None
+                    ),
+                    hnsw_config=HnswConfigDiff(
+                        m=hardware.qdrant_hnsw_m,
+                        ef_construct=hardware.qdrant_hnsw_ef,
+                    ),
+                    optimizers_config=OptimizersConfigDiff(
+                        default_segment_number=max(hardware.qdrant_hnsw_m // 4, 1),
+                    ),
+                )
 
-            # Create payload indexes for faster filtering
-            sync_client.create_payload_index(
-                collection_name=self.collection_name,
-                field_name="document_id",
-                field_schema=PayloadSchemaType.KEYWORD,
-            )
-            sync_client.create_payload_index(
-                collection_name=self.collection_name,
-                field_name="metadata.section_id",
-                field_schema=PayloadSchemaType.KEYWORD,
-            )
-            sync_client.create_payload_index(
-                collection_name=self.collection_name,
-                field_name="node_type",
-                field_schema=PayloadSchemaType.KEYWORD,
-            )
+                sync_client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name="document_id",
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+                sync_client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name="metadata.section_id",
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+                sync_client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name="node_type",
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+                sync_client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name="metadata.section_title",
+                    field_schema=PayloadSchemaType.TEXT,
+                )
+
+            await asyncio.to_thread(_setup)
 
         except Exception as e:
             logger.error(f"Failed to ensure Qdrant collection: {e}")
@@ -199,10 +209,10 @@ class QdrantVectorStore(BaseVectorStore):
                 payload = {
                     "node_id": node.node_id,
                     "document_id": document_id,
-                    "document_title": node.document_title,
+                    "document_title": node.metadata.get("document_title", ""),
                     "text": node.text,
                     "page_number": node.page_number,
-                    "section_title": node.heading,
+                    "section_title": node.section_title,
                     "parent_id": node.parent_id,
                     "node_type": node.node_type,
                     "metadata": node.metadata or {},
@@ -310,17 +320,21 @@ class QdrantVectorStore(BaseVectorStore):
                 query=FusionQuery(fusion=Fusion.RRF),
                 group_by="metadata.section_id",
                 group_capacity=3,  # Max 3 chunks per section to ensure diversity
-                limit=top_k,       # Return top_k unique sections
+                limit=top_k,  # Return top_k unique sections
                 with_payload=True,
                 search_params=SearchParams(
                     hnsw_ef=hardware.qdrant_hnsw_ef,
-                    quantization=QuantizationSearchParams(
-                        ignore=False,
-                        rescore=True,  # Rescore to maintain accuracy after INT8 compression
-                    ) if hardware.qdrant_quantization else None
+                    quantization=(
+                        QuantizationSearchParams(
+                            ignore=False,
+                            rescore=True,  # Rescore to maintain accuracy after INT8 compression
+                        )
+                        if hardware.qdrant_quantization
+                        else None
+                    ),
                 ),
             )
-            
+
             # Flatten groups into a single list for the RAG pipeline
             results = []
             for group in response.groups:
@@ -523,7 +537,7 @@ class QdrantVectorStore(BaseVectorStore):
 
     async def scroll(
         self,
-        filter: dict[str, Any | None] = None,
+        query_filter: dict[str, Any | None] = None,
         with_payload: bool = True,
         with_vector: bool = False,
         limit: int = 100,
@@ -538,10 +552,10 @@ class QdrantVectorStore(BaseVectorStore):
 
             # Convert filter dict to Qdrant Filter object
             qdrant_filter = None
-            if filter:
+            if query_filter:
                 # Build Qdrant Filter from dict
                 must_conditions = []
-                for condition in filter.get("must", []):
+                for condition in query_filter.get("must", []):
                     key = condition.get("key")
                     match = condition.get("match", {})
 
@@ -585,5 +599,5 @@ class QdrantVectorStore(BaseVectorStore):
             raise VectorStoreOperationException(
                 f"Failed to scroll Qdrant: {str(e)}",
                 error_code="QDRANT_SCROLL_FAILED",
-                details={"filter": filter, "limit": limit, "error": str(e)},
+                details={"filter": query_filter, "limit": limit, "error": str(e)},
             )

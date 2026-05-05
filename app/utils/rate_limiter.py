@@ -5,7 +5,7 @@ High-precision, atomic throttling for 200+ CCU environment.
 
 import time
 import logging
-from app.api.deps import redis_client
+from app.core.redis import redis_client
 
 logger = logging.getLogger(__name__)
 

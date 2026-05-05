@@ -18,7 +18,7 @@ services:
       rustfs:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -43,6 +43,7 @@ services:
 
   butler:
     image: chatbot-rag-app:latest
+    # Shares the same image as api — no separate build needed
     env_file:
       - .env
     entrypoint: ["/bin/bash", "/app/ops/entrypoint-worker.sh"]
@@ -54,7 +55,7 @@ services:
       rustfs:
         condition: service_healthy
       qdrant:
-        condition: service_healthy
+        condition: service_started
     shm_size: '2gb'
     deploy:
       resources:
@@ -85,6 +86,10 @@ services:
       - timezone=Asia/Ho_Chi_Minh
       - -c
       - log_timezone=Asia/Ho_Chi_Minh
+      - -c
+      - app.app_rw_password=${APP_DB_PASSWORD:-replace-me}
+      - -c
+      - app.db_admin_password=${POSTGRES_PASSWORD:-replace-me}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ragbot}
       POSTGRES_USER: ${POSTGRES_USER:-db-admin}
@@ -106,13 +111,13 @@ services:
 
   redis:
     image: redis:8.8-m03-alpine
-    command: redis-server --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes
+    command: redis-server --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes --requirepass ${REDIS_PASSWORD:-}
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-} ping"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -132,7 +137,7 @@ services:
     volumes:
       - rustfsdata:/data
     healthcheck:
-      test: ["CMD-SHELL", "bash -c ': > /dev/tcp/127.0.0.1/9000'"]
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:9000/health || exit 1"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -141,16 +146,11 @@ services:
       - internal
 
   qdrant:
-    image: qdrant/qdrant:v1.17.1
+    image: qdrant/qdrant:latest
     ports:
       - "127.0.0.1:6333:6333"
     volumes:
       - qdrantdata:/qdrant/storage
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c ': </dev/tcp/127.0.0.1/6333'"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
     restart: unless-stopped
     networks:
       - internal
@@ -170,7 +170,7 @@ services:
       - API_INTERNAL_URL=${API_INTERNAL_URL:-http://api:8000/api/v1}
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "node -e \"const http=require('http');http.get('http://127.0.0.1:3000/',r=>process.exit(r.statusCode<400?0:1)).on('error',()=>process.exit(1))\""]
       interval: 15s
@@ -189,9 +189,9 @@ services:
       - ./ops/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
       webapp:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - internal

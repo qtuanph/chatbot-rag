@@ -229,12 +229,12 @@
     "celery_config": "All values configurable via env vars: time limits, memory limit, visibility timeout, retry, max-tasks-per-child. Butler uses celery multi with 2 nodes: node-ingestion (solo, GPU, ingestion queue) + node-default (prefork, CPU, cleanup+default queues, Beat scheduler). Routing configured in ops/entrypoint-worker.sh",
     "celery_tasks": {
       "ingestion_queue": [
-        "parse_document_task — document parsing/indexing (upload_pipeline.py)",
+        "parse_document_task — document parsing/indexing (upload_tasks.py)",
         "rebuild_bm25_index_task — BM25 vocab rebuild from Qdrant after upload/delete (maintenance_tasks.py)"
       ],
       "cleanup_queue": [
-        "delete_document_task — 6-step hard delete (cleanup_pipeline.py)",
-        "cleanup_old_chat_sessions_task — session TTL cleanup (cleanup_pipeline.py, Beat daily)",
+        "delete_document_task — 6-step hard delete (cleanup_tasks.py)",
+        "cleanup_old_chat_sessions_task — session TTL cleanup (cleanup_tasks.py, Beat daily)",
         "cleanup_orphaned_vectors_task — remove Qdrant vectors without DB sections (maintenance_tasks.py, Beat daily)"
       ],
       "default_queue": [

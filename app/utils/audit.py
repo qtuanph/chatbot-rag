@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import json
 from typing import Any
-from app.api.deps import redis_client
+from app.core.redis import redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ async def safe_record_audit(
 
         from app.core.config import settings
 
-        await redis_client.xadd(settings.audit_stream_name, payload)
+        await redis_client.xadd(settings.audit_stream_name, payload, maxlen=settings.audit_stream_maxlen)
 
     except Exception as e:
         logger.warning("Failed to fire audit event to Redis Stream: %s", e)

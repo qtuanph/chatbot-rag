@@ -8,10 +8,10 @@ import json
 import numpy as np
 from typing import Any
 from redis.commands.search.field import VectorField, TextField
-from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+from redis.commands.search.index_definition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
-from app.api.deps import redis_client
+from app.core.redis import redis_client
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)

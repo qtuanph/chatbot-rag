@@ -6,7 +6,7 @@ Prevents race conditions in high-concurrency environments.
 import asyncio
 import logging
 import uuid
-from app.api.deps import redis_client
+from app.core.redis import redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,8 @@ class RedisLock:
 
     async def acquire(self, wait_sec: float = 5.0) -> bool:
         """Acquire lock with retry logic."""
-        start_time = asyncio.get_event_loop().time()
-        while (asyncio.get_event_loop().time() - start_time) < wait_sec:
+        start_time = asyncio.get_running_loop().time()
+        while (asyncio.get_running_loop().time() - start_time) < wait_sec:
             if await self.client.set(self.key, self.token, nx=True, ex=self.timeout):
                 self._locked = True
                 return True

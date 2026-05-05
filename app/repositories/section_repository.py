@@ -74,6 +74,23 @@ class SectionRepository:
         rows = result.scalars().all()
         return [self._section_to_dict(s) for s in rows]
 
+    async def get_sections_by_document_paginated(
+        self, document_id: str, offset: int = 0, limit: int = 20
+    ) -> tuple[list[dict], int]:
+        """Get sections for a document with DB-level pagination. Returns (sections, total_count)."""
+        count_stmt = select(func.count(DocumentSection.id)).where(DocumentSection.document_id == document_id)
+        total = (await self.session.execute(count_stmt)).scalar() or 0
+
+        data_stmt = (
+            select(DocumentSection)
+            .where(DocumentSection.document_id == document_id)
+            .order_by(DocumentSection.order_index)
+            .offset(offset)
+            .limit(limit)
+        )
+        rows = (await self.session.execute(data_stmt)).scalars().all()
+        return [self._section_to_dict(s) for s in rows], total
+
     async def get_sections_by_ids(self, document_id: str, section_ids: list[str]) -> list[dict]:
         """Get specific sections by section_id within a document."""
         stmt = (

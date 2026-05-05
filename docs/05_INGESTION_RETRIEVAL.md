@@ -73,7 +73,7 @@ Model pre-downloaded during Docker build via BuildKit cache.
    - **Sparse (BM25)**: Keyword relevance.
    - **Dense (Semantic)**: Standard query semantic similarity.
    - **Recommendation (Feedback)**: Guiding results towards "Liked" chunks and away from "Disliked" ones using Qdrant's `RecommendQuery` with `strategy="best_score"`.
-7. **RRF Fusion**: Combine all 3 intents using Reciprocal Rank Fusion (RRF) via Qdrant Prefetch API. This ensures the search stays grounded in the user's query while respecting historical feedback.
+7. **RRF Fusion**: Combine all 3 intents using Reciprocal Rank Fusion (RRF) via Qdrant Prefetch API. Dense and sparse queries are equally weighted (Python client Weighted RRF pending library update). This ensures the search stays grounded in the user's query while respecting historical feedback.
 8. **Stage 1 — Section grouping**: Merge results across queries (dedupe by node_id, keep max score). Group by section_id → top 3 sections (score ≥ 0.30). Load section details via `SectionRepository.get_sections_for_rag()`.
 9. **Stage 2 — Chunk re-ranking**: Prioritise chunks within top sections first, then remaining. Score filter ≥ 0.35. Dedup overlapping chunks (100-char signature).
 10. **Stage 3 — Cross-encoder reranking** (optional, off by default): AITeamVN/Vietnamese_Reranker (`app/adapters/reranker/reranker.py`) scores (query, passage) pairs → top 5 chunks by relevance. Disabled via `RETRIEVAL_RERANK_ENABLED=false` — when sending full section context, LLM self-ranks effectively. Enable via env var if needed.
@@ -86,7 +86,9 @@ Model pre-downloaded during Docker build via BuildKit cache.
 |-----------|---------|
 | Dense model | AITeamVN/Vietnamese_Embedding_v2 (1024-dim, cosine) |
 | Sparse model | Custom VietnameseBM25Encoder (Underthesea tokenization + BM25 scoring) |
-| Fusion | Reciprocal Rank Fusion (RRF) via Qdrant Prefetch API |
+| Fusion | Reciprocal Rank Fusion (RRF) via Qdrant Prefetch API (equal weight dense+sparse) |
+| Segment parallelism | `default_segment_number` = `hnsw_m // 4` — segments processed in parallel for lower latency |
+| Payload index | `document_id`, `section_id`, `node_type` (KEYWORD) + `section_title` (TEXT) |
 | Qdrant config | Named vectors: "dense" + "sparse-bm25" (Modifier.IDF) |
 | BM25 params | k1=1.5, b=0.75 (standard defaults) |
 | BM25 vocab | Built from all Qdrant chunks, persisted to `data/bm25_vocab.json` |
@@ -167,8 +169,8 @@ Display order from `document_sections.order_index`, then page span. Qdrant does 
 | Doc ID TTL cache + invalidation | `app/services/retrieval/retrieval_service.py` |
 | Query embedding cache | `app/utils/query_cache.py` |
 | Hardware auto-detection | `app/core/hardware.py` |
-| Ingestion tasks | `app/workers/upload_pipeline.py` — dispatches rebuild_bm25_index_task after ingestion |
-| Cleanup tasks + beat | `app/workers/cleanup_pipeline.py` — uses CleanupService, dispatches rebuild_bm25_index_task after deletion |
+| Ingestion tasks | `app/workers/upload_tasks.py` — dispatches rebuild_bm25_index_task after ingestion |
+| Cleanup tasks + beat | `app/workers/cleanup_tasks.py` — uses CleanupService, dispatches rebuild_bm25_index_task after deletion |
 | Maintenance tasks | `app/workers/maintenance_tasks.py` — rebuild_bm25_index_task (ingestion queue), cleanup_orphaned_vectors_task (cleanup queue, Beat daily) |
 | Chat tasks | `app/workers/chat_tasks.py` — compatibility Celery wrapper; SSE path persists assistant messages synchronously before final done:true |
 | Memory tasks | `app/workers/memory_tasks.py` — extract_memories_task on default queue (async memory extraction, replaces asyncio.create_task) |
