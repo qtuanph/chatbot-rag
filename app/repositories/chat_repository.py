@@ -83,11 +83,7 @@ class ChatRepository:
 
     async def get_messages_for_history(self, session_id: str) -> list[dict]:
         """Get all messages for a session, returned as role/content dicts for Redis hydration."""
-        stmt = (
-            select(ChatMessage)
-            .where(ChatMessage.session_id == session_id)
-            .order_by(ChatMessage.created_at.asc())
-        )
+        stmt = select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.asc())
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
         return [{"role": m.role, "content": m.content} for m in rows]

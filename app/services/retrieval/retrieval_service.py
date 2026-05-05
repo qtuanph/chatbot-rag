@@ -2,22 +2,25 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from functools import lru_cache
-from typing import TYPE_CHECKING
+from typing import Any
 
 from app.adapters.base import BaseEmbedding
 from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.core.config import settings
 from app.utils.bm25_index import get_bm25_encoder
-from app.utils.query_cache import QueryEmbeddingCache
+from app.utils.query_cache import QueryEmbeddingCache, RagResultCache
+from app.utils.semantic_cache import SemanticCache
 
 from app.models.rag import RagNode, RagSection, RagContext
 from app.utils.document_registry import DocumentRegistry
 from app.adapters.base import RetrievedDocument
 from app.api.deps import redis_client as _redis_client
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 registry = DocumentRegistry()
@@ -62,19 +65,18 @@ def _get_query_cache() -> QueryEmbeddingCache:
 @lru_cache(maxsize=1)
 def _get_rag_result_cache() -> RagResultCache:
     from app.utils.query_cache import RagResultCache
+
     return RagResultCache(_redis_client)
 
 
 @lru_cache(maxsize=1)
 def _get_semantic_cache() -> SemanticCache:
     from app.utils.semantic_cache import SemanticCache
+
     return SemanticCache(vector_dim=settings.embedding_vector_size)
 
 
 # ── Distributed Document ID Cache (Redis 8.x) ──────────────────────────
-
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def _latest_document_ids(session: AsyncSession) -> set[str]:
@@ -110,7 +112,6 @@ async def retrieve_context(
     Stages: Result Cache → Hybrid search → Section grouping → Dedup → Assembly.
     """
     from app.repositories.document_repository import DocumentRepository
-    from app.repositories.section_repository import SectionRepository
 
     queries = [query] if isinstance(query, str) else query
     original_query = queries[0] if isinstance(query, str) else str(query)
@@ -128,11 +129,11 @@ async def retrieve_context(
         return RagContext(nodes=[])
 
     doc_ids = sorted(list(latest_doc_ids))
-    
+
     # ── Stage 0: Cache Layers (Exact & Semantic) ──────────────────────────
     rag_cache = _get_rag_result_cache()
     semantic_cache = _get_semantic_cache()
-    
+
     # 0.1 Exact Match Cache
     if isinstance(query, str):
         cached_result = await rag_cache.get(original_query, doc_ids)
@@ -140,7 +141,11 @@ async def retrieve_context(
             logger.info("[PERF-RAG] Exact Cache Hit: %s", original_query)
             return RagContext(
                 nodes=[RagNode(**n) for n in cached_result.get("nodes", [])],
-                sections=[RagSection(**s) for s in cached_result.get("sections", [])] if cached_result.get("sections") else None
+                sections=(
+                    [RagSection(**s) for s in cached_result.get("sections", [])]
+                    if cached_result.get("sections")
+                    else None
+                ),
             )
 
     doc_repo = DocumentRepository(session)
@@ -158,15 +163,14 @@ async def retrieve_context(
     async def _get_embedding(q_text: str):
         v = await cache.get(q_text)
         if v is None:
-            from fastapi.concurrency import run_in_threadpool
             embed_fn = getattr(svc, "embed_query", None) or svc.embed
-            v = await run_in_threadpool(embed_fn, q_text)
+            v = await embed_fn(q_text)
             await cache.set(q_text, v)
         return v
 
     # Embed all queries in parallel
     query_vectors = await asyncio.gather(*[_get_embedding(q) for q in queries])
-    
+
     # 0.2 Semantic Match Cache (only for primary query)
     if isinstance(query, str) and query_vectors:
         sem_cached = await semantic_cache.get(query_vectors[0])
@@ -174,12 +178,16 @@ async def retrieve_context(
             logger.info("[PERF-RAG] Semantic Cache Hit: %s", original_query)
             return RagContext(
                 nodes=[RagNode(**n) for n in sem_cached.get("nodes", [])],
-                sections=[RagSection(**s) for s in sem_cached.get("sections", [])] if sem_cached.get("sections") else None
+                sections=(
+                    [RagSection(**s) for s in sem_cached.get("sections", [])] if sem_cached.get("sections") else None
+                ),
             )
 
     sparse_vectors: list[Any] = []
     if sparse_encoder.is_ready:
-        sparse_vectors = [sparse_encoder.encode_sparse_vector(q) for q in queries]
+        sparse_vectors = await asyncio.gather(
+            *[asyncio.to_thread(sparse_encoder.encode_sparse_vector, q) for q in queries]
+        )
 
     # Single Unified call to Qdrant (Fusion + Hybrid + Filtering)
     fetch_k = settings.retrieval_chunk_top_k * 3
@@ -207,13 +215,13 @@ async def retrieve_context(
         if sig not in _seen_texts:
             _seen_texts[sig] = len(deduped_results)
             deduped_results.append(item)
-    
+
     logger.debug("[RAG] Deduped %d -> %d chunks", len(all_results), len(deduped_results))
 
     # Assemble sections from enriched payload (No DB calls!)
     rag_sections: list[RagSection] = []
     seen_sec_ids: set[str] = set()
-    
+
     for item in deduped_results:
         sec_id = item.metadata.get("custom", {}).get("section_id")
         if sec_id and sec_id not in seen_sec_ids:
@@ -240,13 +248,9 @@ async def retrieve_context(
         page_start = custom_metadata.get("page_start") or item.metadata.get("page_number")
         page_end = custom_metadata.get("page_end") or page_start
         page_range = _format_page_range(page_start, page_end)
-        
-        heading = (
-            item.metadata.get("section_title")
-            or custom_metadata.get("heading")
-            or "Nội dung"
-        )
-        
+
+        heading = item.metadata.get("section_title") or custom_metadata.get("heading") or "Nội dung"
+
         nodes.append(
             RagNode(
                 node_id=item.node_id,
@@ -265,10 +269,11 @@ async def retrieve_context(
     # Cache result if it's a single string query
     if isinstance(query, str) and nodes:
         import dataclasses
+
         # Convert to dict for JSON serialization in Redis
         result_dict = {
             "nodes": [dataclasses.asdict(n) for n in nodes],
-            "sections": [dataclasses.asdict(s) for s in rag_sections] if rag_sections else None
+            "sections": [dataclasses.asdict(s) for s in rag_sections] if rag_sections else None,
         }
         # Background cache updates
         await asyncio.gather(

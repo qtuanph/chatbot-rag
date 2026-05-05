@@ -11,14 +11,14 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | Component | Technology |
 |-----------|-----------|
 | Frontend | Next.js 16 + shadcn/ui v4 + next-auth v5 (JWT) |
-| Backend | FastAPI async |
+| Backend | FastAPI 100% async (Strict await enforcement) |
 | Workers | butler — `celery multi`: node-ingestion (solo, GPU) + node-default (prefork, CPU, Beat) |
-| Database | PostgreSQL 18 (metadata, auth, sessions, audit) |
-| Vectors | Qdrant (chunk vectors + retrieval payload) |
-| Object storage | RustFS (raw uploads + artifacts) |
-| Queue/Cache | Redis 8/9 (Celery, Streams, Semantic Cache, Rate Limiting, Chat history via MessagePack) |
+| Database | PostgreSQL 18.3 (AsyncSessionLocal, Metadata/Auth/Audit) |
+| Vectors | Qdrant 1.17.1 (AsyncQdrantClient, Sparse+Dense Hybrid) |
+| Object storage | RustFS (S3-compatible, isolated via asyncio.to_thread) |
+| Queue/Cache | Redis 8.8 m03 (Celery, Streams, Semantic Cache, Rate Limiting) |
 | Embedding | AITeamVN/Vietnamese_Embedding_v2 (1024-dim, local, GPU/CPU) |
-| Reranker | AITeamVN/Vietnamese_Reranker (Top 5, off by default) |
+| Reranker | AITeamVN/Vietnamese_Reranker (GPU/CPU, isolated via asyncio.to_thread) |
 | AI Provider | Google AI Gemma (singleton via lru_cache) |
 | Ingestion | Docling + PaddleOCR + Contextualizer (Global Vision) + DuplicateDetector (Bloom) |
 | Reverse proxy | nginx on port 80 (SSE, NextAuth, API, Rate Limited) |
@@ -30,7 +30,7 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | PostgreSQL | Auth, roles, documents, **document_sections** (canonical tree order), chat sessions/messages, user_memories, audit |
 | Qdrant | Chunk vectors + payload with `section_id` metadata |
 | RustFS | Raw uploaded files + ingestion artifacts |
-| Redis | Celery broker/backend (DB 0/1), app cache (DB 2), query embedding cache, rate limiting, semantic cache (Vector Search), chat history (MessagePack), audit stream (XADD). allkeys-lru |
+| Redis 8.8 | Celery broker/backend (DB 0/1), app cache (DB 2), query embedding cache, rate limiting, semantic cache (Vector Search), chat history (MessagePack), audit stream (XADD). allkeys-lru |
 
 ## Core PostgreSQL Tables
 
@@ -110,10 +110,10 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 
 | Layer | Location | Convention |
 |-------|----------|-----------|
-| Controller | `app/api/routes/*.py` | HTTP only — NO `SessionLocal`, NO business logic. Catches domain exceptions (`ValueError`/`RuntimeError`) from services and translates to `http_errors.*` |
-| Service | `app/services/{domain}/*_service.py` | Takes Repository via constructor, contains all business logic. Raises `ValueError`/`RuntimeError` only — NEVER `http_errors.*` |
-| Repository | `app/repositories/*_repository.py` | Takes `Session` via constructor, returns dicts (not ORM models) |
-| DI Wiring | `app/api/deps.py` | FastAPI `Depends()` factories for all repos and services |
+| Controller | `app/api/routes/*.py` | HTTP only — MUST use `async def`. NO `SessionLocal`, NO business logic. Catches domain exceptions (`ValueError`/`RuntimeError`) from services and translates to `http_errors.*` |
+| Service | `app/services/{domain}/*_service.py` | MUST use `async def`. Takes Repository via constructor. Contains all business logic. Raises `ValueError`/`RuntimeError` only — NEVER `http_errors.*`. Offloads CPU-bound tasks via `asyncio.to_thread`. |
+| Repository | `app/repositories/*_repository.py` | MUST use `async def`. Takes `AsyncSession` via constructor. Performs SQL queries and returns dicts (never leaky ORM models). |
+| DI Wiring | `app/api/deps.py` | FastAPI `Depends()` factories for all repos and services. Manages singleton lifecycles. |
 
 ### Current Service/Repository Map
 

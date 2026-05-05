@@ -78,7 +78,17 @@
 4. **Public API uses full names**: `document_ids` in public APIs, `doc_ids` only in internal query logic.
 5. **Short forms acceptable in**: loop variables (`msg` in logger), local temp variables.
 
-## 8. Dict Key Canonical Names
+## Async/Await Standards
+
+| Rule | Requirement |
+|------|-------------|
+| I/O Operations | MUST be `async def` (Database, Redis, Qdrant, HTTP calls). |
+| CPU-Bound Tasks | MUST use `asyncio.to_thread()` or `loop.run_in_executor()`. |
+| Sync Wrapping | Utility methods wrapping sync logic (e.g. disk I/O) should use `_async` suffix. |
+| Avoid Blocking | NEVER use `time.sleep()`, `requests`, or sync `open()` in async routes/services. |
+| Session Handling | ALWAYS use `AsyncSession` and `AsyncSessionLocal`. No `SessionLocal`. |
+
+### 8. Dict Key Canonical Names
 
 To ensure consistency across the application when passing dictionaries around (especially JSON/metadata fields), use the following standardized keys:
 

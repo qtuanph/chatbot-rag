@@ -11,6 +11,7 @@ from app.api.deps import redis_client
 
 logger = logging.getLogger(__name__)
 
+
 async def safe_record_audit(
     *,
     action: str,
@@ -36,10 +37,11 @@ async def safe_record_audit(
             "user_agent": user_agent or "",
             "details_json": json.dumps(details or {}),
         }
-        
+
         from app.core.config import settings
+
         await redis_client.xadd(settings.audit_stream_name, payload)
-        
+
     except Exception as e:
         logger.warning("Failed to fire audit event to Redis Stream: %s", e)
         # We don't raise here to keep the main business logic moving

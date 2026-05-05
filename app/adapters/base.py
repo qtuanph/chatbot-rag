@@ -90,7 +90,7 @@ class BaseParser(ABC):
     """
 
     @abstractmethod
-    def parse(
+    async def parse(
         self,
         filename: str,
         content: bytes,
@@ -135,7 +135,7 @@ class BaseEmbedding(ABC):
         pass
 
     @abstractmethod
-    def embed(self, text: str, normalize: bool = True) -> list[float]:
+    async def embed(self, text: str, normalize: bool = True) -> list[float]:
         """
         Embed a single text string.
 
@@ -152,7 +152,7 @@ class BaseEmbedding(ABC):
         pass
 
     @abstractmethod
-    def embed_batch(
+    async def embed_batch(
         self,
         texts: list[str],
         batch_size: int = 32,

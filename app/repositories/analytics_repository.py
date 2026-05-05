@@ -40,7 +40,7 @@ class AnalyticsRepository:
             func.coalesce(func.sum(ChatMessage.tokens_out), 0).label("tokens_out"),
             func.coalesce(func.avg(ChatMessage.latency_ms), 0).label("avg_latency_ms"),
         ).select_from(base_stmt.subquery())
-        
+
         result = await self.session.execute(stmt)
         row = result.one()
 
@@ -67,27 +67,24 @@ class AnalyticsRepository:
                 .subquery()
             )
             stmt = stmt.where(ChatMessage.session_id.in_(user_session_ids))
-        
+
         result = await self.session.execute(stmt)
         return result.scalar() or 0
 
     async def get_daily_stats(self, is_admin: bool, user_id: str, days_limit: int = 30) -> list[dict]:
         """Get daily breakdown of token usage, message count, and latency."""
         day_col = cast(ChatMessage.created_at, Date).label("day")
-        stmt = (
-            select(
-                day_col,
-                func.count(ChatMessage.id).label("messages"),
-                func.coalesce(func.sum(ChatMessage.tokens_in), 0).label("tokens_in"),
-                func.coalesce(func.sum(ChatMessage.tokens_out), 0).label("tokens_out"),
-                func.coalesce(func.avg(ChatMessage.latency_ms), 0).label("avg_latency_ms"),
-            )
-            .where(
-                ChatMessage.role == "assistant",
-                ChatMessage.tokens_in.isnot(None),
-            )
+        stmt = select(
+            day_col,
+            func.count(ChatMessage.id).label("messages"),
+            func.coalesce(func.sum(ChatMessage.tokens_in), 0).label("tokens_in"),
+            func.coalesce(func.sum(ChatMessage.tokens_out), 0).label("tokens_out"),
+            func.coalesce(func.avg(ChatMessage.latency_ms), 0).label("avg_latency_ms"),
+        ).where(
+            ChatMessage.role == "assistant",
+            ChatMessage.tokens_in.isnot(None),
         )
-        
+
         if not is_admin:
             user_session_ids = (
                 select(ChatSession.id)
@@ -98,9 +95,9 @@ class AnalyticsRepository:
                 .subquery()
             )
             stmt = stmt.where(ChatMessage.session_id.in_(user_session_ids))
-        
+
         stmt = stmt.group_by(day_col).order_by(day_col).limit(days_limit)
-        
+
         result = await self.session.execute(stmt)
         rows = result.all()
 

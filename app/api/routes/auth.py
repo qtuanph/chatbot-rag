@@ -24,7 +24,9 @@ rate_limiter = RateLimiter()
 
 
 @router.post("/auth/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, request: Request, service: AuthService = Depends(get_auth_service)) -> TokenResponse:
+async def login(
+    payload: LoginRequest, request: Request, service: AuthService = Depends(get_auth_service)
+) -> TokenResponse:
     client_ip = request.client.host if request.client else "unknown"
     normalized_username = payload.username.lower().strip()
     if not await rate_limiter.is_allowed(
@@ -97,13 +99,17 @@ async def create_user(
 
 
 @router.get("/auth/roles", response_model=list[RoleResponse])
-async def get_roles(_auth=Depends(require_admin), service: AuthService = Depends(get_auth_service)) -> list[RoleResponse]:
+async def get_roles(
+    _auth=Depends(require_admin), service: AuthService = Depends(get_auth_service)
+) -> list[RoleResponse]:
     roles = await service.list_roles()
     return [RoleResponse(id=r["id"], name=r["name"], description=r["description"]) for r in roles]
 
 
 @router.get("/auth/me")
-async def get_me(auth: AuthContext = Depends(get_auth_context), service: AuthService = Depends(get_auth_service)) -> dict:
+async def get_me(
+    auth: AuthContext = Depends(get_auth_context), service: AuthService = Depends(get_auth_service)
+) -> dict:
     try:
         return await service.get_current_user(auth.user_id)
     except ValueError as e:

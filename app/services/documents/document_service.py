@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from uuid import uuid4
@@ -16,27 +17,32 @@ from app.utils.document_registry import DocumentRecord, DocumentRegistry
 from app.utils.audit import safe_record_audit
 
 logger = logging.getLogger(__name__)
+
+
 class DocumentService:
     """Business logic for document upload, status, delete, and retry."""
 
-    def __init__(self, doc_repo: DocumentRepository, section_repo: SectionRepository) -> None:
+    def __init__(
+        self, doc_repo: DocumentRepository, section_repo: SectionRepository, registry: DocumentRegistry
+    ) -> None:
         self.doc_repo = doc_repo
         self.section_repo = section_repo
-        self.registry = DocumentRegistry()
+        self.registry = registry
         from app.utils.duplicate_detector import DuplicateDetector
-        self.detector = DuplicateDetector()
+
+        self.detector = DuplicateDetector(registry.client)
 
     # ── Upload ──────────────────────────────────────────────────────
 
     async def check_duplicate(self, content: bytes, filename: str) -> tuple[dict | None, int, str]:
         """Check SHA256 duplicate + get next version. Returns (duplicate_doc, next_version)."""
         sha256 = hashlib.sha256(content).hexdigest()
-        
+
         # 1. Fast check via Bloom Filter (O(1) skip DB)
         if not await self.detector.exists(sha256):
             next_version = await self.doc_repo.get_next_version(filename)
             return None, next_version, sha256
-            
+
         # 2. Potential duplicate: verify with DB
         duplicate = await self.doc_repo.find_by_sha256(sha256)
         next_version = await self.doc_repo.get_next_version(filename)
@@ -57,11 +63,14 @@ class DocumentService:
     ) -> str:
         """Create document record, save to storage, enqueue Celery task. Returns task_id."""
         storage = build_storage()
-        
+
         # Storage is currently sync in this codebase (Disk/S3 wrappers)
         # We use thread for CPU/IO bound sync storage call to not block event loop
         import asyncio
-        object_uri = await asyncio.to_thread(storage.save_bytes, document_id=document_id, filename=filename, content=content)
+
+        object_uri = await asyncio.to_thread(
+            storage.save_bytes, document_id=document_id, filename=filename, content=content
+        )
 
         await self.doc_repo.insert_document(
             document_id=document_id,
@@ -73,7 +82,7 @@ class DocumentService:
             file_size=len(content),
             version=next_version,
         )
-        
+
         # Add to Bloom filter for future duplicate checks
         await self.detector.add(sha256)
 

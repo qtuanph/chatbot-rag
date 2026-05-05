@@ -98,7 +98,7 @@ celery_app.conf.update(
         "process-audit-stream": {
             "task": "app.workers.audit_worker.process_audit_stream",
             "schedule": 10.0,  # Every 10 seconds
-            "args": (100,),    # Batch size
+            "args": (100,),  # Batch size
         },
     },
 )

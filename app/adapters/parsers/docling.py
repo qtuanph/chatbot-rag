@@ -9,6 +9,7 @@ import uuid
 import os
 import tempfile
 import re
+import asyncio
 
 from app.adapters.base import (
     BaseParser,
@@ -55,7 +56,7 @@ class DoclingParser(BaseParser):
         )
         logger.info("Docling+PaddleOCR initialized [vi, en]")
 
-    def parse(
+    async def parse(
         self,
         filename: str,
         content: bytes,
@@ -67,7 +68,7 @@ class DoclingParser(BaseParser):
         start_time = time.time()
         source_format = extract_file_format(filename)
 
-        result = self._convert_with_docling(filename, content)
+        result = await self._convert_with_docling(filename, content)
         if not result:
             raise ParsingException(f"Docling conversion failed for {filename}")
 
@@ -101,7 +102,7 @@ class DoclingParser(BaseParser):
 
     # ── Docling conversion (single pass: always OCR) ────────────────────────
 
-    def _convert_with_docling(
+    async def _convert_with_docling(
         self,
         filename: str,
         content: bytes,
@@ -126,7 +127,7 @@ class DoclingParser(BaseParser):
 
             try:
                 logger.info("Converting %s with PaddleOCR...", filename)
-                result = self.converter.convert(tmp_path, timeout=120)
+                result = await asyncio.to_thread(self.converter.convert, tmp_path, timeout=120)
 
                 # Post-process: fix heading hierarchy via docling-hierarchical-pdf
                 if filename.lower().endswith(".pdf"):

@@ -8,9 +8,11 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 from app.core.celery_app import celery_app
 from app.core.config import settings
-from app.db.session import SessionLocal
-from app.repositories.chat_repository import ChatRepository
+from app.db.session import AsyncSessionLocal
 from app.repositories.document_repository import DocumentRepository
+from app.repositories.chat_repository import ChatRepository
+from app.utils.document_registry import DocumentRegistry
+from app.api.deps import redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +28,10 @@ async def _verify_deletion_async(
     """
     qdrant_count = await vector_store.count(document_id)
     file_gone = await asyncio.to_thread(storage.file_exists, file_path) if file_path else True
-    with SessionLocal() as session:
+
+    async with AsyncSessionLocal() as session:
         doc_repo = DocumentRepository(session)
-    db_gone = asyncio.run(doc_repo.get_full_document(document_id)) is None
+        db_gone = (await doc_repo.get_full_document(document_id)) is None
 
     result = {
         "qdrant_vectors_remaining": qdrant_count,
@@ -92,15 +95,17 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
         from app.repositories.section_repository import SectionRepository
 
         storage = build_storage()
-        with SessionLocal() as session:
+        registry = DocumentRegistry(redis_client)
+
+        async with AsyncSessionLocal() as session:
             doc_repo = DocumentRepository(session)
             section_repo = SectionRepository(session)
 
-            doc_info = asyncio.run(doc_repo.get_full_document(document_id))
+            doc_info = await doc_repo.get_full_document(document_id)
             file_path = doc_info.get("file_path") if doc_info else None
 
-            cleanup_svc = CleanupService(doc_repo=doc_repo, section_repo=section_repo)
-            cleanup_result = asyncio.run(cleanup_svc.hard_delete_document(document_id))
+            cleanup_svc = CleanupService(doc_repo=doc_repo, section_repo=section_repo, registry=registry)
+            cleanup_result = await cleanup_svc.hard_delete_document(document_id)
 
         # ── Post-delete verification ──────────────────────────────────────────────
         # Build a minimal vector_store (no embedding needed for count/verify)
@@ -144,9 +149,12 @@ def cleanup_old_chat_sessions_task() -> dict:
     cutoff = datetime.now(timezone.utc) - timedelta(days=settings.chat_session_ttl_days)
     logger.info("Cleaning up chat sessions older than %s (TTL=%d days)", cutoff, settings.chat_session_ttl_days)
 
-    with SessionLocal() as session:
-        chat_repo = ChatRepository(session)
-        count = asyncio.run(chat_repo.delete_sessions_older_than(cutoff))
+    async def _run_cleanup():
+        async with AsyncSessionLocal() as session:
+            chat_repo = ChatRepository(session)
+            return await chat_repo.delete_sessions_older_than(cutoff)
+
+    count = asyncio.run(_run_cleanup())
 
     logger.info("Cleaned up %d old chat sessions", count)
     return {"deleted_count": count, "cutoff": cutoff.isoformat()}

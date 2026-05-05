@@ -23,7 +23,7 @@ class SectionRepository:
         try:
             # Delete old sections
             await self.session.execute(delete(DocumentSection).where(DocumentSection.document_id == document_id))
-            
+
             async with self.session.begin_nested() as savepoint:
                 for sec in sections:
                     db_section = DocumentSection(
@@ -48,12 +48,12 @@ class SectionRepository:
                 await savepoint.commit()
 
             await self.session.commit()
-            
+
             # Fetch new IDs
             stmt = select(DocumentSection.id).where(DocumentSection.document_id == document_id)
             result = await self.session.execute(stmt)
             ids = [str(row[0]) for row in result.all()]
-            
+
             logger.info("Stored %d sections for document %s", len(ids), document_id)
             return ids
         except Exception as e:
@@ -90,12 +90,9 @@ class SectionRepository:
 
     async def get_section_by_section_id(self, document_id: str, section_id: str) -> dict | None:
         """Get a single section by section_id within a document."""
-        stmt = (
-            select(DocumentSection)
-            .where(
-                DocumentSection.document_id == document_id,
-                DocumentSection.section_id == section_id,
-            )
+        stmt = select(DocumentSection).where(
+            DocumentSection.document_id == document_id,
+            DocumentSection.section_id == section_id,
         )
         result = await self.session.execute(stmt)
         row = result.scalar_one_or_none()
@@ -143,7 +140,7 @@ class SectionRepository:
         """Get sections by (document_id, section_id) pairs for RAG retrieval."""
         if not section_doc_pairs:
             return []
-        
+
         conditions = [
             (DocumentSection.document_id == doc_id) & (DocumentSection.section_id == sec_id)
             for doc_id, sec_id in section_doc_pairs
@@ -159,28 +156,6 @@ class SectionRepository:
         result = await self.session.execute(stmt)
         rows = result.all()
         return {str(row[0]) for row in rows}
-
-    # ── Private helpers ──────────────────────────────────────────────
-
-    @staticmethod
-    def _section_to_dict(section: DocumentSection) -> dict:
-        return {
-            "id": str(section.id),
-            "document_id": str(section.document_id),
-            "section_id": section.section_id,
-            "parent_section_id": section.parent_section_id,
-            "title": section.title,
-            "content": section.content,
-            "section_type": section.section_type,
-            "level": section.level,
-            "order_index": section.order_index,
-            "page_range": section.page_range,
-            "image_count": section.image_count,
-            "table_count": section.table_count,
-            "chunk_count": section.chunk_count,
-            "breadcrumb": section.breadcrumb or [],
-            "artifact_metadata": section.extra_metadata or {},
-        }
 
     # ── Private helpers ──────────────────────────────────────────────
 

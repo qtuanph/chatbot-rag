@@ -5,9 +5,10 @@ Used to skip DB queries during high-concurrency uploads.
 
 from __future__ import annotations
 import logging
-from app.api.deps import redis_client
+import redis.asyncio as redis
 
 logger = logging.getLogger(__name__)
+
 
 class DuplicateDetector:
     """Uses Redis Bloom module for duplicate detection."""
@@ -16,8 +17,8 @@ class DuplicateDetector:
     ERROR_RATE = 0.01
     CAPACITY = 100000
 
-    def __init__(self) -> None:
-        self._r = redis_client
+    def __init__(self, client: redis.Redis) -> None:
+        self._r = client
 
     async def _ensure_filter(self) -> None:
         """Initialize Bloom Filter if not exists."""

@@ -21,12 +21,13 @@ from qdrant_client.models import (
     FusionQuery,
     Fusion,
     RecommendQuery,
-    SearchParams,
-    QuantizationSearchParams,
     Filter,
     FieldCondition,
     MatchValue,
     MatchAny,
+    PayloadSchemaType,
+    SearchParams,
+    QuantizationSearchParams,
 )
 
 from app.adapters.base import (
@@ -35,7 +36,6 @@ from app.adapters.base import (
     RetrievedDocument,
 )
 from app.core.exceptions import (
-    VectorStoreConnectionException,
     VectorStoreOperationException,
 )
 
@@ -78,28 +78,30 @@ class QdrantVectorStore(BaseVectorStore):
         """Lazy initialization of AsyncQdrantClient."""
         if self.client is None:
             from qdrant_client import AsyncQdrantClient
+
             self.client = AsyncQdrantClient(
                 url=self.url,
                 api_key=self.api_key,
                 timeout=self.timeout,
             )
-        
+
         # One-time collection setup (using sync client for simplicity in setup)
         if not self._initialized:
             await self._ensure_collection_async()
             self._initialized = True
-            
+
         return self.client
 
     async def _ensure_collection_async(self) -> None:
         """Ensure collection exists with dynamic hardware-optimized settings."""
         try:
             from qdrant_client import QdrantClient
+
             # Use sync client for metadata operations (faster/simpler setup)
             sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout)
-            
+
             from app.core.hardware import hardware
-            
+
             collections = sync_client.get_collections()
             if any(col.name == self.collection_name for col in collections.collections):
                 # Check if collection is up-to-date with named vectors
@@ -115,7 +117,7 @@ class QdrantVectorStore(BaseVectorStore):
                 hardware.qdrant_hnsw_ef,
                 hardware.qdrant_quantization,
             )
-            
+
             # Use dynamic hardware settings
             sync_client.create_collection(
                 collection_name=self.collection_name,
@@ -128,27 +130,40 @@ class QdrantVectorStore(BaseVectorStore):
                         modifier=Modifier.IDF,
                     ),
                 },
-                quantization_config=ScalarQuantization(
-                    scalar=ScalarQuantizationConfig(
-                        type=ScalarType.INT8,
-                        quantile=0.99,
-                        always_ram=True,
-                    ),
-                ) if hardware.qdrant_quantization else None,
+                quantization_config=(
+                    ScalarQuantization(
+                        scalar=ScalarQuantizationConfig(
+                            type=ScalarType.INT8,
+                            quantile=0.99,
+                            always_ram=True,
+                        ),
+                    )
+                    if hardware.qdrant_quantization
+                    else None
+                ),
                 hnsw_config=HnswConfigDiff(
                     m=hardware.qdrant_hnsw_m,
                     ef_construct=hardware.qdrant_hnsw_ef,
                 ),
             )
-            
+
             # Create payload indexes for faster filtering
-            for field in ["document_id", "metadata.section_id", "node_type"]:
-                sync_client.create_payload_index(
-                    collection_name=self.collection_name,
-                    field_name=field,
-                    field_schema="keyword",
-                )
-            
+            sync_client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="document_id",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            sync_client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="metadata.section_id",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            sync_client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="node_type",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+
         except Exception as e:
             logger.error(f"Failed to ensure Qdrant collection: {e}")
             raise VectorStoreOperationException(f"Qdrant setup failed: {e}")
@@ -179,7 +194,7 @@ class QdrantVectorStore(BaseVectorStore):
             for i, node in enumerate(nodes):
                 # Ensure we have a valid point ID
                 point_id = self._node_id_to_qdrant_id(node.node_id)
-                
+
                 # Build rich payload for "DB-less" RAG retrieval
                 payload = {
                     "node_id": node.node_id,
@@ -242,14 +257,12 @@ class QdrantVectorStore(BaseVectorStore):
             # Build global filter
             query_conditions = []
             if document_ids_filter:
-                query_conditions.append(
-                    FieldCondition(key="document_id", match=MatchAny(any=document_ids_filter))
-                )
+                query_conditions.append(FieldCondition(key="document_id", match=MatchAny(any=document_ids_filter)))
             query_filter = Filter(must=query_conditions) if query_conditions else None
 
             # ── Unified Prefetch List ────────────────────────────────────────
             prefetch_list = []
-            
+
             # Handle multiple query vectors (Multi-Query Expansion)
             for i, d_vec in enumerate(query_vectors):
                 # 1. Dense Search per query
@@ -261,7 +274,7 @@ class QdrantVectorStore(BaseVectorStore):
                         filter=query_filter,
                     )
                 )
-                
+
                 # 2. Sparse Search per query (if available)
                 if sparse_vectors and i < len(sparse_vectors) and sparse_vectors[i]:
                     prefetch_list.append(
@@ -286,16 +299,34 @@ class QdrantVectorStore(BaseVectorStore):
                     )
                 )
 
-            # 4. Execute Unified Query with RRF Fusion
+            # 4. Execute Unified Query with RRF Fusion and Native Grouping
             client = await self._get_client()
-            response = await client.query_points(
+            from app.core.hardware import hardware
+
+            # Qdrant 1.17+ Grouping + Fusion is extremely powerful for RAG
+            response = await client.query_points_groups(
                 collection_name=self.collection_name,
                 prefetch=prefetch_list,
                 query=FusionQuery(fusion=Fusion.RRF),
-                limit=top_k,
+                group_by="metadata.section_id",
+                group_capacity=3,  # Max 3 chunks per section to ensure diversity
+                limit=top_k,       # Return top_k unique sections
                 with_payload=True,
+                search_params=SearchParams(
+                    hnsw_ef=hardware.qdrant_hnsw_ef,
+                    quantization=QuantizationSearchParams(
+                        ignore=False,
+                        rescore=True,  # Rescore to maintain accuracy after INT8 compression
+                    ) if hardware.qdrant_quantization else None
+                ),
             )
-            results = response.points
+            
+            # Flatten groups into a single list for the RAG pipeline
+            results = []
+            for group in response.groups:
+                # Add the best hit from each group to results
+                if group.hits:
+                    results.extend(group.hits)
 
             # Map to domain models
             return [
@@ -317,8 +348,7 @@ class QdrantVectorStore(BaseVectorStore):
 
         except Exception as e:
             raise VectorStoreOperationException(
-                f"Hybrid multi-query retrieval failed: {e}",
-                error_code="QDRANT_QUERY_FAILED"
+                f"Hybrid multi-query retrieval failed: {e}", error_code="QDRANT_QUERY_FAILED"
             )
 
     async def retrieve_grouped(
@@ -338,13 +368,11 @@ class QdrantVectorStore(BaseVectorStore):
             # Note: Grouping with Fusion (RRF) is currently complex in Qdrant API.
             # We use the primary query vector for grouping.
             query_vector = query_vectors[0]
-            
+
             # Build filter
             query_conditions = []
             if document_ids_filter:
-                query_conditions.append(
-                    FieldCondition(key="document_id", match=MatchAny(any=document_ids_filter))
-                )
+                query_conditions.append(FieldCondition(key="document_id", match=MatchAny(any=document_ids_filter)))
             query_filter = Filter(must=query_conditions) if query_conditions else None
 
             # Search with grouping
@@ -380,10 +408,7 @@ class QdrantVectorStore(BaseVectorStore):
             return retrieved
 
         except Exception as e:
-            raise VectorStoreOperationException(
-                f"Grouped retrieval failed: {e}",
-                error_code="QDRANT_GROUP_FAILED"
-            )
+            raise VectorStoreOperationException(f"Grouped retrieval failed: {e}", error_code="QDRANT_GROUP_FAILED")
 
     async def delete(self, document_id: str) -> bool:
         """
@@ -463,6 +488,7 @@ class QdrantVectorStore(BaseVectorStore):
         """
         try:
             from qdrant_client.models import Filter, FieldCondition, MatchValue
+
             client = await self._get_client()
 
             result = await client.count(
@@ -501,13 +527,13 @@ class QdrantVectorStore(BaseVectorStore):
         with_payload: bool = True,
         with_vector: bool = False,
         limit: int = 100,
-        offset: int = 0,
-    ) -> list[dict[str, Any]]:
+        offset: Any | None = None,
+    ) -> tuple[list[dict[str, Any]], Any | None]:
         """
         Scroll through all points that match the filter (Async).
+        Returns a tuple of (points, next_page_offset).
         """
         try:
-            from qdrant_client.models import Filter, FieldCondition, MatchValue
             client = await self._get_client()
 
             # Convert filter dict to Qdrant Filter object
@@ -542,7 +568,8 @@ class QdrantVectorStore(BaseVectorStore):
 
             # Convert results to list of dicts
             points = []
-            for point in results[0]:  # scroll() returns (points, next_page_offset)
+            points_list, next_page_offset = results
+            for point in points_list:
                 point_dict = {
                     "id": str(point.id),
                     "payload": point.payload if with_payload else None,
@@ -551,7 +578,7 @@ class QdrantVectorStore(BaseVectorStore):
                     point_dict["vector"] = point.vector
                 points.append(point_dict)
 
-            return points
+            return points, next_page_offset
 
         except Exception as e:
             logger.error(f"Failed to scroll Qdrant: {str(e)}")

@@ -24,7 +24,7 @@ def _get_container_memory_limit() -> float:
                 val = f.read().strip()
                 if val != "max":
                     return round(int(val) / 1024 / 1024 / 1024, 1)
-        
+
         # Cgroup v1
         path = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
         if os.path.exists(path):
@@ -72,19 +72,19 @@ class HardwareProfile:
     ram_gb: float
     gpu_count: int
     gpu_vram_gb: float
-    
+
     # Execution Settings
     uvicorn_workers: int
     redis_io_threads: int
     celery_concurrency: int
     embed_parallelism: int
     inference_concurrency: int
-    
+
     # Resource Pools (Tuned for 200 CCU Chatbot)
     db_pool_size: int
     db_max_overflow: int
     redis_pool_size: int
-    
+
     # AI Specifics
     qdrant_hnsw_m: int
     qdrant_hnsw_ef: int
@@ -126,7 +126,7 @@ class HardwareProfile:
         else:
             qdrant_hnsw_m = 16
             qdrant_hnsw_ef = 128
-        
+
         qdrant_quantization = ram < 64.0
 
         profile = cls(
@@ -158,11 +158,14 @@ class HardwareProfile:
             "║ DB Pool:     %-2s (overflow: %-2s)       ║\n"
             "║ Redis Pool:  %-26s║\n"
             "╚══════════════════════════════════════════╝",
-            cpu, ram,
-            gpu_count, f"{vram}GB VRAM" if gpu_count > 0 else "N/A",
+            cpu,
+            ram,
+            gpu_count,
+            f"{vram}GB VRAM" if gpu_count > 0 else "N/A",
             uvicorn_workers,
-            db_pool_size, db_max_overflow,
-            redis_pool_size
+            db_pool_size,
+            db_max_overflow,
+            redis_pool_size,
         )
         return profile
 

@@ -9,6 +9,7 @@ import time as _time
 from collections.abc import AsyncGenerator
 from typing import Any
 from uuid import UUID, uuid4
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.adapters.ai import build_ai_provider
 from app.adapters.ai.google import strip_reasoning
@@ -35,9 +36,9 @@ class ChatService:
         scope_id = f"user:{user_id}"
         resolved_session_id = await self.resolve_session(user_id=user_id, session_id=session_id)
         self.validate_session_id(resolved_session_id)
-        
+
         await self.get_or_create_session(session_id=resolved_session_id, user_id=user_id, query=query)
-        
+
         # Parallel fetch for history and memories
         history_task = self.store.get_history(scope_id, resolved_session_id)
         memories_task = self._user_memory_service.format_memories_for_prompt(user_id)
@@ -47,6 +48,7 @@ class ChatService:
         queries = [query]
         if settings.retrieval_query_expansion_enabled:
             from app.services.retrieval.expansion_service import expand_query
+
             try:
                 queries = await asyncio.wait_for(expand_query(query), timeout=3.0)
             except asyncio.TimeoutError:
@@ -54,11 +56,13 @@ class ChatService:
 
         # RAG retrieval
         context = await self.retrieve_rag_context(self.repo.session, queries, resolved_session_id, 20)
-        
+
         from app.utils.retrieval_utils import build_answer
+
         assistant_seed = build_answer(query, context)
 
         from app.utils.chat_utils import deduplicate_citations
+
         citations = deduplicate_citations(assistant_seed.get("citations") or [])
 
         return {
@@ -115,6 +119,7 @@ class ChatService:
             logger.error("Failed to finalize chat session: %s", e)
 
         from app.utils.chat_utils import compute_cost
+
         final_data = {
             "chunk": "",
             "done": True,
@@ -139,7 +144,7 @@ class ChatService:
     ) -> Any:
         """Run RAG retrieval. Returns RagContext."""
         from app.services.retrieval.retrieval_service import retrieve_context
-        
+
         positive_ids, negative_ids = [], []
         if session_id:
             positive_ids, negative_ids = await ChatRepository(session).get_feedback_signals(session_id)
@@ -218,6 +223,7 @@ class ChatService:
         """Dispatch durable memory extraction after a chat turn."""
         try:
             from app.workers.memory_tasks import extract_memories_task
+
             extract_memories_task.delay(
                 user_id=user_id, user_message=user_message, assistant_response=assistant_response
             )

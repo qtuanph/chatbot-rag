@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import msgpack
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +43,8 @@ class QueryEmbeddingCache:
     async def get(self, text: str) -> list[float] | None:
         """Return cached embedding vector or None if not found."""
         try:
-            return await self._r.json().get(self._key(text))
+            data = await self._r.get(self._key(text))
+            return msgpack.unpackb(data) if data else None
         except Exception:
             return None
 
@@ -49,8 +52,8 @@ class QueryEmbeddingCache:
         """Store embedding vector in cache with TTL."""
         try:
             key = self._key(text)
-            await self._r.json().set(key, "$", vector)
-            await self._r.expire(key, self.TTL)
+            packed = msgpack.packb(vector)
+            await self._r.set(key, packed, ex=self.TTL)
         except Exception:
             pass
 
@@ -76,6 +79,7 @@ class RagResultCache:
             data = await self._r.get(self._key(query, document_ids))
             if data:
                 import json
+
                 return json.loads(data)
             return None
         except Exception:
@@ -87,6 +91,7 @@ class RagResultCache:
             return
         try:
             import json
+
             key = self._key(query, document_ids)
             await self._r.set(key, json.dumps(result), ex=self.TTL)
         except Exception:

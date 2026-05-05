@@ -13,10 +13,11 @@
     }
   },
   "v4_performance_tier": {
-    "semantic_cache": "Similarity match > 98% (dist < 0.02) via Redis Vector Search",
+    "semantic_cache": "Similarity match > 98% (dist < 0.02) via Redis Vector Search (Async)",
     "binary_history": "MessagePack serialization for sub-millisecond chat hydration",
     "decoupled_audit": "XADD stream logging (<1ms) with background AuditStreamWorker",
-    "bloom_duplicate": "BF.EXISTS check for O(1) document upload skipping"
+    "bloom_duplicate": "BF.EXISTS check for O(1) document upload skipping (Redis 8.8)",
+    "cpu_offloading": "Strict asyncio.to_thread usage for OCR, Tokenization, and Embedding to prevent loop blocking"
   },
   "core_invariants": [
     {
@@ -49,19 +50,19 @@
     }
   ],
   "data_location_map": [
-    { "data": "sections", "storage": "PostgreSQL", "table": "document_sections", "notes": "Canonical order source (order_index)" },
-    { "data": "chunks", "storage": "Qdrant", "notes": "~400 token chunks with section_id metadata. Named dense + sparse-bm25 vectors." },
-    { "data": "bm25_vocab", "storage": "disk", "notes": "data/bm25_vocab.json — rebuilt on upload/delete. TTL cache 120s. Underthesea tokenization + IDF." },
-    { "data": "documents", "storage": "PostgreSQL", "table": "documents", "notes": "status: pending→processing→ready/failed" },
-    { "data": "chat_messages", "storage": "PostgreSQL + Redis (MessagePack)", "notes": "DB persisted; Redis hot cache uses MessagePack binary serialization for speed/RAM." },
-    { "data": "chat_sessions", "storage": "PostgreSQL", "table": "chat_sessions", "notes": "Hard-deleted after 30 days by Celery Beat. Sidebar ordered by updated_at DESC." },
-    { "data": "uploaded_files", "storage": "RustFS", "notes": "Hard-deleted on user delete request" },
-    { "data": "semantic_cache", "storage": "Redis (HNSW)", "notes": "Redis Vector Search for rapid intent matching." },
-    { "data": "audit_stream", "storage": "Redis Stream", "key": "audit:stream", "notes": "Asynchronous event buffer." },
-    { "data": "duplicate_bloom", "storage": "Redis Bloom", "key": "bf:document:sha256", "notes": "O(1) SHA256 existence check." },
-    { "data": "query_embedding_cache", "storage": "Redis", "notes": "MD5 keyed; TTL 1 hour" },
-    { "data": "user_memories", "storage": "PostgreSQL + Redis", "table": "user_memories", "notes": "Redis cache 5min TTL; injected into AI systemInstruction" },
-    { "data": "user_sessions", "storage": "JWT (PyJWT) + Redis blacklist", "notes": "Token revocation on logout. Role cached in JWT payload." }
+    { "data": "sections", "storage": "PostgreSQL 18.3", "table": "document_sections", "notes": "Canonical order source (order_index). Accessed via AsyncSession." },
+    { "data": "chunks", "storage": "Qdrant 1.17.1", "notes": "~400 token chunks with section_id metadata. Named dense + sparse-bm25 vectors. AsyncQdrantClient." },
+    { "data": "bm25_vocab", "storage": "disk", "notes": "data/bm25_vocab.json — rebuilt asynchronously via build_bm25_index_from_qdrant_async()." },
+    { "data": "documents", "storage": "PostgreSQL 18.3", "table": "documents", "notes": "status: pending→processing→ready/failed. Async DB access." },
+    { "data": "chat_messages", "storage": "PostgreSQL + Redis 8.8", "notes": "DB persisted; Redis hot cache uses MessagePack binary serialization for speed/RAM." },
+    { "data": "chat_sessions", "storage": "PostgreSQL 18.3", "table": "chat_sessions", "notes": "Hard-deleted after 30 days by Celery Beat. Sidebar ordered by updated_at DESC." },
+    { "data": "uploaded_files", "storage": "RustFS", "notes": "S3-compatible; operations wrapped in asyncio.to_thread." },
+    { "data": "semantic_cache", "storage": "Redis 8.8 (HNSW)", "notes": "Redis Vector Search (RediSearch) for rapid intent matching." },
+    { "data": "audit_stream", "storage": "Redis Stream", "key": "audit:stream", "notes": "Asynchronous event buffer via XADD." },
+    { "data": "duplicate_bloom", "storage": "Redis 8.8 Bloom", "key": "bf:document:sha256", "notes": "O(1) SHA256 existence check." },
+    { "data": "query_embedding_cache", "storage": "Redis 8.8", "notes": "MD5 keyed; TTL 1 hour" },
+    { "data": "user_memories", "storage": "PostgreSQL + Redis 8.8", "table": "user_memories", "notes": "Redis cache 5min TTL; injected into AI systemInstruction" },
+    { "data": "user_sessions", "storage": "JWT (PyJWT) + Redis 8.8 blacklist", "notes": "Token revocation on logout. Role cached in JWT payload." }
   ],
   "critical_env": {
     "ai": {
@@ -149,11 +150,11 @@
     "hallucinated answers without retrieval grounding"
   ],
   "architecture_layers": {
-    "pattern": "Controller-Service-Repository (CSR)",
-    "description": "Strict 3-layer separation. Routes = HTTP only. Services = business logic. Repositories = data access.",
+    "pattern": "Controller-Service-Repository (CSR) - 100% Async",
+    "description": "Strict 3-layer separation. Routes = HTTP only. Services = business logic. Repositories = data access. All layers strictly await I/O.",
     "controller": {
       "location": "app/api/routes/",
-      "responsibility": "HTTP parsing, auth deps, response formatting, status codes. NO business logic, NO SessionLocal, NO direct DB queries."
+      "responsibility": "HTTP parsing, auth deps, response formatting, status codes. NO business logic, NO AsyncSessionLocal inside routes (use deps)."
     },
     "canonical_dict_keys": {
       "artifact_metadata": "Use 'artifact_metadata' in all dictionaries, schemas, and pipeline outputs representing arbitrary extra JSON metadata (replaces legacy 'extra_metadata', 'metadata')."
@@ -222,7 +223,8 @@
   },
   "infrastructure": {
     "hardware_auto_detect": "app/core/hardware.py — PROD tier: 4-8 workers, 100+ DB/Redis pool for 200+ CCU. TIGHT tier: 1 worker for low VRAM (<6GB).",
-    "redis_config": "maxmemory via REDIS_MAXMEMORY env var (default 512mb for dev), allkeys-lru, save 60 1000, appendonly yes",
+    "async_policy": "All I/O is non-blocking. Heavy CPU (OCR, Embed, Rerank) is offloaded to threads via asyncio.to_thread.",
+    "redis_8.8_config": "maxmemory via REDIS_MAXMEMORY env var (default 512mb for dev), allkeys-lru, save 60 1000, appendonly yes",
     "redis_db_separation": "DB 0: Celery broker, DB 1: result backend, DB 2: app cache",
     "celery_config": "All values configurable via env vars: time limits, memory limit, visibility timeout, retry, max-tasks-per-child. Butler uses celery multi with 2 nodes: node-ingestion (solo, GPU, ingestion queue) + node-default (prefork, CPU, cleanup+default queues, Beat scheduler). Routing configured in ops/entrypoint-worker.sh",
     "celery_tasks": {

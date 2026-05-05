@@ -17,15 +17,17 @@ if TYPE_CHECKING:
     from app.repositories.section_repository import SectionRepository
 
 logger = logging.getLogger(__name__)
-registry = DocumentRegistry()
 
 
 class CleanupService:
     """Business logic for hard-deleting documents and all related artifacts."""
 
-    def __init__(self, doc_repo: DocumentRepository, section_repo: SectionRepository) -> None:
+    def __init__(
+        self, doc_repo: DocumentRepository, section_repo: SectionRepository, registry: DocumentRegistry
+    ) -> None:
         self.doc_repo = doc_repo
         self.section_repo = section_repo
+        self.registry = registry
 
     async def hard_delete_document(self, document_id: str) -> dict[str, bool]:
         """Hard-delete document and all artifacts. Order: Vectors → Sections → File → DB → Registry."""
@@ -38,31 +40,41 @@ class CleanupService:
             timeout=settings.qdrant_timeout,
         )
 
-        record = await registry.get_by_document_id(document_id)
+        record = await self.registry.get_by_document_id(document_id)
         object_uri = record.object_uri if record else None
         if not object_uri:
             doc = await self.doc_repo.get_full_document(document_id)
             object_uri = doc.get("file_path") if doc else None
 
-        # ── Execution (Direct, no silent fallbacks) ────────────────
+        # ── Execution (Strict 6-step order: registry → vectors → sections → file → DB row → purge) ──
+        # 1. Registry mark (Redis)
+        await self.registry.delete(document_id)
+
+        # 2. Vectors (Qdrant)
         await vector_store.delete(document_id)
-        
+
+        # 3. Sections (PostgreSQL)
         await self.section_repo.delete_sections(document_id)
 
+        # 4. Physical file (S3/RustFS)
         if object_uri:
             await asyncio.to_thread(storage.delete_object, object_uri)
 
+        # 5. Document DB row (PostgreSQL)
         db_deleted = await self.doc_repo.hard_delete(document_id)
 
+        # 6. Final registry purge (Redis)
         if record:
             await asyncio.to_thread(celery_app.backend.delete, record.task_id)
 
-        await registry.purge_async(document_id)
-        
+        await self.registry.purge_async(document_id)
+
         from app.services.retrieval.retrieval_service import invalidate_doc_ids_cache
-        invalidate_doc_ids_cache()
+
+        await invalidate_doc_ids_cache()
 
         from app.workers.maintenance_tasks import rebuild_bm25_index_task
+
         rebuild_bm25_index_task.delay()
 
         return {"deleted": db_deleted, "document_id": document_id}

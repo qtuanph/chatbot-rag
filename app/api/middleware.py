@@ -158,6 +158,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
         from app.utils.rate_limiter import RateLimiter
+
         self.rate_limiter = RateLimiter(key_prefix="global_limit:")
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
@@ -168,11 +169,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
             or (request.client.host if request.client else "unknown")
         )
-        throttle_key = f"global:{client_ip}"
 
         try:
             allowed = await self.rate_limiter.is_allowed(
-                client_ip, # RateLimiter adds prefix, identifier is client_ip
+                client_ip,  # RateLimiter adds prefix, identifier is client_ip
                 limit=self.requests_per_minute,
                 window_ms=60000,
             )

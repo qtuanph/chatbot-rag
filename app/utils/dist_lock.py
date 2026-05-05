@@ -6,10 +6,10 @@ Prevents race conditions in high-concurrency environments.
 import asyncio
 import logging
 import uuid
-from typing import Optional
 from app.api.deps import redis_client
 
 logger = logging.getLogger(__name__)
+
 
 class RedisLock:
     """Simple distributed lock using Redis SET NX."""

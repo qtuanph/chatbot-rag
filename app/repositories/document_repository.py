@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select, update, delete, and_
+from sqlalchemy import func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DocumentStoreException
@@ -64,9 +64,8 @@ class DocumentRepository:
 
     async def get_next_version(self, filename: str) -> int:
         """Get the next version number for a given filename."""
-        stmt = (
-            select(func.coalesce(func.max(Document.version), 0))
-            .where(Document.file_name == filename, Document.deleted_at.is_(None))
+        stmt = select(func.coalesce(func.max(Document.version), 0)).where(
+            Document.file_name == filename, Document.deleted_at.is_(None)
         )
         result = await self.session.execute(stmt)
         max_ver = result.scalar()
@@ -190,10 +189,7 @@ class DocumentRepository:
 
     async def find_stuck_documents(self, timeout_threshold: datetime) -> list[str]:
         """Find documents stuck in processing state before timeout_threshold."""
-        stmt = (
-            select(Document)
-            .where(Document.status == "processing", Document.status_updated_at < timeout_threshold)
-        )
+        stmt = select(Document).where(Document.status == "processing", Document.status_updated_at < timeout_threshold)
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
         return [str(doc.id) for doc in rows]
@@ -233,13 +229,10 @@ class DocumentRepository:
 
     async def get_titles_by_ids(self, doc_ids: list[str]) -> dict[str, str]:
         """Fetch document titles by IDs. Returns {doc_id: title}."""
-        stmt = (
-            select(Document.id, Document.title)
-            .where(
-                Document.deleted_at.is_(None),
-                Document.status == "ready",
-                Document.id.in_(doc_ids),
-            )
+        stmt = select(Document.id, Document.title).where(
+            Document.deleted_at.is_(None),
+            Document.status == "ready",
+            Document.id.in_(doc_ids),
         )
         result = await self.session.execute(stmt)
         rows = result.all()
@@ -277,4 +270,3 @@ class DocumentRepository:
             "created_at": document.created_at.isoformat() if document.created_at else None,
             "updated_at": document.updated_at.isoformat() if document.updated_at else None,
         }
-

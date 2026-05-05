@@ -4,11 +4,10 @@ Ingestion Pipeline: Main orchestration for document parsing → hierarchy → em
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import time
-from collections import deque
-from concurrent.futures import Future, ThreadPoolExecutor
 from typing import TYPE_CHECKING, Callable
 from dataclasses import dataclass
 
@@ -21,7 +20,7 @@ from app.core.hardware import hardware
 
 if TYPE_CHECKING:
     from app.adapters.base import BaseEmbedding, BaseVectorStore
-    from sqlalchemy.orm import Session
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +48,10 @@ ProgressCallback = Callable[[str, int, str], None]  # (stage, percent, message)
 
 class IngestionService:
     """
-    Main ingestion orchestration:
+    Main ingestion orchestration (Async):
     1. Parse document (Docling + PaddleOCR)
     2. Validate hierarchy
-    3. Embed + store nodes in chunks (parallel embedding, incremental Qdrant writes)
+    3. Embed + store nodes in chunks (Async-parallel embedding, incremental Qdrant writes)
     4. Report progress at each chunk via optional callback
     """
 
@@ -60,7 +59,7 @@ class IngestionService:
         self,
         embedding_service: BaseEmbedding | None = None,
         vector_store: BaseVectorStore | None = None,
-        db_session: Session | None = None,
+        db_session: AsyncSession | None = None,
         section_repo: SectionRepository | None = None,
     ):
         self.parser = DoclingParser()
@@ -70,31 +69,16 @@ class IngestionService:
         self.section_repo = section_repo
         self.validator = HierarchyValidator()
 
-    def ingest(
+    async def ingest(
         self,
         filename: str,
         content: bytes,
         user_id: str,
         document_id: str,
         progress_callback: ProgressCallback | None = None,
-    ) -> "IngestionResult":
+    ) -> IngestionResult:
         """
-        Synchronous ingestion pipeline with chunked embed+store and progress reporting.
-
-        Progress stages (approximate %):
-          5%  → starting parse
-          30% → parse complete
-          35% → hierarchy validation complete
-          40-90% → chunked embed+store (incremental, 1 tick per chunk)
-          100% → done
-
-        Args:
-            filename:          Original filename
-            content:           Raw file bytes
-            user_id:           User performing the upload
-            document_id:       Unique document ID (UUID)
-            progress_callback: Optional callable(stage, percent, message).
-                               Called after each significant step and after each embed chunk.
+        Asynchronous ingestion pipeline with chunked embed+store and progress reporting.
         """
         start_time = time.time()
         errors: list[str] = []
@@ -105,7 +89,6 @@ class IngestionService:
         storage_ids: list[str] = []
 
         def _cb(stage: str, percent: int, message: str = "") -> None:
-            """Fire progress callback safely — never let a callback error crash the pipeline."""
             if progress_callback:
                 try:
                     progress_callback(stage, percent, message)
@@ -117,40 +100,36 @@ class IngestionService:
             logger.info("[%s] Starting ingestion: %s", document_id, filename)
             _cb("parsing", 5, f"Parsing {filename}…")
 
-            nodes, parse_metadata = self.parser.parse(filename, content, document_id=document_id)
-            logger.info("[%s] Parsed: %d nodes from %s", document_id, len(nodes), filename)
-            _cb("parsing", 30, f"Parsed {len(nodes)} sections")
+            nodes, parse_metadata = await self.parser.parse(filename, content, document_id=document_id)
+            # ── Step 1.5: Text Refinement (Sanitize & Clean OCR Artifacts) ───
+            _cb("parsing", 32, "Refining extracted text...")
+            from app.utils.text_refiner import rule_based_refiner
+            
+            nodes = await asyncio.to_thread(rule_based_refiner.refine_nodes, nodes)
+            sections_data = getattr(parse_metadata, "sections_data", None) or []
+            if sections_data:
+                sections_data = await asyncio.to_thread(rule_based_refiner.refine_sections, sections_data)
+                parse_metadata.sections_data = sections_data
 
-            # ── Step 2: Validate hierarchy ───────────────────────────────────
+            # ── Step 2: Validate hierarchy (wrapped in to_thread as it's CPU-intensive)
             _cb("parsing", 35, "Validating document structure…")
-            validation_report = self.validator.validate(nodes)
+            validation_report = await asyncio.to_thread(self.validator.validate, nodes)
             if not validation_report.is_valid:
                 errors.extend(validation_report.errors)
                 warnings.extend(validation_report.warnings)
-                logger.warning(
-                    "[%s] Validation: %d errors, %d warnings",
-                    document_id,
-                    len(errors),
-                    len(warnings),
-                )
             else:
                 logger.info("[%s] Hierarchy valid (depth=%s)", document_id, validation_report.depth)
 
-            # ── Step 2.5: Store Sections (if section data exists) ────────────
+            # ── Step 2.5: Store Sections ─────────────────────────────────────
             section_count = 0
             sections_data = getattr(parse_metadata, "sections_data", None) or []
             if sections_data and self.db_session:
                 _cb("parsing", 37, f"Storing {len(sections_data)} sections…")
                 section_repo = self.section_repo or SectionRepository(self.db_session)
-                section_ids = section_repo.store_sections(document_id, sections_data)
+                section_ids = await section_repo.store_sections(document_id, sections_data)
                 section_count = len(section_ids)
-                logger.info(
-                    "[%s] Stored %d sections in PostgreSQL",
-                    document_id,
-                    section_count,
-                )
-                
-                # Enrich nodes with section context for Qdrant payload (DB-less RAG)
+
+                # Enrich nodes with section context
                 section_map = {s["section_id"]: s for s in sections_data}
                 for node in nodes:
                     sec_id = node.metadata.get("section_id")
@@ -159,175 +138,79 @@ class IngestionService:
                         node.metadata["section_content"] = sec.get("content", "")
                         node.metadata["breadcrumb"] = sec.get("breadcrumb", [])
                         node.metadata["level"] = sec.get("level", 0)
-                        node.metadata["image_count"] = sec.get("image_count", 0)
-                        node.metadata["table_count"] = sec.get("table_count", 0)
-            
+
             # ── Step 2.6: Contextual Enrichment ─────────────────────────────
             _cb("parsing", 39, "Enriching chunks with document context…")
             from app.utils.contextualizer import Contextualizer
+
             contextualizer = Contextualizer()
-            nodes = contextualizer.contextualize(filename, nodes)
-            
-            # ── Step 3: Embed + Store in chunks ──────────────────────────────
+            nodes = await asyncio.to_thread(contextualizer.contextualize, filename, nodes)
+
+            # ── Step 3: Embed + Store ────────────────────────────────────────
             n_chunks = 0
             if self.embedding_service and nodes:
                 chunk_size = settings.ingestion_embedding_chunk_size
                 n_chunks = math.ceil(len(nodes) / chunk_size) or 1
-                store_parallelism = settings.ingestion_embed_parallelism or hardware.embed_parallelism
-                store_parallelism = max(1, min(store_parallelism, 4))
-                pending_store_tasks: deque[tuple[int, list[IngestedNode], Future[list[str]]]] = deque()
 
-                # BM25 sparse encoder — always available, builds/updates vocab on the fly
+                # BM25 sparse encoder
                 from app.utils.bm25_index import get_bm25_encoder
 
                 bm25_encoder = get_bm25_encoder()
 
-                def _store_chunk(
-                    chunk_document_id: str,
-                    chunk_nodes: list[IngestedNode],
-                    chunk_vecs: list[list[float]],
-                ) -> list[str]:
-                    if not self.vector_store:
-                        return []
-                    # Generate BM25 sparse vectors for hybrid search
-                    # The encoder will automatically update its vocabulary for new terms
-                    sparse_embs = bm25_encoder.encode_batch_sparse_vectors([n.text for n in chunk_nodes])
-                    
-                    return await self.vector_store.store(
-                        chunk_document_id,
-                        chunk_nodes,
-                        chunk_vecs,
-                        sparse_embeddings=sparse_embs,
-                    )
+                # Semaphore to control concurrency (limit VRAM pressure)
+                concurrency = settings.ingestion_embed_parallelism or hardware.embed_parallelism
+                concurrency = max(1, min(concurrency, 4))
+                semaphore = asyncio.Semaphore(concurrency)
 
-                with ThreadPoolExecutor(max_workers=store_parallelism) as store_executor:
-                    for chunk_idx, chunk_start in enumerate(range(0, len(nodes), chunk_size)):
-                        chunk_nodes = nodes[chunk_start : chunk_start + chunk_size]
-                        chunk_texts = [n.text for n in chunk_nodes]
-
+                async def _process_chunk(chunk_idx: int, chunk_nodes: list[IngestedNode]):
+                    async with semaphore:
                         try:
-                            # embed_batch handles internal parallelism via ThreadPoolExecutor
-                            vecs = self.embedding_service.embed_batch(chunk_texts)
+                            chunk_texts = [n.text for n in chunk_nodes]
+                            vecs = await self.embedding_service.embed_batch(chunk_texts)
 
                             if self.vector_store:
-                                pending_store_tasks.append(
-                                    (
-                                        chunk_idx,
-                                        chunk_nodes,
-                                        store_executor.submit(
-                                            _store_chunk,
-                                            document_id,
-                                            chunk_nodes,
-                                            vecs,
-                                        ),
-                                    )
+                                sparse_embs = await asyncio.to_thread(
+                                    bm25_encoder.encode_batch_sparse_vectors, chunk_texts
                                 )
-                            else:
-                                pct = 40 + int(50 * (chunk_idx + 1) / n_chunks)  # 40% → 90%
-                                _cb(
-                                    "embedding",
-                                    pct,
-                                    f"Indexing section {chunk_idx + 1}/{n_chunks}…",
-                                )
-                                logger.info(
-                                    "[%s] Chunk %d/%d embedded (%d nodes) — storage disabled",
+                                ids = await self.vector_store.store(
                                     document_id,
-                                    chunk_idx + 1,
-                                    n_chunks,
-                                    len(chunk_nodes),
+                                    chunk_nodes,
+                                    vecs,
+                                    sparse_embeddings=sparse_embs,
                                 )
-
-                            while len(pending_store_tasks) >= store_parallelism:
-                                completed_idx, completed_nodes, completed_future = pending_store_tasks.popleft()
-                                ids = completed_future.result()
                                 storage_ids.extend(ids)
-                                pct = 40 + int(50 * (completed_idx + 1) / n_chunks)  # 40% → 90%
-                                _cb(
-                                    "embedding",
-                                    pct,
-                                    f"Indexing section {completed_idx + 1}/{n_chunks}…",
-                                )
-                                logger.info(
-                                    "[%s] Chunk %d/%d embedded+stored (%d nodes)",
-                                    document_id,
-                                    completed_idx + 1,
-                                    n_chunks,
-                                    len(completed_nodes),
-                                )
-                        except Exception as e:
-                            logger.error(
-                                "[%s] Chunk %d/%d embed failed: %s",
-                                document_id,
-                                chunk_idx + 1,
-                                n_chunks,
-                                e,
-                            )
-                            errors.append(f"Chunk {chunk_idx + 1} embed failed: {e}")
-                            # Continue with remaining chunks — partial index beats total failure
-                            continue
 
-                    while pending_store_tasks:
-                        completed_idx, completed_nodes, completed_future = pending_store_tasks.popleft()
-                        try:
-                            ids = completed_future.result()
-                            storage_ids.extend(ids)
-                            pct = 40 + int(50 * (completed_idx + 1) / n_chunks)  # 40% → 90%
-                            _cb(
-                                "embedding",
-                                pct,
-                                f"Indexing section {completed_idx + 1}/{n_chunks}…",
-                            )
-                            logger.info(
-                                "[%s] Chunk %d/%d embedded+stored (%d nodes)",
-                                document_id,
-                                completed_idx + 1,
-                                n_chunks,
-                                len(completed_nodes),
-                            )
+                            pct = 40 + int(50 * (chunk_idx + 1) / n_chunks)
+                            _cb("embedding", pct, f"Indexing section {chunk_idx + 1}/{n_chunks}…")
+                            logger.info("[%s] Chunk %d/%d processed", document_id, chunk_idx + 1, n_chunks)
                         except Exception as e:
-                            logger.error(
-                                "[%s] Chunk %d/%d store failed: %s",
-                                document_id,
-                                completed_idx + 1,
-                                n_chunks,
-                                e,
-                            )
-                            errors.append(f"Chunk {completed_idx + 1} store failed: {e}")
-            else:
-                if not self.embedding_service:
-                    warnings.append("No embedding service configured — skipping vector indexing")
-                elif not nodes:
-                    warnings.append("No nodes produced — empty document?")
+                            logger.error("[%s] Chunk %d/%d failed: %s", document_id, chunk_idx + 1, n_chunks, e)
+                            errors.append(f"Chunk {chunk_idx + 1} failed: {str(e)}")
 
-            # Finalize BM25 vocabulary if any new terms were added
-            if self.embedding_service and nodes:
-                bm25_encoder.save()
+                tasks = []
+                for idx, start in enumerate(range(0, len(nodes), chunk_size)):
+                    chunk = nodes[start : start + chunk_size]
+                    tasks.append(_process_chunk(idx, chunk))
+
+                await asyncio.gather(*tasks)
+                await asyncio.to_thread(bm25_encoder.save)
 
             duration_ms = (time.time() - start_time) * 1000
 
-            # Determine success: fail if too many chunk errors (>50% of chunks)
-            total_chunks = n_chunks
-            error_threshold = max(1, int(total_chunks * 0.5)) if total_chunks > 0 else 1
+            # Success check (same threshold as before)
+            error_threshold = max(1, int(n_chunks * 0.5)) if n_chunks > 0 else 1
             has_critical_failure = len(errors) > error_threshold
 
             if has_critical_failure:
                 _cb("failed", 0, f"{len(errors)} chunk errors exceeded threshold")
-                logger.warning(
-                    "[%s] Ingestion partial failure: %d/%d chunks failed. Rolling back DB sections.",
-                    document_id,
-                    len(errors),
-                    total_chunks,
-                )
-                # Cleanup sections from DB to prevent orphaned data
                 if self.db_session and section_count > 0:
                     section_repo = self.section_repo or SectionRepository(self.db_session)
-                    section_repo.delete_sections(document_id)
+                    await section_repo.delete_sections(document_id)
                     section_count = 0
-                    logger.info("[%s] Rolled back %d sections from PostgreSQL", document_id, section_count)
             else:
                 _cb("ready", 100, "Ingestion complete")
 
-            result = IngestionResult(
+            return IngestionResult(
                 success=not has_critical_failure,
                 document_id=document_id,
                 node_count=len(nodes),
@@ -341,28 +224,19 @@ class IngestionService:
                 duration_ms=duration_ms,
             )
 
-            logger.info(
-                "[%s] ✓ Ingestion complete: %d nodes in %.0fms",
-                document_id,
-                result.node_count,
-                duration_ms,
-            )
-            return result
-
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
-            logger.error("[%s] ✗ Ingestion failed: %s", document_id, e)
+            logger.error("[%s] Ingestion failed: %s", document_id, e)
             _cb("failed", 0, str(e))
-
             return IngestionResult(
                 success=False,
                 document_id=document_id,
                 node_count=len(nodes),
-                total_text_chars=sum(len(n.text) for n in nodes) if nodes else 0,
+                total_text_chars=0,
                 parse_metadata=parse_metadata,
                 validation_report=validation_report,
                 storage_ids=[],
-                section_count=locals().get("section_count", 0),
+                section_count=0,
                 errors=[str(e)] + errors,
                 warnings=warnings,
                 duration_ms=duration_ms,

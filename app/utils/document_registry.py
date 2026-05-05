@@ -19,8 +19,8 @@ class DocumentRecord:
 class DocumentRegistry:
     """Document status registry using native RedisJSON for atomic state management."""
 
-    def __init__(self) -> None:
-        self.client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    def __init__(self, client: redis.Redis) -> None:
+        self.client = client
 
     def _key(self, document_id: str) -> str:
         return f"document:{document_id}"

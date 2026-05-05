@@ -6,6 +6,7 @@ Default model: AITeamVN/Vietnamese_Embedding_v2 (1024-dim, Vietnamese-optimized)
 GPU: PyTorch fp16. CPU: ONNX runtime (2-3x faster than PyTorch fp32).
 """
 
+import asyncio
 import logging
 
 from app.adapters.base import BaseEmbedding
@@ -69,10 +70,11 @@ class SentenceTransformerEmbedding(BaseEmbedding):
     def get_dimension(self) -> int:
         return self._dim
 
-    def embed(self, text: str, normalize: bool = True) -> list[float]:
+    async def embed(self, text: str, normalize: bool = True) -> list[float]:
         """Embed a single text string."""
         text_with_prefix = self.query_prefix + text if self.query_prefix else text
-        vectors = self._model.encode(
+        vectors = await asyncio.to_thread(
+            self._model.encode,
             [text_with_prefix],
             normalize_embeddings=normalize and self.normalize,
             batch_size=1,
@@ -80,7 +82,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         )
         return vectors[0].tolist()
 
-    def embed_batch(
+    async def embed_batch(
         self,
         texts: list[str],
         batch_size: int = 32,
@@ -101,7 +103,8 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         if self.passage_prefix:
             texts = [self.passage_prefix + t for t in texts]
 
-        vectors = self._model.encode(
+        vectors = await asyncio.to_thread(
+            self._model.encode,
             texts,
             normalize_embeddings=normalize and self.normalize,
             batch_size=actual_batch,
@@ -109,13 +112,13 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         )
         return [v.tolist() for v in vectors]
 
-    def embed_query(self, text: str) -> list[float]:
+    async def embed_query(self, text: str) -> list[float]:
         """
         Embed a query text (applies query_prefix if configured).
-        Use this for retrieval queries instead of embed() when using E5-style models.
         """
         prefixed = self.query_prefix + text if self.query_prefix else text
-        vectors = self._model.encode(
+        vectors = await asyncio.to_thread(
+            self._model.encode,
             [prefixed],
             normalize_embeddings=self.normalize,
             batch_size=1,

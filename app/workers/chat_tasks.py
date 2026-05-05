@@ -1,16 +1,16 @@
 """Celery tasks for chat operations — offloaded from API to avoid blocking SSE stream."""
 
+import asyncio
 import logging
-
 from app.core.celery_app import celery_app
-from app.db.session import SessionLocal
+from app.db.session import AsyncSessionLocal
 from app.utils.chat_store import ChatStore
 
 logger = logging.getLogger(__name__)
 _chat_store = ChatStore()
 
 
-def save_message_now(
+async def _save_message_async(
     *,
     session_id: str,
     user_id: str,
@@ -22,12 +22,12 @@ def save_message_now(
     latency_ms: int | None = None,
     model_used: str | None = None,
 ) -> None:
-    """Synchronous save — safe to call from SSE generator before yielding done:true."""
+    """Async implementation of message saving."""
     from app.repositories.chat_repository import ChatRepository
 
-    with SessionLocal() as session:
+    async with AsyncSessionLocal() as session:
         repo = ChatRepository(session)
-        repo.create_message(
+        await repo.create_message(
             session_id=session_id,
             role=role,
             content=content,
@@ -39,7 +39,15 @@ def save_message_now(
         )
 
     scope_id = f"user:{user_id}"
-    _chat_store.append_message(scope_id, session_id, role, content)
+    await _chat_store.append_message(scope_id, session_id, role, content)
+
+
+def save_message_now(**kwargs) -> None:
+    """Synchronous entry point for Celery or SSE."""
+    try:
+        asyncio.run(_save_message_async(**kwargs))
+    except Exception as e:
+        logger.error("Failed to save chat message: %s", e)
 
 
 @celery_app.task(
@@ -48,5 +56,5 @@ def save_message_now(
     ignore_result=True,
 )
 def save_chat_message_task(**kwargs) -> None:
-    """Celery wrapper — delegates to save_message_now for backward compatibility."""
+    """Celery task: save chat message asynchronously."""
     save_message_now(**kwargs)

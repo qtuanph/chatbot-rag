@@ -28,6 +28,7 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
+
 async def get_async_session():
     """Dependency for getting an async database session."""
     async with AsyncSessionLocal() as session:

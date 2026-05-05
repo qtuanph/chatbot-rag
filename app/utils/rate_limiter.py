@@ -32,6 +32,7 @@ else
 end
 """
 
+
 class RateLimiter:
     """Sliding window rate limiter using Redis ZSET."""
 
@@ -47,7 +48,7 @@ class RateLimiter:
         """
         key = f"{self.prefix}{identifier}"
         now_ms = int(time.time() * 1000)
-        
+
         try:
             allowed = await self._script(keys=[key], args=[now_ms, window_ms, limit])
             return bool(allowed)

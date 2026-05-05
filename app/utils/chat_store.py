@@ -5,16 +5,17 @@ Optimized for 200+ CCU with sub-millisecond serialization.
 
 import msgpack
 import logging
-from app.api.deps import redis_client
+import redis.asyncio as redis
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class ChatStore:
     """Manages chat history using Redis and binary MessagePack serialization."""
 
-    def __init__(self) -> None:
-        self.client = redis_client
+    def __init__(self, client: redis.Redis) -> None:
+        self.client = client
 
     def active_key(self, scope_id: str) -> str:
         return f"chat:active:{scope_id}"
@@ -32,9 +33,11 @@ class ChatStore:
         """Append a message to the history list using RPUSH (Atomic)."""
         key = self.history_key(scope_id, session_id)
         packed = msgpack.packb({"role": role, "content": content})
-        
+
         async with self.client.pipeline(transaction=True) as pipe:
             await pipe.rpush(key, packed)
+            # Guarantee history never exceeds limit (O(1) operation on tail)
+            await pipe.ltrim(key, -settings.chat_history_limit, -1)
             await pipe.expire(key, settings.chat_history_redis_ttl)
             await pipe.execute()
 
@@ -44,7 +47,7 @@ class ChatStore:
         raw_list = await self.client.lrange(key, 0, -1)
         if not raw_list:
             return []
-        
+
         history = []
         for raw in raw_list:
             try:

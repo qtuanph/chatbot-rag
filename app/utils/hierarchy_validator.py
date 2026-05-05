@@ -53,10 +53,17 @@ class HierarchyValidator:
                 depth=0,
             )
 
-        # Check 1: Duplicate node IDs
+        # Check 1: Duplicate node IDs in O(N)
         node_ids = [node.node_id for node in nodes]
-        if len(node_ids) != len(set(node_ids)):
-            duplicates = [nid for nid in node_ids if node_ids.count(nid) > 1]
+        seen_ids = set()
+        duplicates = []
+        for nid in node_ids:
+            if nid in seen_ids:
+                duplicates.append(nid)
+            else:
+                seen_ids.add(nid)
+
+        if duplicates:
             errors.append(f"Duplicate node IDs: {duplicates[:5]}")
 
         # Check 2: Parent references validity

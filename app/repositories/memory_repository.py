@@ -11,11 +11,7 @@ class MemoryRepository:
         self.session = session
 
     async def list_by_user(self, user_id: str) -> list[dict]:
-        stmt = (
-            select(UserMemory)
-            .where(UserMemory.user_id == user_id)
-            .order_by(UserMemory.created_at.desc())
-        )
+        stmt = select(UserMemory).where(UserMemory.user_id == user_id).order_by(UserMemory.created_at.desc())
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
         return [self._to_dict(r) for r in rows]

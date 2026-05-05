@@ -16,11 +16,13 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class SemanticCache:
     """Handles semantic caching using Redis Vector Search (RediSearch)."""
 
     INDEX_NAME = "idx:semantic_cache"
     PREFIX = "cache:semantic:"
+
     @property
     def distance_threshold(self) -> float:
         return settings.retrieval_semantic_cache_threshold
@@ -66,41 +68,42 @@ class SemanticCache:
         try:
             # Convert vector to bytes
             query_bytes = np.array(query_vector, dtype=np.float32).tobytes()
-            
+
             # Prepare search query: find nearest neighbor with distance limit
             q = (
-                Query(f"*=>[KNN 1 @vector $vec AS score]")
+                Query("*=>[KNN 1 @vector $vec AS score]")
                 .sort_by("score")
                 .return_fields("score", "result_json")
                 .dialect(2)
             )
-            
-            res = await self.client.ft(self.INDEX_NAME).search(
-                q, query_params={"vec": query_bytes}
-            )
-            
+
+            res = await self.client.ft(self.INDEX_NAME).search(q, query_params={"vec": query_bytes})
+
             if res.total > 0:
                 doc = res.docs[0]
                 score = float(doc.score)
-                
-                # In COSINE distance, score is 1 - similarity. 
+
+                # In COSINE distance, score is 1 - similarity.
                 # So distance 0.02 means 98% similarity.
                 if score <= self.distance_threshold:
                     logger.info("[CACHE] Semantic Hit! Score: %.4f", score)
                     return json.loads(doc.result_json)
-                
+
                 logger.debug("[CACHE] Semantic Miss. Best score: %.4f", score)
         except Exception as e:
             logger.error("Semantic cache retrieval failed: %s", e)
-        
+
         return None
 
     async def set(self, query_text: str, query_vector: list[float], result: dict[str, Any]) -> None:
         """Store a result in the semantic cache."""
         try:
-            key = f"{self.PREFIX}{hash(query_text)}"
+            import hashlib
+
+            key_hash = hashlib.sha256(query_text.encode()).hexdigest()
+            key = f"{self.PREFIX}{key_hash}"
             query_bytes = np.array(query_vector, dtype=np.float32).tobytes()
-            
+
             await self.client.hset(
                 key,
                 mapping={
@@ -111,6 +114,6 @@ class SemanticCache:
             )
             # Expire cache after a while (e.g., 24h)
             await self.client.expire(key, 86400)
-            
+
         except Exception as e:
             logger.error("Failed to store semantic cache: %s", e)

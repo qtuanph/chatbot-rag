@@ -4,12 +4,10 @@ from datetime import datetime, timezone
 
 import redis.asyncio as redis
 
-from app.core.config import settings
-
 
 class TokenBlacklist:
-    def __init__(self) -> None:
-        self.client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    def __init__(self, client: redis.Redis) -> None:
+        self.client = client
 
     def _key(self, jti: str) -> str:
         return f"auth:blacklist:{jti}"

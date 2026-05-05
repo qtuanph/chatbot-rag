@@ -90,7 +90,9 @@ async def set_message_feedback(
 ) -> MessageFeedbackResponse:
     """Record user feedback (Like/Dislike) for a specific assistant message."""
     try:
-        updated = await service.set_message_feedback(message_id=message_id, user_id=auth.user_id, feedback=request.feedback)
+        updated = await service.set_message_feedback(
+            message_id=message_id, user_id=auth.user_id, feedback=request.feedback
+        )
         return MessageFeedbackResponse(message_id=message_id, feedback=updated["feedback"])
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None
