@@ -40,7 +40,7 @@ class SectionRepository:
                         table_count=sec.get("table_count", 0),
                         chunk_count=sec.get("chunk_count", 0),
                         breadcrumb=sec.get("breadcrumb", []),
-                        extra_metadata=sec.get("artifact_metadata", {}),
+                        artifact_metadata=sec.get("artifact_metadata", {}),
                     )
                     self.session.add(db_section)
 
@@ -193,5 +193,5 @@ class SectionRepository:
             "table_count": section.table_count,
             "chunk_count": section.chunk_count,
             "breadcrumb": section.breadcrumb or [],
-            "artifact_metadata": section.extra_metadata or {},
+            "artifact_metadata": section.artifact_metadata or {},
         }

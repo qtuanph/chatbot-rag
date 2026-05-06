@@ -49,7 +49,6 @@ class Settings(BaseSettings):
     # Hybrid search (Dense + BM25) — always on, no toggle
     retrieval_bm25_k1: float = 1.5  # BM25 term frequency saturation
     retrieval_bm25_b: float = 0.75  # BM25 length normalization
-    retrieval_bm25_vocab_path: str = "data/bm25_vocab.json"
     retrieval_bm25_vocab_ttl: float = 120.0
 
     # Cross-encoder reranker — off by default (full section context makes LLM self-rank effectively)

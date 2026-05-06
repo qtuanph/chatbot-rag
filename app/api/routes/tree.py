@@ -4,14 +4,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import AuthContext, get_auth_context, get_tree_service
+from app.api.deps import AuthContext, get_auth_context, get_rate_limiter, get_tree_service
 from app.core import http_errors
 from app.core.config import settings
 from app.utils.rate_limiter import RateLimiter
 from app.services.documents.tree_service import TreeService
 
 router = APIRouter(tags=["tree"])
-rate_limiter = RateLimiter()
 
 
 def _validate_uuid(uuid_str: str, field_name: str = "ID") -> None:
@@ -28,6 +27,7 @@ async def get_document_tree(
     limit: int = 20,
     auth: AuthContext = Depends(get_auth_context),
     service: TreeService = Depends(get_tree_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ):
     _validate_uuid(document_id, "document ID")
     if not await rate_limiter.is_allowed(
@@ -49,6 +49,7 @@ async def get_node_details(
     node_id: str,
     auth: AuthContext = Depends(get_auth_context),
     service: TreeService = Depends(get_tree_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ):
     _validate_uuid(document_id, "document ID")
     if not await rate_limiter.is_allowed(
@@ -67,6 +68,7 @@ async def search_nodes(
     query: str = Query(..., min_length=1, max_length=500),
     auth: AuthContext = Depends(get_auth_context),
     service: TreeService = Depends(get_tree_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ):
     _validate_uuid(document_id, "document ID")
     if not await rate_limiter.is_allowed(

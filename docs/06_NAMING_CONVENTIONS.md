@@ -93,9 +93,11 @@
 To ensure consistency across the application when passing dictionaries around (especially JSON/metadata fields), use the following standardized keys:
 
 - **`artifact_metadata`**: Use this exact string for any dictionary key or API response field representing a document's extra/flexible metadata.
+  - **Database Column**: Must be named `metadata` (canonical DB schema).
+  - **App Layer (ORM)**: Must be named `artifact_metadata` (to avoid conflict with SQLAlchemy's reserved `.metadata` attribute).
   - ❌ `extra_metadata`
-  - ❌ `metadata`
-  - ✅ `artifact_metadata`
+  - ❌ `metadata` (as ORM attribute)
+  - ✅ `artifact_metadata` (App/ORM) / `metadata` (DB Column)
 - **`parse_error`**: Use for storing textual error tracebacks.
   - ❌ `error_msg`
   - ✅ `parse_error`

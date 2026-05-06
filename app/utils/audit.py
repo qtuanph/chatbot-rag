@@ -1,47 +1,78 @@
 """
-Audit Logging: Decoupled event logging via Redis Streams.
-Ensures zero-latency impact on the main request-response cycle.
+Audit Logging: Hybrid Sync/Async event logging via Redis Streams.
 """
 
 from __future__ import annotations
 import logging
 import json
+import asyncio
 from typing import Any
-from app.core.redis import redis_client
+from app.core.redis import get_sync_redis_client
 
 logger = logging.getLogger(__name__)
 
 
-async def safe_record_audit(
-    *,
-    action: str,
-    actor_user_id: str | None = None,
-    subject_type: str | None = None,
-    subject_id: str | None = None,
-    ip_address: str | None = None,
-    user_agent: str | None = None,
-    details: dict[str, Any] | None = None,
-) -> None:
+def safe_record_audit(**kwargs) -> None:
     """
-    Fire-and-forget audit logging using Redis Streams (XADD).
-    The AuditStreamWorker will consume these events and persist them to DB.
+    The universal entry point for audit logging.
+    Can be called from BOTH sync and async code WITHOUT await.
     """
     try:
-        # Prepare payload for Redis Stream (all values must be strings/bytes)
-        payload = {
-            "action": action,
-            "actor_user_id": actor_user_id or "",
-            "subject_type": subject_type or "",
-            "subject_id": subject_id or "",
-            "ip_address": ip_address or "",
-            "user_agent": user_agent or "",
-            "details_json": json.dumps(details or {}),
-        }
+        loop = None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass
 
-        from app.core.config import settings
-
-        await redis_client.xadd(settings.audit_stream_name, payload, maxlen=settings.audit_stream_maxlen)
+        if loop and loop.is_running():
+            # We are in an ASYNC context (FastAPI)
+            # We schedule the async audit as a background task to not block
+            r_client = kwargs.pop("redis_client_override", None)
+            if r_client is None:
+                # If no client provided in async context, we cannot log reliably without risking loop issues
+                logger.warning("Audit log skipped: redis_client_override is required in async context")
+                return
+            loop.create_task(_record_audit_async(r_client, **kwargs))
+        else:
+            # We are in a SYNC context (Celery worker)
+            # We use the synchronous client directly
+            sync_client = get_sync_redis_client()
+            _record_audit_sync(sync_client, **kwargs)
 
     except Exception as e:
-        logger.warning("Failed to fire audit event to Redis Stream: %s", e)
-        # We don't raise here to keep the main business logic moving
+        logger.warning("Audit logging failed (silently): %s", e)
+
+
+async def _record_audit_async(client: Any, **kwargs) -> None:
+    """Internal async implementation."""
+    from app.core.config import settings
+
+    payload = _prepare_payload(**kwargs)
+    try:
+        await client.xadd(settings.audit_stream_name, payload, maxlen=settings.audit_stream_maxlen)
+    except Exception as e:
+        logger.warning("Async audit failed: %s", e)
+
+
+def _record_audit_sync(client: Any, **kwargs) -> None:
+    """Internal sync implementation."""
+    from app.core.config import settings
+
+    payload = _prepare_payload(**kwargs)
+    try:
+        client.xadd(settings.audit_stream_name, payload, maxlen=settings.audit_stream_maxlen)
+    except Exception as e:
+        logger.warning("Sync audit failed: %s", e)
+
+
+def _prepare_payload(**kwargs) -> dict:
+    """Standardize payload format."""
+    return {
+        "action": kwargs.get("action", "unknown"),
+        "actor_user_id": str(kwargs.get("actor_user_id", "")),
+        "subject_type": kwargs.get("subject_type", ""),
+        "subject_id": str(kwargs.get("subject_id", "")),
+        "ip_address": kwargs.get("ip_address", ""),
+        "user_agent": kwargs.get("user_agent", ""),
+        "details_json": json.dumps(kwargs.get("details", {})),
+    }

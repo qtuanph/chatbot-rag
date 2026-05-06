@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import json
 import re
@@ -164,6 +165,7 @@ class GoogleAIProvider(AIProvider):
         )
         self._client: httpx.AsyncClient | None = None
         self._refine_client: httpx.AsyncClient | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     @property
     def model_name(self) -> str:
@@ -171,14 +173,18 @@ class GoogleAIProvider(AIProvider):
         return self.model
 
     def _get_client(self) -> httpx.AsyncClient:
-        """Get or create a reusable httpx client for streaming chat (default 300s timeout)."""
-        if self._client is None or self._client.is_closed:
+        """Get or create a reusable httpx client, ensuring loop safety."""
+        current_loop = asyncio.get_running_loop()
+        if self._client is None or self._client.is_closed or self._loop is not current_loop:
+            self._loop = current_loop
             self._client = httpx.AsyncClient(timeout=settings.ai_stream_timeout, limits=self._limits)
         return self._client
 
     async def _get_refine_client(self) -> httpx.AsyncClient:
-        """Get a client for text refinement with short 30s timeout."""
-        if self._refine_client is None or self._refine_client.is_closed:
+        """Get a client for text refinement, ensuring loop safety."""
+        current_loop = asyncio.get_running_loop()
+        if self._refine_client is None or self._refine_client.is_closed or self._loop is not current_loop:
+            self._loop = current_loop
             self._refine_client = httpx.AsyncClient(timeout=30.0, limits=self._limits)
         return self._refine_client
 

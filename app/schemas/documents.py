@@ -69,7 +69,7 @@ class DocumentDetailResponse(BaseModel):
     progress_percent: int
     status_message: str | None = None
     parse_error: str | None = None
-    metadata: dict[str, object]
+    artifact_metadata: dict[str, object]
     deleted_at: str | None = None
     created_at: str
     updated_at: str

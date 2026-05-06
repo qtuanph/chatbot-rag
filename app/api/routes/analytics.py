@@ -2,20 +2,20 @@
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import AuthContext, get_analytics_service, get_auth_context
+from app.api.deps import AuthContext, get_analytics_service, get_auth_context, get_rate_limiter
 from app.core import http_errors
 from app.core.config import settings
 from app.utils.rate_limiter import RateLimiter
 from app.services.analytics.analytics_service import AnalyticsService
 
 router = APIRouter(tags=["analytics"])
-rate_limiter = RateLimiter()
 
 
 @router.get("/analytics/stats")
 async def get_analytics_stats(
     auth: AuthContext = Depends(get_auth_context),
     service: AnalyticsService = Depends(get_analytics_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> dict:
     """Get aggregated token/cost/latency stats. Admin: system-wide. Member: own data."""
     if not await rate_limiter.is_allowed(

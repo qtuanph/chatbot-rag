@@ -8,7 +8,7 @@ import asyncio
 import logging
 import math
 import time
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Any
 from dataclasses import dataclass, field
 
 from app.adapters.base import IngestedNode, ParsingMetadata
@@ -57,11 +57,13 @@ class IngestionService:
 
     def __init__(
         self,
+        redis_client: Any,
         embedding_service: BaseEmbedding | None = None,
         vector_store: BaseVectorStore | None = None,
         db_session: AsyncSession | None = None,
         section_repo: SectionRepository | None = None,
     ):
+        self.redis = redis_client
         self.parser = DoclingParser()
         self.embedding_service = embedding_service
         self.vector_store = vector_store
@@ -101,6 +103,7 @@ class IngestionService:
             _cb("parsing", 5, f"Parsing {filename}…")
 
             nodes, parse_metadata = await self.parser.parse(filename, content, document_id=document_id)
+
             # ── Step 1.5: Text Refinement (Sanitize & Clean OCR Artifacts) ───
             _cb("parsing", 32, "Refining extracted text...")
             from app.utils.text_refiner import rule_based_refiner
@@ -152,10 +155,11 @@ class IngestionService:
                 chunk_size = settings.ingestion_embedding_chunk_size
                 n_chunks = math.ceil(len(nodes) / chunk_size) or 1
 
-                # BM25 sparse encoder
-                from app.utils.bm25_index import get_bm25_encoder
+                # BM25 sparse encoder (Using Injected Redis for Consistency)
+                from app.utils.bm25_index import get_async_bm25_encoder
 
-                bm25_encoder = get_bm25_encoder()
+                bm25_encoder = get_async_bm25_encoder(self.redis)
+                await bm25_encoder.load_async()
 
                 # Semaphore to control concurrency (limit VRAM pressure)
                 concurrency = settings.ingestion_embed_parallelism or hardware.embed_parallelism
@@ -193,11 +197,13 @@ class IngestionService:
                     tasks.append(_process_chunk(idx, chunk))
 
                 await asyncio.gather(*tasks)
-                await asyncio.to_thread(bm25_encoder.save)
+
+                # Save BM25 vocabulary back to Redis after ingestion
+                await bm25_encoder.save_async()
 
             duration_ms = (time.time() - start_time) * 1000
 
-            # Success check (same threshold as before)
+            # Success check (threshold logic)
             error_threshold = max(1, int(n_chunks * 0.5)) if n_chunks > 0 else 1
             has_critical_failure = len(errors) > error_threshold
 

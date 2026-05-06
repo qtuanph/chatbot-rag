@@ -1,0 +1,70 @@
+{
+  "document": "Known Issues & Post-Mortems",
+  "version": "2026-05-06",
+  "schema": {
+    "issue_id": "integer",
+    "title": "string",
+    "symptom": "string",
+    "root_cause": "string",
+    "resolution": "string",
+    "lesson_learned": "string"
+  },
+  "issues": [
+    {
+      "issue_id": 1,
+      "title": "Event Loop Leakage in AI Provider Singleton",
+      "symptom": "RuntimeError: Event loop is closed when calling AI services from Celery workers after API requests.",
+      "root_cause": "GoogleAIProvider was cached with @lru_cache and held an httpx.AsyncClient bound to the first event loop.",
+      "resolution": "Removed @lru_cache from build_ai_provider() and made GoogleAIProvider loop-aware to reinitialize client on loop mismatch.",
+      "lesson_learned": "Do not cache stateful async clients globally in hybrid Sync/Async systems."
+    },
+    {
+      "issue_id": 2,
+      "title": "Duplicate Celery Beat Execution in Docker Cluster",
+      "symptom": "Periodic tasks (for example cleanup_old_chat_sessions_task) ran multiple times simultaneously.",
+      "root_cause": "Beat (-B) was enabled on all worker nodes, so each replica ran its own scheduler.",
+      "resolution": "Updated entrypoint-worker.sh to enable Beat only when HOSTNAME ends with -0.",
+      "lesson_learned": "Celery Beat must run as a singleton in distributed deployments."
+    },
+    {
+      "issue_id": 3,
+      "title": "Redis Global Initialization at Import Time",
+      "symptom": "Intermittent crashes during startup/tests.",
+      "root_cause": "redis_client = get_redis_client() executed at module import in app/core/redis.py before FastAPI loop existed.",
+      "resolution": "Removed global redis_client and switched code to get_redis_client() / Depends injection.",
+      "lesson_learned": "Avoid side-effectful infrastructure initialization at module top-level."
+    },
+    {
+      "issue_id": 4,
+      "title": "Memory Task Logic Mismatch",
+      "symptom": "AttributeError and TypeError in extract_memories_task.",
+      "root_cause": "Task signature was outdated and called missing method extract_memories_async.",
+      "resolution": "Updated task signature to (user_id, user_message, assistant_response) and used extract_memories_from_turn.",
+      "lesson_learned": "Re-verify task-service interfaces after refactors."
+    },
+    {
+      "issue_id": 5,
+      "title": "SQLAlchemy Reserved Attribute Crash During Startup",
+      "symptom": "api and butler restart loops with InvalidRequestError: Attribute name 'metadata' is reserved.",
+      "root_cause": "DocumentSection declared ORM attribute metadata, conflicting with Declarative reserved name.",
+      "resolution": "Renamed ORM attribute to artifact_metadata and kept DB column name via mapped_column(name=\"metadata\").",
+      "lesson_learned": "Never use reserved SQLAlchemy names as mapped attributes; alias at app layer."
+    },
+    {
+      "issue_id": 6,
+      "title": "API Startup Crash From RateLimiter Construction",
+      "symptom": "API restart loop with ValueError: redis_client is required for RateLimiter.",
+      "root_cause": "analytics/memories/tree routes instantiated RateLimiter() at import time without Redis client.",
+      "resolution": "Replaced module-level RateLimiter() with dependency injection: Depends(get_rate_limiter).",
+      "lesson_learned": "Do not construct Redis-dependent objects at import time in route modules."
+    },
+    {
+      "issue_id": 7,
+      "title": "Retrieval Package Export Drift (Non-Fatal Startup Warning)",
+      "symptom": "Startup warning: cannot import name 'retrieve_context' from retrieval_service during pre-warm path.",
+      "root_cause": "app/services/retrieval/__init__.py still re-exported legacy function names after class-based refactor.",
+      "resolution": "Updated re-exports to RetrievalService and removed stale function names from __all__.",
+      "lesson_learned": "Keep package-level re-export modules synchronized after function-to-class refactors."
+    }
+  ]
+}

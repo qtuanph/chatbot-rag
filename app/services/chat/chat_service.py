@@ -163,19 +163,23 @@ class ChatService:
 
     # ── RAG retrieval ────────────────────────────────────────────────
 
-    @staticmethod
     async def retrieve_rag_context(
-        session: AsyncSession, queries: list[str], session_id: str | None = None, limit: int = 20
+        self, session: AsyncSession, queries: list[str], session_id: str | None = None, limit: int = 20
     ) -> Any:
         """Run RAG retrieval. Returns RagContext."""
-        from app.services.retrieval.retrieval_service import retrieve_context
+        from app.services.retrieval.retrieval_service import RetrievalService
 
         positive_ids, negative_ids = [], []
         if session_id:
             positive_ids, negative_ids = await ChatRepository(session).get_feedback_signals(session_id)
 
-        return await retrieve_context(
-            session, queries, limit, positive_point_ids=positive_ids, negative_point_ids=negative_ids
+        # Use the class-based service with the same loop-safe client
+        retrieval_service = RetrievalService(redis_client=self.store.client)
+        return await retrieval_service.retrieve_context(
+            queries,
+            limit,
+            positive_point_ids=positive_ids,
+            negative_point_ids=negative_ids,
         )
 
     # ── Session management ──────────────────────────────────────────

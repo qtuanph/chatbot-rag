@@ -69,9 +69,10 @@ class CleanupService:
 
         await self.registry.purge_async(document_id)
 
-        from app.services.retrieval.retrieval_service import invalidate_doc_ids_cache
+        from app.services.retrieval.retrieval_service import RetrievalService
 
-        await invalidate_doc_ids_cache()
+        retrieval_svc = RetrievalService(redis_client=self.registry.client)
+        await retrieval_svc.invalidate_doc_ids_cache()
 
         from app.workers.maintenance_tasks import rebuild_bm25_index_task
 

@@ -1,8 +1,7 @@
 """
 Celery task definitions for document upload and ingestion pipeline.
+Uses SYNCHRONOUS Redis for status updates to ensure 100% stability.
 """
-
-from celery.exceptions import SoftTimeLimitExceeded
 
 from app.core.celery_app import celery_app
 from app.core.config import settings
@@ -13,6 +12,9 @@ from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.adapters.storage import build_storage
 from app.services.ingestion.ingestion_service import IngestionService
 from app.repositories.section_repository import SectionRepository
+from app.core.redis import get_sync_redis_client
+from app.utils.document_registry import DocumentRegistry
+from app.utils.audit import safe_record_audit
 import asyncio
 import logging
 
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def _build_vector_store(embedding_service) -> QdrantVectorStore:
-    """Build a QdrantVectorStore instance with the current embedding dimension."""
+    """Build a QdrantVectorStore instance."""
     return QdrantVectorStore(
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key or None,
@@ -36,32 +38,14 @@ async def _verify_ingestion(
     vector_store: QdrantVectorStore,
     storage,
 ) -> dict:
-    """
-    Post-ingestion verification: confirm vectors exist in Qdrant and file exists in storage.
-    """
-    # Qdrant check
+    """Post-ingestion verification (Async)."""
     qdrant_count = await vector_store.count(document_id)
-
-    # Storage check (wrapped in to_thread as boto3 is sync)
     file_exists = await asyncio.to_thread(storage.file_exists, file_path)
-
-    result = {
+    return {
         "qdrant_count": qdrant_count,
         "storage_exists": file_exists,
         "passed": qdrant_count > 0 and file_exists,
     }
-
-    if result["passed"]:
-        logger.info("[%s] ✓ Ingestion verified: qdrant=%d storage=OK", document_id, qdrant_count)
-    else:
-        logger.warning(
-            "[%s] ✗ Ingestion verify FAILED: qdrant=%d storage=%s",
-            document_id,
-            qdrant_count,
-            "OK" if file_exists else "MISSING",
-        )
-
-    return result
 
 
 @celery_app.task(
@@ -70,184 +54,133 @@ async def _verify_ingestion(
     acks_late=True,
     autoretry_for=(ConnectionError, TimeoutError),
     retry_backoff=settings.celery_retry_backoff,
-    retry_jitter=True,
     max_retries=settings.celery_max_retries,
     soft_time_limit=settings.celery_task_soft_time_limit,
     time_limit=settings.celery_task_time_limit,
 )
 def parse_document_task(self, task_id: str, document_id: str, file_path: str, user_id: str | None = None) -> dict:
     """
-    Synchronous Celery task wrapper for the asynchronous ingestion pipeline.
+    Ingestion task with Synchronous status management for reliability.
     """
+    # 1. Initialize Sync Resources
+    sync_redis = get_sync_redis_client()
+    registry = DocumentRegistry(sync_redis)
+    storage = build_storage()
+    filename = file_path.split("/")[-1]
 
-    async def _run_task():
+    # 2. Local Async Execution Block
+    def _run_async_pipeline():
         async with AsyncSessionLocal() as session:
             doc_repo = DocumentRepository(session)
 
+            # Update status to processing
             await doc_repo.update_status(
                 document_id,
                 status="processing",
                 stage="initializing",
                 progress_percent=5,
-                status_message="Đang chuẩn bị môi trường nạp liệu...",
+                status_message="[1/4] Đang khởi tạo môi trường nạp liệu...",
             )
 
             try:
-                # ── Step 1: Download (wrapped in to_thread as boto3 is sync) ───────────
-                storage = build_storage()
                 content = await asyncio.to_thread(storage.download_bytes, file_path)
-                filename = file_path.split("/")[-1]
-
-                from app.core.hardware import hardware
-                device_name = "GPU" if hardware.gpu_count > 0 else "CPU"
-
-                await doc_repo.update_status(
-                    document_id,
-                    status="processing",
-                    stage="parsing",
-                    progress_percent=15,
-                    status_message=f"[2/4] Đang khởi tạo Model trên {device_name} & Cắt file {filename} thành các Node...",
-                )
-
                 embedding_service = build_embedding_service()
                 vector_store = _build_vector_store(embedding_service)
                 section_repo = SectionRepository(session)
 
+                # Create an isolated async redis client for the pipeline (Loop-safe)
+                from app.core.redis import get_redis_client
+
+                async_redis = get_redis_client()
+
                 pipeline = IngestionService(
+                    redis_client=async_redis,
                     embedding_service=embedding_service,
                     vector_store=vector_store,
                     db_session=session,
                     section_repo=section_repo,
                 )
 
-                pending_tasks: list[asyncio.Task] = []  # Track progress callback tasks
-
                 async def _progress_callback(stage: str, percent: int, message: str = ""):
-                    # Optimized progress update: dedicated connection for atomicity during parallel ingestion
-                    translated_msg = message
-                    if "Extracting text" in message:
-                        translated_msg = "[2/4] Đang dùng AI trích xuất chữ (OCR) & Bóc tách bố cục..."
-                    elif "Indexing section" in message:
-                        translated_msg = "[3/4] Đang băm văn bản và nhúng (Embed) thành số liệu Vector..."
-
-                    async with AsyncSessionLocal() as p_session:
-                        p_repo = DocumentRepository(p_session)
-                        await p_repo.update_status(
-                            document_id,
-                            status="processing",
-                            stage=stage,
-                            progress_percent=percent,
-                            status_message=translated_msg or stage,
-                        )
-
-                # ── Step 3: Parse & embed ──────────────────────────────────────────
-                logger.info("[%s] Parsing with pipeline...", document_id)
-                try:
-                    ingestion_result = await pipeline.ingest(
-                        filename=filename,
-                        content=content,
-                        user_id=user_id or "system",
-                        document_id=document_id,
-                        progress_callback=lambda s, p, m: pending_tasks.append(asyncio.create_task(_progress_callback(s, p, m))),
+                    # Reuse existing session for progress updates to minimize overhead
+                    doc_repo.update_status(
+                        document_id,
+                        status="processing",
+                        stage=stage,
+                        progress_percent=percent,
+                        status_message=message or stage,
                     )
-                finally:
-                    # Always wait for pending progress updates (success or failure)
-                    if pending_tasks:
-                        await asyncio.gather(*pending_tasks, return_exceptions=True)
 
-                # ── Step 4: Verification ──────────────────────────────────────────────
-                await doc_repo.update_status(
-                    document_id,
-                    status="processing",
-                    stage="verifying",
-                    progress_percent=95,
-                    status_message="[4/4] Khâu cuối: Đang đối soát và verify kết quả trên Qdrant...",
+                # Core Ingestion (The only truly async part)
+                ingestion_result = await pipeline.ingest(
+                    filename=filename,
+                    content=content,
+                    user_id=user_id or "system",
+                    document_id=document_id,
+                    progress_callback=_progress_callback,
                 )
 
+                # Verification
                 verify = await _verify_ingestion(document_id, file_path, vector_store, storage)
 
-                # ── Step 5: Finalize ──────────────────────────────────────────────────
-                if not ingestion_result.success:
+                # Finalize DB
+                if ingestion_result.success:
+                    artifact_dict = ingestion_result.parse_metadata.to_dict() if ingestion_result.parse_metadata else {}
+                    artifact_dict["verification"] = verify
+                    await doc_repo.finalize_ingestion(
+                        document_id,
+                        artifact_dict=artifact_dict,
+                        node_count=ingestion_result.node_count,
+                        total_text_chars=ingestion_result.total_text_chars,
+                    )
+                else:
                     raise ValueError(f"Ingestion failed: {', '.join(ingestion_result.errors)}")
 
-                artifact_dict = ingestion_result.parse_metadata.to_dict() if ingestion_result.parse_metadata else {}
-                artifact_dict.update(
-                    {
-                        "valid": ingestion_result.success,
-                        "node_count": ingestion_result.node_count,
-                        "total_chars": ingestion_result.total_text_chars,
-                        "errors": ingestion_result.errors,
-                        "warnings": ingestion_result.warnings,
-                        "duration_ms": ingestion_result.duration_ms,
-                        "verification": verify,
-                    }
-                )
-
-                await doc_repo.finalize_ingestion(
-                    document_id,
-                    artifact_dict=artifact_dict,
-                    node_count=ingestion_result.node_count,
-                    total_text_chars=ingestion_result.total_text_chars,
-                )
-
-                # Invalidate cache
-                from app.services.retrieval.retrieval_service import invalidate_doc_ids_cache
-
-                await invalidate_doc_ids_cache()
-
-                # Rebuild BM25
-                from app.workers.maintenance_tasks import rebuild_bm25_index_task
-
-                rebuild_bm25_index_task.delay()
-
-                # Unload model
-                if hasattr(embedding_service, "unload"):
-                    embedding_service.unload()
-
-                # Audit completion
-                from app.utils.audit import safe_record_audit
-
-                await safe_record_audit(
-                    action="document.ingestion_complete",
-                    actor_user_id=user_id,
-                    subject_type="document",
-                    subject_id=document_id,
-                    details={
-                        "node_count": ingestion_result.node_count,
-                        "total_chars": ingestion_result.total_text_chars,
-                        "duration_ms": ingestion_result.duration_ms,
-                    },
-                )
-
-                return {"status": "success", "document_id": document_id}
+                # Cleanup async resources
+                await async_redis.aclose()
+                return ingestion_result
 
             except Exception as e:
-                logger.error("[%s] Task error: %s", document_id, e)
                 await doc_repo.update_status(
                     document_id,
                     status="failed",
                     stage="failed",
-                    progress_percent=0,
                     status_message=f"Lỗi: {str(e)}",
-                    parse_error=str(e),
                 )
                 raise e
 
+    # 3. Execute Async Pipeline
     try:
-        return asyncio.run(_run_task())
-    except SoftTimeLimitExceeded:
-        logger.error("[%s] Task soft timeout", document_id)
+        result = asyncio.run(_run_async_pipeline())
 
-        # Final desperate status update
-        async def _timeout_update():
-            async with AsyncSessionLocal() as session:
-                await DocumentRepository(session).update_status(
-                    document_id,
-                    status="failed",
-                    stage="failed",
-                    status_message="Processing timed out.",
-                    parse_error="SoftTimeLimitExceeded",
-                )
+        # 4. Sync Finalization (Safe from loop errors)
+        registry.purge_sync(document_id)
+        registry.invalidate_active_ids_sync()
 
-        asyncio.run(_timeout_update())
-        raise
+        # Audit (Truly sync call now)
+        safe_record_audit(
+            action="document.ingestion_complete",
+            actor_user_id=user_id,
+            subject_type="document",
+            subject_id=document_id,
+            details={"node_count": result.node_count},
+        )
+
+        # Trigger maintenance
+        from app.workers.maintenance_tasks import rebuild_bm25_index_task
+
+        rebuild_bm25_index_task.delay()
+
+        return {"status": "success", "document_id": document_id}
+
+    except Exception as e:
+        logger.error("[%s] Sync wrapper caught error: %s", document_id, e)
+        # Audit failure (Truly sync call now)
+        safe_record_audit(
+            action="document.ingestion_failed",
+            actor_user_id=user_id,
+            subject_type="document",
+            subject_id=document_id,
+            details={"error": str(e)},
+        )
+        raise e

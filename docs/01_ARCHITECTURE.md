@@ -65,7 +65,7 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | status_message | VARCHAR(500) | Human-readable status |
 | status_updated_at | TIMESTAMPTZ | Last status change |
 | parse_error | TEXT | Error detail when failed |
-| extra_metadata | JSONB | Ingestion artifact, warnings, timing |
+| metadata | JSONB | Ingestion artifact, warnings, timing |
 | deleted_at | TIMESTAMPTZ | Legacy; not used in hard-delete path |
 | created_by | UUID FK → users | Uploader |
 | created_at / updated_at | TIMESTAMPTZ | Auto-managed via trigger |

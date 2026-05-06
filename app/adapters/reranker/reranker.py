@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 
+import asyncio
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -46,7 +47,7 @@ class VietnameseReranker:
         self.model.eval()
         logger.info("Reranker model loaded: %s on %s", model_name, self.device)
 
-    def rerank(
+    async def rerank(
         self,
         query: str,
         documents: list,
@@ -72,31 +73,41 @@ class VietnameseReranker:
 
         top_k = top_k or settings.retrieval_rerank_top_k
 
-        # Build (query, passage) pairs for cross-encoder
-        pairs = []
-        for doc in documents:
-            text = getattr(doc, text_attr, None) or ""
-            pairs.append([query, text])
+        def _compute_scores():
+            # Build (query, passage) pairs for cross-encoder
+            pairs = []
+            for doc in documents:
+                # Handle both object attributes and dict keys
+                if isinstance(doc, dict):
+                    text = doc.get(text_attr) or ""
+                else:
+                    text = getattr(doc, text_attr, None) or ""
+                pairs.append([query, text])
 
-        # Cross-encoder scoring
-        with torch.no_grad():
-            inputs = self.tokenizer(
-                pairs,
-                padding=True,
-                truncation=True,
-                return_tensors="pt",
-                max_length=_MAX_LENGTH,
-            ).to(self.device)
-            scores = self.model(**inputs, return_dict=True).logits.view(-1).float()
+            # Cross-encoder scoring
+            with torch.no_grad():
+                inputs = self.tokenizer(
+                    pairs,
+                    padding=True,
+                    truncation=True,
+                    return_tensors="pt",
+                    max_length=_MAX_LENGTH,
+                ).to(self.device)
+                scores = self.model(**inputs, return_dict=True).logits.view(-1).float()
+            return scores.tolist()
+
+        scores_list = await asyncio.to_thread(_compute_scores)
 
         # Attach scores and sort
-        scored_docs = list(zip(documents, scores.tolist()))
+        scored_docs = list(zip(documents, scores_list))
         scored_docs.sort(key=lambda x: x[1], reverse=True)
 
         # Update score attributes on the document objects
         result = []
         for doc, score in scored_docs[:top_k]:
-            if hasattr(doc, "score"):
+            if isinstance(doc, dict):
+                doc["score"] = float(score)
+            elif hasattr(doc, "score"):
                 doc.score = float(score)
             result.append(doc)
 
@@ -107,3 +118,21 @@ class VietnameseReranker:
             scored_docs[0][1] if scored_docs else 0,
         )
         return result
+
+    def unload(self) -> None:
+        """Free GPU/CPU memory used by the reranker model."""
+        try:
+            if self.model is not None:
+                del self.model
+                self.model = None
+            if self.tokenizer is not None:
+                del self.tokenizer
+                self.tokenizer = None
+
+            if hardware.gpu_count > 0:
+                torch.cuda.empty_cache()
+                logger.info("Reranker model unloaded — CUDA cache cleared")
+            else:
+                logger.info("Reranker model unloaded — RAM freed")
+        except Exception:
+            logger.warning("Failed to cleanly unload reranker model", exc_info=True)

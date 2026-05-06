@@ -8,6 +8,9 @@ set -e
 
 MAX_TASKS=${CELERY_MAX_TASKS_PER_CHILD:-$(python -c "from app.core.config import settings; print(settings.celery_max_tasks_per_child)" 2>/dev/null || echo "50")}
 
+# 0. Clean up stale PIDs from previous runs
+rm -f /tmp/celery-*.pid
+
 echo "🎩 Butler worker starting..."
 
 # Detect hardware for prefork concurrency
@@ -33,12 +36,22 @@ celery -A app.core.celery_app.celery_app worker \
     --max-tasks-per-child="$MAX_TASKS" \
     --pidfile=/tmp/celery-ingestion.pid &
 
-# Start default worker with Beat in background
+# 2. Start default worker
+# Only run Beat (-B) on the first replica to avoid duplicate periodic tasks
+# (Assumes K8s StatefulSet or manual scaling where HOSTNAME has index)
+BEAT_FLAG=""
+if [[ "$HOSTNAME" == *"-0" ]] || [[ -z "$HOSTNAME" ]]; then
+    echo "   Beat scheduler: ENABLED on this node ($HOSTNAME)"
+    BEAT_FLAG="-B"
+else
+    echo "   Beat scheduler: DISABLED on this node ($HOSTNAME) to avoid duplicates"
+fi
+
 celery -A app.core.celery_app.celery_app worker \
     -n node-default@%h \
     --pool=prefork -c "$CONCURRENCY" \
     -Q cleanup,default \
-    -B \
+    $BEAT_FLAG \
     --loglevel=INFO \
     --max-tasks-per-child="$MAX_TASKS" \
     --pidfile=/tmp/celery-default.pid &

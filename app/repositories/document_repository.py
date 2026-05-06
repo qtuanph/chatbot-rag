@@ -168,9 +168,9 @@ class DocumentRepository:
             if document is None or document.deleted_at is not None:
                 return False
 
-            metadata = dict(document.extra_metadata or {})
-            metadata["ingestion_artifact"] = artifact_dict
-            document.extra_metadata = metadata
+            artifact_metadata = dict(document.artifact_metadata or {})
+            artifact_metadata["ingestion_artifact"] = artifact_dict
+            document.artifact_metadata = artifact_metadata
             document.status = "ready"
             document.status_stage = "ready"
             document.progress_percent = 100
@@ -286,7 +286,7 @@ class DocumentRepository:
             "status_message": document.status_message,
             "status_updated_at": document.status_updated_at.isoformat() if document.status_updated_at else None,
             "parse_error": document.parse_error,
-            "artifact_metadata": dict(document.extra_metadata or {}),
+            "artifact_metadata": document.artifact_metadata or {},
             "deleted_at": document.deleted_at.isoformat() if document.deleted_at else None,
             "created_at": document.created_at.isoformat() if document.created_at else None,
             "updated_at": document.updated_at.isoformat() if document.updated_at else None,

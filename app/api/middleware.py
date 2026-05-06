@@ -157,9 +157,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, requests_per_minute: int = 60):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
-        from app.utils.rate_limiter import RateLimiter
-
-        self.rate_limiter = RateLimiter(key_prefix="global_limit:")
+        # No longer instantiate here, as we need a loop-safe client later
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Use X-Real-IP (set by nginx) or X-Forwarded-For to get the real client IP,
@@ -170,9 +168,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             or (request.client.host if request.client else "unknown")
         )
 
+        from app.core.redis import get_redis_client
+        from app.utils.rate_limiter import RateLimiter
+
+        r_client = get_redis_client()
+        rate_limiter = RateLimiter(key_prefix="global_limit:", client=r_client)
+
         try:
-            allowed = await self.rate_limiter.is_allowed(
-                client_ip,  # RateLimiter adds prefix, identifier is client_ip
+            allowed = await rate_limiter.is_allowed(
+                client_ip,
                 limit=self.requests_per_minute,
                 window_ms=60000,
             )

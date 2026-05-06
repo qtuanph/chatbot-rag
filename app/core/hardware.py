@@ -170,5 +170,17 @@ class HardwareProfile:
         return profile
 
 
-# Singleton instance
-hardware = HardwareProfile.detect()
+# Lazy Singleton
+_hardware_instance: HardwareProfile | None = None
+
+
+def get_hardware() -> HardwareProfile:
+    """Lazy initialization of the Hardware Profile."""
+    global _hardware_instance
+    if _hardware_instance is None:
+        _hardware_instance = HardwareProfile.detect()
+    return _hardware_instance
+
+
+# For backwards compatibility with existing imports
+hardware = get_hardware()

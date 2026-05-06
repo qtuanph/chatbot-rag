@@ -34,7 +34,7 @@ class AuthService:
 
         token = create_access_token(subject=user["id"], role=role["name"])
 
-        await safe_record_audit(
+        safe_record_audit(
             action="auth.login",
             actor_user_id=user["id"],
             subject_type="user",
@@ -42,6 +42,7 @@ class AuthService:
             ip_address=ip_address,
             user_agent=user_agent,
             details={"role": role["name"]},
+            redis_client_override=self.blacklist.client,
         )
 
         return {"access_token": token, "role": role["name"], "user_id": user["id"]}
@@ -51,7 +52,7 @@ class AuthService:
     ) -> None:
         """Revoke a JWT token."""
         await self.blacklist.revoke(jti, expires_at)
-        await safe_record_audit(
+        safe_record_audit(
             action="auth.logout",
             actor_user_id=user_id,
             subject_type="token",
@@ -59,6 +60,7 @@ class AuthService:
             ip_address=ip_address,
             user_agent=user_agent,
             details={"expires_at": expires_at},
+            redis_client_override=self.blacklist.client,
         )
 
     async def create_user(self, *, username: str, password: str, role_name: str, admin_user_id: str) -> dict:
@@ -90,7 +92,7 @@ class AuthService:
         except IntegrityError:
             raise ValueError("Username already exists") from None
 
-        await safe_record_audit(
+        safe_record_audit(
             action="auth.user.create",
             actor_user_id=admin_user_id,
             subject_type="user",
@@ -98,6 +100,7 @@ class AuthService:
             ip_address=None,
             user_agent=None,
             details={"username": user["username"], "role": role["name"]},
+            redis_client_override=self.blacklist.client,
         )
 
         return {"id": user["id"], "username": user["username"], "role": role["name"]}
@@ -134,7 +137,7 @@ class AuthService:
 
         await self.repo.delete_user(user["id"])
 
-        await safe_record_audit(
+        safe_record_audit(
             action="auth.user.delete",
             actor_user_id=admin_user_id,
             subject_type="user",
@@ -142,6 +145,7 @@ class AuthService:
             ip_address=None,
             user_agent=None,
             details={"username": user["username"]},
+            redis_client_override=self.blacklist.client,
         )
 
         return {"status": "deleted", "username": user["username"]}

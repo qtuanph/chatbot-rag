@@ -4,8 +4,12 @@ from __future__ import annotations
 
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile, status
+from typing import TYPE_CHECKING
 
-from app.api.deps import AuthContext, get_document_service, require_admin
+if TYPE_CHECKING:
+    from app.utils.rate_limiter import RateLimiter
+
+from app.api.deps import AuthContext, get_document_service, require_admin, get_rate_limiter
 from app.core.config import settings
 from app.core import http_errors
 from app.schemas.documents import (
@@ -18,11 +22,9 @@ from app.schemas.documents import (
     TaskStatusResponse,
     UploadAcceptedResponse,
 )
-from app.utils.rate_limiter import RateLimiter
 from app.services.documents.document_service import DocumentService
 
 router = APIRouter(tags=["documents"])
-rate_limiter = RateLimiter()
 
 
 @router.post("/upload", response_model=UploadAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -31,6 +33,7 @@ async def upload_document(
     file: UploadFile = File(...),
     auth: AuthContext = Depends(require_admin),
     service: DocumentService = Depends(get_document_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> UploadAcceptedResponse:
     if not await rate_limiter.is_allowed(
         f"upload:{auth.user_id}", limit=settings.effective_rate_limit(5), window_ms=300000
@@ -100,7 +103,10 @@ async def upload_document(
 
 @router.get("/status/{task_id}", response_model=TaskStatusResponse)
 async def get_status(
-    task_id: str, _auth=Depends(require_admin), service: DocumentService = Depends(get_document_service)
+    task_id: str,
+    _auth=Depends(require_admin),
+    service: DocumentService = Depends(get_document_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> TaskStatusResponse:
     if not await rate_limiter.is_allowed(
         f"status:{_auth.user_id}", limit=settings.effective_rate_limit(60), window_ms=60000
@@ -126,6 +132,7 @@ async def list_documents(
     limit: int = 20,
     _auth=Depends(require_admin),
     service: DocumentService = Depends(get_document_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> DocumentListResponse:
     offset = max(0, offset)
     limit = max(1, min(limit, 100))
@@ -176,7 +183,7 @@ async def get_document_detail(
         progress_percent=doc["progress_percent"],
         status_message=doc["status_message"],
         parse_error=doc["parse_error"],
-        metadata=doc["artifact_metadata"],
+        artifact_metadata=doc["artifact_metadata"],
         deleted_at=doc["deleted_at"],
         created_at=doc["created_at"],
         updated_at=doc["updated_at"],

@@ -3,9 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import TYPE_CHECKING
-
-from redis import asyncio as aioredis
+from typing import TYPE_CHECKING, Any
 from app.core.config import settings
 
 if TYPE_CHECKING:
@@ -20,7 +18,7 @@ _MEMORY_CACHE_TTL = settings.memory_cache_ttl
 class UserMemoryService:
     """Manages persistent user memories with Redis Hash caching."""
 
-    def __init__(self, redis_client: aioredis.Redis, memory_repo: MemoryRepository) -> None:
+    def __init__(self, redis_client: Any, memory_repo: MemoryRepository) -> None:
         self._redis = redis_client
         self._memory_repo = memory_repo
 

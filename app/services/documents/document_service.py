@@ -86,7 +86,7 @@ class DocumentService:
         # Add to Bloom filter for future duplicate checks
         await self.detector.add(sha256)
 
-        await safe_record_audit(
+        safe_record_audit(
             action="document.upload",
             actor_user_id=user_id,
             subject_type="document",
@@ -94,6 +94,7 @@ class DocumentService:
             ip_address=ip_address,
             user_agent=user_agent,
             details={"filename": filename, "size": len(content), "file_type": file_type},
+            redis_client_override=self.registry.client,
         )
 
         task_id = str(uuid4())
@@ -259,14 +260,15 @@ class DocumentService:
             logger.error("Failed to enqueue delete task for %s: %s", document_id, exc, exc_info=True)
             raise RuntimeError("Failed to enqueue delete task. Please try again later.") from exc
 
-        await safe_record_audit(
+        safe_record_audit(
             action="document.delete",
             actor_user_id=user_id,
             subject_type="document",
             subject_id=document_id,
             ip_address=ip_address,
             user_agent=user_agent,
-            details={"status": "delete_queued", "task_id": delete_task_id},
+            details={"status": "deleted", "task_id": delete_task_id},
+            redis_client_override=self.registry.client,
         )
 
         return {"status": "deleted", "document_id": document_id}
@@ -289,7 +291,7 @@ class DocumentService:
         try:
             from app.adapters.vector_stores import build_vector_store
 
-            vector_store = build_vector_store()
+            vector_store = await build_vector_store()
             try:
                 await vector_store.delete(document_id)
                 logger.info("Retry: deleted vectors for document %s", document_id)
@@ -343,7 +345,7 @@ class DocumentService:
             )
             raise RuntimeError("Failed to enqueue retry task. Please try again later.") from exc
 
-        await safe_record_audit(
+        safe_record_audit(
             action="document.retry",
             actor_user_id=user_id,
             subject_type="document",
@@ -351,6 +353,7 @@ class DocumentService:
             ip_address=ip_address,
             user_agent=user_agent,
             details={"task_id": new_task_id},
+            redis_client_override=self.registry.client,
         )
 
         return {"task_id": new_task_id, "document_id": document_id, "status": "queued"}

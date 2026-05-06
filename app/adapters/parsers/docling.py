@@ -32,6 +32,7 @@ class DoclingParser(BaseParser):
     def __init__(self, min_quality_score: float = 0.5):
         self.min_quality_score = min_quality_score
         self._initialize_docling()
+
     def _initialize_docling(self) -> None:
         """Initialize Docling converter with MANDATORY PaddleOCR."""
         from docling.document_converter import DocumentConverter, PdfFormatOption, ImageFormatOption, WordFormatOption
@@ -39,8 +40,9 @@ class DoclingParser(BaseParser):
         from docling.datamodel.pipeline_options import PdfPipelineOptions, RapidOcrOptions
 
         from app.core.hardware import hardware
+
         device = "cuda" if hardware.gpu_count > 0 else "cpu"
-        
+
         ocr_options = RapidOcrOptions(lang=["vi", "en"])
         pipeline = PdfPipelineOptions(
             do_ocr=True,
@@ -134,9 +136,7 @@ class DoclingParser(BaseParser):
                 # Use asyncio.wait_for around the blocking call to enforce a timeout instead.
                 try:
                     # Increased timeout to 3500s (~1 hour) for massive PDFs/OCR tasks (500+ pages)
-                    result = await asyncio.wait_for(
-                        asyncio.to_thread(self.converter.convert, tmp_path), timeout=3500
-                    )
+                    result = await asyncio.wait_for(asyncio.to_thread(self.converter.convert, tmp_path), timeout=3500)
                 except asyncio.TimeoutError:
                     logger.exception("Docling+PaddleOCR conversion TIMED OUT for %s", filename)
                     return None
@@ -231,15 +231,7 @@ class DoclingParser(BaseParser):
 
     @staticmethod
     def _is_noise_section(title: str, content: str, page_start: int | None) -> bool:
-        """Filter empty sections from cover pages, TOC, and noise."""
-        title = (title or "").strip()
-        content = (content or "").strip()
-        # Empty section on first 2 pages → likely cover noise
-        if not content and len(title) < 40 and page_start and page_start <= 2:
-            return True
-        # Explicit TOC markers with no content
-        if title.upper() in ("MỤC LỤC", "TABLE OF CONTENTS", "NỘI DUNG") and not content:
-            return True
+        """Never drop sections. The user explicitly requested 100% data retention."""
         return False
 
     @staticmethod
@@ -253,6 +245,22 @@ class DoclingParser(BaseParser):
         if re.match(r"(?i)^(mục|bài|điều)\s*[\dIVX]+", t):
             return 2
         return current_level
+
+    @staticmethod
+    def _create_fallback_section(page_no: int | None, title: str, section_id: str) -> dict:
+        """Create a default section container for content found before any headers."""
+        return {
+            "title": title,
+            "content": "",
+            "level": 1,
+            "breadcrumb": [],
+            "page_start": page_no,
+            "page_end": page_no,
+            "image_count": 0,
+            "table_count": 0,
+            "section_id": section_id,
+            "parent_section_id": None,
+        }
 
     def _extract_from_docling_items(
         self,
@@ -284,18 +292,6 @@ class DoclingParser(BaseParser):
 
                 # SectionHeaderItem → start new section
                 if item_label == "section_header":
-                    # Save previous section (skip noise)
-                    if (
-                        current_section
-                        and not self._is_noise_section(
-                            current_section.get("title", ""),
-                            current_section.get("content", ""),
-                            current_section.get("page_start"),
-                        )
-                        and self._should_persist_section(current_section)
-                    ):
-                        sections_raw.append(current_section)
-
                     level = getattr(item, "level", 1) or 1
                     title = item_text.strip()
 
@@ -309,6 +305,42 @@ class DoclingParser(BaseParser):
                             del heading_stack[heading_key]
 
                     breadcrumb = [heading_stack[heading_key] for heading_key in sorted(heading_stack.keys())]
+
+                    # --- CRITICAL RAG FIX: Context Windowing ---
+                    # If the heading is too deep (level > 2), don't create a new DB section.
+                    # Instead, append it as a Markdown heading to the current section's content.
+                    # This ensures the RAG chunker can chunk the parent heading and child paragraphs TOGETHER.
+                    if level > 2:
+                        if current_section is None:
+                            current_section = {
+                                "title": "Nội dung mở đầu",
+                                "content": "",
+                                "level": 1,
+                                "breadcrumb": [],
+                                "page_start": page_no,
+                                "page_end": page_no,
+                                "image_count": 0,
+                                "table_count": 0,
+                                "section_id": f"sec_{len(sections_raw):04d}",
+                                "parent_section_id": None,
+                            }
+                        prefix = "#" * level + " "
+                        current_section["content"] += prefix + title + "\n\n"
+                        if page_no is not None:
+                            current_section["page_end"] = page_no
+                        continue
+
+                    # Save previous section (skip noise)
+                    if (
+                        current_section
+                        and not self._is_noise_section(
+                            current_section.get("title", ""),
+                            current_section.get("content", ""),
+                            current_section.get("page_start"),
+                        )
+                        and self._should_persist_section(current_section)
+                    ):
+                        sections_raw.append(current_section)
 
                     # Find parent section
                     parent_section_id = None
@@ -365,62 +397,57 @@ class DoclingParser(BaseParser):
                 # TableItem → convert to markdown table
                 elif item_label == "table":
                     if current_section is None:
-                        current_section = {
-                            "title": "Nội dung mở đầu",
-                            "content": "",
-                            "level": 1,
-                            "breadcrumb": [],
-                            "page_start": page_no,
-                            "page_end": page_no,
-                            "image_count": 0,
-                            "table_count": 0,
-                            "section_id": f"sec_{len(sections_raw):04d}",
-                            "parent_section_id": None,
-                        }
-                    table_md = self._table_item_to_markdown(item)
+                        current_section = self._create_fallback_section(
+                            page_no, "Bảng biểu", f"sec_{len(sections_raw):04d}"
+                        )
+
+                    try:
+                        # Use docling's native markdown export for tables if available, else fallback to our manual converter
+                        table_md = (
+                            item.export_to_markdown()
+                            if hasattr(item, "export_to_markdown")
+                            else self._table_item_to_markdown(item)
+                        )
+                    except Exception:
+                        table_md = self._table_item_to_markdown(item)
+
                     if table_md:
-                        current_section["content"] += table_md + "\n\n"
+                        current_section["content"] += table_md.strip() + "\n\n"
                         current_section["table_count"] += 1
                     if current_section is not None and page_no is not None:
                         current_section["page_end"] = page_no
 
-                # TextItem / ListItem / CodeItem / FormulaItem → append text
-                elif item_label in (
-                    "paragraph",
-                    "text",
-                    "caption",
-                    "footnote",
-                    "reference",
-                    "list_item",
-                    "code",
-                    "formula",
-                    "marker",
-                ):
-                    if current_section is None:
-                        current_section = {
-                            "title": "Nội dung mở đầu",
-                            "content": "",
-                            "level": 1,
-                            "breadcrumb": [],
-                            "page_start": page_no,
-                            "page_end": page_no,
-                            "image_count": 0,
-                            "table_count": 0,
-                            "section_id": f"sec_{len(sections_raw):04d}",
-                            "parent_section_id": None,
-                        }
-                    if item_text.strip():
-                        prefix = "- " if item_label == "list_item" else ""
-                        current_section["content"] += prefix + item_text.strip() + "\n\n"
-                    if current_section is not None and page_no is not None:
-                        current_section["page_end"] = page_no
-
-                # PictureItem → skip (future: image caption extraction)
-                elif item_label in ("picture",):
-                    if current_section is not None:
+                # Ignore headers, footers, and pictures
+                elif item_label in ("page_header", "page_footer", "picture"):
+                    if item_label == "picture" and current_section is not None:
                         current_section["image_count"] += 1
                         if page_no is not None:
                             current_section["page_end"] = page_no
+                    continue
+
+                # Catch-all for text items (paragraphs, lists, toc, etc.)
+                else:
+                    if current_section is None:
+                        current_section = self._create_fallback_section(
+                            page_no, "Nội dung mở đầu", f"sec_{len(sections_raw):04d}"
+                        )
+
+                    if item_text and str(item_text).strip():
+                        # Preserve list structure if docling provides it
+                        clean_text = str(item_text).strip()
+
+                        if item_label == "list_item":
+                            # Try to get the actual marker (e.g., 'a.', '1.', '-') from docling if possible
+                            marker = getattr(item, "marker", "-") or "-"
+                            current_section["content"] += f"{marker} {clean_text}\n\n"
+                        elif item_label == "toc_entry":
+                            current_section["content"] += f"* {clean_text}\n\n"
+                        else:
+                            # Standard paragraph
+                            current_section["content"] += clean_text + "\n\n"
+
+                    if current_section is not None and page_no is not None:
+                        current_section["page_end"] = page_no
 
             # Don't forget the last section (skip noise)
             if (
@@ -651,7 +678,7 @@ class DoclingParser(BaseParser):
             else:
                 if current_section is None:
                     current_section = {
-                        "title": "Nội dung mở đầu",
+                        "title": (line.strip()[:50] + "...") if line.strip() else "Phần mở đầu",
                         "content": "",
                         "level": 1,
                         "breadcrumb": [],

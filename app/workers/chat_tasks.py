@@ -1,59 +1,16 @@
-"""Celery tasks for chat operations — offloaded from API to avoid blocking SSE stream."""
+"""
+Celery tasks for chat operations — offloaded from API.
+Uses Sync-Primary architecture for Redis state updates.
+"""
 
 import asyncio
 import logging
 from app.core.celery_app import celery_app
 from app.db.session import AsyncSessionLocal
+from app.core.redis import get_sync_redis_client
 from app.utils.chat_store import ChatStore
 
 logger = logging.getLogger(__name__)
-
-
-def _get_chat_store() -> ChatStore:
-    from app.core.redis import redis_client
-
-    return ChatStore(redis_client)
-
-
-async def _save_message_async(
-    *,
-    session_id: str,
-    user_id: str,
-    role: str,
-    content: str,
-    citations: list[dict] | None = None,
-    tokens_in: int | None = None,
-    tokens_out: int | None = None,
-    latency_ms: int | None = None,
-    model_used: str | None = None,
-) -> None:
-    """Async implementation of message saving."""
-    from app.repositories.chat_repository import ChatRepository
-
-    async with AsyncSessionLocal() as session:
-        repo = ChatRepository(session)
-        await repo.create_message(
-            session_id=session_id,
-            role=role,
-            content=content,
-            citations=citations,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            latency_ms=latency_ms,
-            model_used=model_used,
-        )
-
-    scope_id = f"user:{user_id}"
-    chat_store = _get_chat_store()
-    await chat_store.append_message(scope_id, session_id, role, content)
-
-
-def save_message_now(**kwargs) -> None:
-    """Synchronous entry point for Celery or SSE."""
-    try:
-        asyncio.run(_save_message_async(**kwargs))
-    except Exception as e:
-        logger.error("Failed to save chat message: %s", e)
 
 
 @celery_app.task(
@@ -62,5 +19,41 @@ def save_message_now(**kwargs) -> None:
     ignore_result=True,
 )
 def save_chat_message_task(**kwargs) -> None:
-    """Celery task: save chat message asynchronously."""
-    save_message_now(**kwargs)
+    """
+    Saves a chat message to DB (Async) and Redis (Sync).
+    """
+    # 1. Sync Redis Update
+    try:
+        user_id = kwargs.get("user_id")
+        session_id = kwargs.get("session_id")
+        role = kwargs.get("role")
+        content = kwargs.get("content")
+
+        if user_id and session_id:
+            sync_redis = get_sync_redis_client()
+            chat_store = ChatStore(sync_redis)
+            chat_store.append_message_sync(f"user:{user_id}", session_id, role, content)
+    except Exception as e:
+        logger.warning("Failed to save chat message to Redis: %s", e)
+
+    # 2. Async DB Save (Isolated)
+    async def _save_to_db():
+        from app.repositories.chat_repository import ChatRepository
+
+        async with AsyncSessionLocal() as session:
+            repo = ChatRepository(session)
+            await repo.create_message(
+                session_id=kwargs.get("session_id"),
+                role=kwargs.get("role"),
+                content=kwargs.get("content"),
+                citations=kwargs.get("citations"),
+                tokens_in=kwargs.get("tokens_in"),
+                tokens_out=kwargs.get("tokens_out"),
+                latency_ms=kwargs.get("latency_ms"),
+                model_used=kwargs.get("model_used"),
+            )
+
+    try:
+        asyncio.run(_save_to_db())
+    except Exception as e:
+        logger.error("Failed to save chat message to DB: %s", e)

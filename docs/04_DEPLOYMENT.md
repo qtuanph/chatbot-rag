@@ -217,3 +217,40 @@ Track: request latency, error rate, queue depth, task failures, ingestion durati
 | Qdrant | Volume snapshot (rebuildable from raw docs + pipeline) |
 
 Recovery priority: PostgreSQL → RustFS → Qdrant (rebuildable).
+
+---
+
+## Maintenance & Docker Operations
+
+Use these commands to keep the deployment environment clean and free of orphaned resources.
+
+### Docker Deep Cleanup (Recommended for Clean Builds)
+
+To clear all cache, stopped containers, and unused layers:
+
+```powershell
+# Windows (PowerShell)
+docker system prune -f; docker builder prune -a -f; docker volume prune -f
+
+# Linux/Bash
+docker system prune -f && docker builder prune -a -f && docker volume prune -f
+```
+
+| Command | Action |
+|---------|--------|
+| `docker system prune -f` | Removes all unused containers, networks, and dangling images. |
+| `docker builder prune -a -f` | **Deep clean**: Removes all build cache (use this if changes aren't reflecting). |
+| `docker volume prune -f` | Removes all anonymous volumes not used by any container. |
+
+### Service Management
+
+```bash
+# Restart everything
+docker compose up -d --build
+
+# View logs for a specific service
+docker compose logs -f api
+
+# Scale workers (node-default)
+docker compose up -d --scale butler=2
+```

@@ -34,35 +34,30 @@ async def lifespan(application: FastAPI):
     import asyncio
     import time
 
-    async def _warm_embedding():
+    async def _warm_models():
         start = time.time()
         try:
-            from app.services.retrieval.retrieval_service import _get_embedding_service
+            # 1. Warm Embedding
+            from app.services.retrieval.retrieval_service import build_embedding_service
 
-            svc = _get_embedding_service()
-            await svc.embed_query("warmup")
-            elapsed = time.time() - start
-            logger.info("Embedding model pre-warmed in %.1fs", elapsed)
-        except Exception as e:
-            logger.warning("Embedding model pre-warm failed (will lazy-load): %s", e)
+            embed_svc = build_embedding_service()
+            embed_fn = getattr(embed_svc, "embed_query", None) or embed_svc.embed
+            await embed_fn("warmup")
 
-    def _warm_reranker():
-        start = time.time()
-        try:
+            # 2. Warm Reranker
             from app.adapters.reranker import get_reranker
 
             reranker = get_reranker()
-            reranker.rerank(
-                "warmup", [type("Doc", (), {"text": "warmup", "full_text": "warmup", "score": 0.0})()], top_k=1
-            )
+            # rerank is async now
+            await reranker.rerank("warmup", [{"text": "warmup", "full_text": "warmup", "score": 0.0}], top_k=1)
+
             elapsed = time.time() - start
-            logger.info("Reranker model pre-warmed in %.1fs", elapsed)
+            logger.info("AI models pre-warmed in %.1fs", elapsed)
         except Exception as e:
-            logger.warning("Reranker model pre-warm failed (will lazy-load): %s", e)
+            logger.warning("AI model pre-warm failed (will lazy-load): %s", e)
 
     loop = asyncio.get_running_loop()
-    loop.create_task(_warm_embedding())
-    loop.run_in_executor(None, _warm_reranker)
+    loop.create_task(_warm_models())
 
     # Security: Warn if running in production with insecure settings
     if settings.app_env == "production":

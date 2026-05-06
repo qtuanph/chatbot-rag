@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.deps import AuthContext, get_auth_context, get_memory_service
+from app.api.deps import AuthContext, get_auth_context, get_memory_service, get_rate_limiter
 from app.core import http_errors
 from app.core.config import settings
 from app.schemas.memories import MemoryInput, MemoryListResponse, MemoryResponse, MemoryUpdate
@@ -10,7 +10,6 @@ from app.utils.rate_limiter import RateLimiter
 from app.services.chat.memory_service import MemoryService
 
 router = APIRouter(tags=["memories"])
-rate_limiter = RateLimiter()
 
 
 def _to_response(row: dict) -> MemoryResponse:
@@ -36,6 +35,7 @@ async def create_memory(
     data: MemoryInput,
     auth: AuthContext = Depends(get_auth_context),
     service: MemoryService = Depends(get_memory_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> MemoryResponse:
     if not await rate_limiter.is_allowed(
         f"memory:create:{auth.user_id}", limit=settings.effective_rate_limit(20), window_ms=60000
@@ -54,6 +54,7 @@ async def update_memory(
     data: MemoryUpdate,
     auth: AuthContext = Depends(get_auth_context),
     service: MemoryService = Depends(get_memory_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> MemoryResponse:
     if not await rate_limiter.is_allowed(
         f"memory:update:{auth.user_id}", limit=settings.effective_rate_limit(20), window_ms=60000
@@ -80,6 +81,7 @@ async def delete_memory(
     memory_id: str,
     auth: AuthContext = Depends(get_auth_context),
     service: MemoryService = Depends(get_memory_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> None:
     if not await rate_limiter.is_allowed(
         f"memory:delete:{auth.user_id}", limit=settings.effective_rate_limit(20), window_ms=60000

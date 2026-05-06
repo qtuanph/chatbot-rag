@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.utils.rate_limiter import RateLimiter
 import jwt
 
-from app.api.deps import AuthContext, get_auth_context, get_auth_service, require_admin
+from app.api.deps import AuthContext, get_auth_context, get_auth_service, require_admin, get_rate_limiter
 from app.core.config import settings
 from app.core import http_errors
 from app.schemas.auth import (
@@ -17,15 +21,16 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.services.auth.auth_service import AuthService
-from app.utils.rate_limiter import RateLimiter
 
 router = APIRouter(tags=["auth"])
-rate_limiter = RateLimiter()
 
 
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(
-    payload: LoginRequest, request: Request, service: AuthService = Depends(get_auth_service)
+    payload: LoginRequest,
+    request: Request,
+    service: AuthService = Depends(get_auth_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> TokenResponse:
     client_ip = request.client.host if request.client else "unknown"
     normalized_username = payload.username.lower().strip()
@@ -75,7 +80,10 @@ async def logout(
 
 @router.post("/auth/users", response_model=CreateUserResponse)
 async def create_user(
-    payload: CreateUserRequest, _auth=Depends(require_admin), service: AuthService = Depends(get_auth_service)
+    payload: CreateUserRequest,
+    _auth=Depends(require_admin),
+    service: AuthService = Depends(get_auth_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> CreateUserResponse:
     if not await rate_limiter.is_allowed(
         f"user:create:{_auth.user_id}", limit=settings.effective_rate_limit(5), window_ms=60000
@@ -126,7 +134,10 @@ async def get_users(
 
 @router.delete("/auth/users/{username}")
 async def delete_user(
-    username: str, _auth=Depends(require_admin), service: AuthService = Depends(get_auth_service)
+    username: str,
+    _auth=Depends(require_admin),
+    service: AuthService = Depends(get_auth_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> dict[str, str]:
     if not await rate_limiter.is_allowed(
         f"user:delete:{_auth.user_id}", limit=settings.effective_rate_limit(5), window_ms=60000

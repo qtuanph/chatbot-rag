@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.utils.rate_limiter import RateLimiter
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import AuthContext, get_auth_context, get_chat_service
+from app.api.deps import AuthContext, get_auth_context, get_chat_service, get_rate_limiter
 from app.core.config import settings
 from app.core import http_errors
 from app.schemas.chat import ChatRequest, MessageFeedbackRequest, MessageFeedbackResponse
 from app.services.chat.chat_service import ChatService
-from app.utils.rate_limiter import RateLimiter
 
 router = APIRouter(tags=["chat"])
-rate_limiter = RateLimiter()
 logger = logging.getLogger(__name__)
 
 
@@ -24,6 +26,7 @@ async def chat_stream(
     request: ChatRequest,
     auth: AuthContext = Depends(get_auth_context),
     service: ChatService = Depends(get_chat_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ):
     """Streaming chat endpoint — SSE format."""
     if not await rate_limiter.is_allowed(auth.user_id, limit=settings.effective_rate_limit(30), window_ms=60000):

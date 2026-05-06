@@ -86,93 +86,90 @@ class QdrantVectorStore(BaseVectorStore):
                 timeout=self.timeout,
             )
 
-        # One-time collection setup (using sync client for simplicity in setup)
+        # One-time collection setup
         if not self._initialized:
-            await self._ensure_collection_async()
+            await self._ensure_collection_async(self.client)
             self._initialized = True
 
         return self.client
 
-    async def _ensure_collection_async(self) -> None:
-        """Ensure collection exists with dynamic hardware-optimized settings."""
-        import asyncio
+    async def _ensure_collection_async(self, client) -> None:
+        """Ensure collection exists with dynamic hardware-optimized settings using the async client."""
+        from app.core.hardware import get_hardware
+
+        hardware = get_hardware()
 
         try:
-            from qdrant_client import QdrantClient
+            collections = await client.get_collections()
+            if any(col.name == self.collection_name for col in collections.collections):
+                info = await client.get_collection(self.collection_name)
+                # Check if it has our required 'dense' vector config
+                if hasattr(info.config.params.vectors, "dense") or (
+                    isinstance(info.config.params.vectors, dict) and "dense" in info.config.params.vectors
+                ):
+                    return
+                await client.delete_collection(self.collection_name)
 
-            from app.core.hardware import hardware
+            logger.info(
+                "Creating collection '%s' (m=%d, ef=%d, quant=%s)",
+                self.collection_name,
+                hardware.qdrant_hnsw_m,
+                hardware.qdrant_hnsw_ef,
+                hardware.qdrant_quantization,
+            )
 
-            def _setup():
-                sync_client = QdrantClient(url=self.url, api_key=self.api_key, timeout=self.timeout)
-
-                collections = sync_client.get_collections()
-                if any(col.name == self.collection_name for col in collections.collections):
-                    info = sync_client.get_collection(self.collection_name)
-                    if isinstance(info.config.params.vectors, dict) and "dense" in info.config.params.vectors:
-                        return
-                    sync_client.delete_collection(self.collection_name)
-
-                logger.info(
-                    "Creating collection '%s' (m=%d, ef=%d, quant=%s)",
-                    self.collection_name,
-                    hardware.qdrant_hnsw_m,
-                    hardware.qdrant_hnsw_ef,
-                    hardware.qdrant_quantization,
-                )
-
-                sync_client.create_collection(
-                    collection_name=self.collection_name,
-                    vectors_config={
-                        "dense": VectorParams(size=self.vector_size, distance=Distance.COSINE),
-                    },
-                    sparse_vectors_config={
-                        "sparse-bm25": SparseVectorParams(
-                            index=SparseIndexParams(on_disk=False),
-                            modifier=Modifier.IDF,
+            await client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config={
+                    "dense": VectorParams(size=self.vector_size, distance=Distance.COSINE),
+                },
+                sparse_vectors_config={
+                    "sparse-bm25": SparseVectorParams(
+                        index=SparseIndexParams(on_disk=False),
+                        modifier=Modifier.IDF,
+                    ),
+                },
+                quantization_config=(
+                    ScalarQuantization(
+                        scalar=ScalarQuantizationConfig(
+                            type=ScalarType.INT8,
+                            quantile=0.99,
+                            always_ram=True,
                         ),
-                    },
-                    quantization_config=(
-                        ScalarQuantization(
-                            scalar=ScalarQuantizationConfig(
-                                type=ScalarType.INT8,
-                                quantile=0.99,
-                                always_ram=True,
-                            ),
-                        )
-                        if hardware.qdrant_quantization
-                        else None
-                    ),
-                    hnsw_config=HnswConfigDiff(
-                        m=hardware.qdrant_hnsw_m,
-                        ef_construct=hardware.qdrant_hnsw_ef,
-                    ),
-                    optimizers_config=OptimizersConfigDiff(
-                        default_segment_number=max(hardware.qdrant_hnsw_m // 4, 1),
-                    ),
-                )
+                    )
+                    if hardware.qdrant_quantization
+                    else None
+                ),
+                hnsw_config=HnswConfigDiff(
+                    m=hardware.qdrant_hnsw_m,
+                    ef_construct=hardware.qdrant_hnsw_ef,
+                ),
+                optimizers_config=OptimizersConfigDiff(
+                    default_segment_number=max(hardware.qdrant_hnsw_m // 4, 1),
+                ),
+            )
 
-                sync_client.create_payload_index(
-                    collection_name=self.collection_name,
-                    field_name="document_id",
-                    field_schema=PayloadSchemaType.KEYWORD,
-                )
-                sync_client.create_payload_index(
-                    collection_name=self.collection_name,
-                    field_name="metadata.section_id",
-                    field_schema=PayloadSchemaType.KEYWORD,
-                )
-                sync_client.create_payload_index(
-                    collection_name=self.collection_name,
-                    field_name="node_type",
-                    field_schema=PayloadSchemaType.KEYWORD,
-                )
-                sync_client.create_payload_index(
-                    collection_name=self.collection_name,
-                    field_name="metadata.section_title",
-                    field_schema=PayloadSchemaType.TEXT,
-                )
-
-            await asyncio.to_thread(_setup)
+            # Create indices async
+            await client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="document_id",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            await client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="metadata.section_id",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            await client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="node_type",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            await client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="metadata.section_title",
+                field_schema=PayloadSchemaType.TEXT,
+            )
 
         except Exception as e:
             logger.error(f"Failed to ensure Qdrant collection: {e}")

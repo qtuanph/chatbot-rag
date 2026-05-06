@@ -5,34 +5,35 @@ Optimized Implementation:
 - Word segmentation using Underthesea.
 - Minimalist client-side logic: Produces Raw Term Frequencies (TF).
 - Server-side IDF: Designed to work with Qdrant's Modifier.IDF for scalable, real-time BM25.
-- Robust Vocabulary: Mapping strings to stable integer IDs.
+- Robust Vocabulary: Mapping strings to stable integer IDs, persisted in Redis.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 from collections import Counter
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
+
 from underthesea import word_tokenize
 
+# --- Force Preload Underthesea Model ---
+try:
+    word_tokenize("khởi tạo", format="text")
+except Exception:
+    pass
 
-# --- Performance Optimization: Tokenizer Cache ---
+
 @lru_cache(maxsize=10000)
 def _cached_tokenize(text: str) -> list[str]:
-    """
-    Cached Vietnamese word segmentation to reduce CPU load under high concurrency.
-    Size 10k covers typical query vocabulary and recent document chunks.
-    """
     return word_tokenize(text)
 
 
 logger = logging.getLogger(__name__)
 
-# Comprehensive Vietnamese stop words list
 _VIETNAMESE_STOP_WORDS: frozenset[str] = frozenset(
     {
         "và",
@@ -150,116 +151,113 @@ _VIETNAMESE_STOP_WORDS: frozenset[str] = frozenset(
 
 class VietnameseBM25Encoder:
     """
-    Modern Vietnamese BM25 Encoder.
-
-    Acts as a bridge between Vietnamese text and Qdrant's sparse vector engine.
-    Instead of calculating IDF client-side (which is hard to scale), it sends
-    token counts to Qdrant, which then applies server-side IDF (Modifier.IDF).
+    Modern Vietnamese BM25 Encoder with Redis-backed vocabulary.
+    Ensures consistency across multiple worker containers.
     """
 
-    def __init__(self, vocab_path: str | Path = "data/bm25_vocab.json") -> None:
-        self.vocab_path = Path(vocab_path)
+    REDIS_KEY = "rag:bm25:vocab"
+
+    def __init__(self, redis_client: Any) -> None:
+        """
+        Initialize with a redis_client (Sync or Async).
+        Vocab is loaded lazily or on demand.
+        """
+        self._redis = redis_client
         self.vocab: dict[str, int] = {}
         self._next_id: int = 0
-        self.load()
+        self._is_async = hasattr(redis_client, "get") and asyncio.iscoroutinefunction(redis_client.get)
 
     def tokenize(self, text: str) -> list[str]:
-        """
-        Segment Vietnamese text and clean tokens.
-        - Uses underthesea for word segmentation (word_1 word_2 format).
-        - Strips punctuation and digits.
-        - Removes stop words.
-        """
         if not text or not text.strip():
             return []
-
-        # Segment words (e.g., "hợp đồng kinh tế" -> "hợp_đồng kinh_tế")
         try:
             segmented = word_tokenize(text, format="text")
         except Exception as e:
-            logger.warning("Tokenization failed: %s. Falling back to simple split.", e)
+            logger.warning("Tokenization failed: %s", e)
             segmented = text
 
-        # Clean tokens: lower, remove punctuation/digits, filter short/stop words
         tokens = []
-        # Match only alphanumeric and underscores (word segments)
         for t in re.findall(r"\w+", segmented.lower()):
             if t not in _VIETNAMESE_STOP_WORDS and len(t) > 1 and not t.isnumeric():
                 tokens.append(t)
-
         return tokens
 
     def _get_or_create_id(self, term: str) -> int:
-        """Map term to integer ID, updating vocab if new."""
         if term not in self.vocab:
             self.vocab[term] = self._next_id
             self._next_id += 1
         return self.vocab[term]
 
     def encode(self, text: str) -> dict[str, Any]:
-        """
-        Encode text into a sparse representation (indices and term frequencies).
-
-        Note: We return Raw Term Frequency (TF). Qdrant's Modifier.IDF will
-        automatically multiply this by the server-side IDF at search time.
-        """
         tokens = self.tokenize(text)
         if not tokens:
             return {"indices": [], "values": []}
 
         counts = Counter(tokens)
-
-        # Sort by index for Qdrant consistency
         raw_indices = [(self._get_or_create_id(term), count) for term, count in counts.items()]
         raw_indices.sort(key=lambda x: x[0])
 
         return {"indices": [idx for idx, _ in raw_indices], "values": [float(count) for _, count in raw_indices]}
 
     def encode_sparse_vector(self, text: str) -> Any:
-        """Helper to create a Qdrant SparseVector directly."""
         data = self.encode(text)
         if not data["indices"]:
             return None
-
         from qdrant_client.models import SparseVector
 
         return SparseVector(indices=data["indices"], values=data["values"])
 
     def encode_batch_sparse_vectors(self, texts: list[str]) -> list[Any]:
-        """Batch encoding helper."""
         return [self.encode_sparse_vector(t) for t in texts]
 
-    # ── Persistence ───────────────────────────────────────────────
+    # ── Persistence (Redis) ───────────────────────────────────────
 
-    def save(self) -> None:
-        """Save vocabulary to JSON file."""
+    async def load_async(self) -> bool:
+        """Load vocabulary from Redis (Async)."""
+        try:
+            raw = await self._redis.get(self.REDIS_KEY)
+            if raw:
+                data = json.loads(raw)
+                self.vocab = data.get("vocab", {})
+                self._next_id = data.get("next_id", len(self.vocab))
+                return True
+        except Exception as e:
+            logger.error("Failed to load BM25 vocab from Redis (Async): %s", e)
+        return False
+
+    def load_sync(self) -> bool:
+        """Load vocabulary from Redis (Sync)."""
+        try:
+            raw = self._redis.get(self.REDIS_KEY)
+            if raw:
+                data = json.loads(raw)
+                self.vocab = data.get("vocab", {})
+                self._next_id = data.get("next_id", len(self.vocab))
+                return True
+        except Exception as e:
+            logger.error("Failed to load BM25 vocab from Redis (Sync): %s", e)
+        return False
+
+    async def save_async(self) -> None:
+        """Save vocabulary to Redis (Async)."""
         if not self.vocab:
             return
-
         try:
-            self.vocab_path.parent.mkdir(parents=True, exist_ok=True)
             data = {"vocab": self.vocab, "next_id": self._next_id}
-            self.vocab_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-            logger.info("BM25 vocabulary saved: %d terms to %s", len(self.vocab), self.vocab_path)
+            await self._redis.set(self.REDIS_KEY, json.dumps(data, ensure_ascii=False))
         except Exception as e:
-            logger.error("Failed to save BM25 vocab: %s", e)
+            logger.error("Failed to save BM25 vocab to Redis (Async): %s", e)
 
-    def load(self) -> bool:
-        """Load vocabulary from JSON file."""
-        if not self.vocab_path.exists():
-            return False
-
+    def save_sync(self) -> None:
+        """Save vocabulary to Redis (Sync)."""
+        if not self.vocab:
+            return
         try:
-            data = json.loads(self.vocab_path.read_text(encoding="utf-8"))
-            self.vocab = data.get("vocab", {})
-            self._next_id = data.get("next_id", len(self.vocab))
-            logger.info("BM25 vocabulary loaded: %d terms from %s", len(self.vocab), self.vocab_path)
-            return True
+            data = {"vocab": self.vocab, "next_id": self._next_id}
+            self._redis.set(self.REDIS_KEY, json.dumps(data, ensure_ascii=False))
         except Exception as e:
-            logger.warning("Failed to load BM25 vocab: %s", e)
-            return False
+            logger.error("Failed to save BM25 vocab to Redis (Sync): %s", e)
 
     @property
     def is_ready(self) -> bool:
-        """Vocab is considered ready if it has any terms."""
         return len(self.vocab) > 0
