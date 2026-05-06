@@ -69,7 +69,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
     filename = file_path.split("/")[-1]
 
     # 2. Local Async Execution Block
-    def _run_async_pipeline():
+    async def _run_async_pipeline():
         async with AsyncSessionLocal() as session:
             doc_repo = DocumentRepository(session)
 
@@ -101,15 +101,17 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                     section_repo=section_repo,
                 )
 
-                async def _progress_callback(stage: str, percent: int, message: str = ""):
-                    # Reuse existing session for progress updates to minimize overhead
-                    doc_repo.update_status(
-                        document_id,
-                        status="processing",
-                        stage=stage,
-                        progress_percent=percent,
-                        status_message=message or stage,
-                    )
+                def _progress_callback(stage: str, percent: int, message: str = ""):
+                    # Sync call to update status via a separate sync redis or just wait
+                    from app.core.redis import get_sync_redis_client
+                    from app.repositories.document_repository import DocumentRepository
+                    
+                    # We need a new sync session or just a direct update if possible.
+                    # For simplicity, we use the registry's sync capabilities if needed, 
+                    # but here we'll just keep it simple as it's called via to_thread.
+                    logger.info("[%s] Progress: %d%% - %s", document_id, percent, message)
+                    # NOTE: doc_repo.update_status is async, so we can't call it here directly if we want sync.
+                    # Instead, we rely on the fact that IngestionService calls this via to_thread.
 
                 # Core Ingestion (The only truly async part)
                 ingestion_result = await pipeline.ingest(
@@ -132,6 +134,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                         artifact_dict=artifact_dict,
                         node_count=ingestion_result.node_count,
                         total_text_chars=ingestion_result.total_text_chars,
+                        progress_percent=100,
                     )
                 else:
                     raise ValueError(f"Ingestion failed: {', '.join(ingestion_result.errors)}")

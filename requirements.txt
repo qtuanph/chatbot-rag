@@ -15,10 +15,8 @@ docling==2.91.0
 rapidocr==3.8.1
 rapidocr_onnxruntime==1.4.4
 qdrant-client==1.17.1
-pypdf==6.10.2
 torch==2.11.0
 nh3==0.3.5
-openpyxl==3.1.5
 underthesea>=9.4.0
 sentencepiece>=0.2.1
 docling-hierarchical-pdf>=0.1.8

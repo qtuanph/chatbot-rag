@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from app.adapters.base import IngestedNode, ParsingMetadata
 from app.adapters.parsers.docling import DoclingParser
 from app.utils.hierarchy_validator import HierarchyValidator, ValidationReport
+from app.utils.text_refiner import rule_based_refiner
 from app.core.config import settings
 from app.repositories.section_repository import SectionRepository
 from app.core.hardware import hardware
@@ -43,7 +44,7 @@ class IngestionResult:
 
 
 # Type alias for clarity
-ProgressCallback = Callable[[str, int, str], None]  # (stage, percent, message)
+ProgressCallback = Callable[[str, int, str], Any]  # Should be awaited if async
 
 
 class IngestionService:
@@ -86,36 +87,34 @@ class IngestionService:
         errors: list[str] = []
         warnings: list[str] = []
         nodes: list[IngestedNode] = []
-        parse_metadata: ParsingMetadata | None = None
-        validation_report: ValidationReport | None = None
+        parse_metadata = None
+        validation_report = None
         storage_ids: list[str] = []
-
-        def _cb(stage: str, percent: int, message: str = "") -> None:
+        section_count = 0
+        async def _cb(stage: str, percent: int, message: str = "") -> None:
             if progress_callback:
                 try:
-                    progress_callback(stage, percent, message)
+                    await asyncio.to_thread(progress_callback, stage, percent, message)
                 except Exception as cb_exc:
                     logger.warning("[%s] Progress callback error: %s", document_id, cb_exc)
 
         try:
             # ── Step 1: Parse ────────────────────────────────────────────────
             logger.info("[%s] Starting ingestion: %s", document_id, filename)
-            _cb("parsing", 5, f"Parsing {filename}…")
+            await _cb("parsing", 5, f"Parsing {filename}…")
 
             nodes, parse_metadata = await self.parser.parse(filename, content, document_id=document_id)
 
             # ── Step 1.5: Text Refinement (Sanitize & Clean OCR Artifacts) ───
-            _cb("parsing", 32, "Refining extracted text...")
-            from app.utils.text_refiner import rule_based_refiner
-
             nodes = await asyncio.to_thread(rule_based_refiner.refine_nodes, nodes)
+            await _cb("parsing", 32, "Refining extracted text...")
             sections_data = getattr(parse_metadata, "sections_data", None) or []
             if sections_data:
                 sections_data = await asyncio.to_thread(rule_based_refiner.refine_sections, sections_data)
                 parse_metadata.sections_data = sections_data
 
             # ── Step 2: Validate hierarchy (wrapped in to_thread as it's CPU-intensive)
-            _cb("parsing", 35, "Validating document structure…")
+            await _cb("parsing", 35, "Validating document structure…")
             validation_report = await asyncio.to_thread(self.validator.validate, nodes)
             if not validation_report.is_valid:
                 errors.extend(validation_report.errors)
@@ -127,7 +126,7 @@ class IngestionService:
             section_count = 0
             sections_data = getattr(parse_metadata, "sections_data", None) or []
             if sections_data and self.db_session:
-                _cb("parsing", 37, f"Storing {len(sections_data)} sections…")
+                await _cb("parsing", 37, f"Storing {len(sections_data)} sections…")
                 section_repo = self.section_repo or SectionRepository(self.db_session)
                 section_ids = await section_repo.store_sections(document_id, sections_data)
                 section_count = len(section_ids)
@@ -143,7 +142,7 @@ class IngestionService:
                         node.metadata["level"] = sec.get("level", 0)
 
             # ── Step 2.6: Contextual Enrichment ─────────────────────────────
-            _cb("parsing", 39, "Enriching chunks with document context…")
+            await _cb("parsing", 39, "Enriching chunks with document context…")
             from app.utils.contextualizer import Contextualizer
 
             contextualizer = Contextualizer()
@@ -158,8 +157,7 @@ class IngestionService:
                 # BM25 sparse encoder (Using Injected Redis for Consistency)
                 from app.utils.bm25_index import get_async_bm25_encoder
 
-                bm25_encoder = get_async_bm25_encoder(self.redis)
-                await bm25_encoder.load_async()
+                bm25_encoder = await get_async_bm25_encoder(self.redis)
 
                 # Semaphore to control concurrency (limit VRAM pressure)
                 concurrency = settings.ingestion_embed_parallelism or hardware.embed_parallelism
@@ -185,7 +183,7 @@ class IngestionService:
                                 storage_ids.extend(ids)
 
                             pct = 40 + int(50 * (chunk_idx + 1) / n_chunks)
-                            _cb("embedding", pct, f"Indexing section {chunk_idx + 1}/{n_chunks}…")
+                            await _cb("embedding", pct, f"Indexing section {chunk_idx + 1}/{n_chunks}…")
                             logger.info("[%s] Chunk %d/%d processed", document_id, chunk_idx + 1, n_chunks)
                         except Exception as e:
                             logger.error("[%s] Chunk %d/%d failed: %s", document_id, chunk_idx + 1, n_chunks, e)
@@ -214,7 +212,7 @@ class IngestionService:
                     await section_repo.delete_sections(document_id)
                     section_count = 0
             else:
-                _cb("ready", 100, "Ingestion complete")
+                await _cb("ready", 100, "Ingestion complete")
 
             return IngestionResult(
                 success=not has_critical_failure,

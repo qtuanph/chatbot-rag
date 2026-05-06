@@ -93,7 +93,7 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
                     url=settings.qdrant_url,
                     api_key=settings.qdrant_api_key or None,
                     collection_name=settings.qdrant_collection,
-                    vector_size=1,
+                    vector_size=settings.embedding_vector_size,
                 )
                 verify = await _verify_deletion_async(document_id, file_path, vector_store, storage)
                 return cleanup_result, verify

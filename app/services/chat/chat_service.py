@@ -176,6 +176,7 @@ class ChatService:
         # Use the class-based service with the same loop-safe client
         retrieval_service = RetrievalService(redis_client=self.store.client)
         return await retrieval_service.retrieve_context(
+            session,
             queries,
             limit,
             positive_point_ids=positive_ids,

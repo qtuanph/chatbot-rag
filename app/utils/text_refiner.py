@@ -53,8 +53,14 @@ class RuleBasedRefiner:
         self.re_blank_lines = re.compile(r"\n{3,}")
 
         # 3. Fix fragmented words caused by soft hyphens or OCR line breaks
-        # Example: "chuyển-\nđộng" -> "chuyển động"
         self.re_hyphen_break = re.compile(r"(\w+)-\n(\w+)")
+
+        # 4. Fix collapsed list items (e.g., "a. item1 b. item2", "1.1 item 1.2 item")
+        # Supports: 1.1, 1.1.1, a., b., 1., 2), I., II.
+        self.re_list_item_fix = re.compile(r"\s+((?:\d+\.)+\d*|[a-zA-Z0-9][\.\)]|[IVXLCDM]+[\.\)])\s+")
+
+        # 5. Normalize multiple spaces to a single space
+        self.re_multiple_spaces = re.compile(r"[^\S\n]{2,}")
 
     def refine(self, text: str) -> str:
         """
@@ -72,6 +78,8 @@ class RuleBasedRefiner:
             # 2. Heuristic Cleanup
             text = self.re_zero_width.sub("", text)
             text = self.re_hyphen_break.sub(r"\1\2", text)
+            text = self.re_list_item_fix.sub(r"\n\1 ", text)
+            text = self.re_multiple_spaces.sub(" ", text)
             text = self.re_blank_lines.sub("\n\n", text)
 
             return text.strip()

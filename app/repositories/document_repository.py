@@ -1,7 +1,8 @@
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
-from sqlalchemy import func, select, and_
+from sqlalchemy import func, select, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DocumentStoreException
@@ -31,6 +32,7 @@ class DocumentRepository:
             if document is None or document.deleted_at is not None:
                 return False
             document.status = status
+            document.artifact_metadata = document.artifact_metadata or {}
             document.parse_error = parse_error[:2000] if parse_error else None
             if stage is not None:
                 document.status_stage = stage
@@ -41,7 +43,7 @@ class DocumentRepository:
             document.status_updated_at = datetime.now(timezone.utc)
             document.updated_at = datetime.now(timezone.utc)
             await self.session.commit()
-            logger.info("Document %s status → %s", document_id, status)
+            logger.info("Document %s status \u2192 %s", document_id, status)
             return True
         except Exception as e:
             await self.session.rollback()
@@ -161,15 +163,19 @@ class DocumentRepository:
         artifact_dict: dict,
         node_count: int,
         total_text_chars: int,
-    ) -> bool:
+    ) -> dict:
         """Set document to ready state with ingestion artifact metadata."""
         try:
             document = await self.session.get(Document, document_id)
             if document is None or document.deleted_at is not None:
-                return False
+                return {}
 
             artifact_metadata = dict(document.artifact_metadata or {})
             artifact_metadata["ingestion_artifact"] = artifact_dict
+            artifact_metadata["stats"] = {
+                "node_count": node_count,
+                "total_text_chars": total_text_chars,
+            }
             document.artifact_metadata = artifact_metadata
             document.status = "ready"
             document.status_stage = "ready"
@@ -179,7 +185,7 @@ class DocumentRepository:
             document.parse_error = None
             document.updated_at = datetime.now(timezone.utc)
             await self.session.commit()
-            return True
+            return self._doc_to_full_dict(document)
         except Exception as e:
             await self.session.rollback()
             raise DocumentStoreException(
@@ -268,7 +274,7 @@ class DocumentRepository:
         await self.session.commit()
         return True
 
-    # ── Private helpers ──────────────────────────────────────────────
+    # \u2500\u2500 Private helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
     def _doc_to_full_dict(self, document: Document) -> dict:
         return {
@@ -290,4 +296,6 @@ class DocumentRepository:
             "deleted_at": document.deleted_at.isoformat() if document.deleted_at else None,
             "created_at": document.created_at.isoformat() if document.created_at else None,
             "updated_at": document.updated_at.isoformat() if document.updated_at else None,
+            "node_count": getattr(document, "node_count", 0),
+            "total_text_chars": getattr(document, "total_text_chars", 0),
         }

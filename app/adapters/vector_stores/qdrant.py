@@ -99,15 +99,27 @@ class QdrantVectorStore(BaseVectorStore):
 
         hardware = get_hardware()
 
+        # One-time collection setup
         try:
+            # Check existence first
             collections = await client.get_collections()
-            if any(col.name == self.collection_name for col in collections.collections):
+            exists = any(col.name == self.collection_name for col in collections.collections)
+            
+            if exists:
                 info = await client.get_collection(self.collection_name)
                 # Check if it has our required 'dense' vector config
-                if hasattr(info.config.params.vectors, "dense") or (
-                    isinstance(info.config.params.vectors, dict) and "dense" in info.config.params.vectors
-                ):
+                vectors_config = info.config.params.vectors
+                is_valid = False
+                if hasattr(vectors_config, "dense"):
+                    is_valid = True
+                elif isinstance(vectors_config, dict) and "dense" in vectors_config:
+                    is_valid = True
+                    
+                if is_valid:
+                    logger.debug("Collection '%s' already exists and is valid", self.collection_name)
                     return
+                
+                logger.warning("Collection '%s' exists but is invalid. Recreating...", self.collection_name)
                 await client.delete_collection(self.collection_name)
 
             logger.info(
@@ -160,20 +172,13 @@ class QdrantVectorStore(BaseVectorStore):
                 field_name="metadata.section_id",
                 field_schema=PayloadSchemaType.KEYWORD,
             )
-            await client.create_payload_index(
-                collection_name=self.collection_name,
-                field_name="node_type",
-                field_schema=PayloadSchemaType.KEYWORD,
-            )
-            await client.create_payload_index(
-                collection_name=self.collection_name,
-                field_name="metadata.section_title",
-                field_schema=PayloadSchemaType.TEXT,
-            )
-
         except Exception as e:
-            logger.error(f"Failed to ensure Qdrant collection: {e}")
-            raise VectorStoreOperationException(f"Qdrant setup failed: {e}")
+            # Handle 409 Conflict if another worker created it simultaneously
+            if "409" in str(e) or "already exists" in str(e).lower():
+                logger.info("Collection '%s' was created by another worker", self.collection_name)
+            else:
+                logger.error(f"Failed to ensure Qdrant collection: {e}")
+                raise VectorStoreOperationException(f"Qdrant setup failed: {e}")
 
     async def health_check(self) -> bool:
         """Check if Qdrant is reachable and collection exists."""
