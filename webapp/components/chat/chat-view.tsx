@@ -1,19 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { ChatPanel } from "./chat-panel";
 import { chatApi } from "@/lib/api-client";
-import { toast } from "sonner";
 import type { ChatSession } from "@/types/api";
 
 export function ChatView() {
   const { data: session } = useSession();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionIdState] = useState<string | null>(null);
-  const [sessionsLoading, setSessionsLoading] = useState(true);
-  // Track sessions just created locally — don't reload messages for them
-  const justCreatedRef = useRef<string | null>(null);
+  const [sessionsReady, setSessionsReady] = useState(false);
+  const [justCreatedSessionId, setJustCreatedSessionId] = useState<string | null>(null);
 
   const setActiveSessionId = useCallback((id: string | null) => {
     setActiveSessionIdState(id);
@@ -28,45 +26,41 @@ export function ChatView() {
     try {
       const list = await chatApi.getSessions();
       setSessions(list);
+      setSessionsReady(true);
       return list;
     } catch {
       return [];
     }
   }, []);
 
-  // Restore active session from localStorage after hydration
+  // Always start from a fresh empty chat after login/page load.
+  // History still appears in the dropdown for manual selection.
   useEffect(() => {
-    const stored = localStorage.getItem("chat_active_session");
-    if (stored) setActiveSessionIdState(stored);
-  }, []);
-
-  // Clear stale session from localStorage when user changes
-  useEffect(() => {
-    const userId = session?.user?.id;
+    const userId = session?.userId;
     if (!userId) return;
-    const prevUserId = localStorage.getItem("chat_user_id");
-    if (prevUserId && prevUserId !== userId) {
-      localStorage.removeItem("chat_active_session");
-      setActiveSessionIdState(null);
-      justCreatedRef.current = null;
-    }
+    localStorage.removeItem("chat_active_session");
     localStorage.setItem("chat_user_id", userId);
-  }, [session?.user?.id]);
+    queueMicrotask(() => {
+      setActiveSessionIdState(null);
+      setJustCreatedSessionId(null);
+    });
+  }, [session?.userId]);
 
   // Load sessions on mount
   useEffect(() => {
     if (!session) {
-      setSessionsLoading(false);
       return;
     }
 
     let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setSessionsReady(false);
+    });
 
     (async () => {
       const list = await loadSessions();
       if (cancelled) return;
       setSessions(list);
-      setSessionsLoading(false);
     })();
 
     return () => {
@@ -76,17 +70,17 @@ export function ChatView() {
 
   // "Chat mới" — chỉ clear UI, KHÔNG tạo session rỗng
   const handleNewChat = useCallback(() => {
-    justCreatedRef.current = null;
+    setJustCreatedSessionId(null);
     setActiveSessionId(null);
   }, [setActiveSessionId]);
 
   const handleSelectSession = useCallback((sessionId: string) => {
-    justCreatedRef.current = null;
+    setJustCreatedSessionId(null);
     setActiveSessionId(sessionId);
   }, [setActiveSessionId]);
 
   const handleSessionCreated = useCallback((sessionId: string) => {
-    justCreatedRef.current = sessionId;
+    setJustCreatedSessionId(sessionId);
     setActiveSessionId(sessionId);
     loadSessions();
   }, [loadSessions, setActiveSessionId]);
@@ -105,9 +99,9 @@ export function ChatView() {
   return (
     <ChatPanel
       sessionId={activeSessionId}
-      justCreatedSessionId={justCreatedRef.current}
+      justCreatedSessionId={justCreatedSessionId}
       sessions={sessions}
-      sessionsLoading={sessionsLoading}
+      sessionsLoading={Boolean(session) && !sessionsReady}
       onNewChat={handleNewChat}
       onSelectSession={handleSelectSession}
       onRefreshSessions={loadSessions}

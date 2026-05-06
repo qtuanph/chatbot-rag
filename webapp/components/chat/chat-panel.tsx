@@ -209,10 +209,15 @@ export function ChatPanel({
         // If no active session, create one first
         let sid = sessionId;
         let isNewSession = false;
+        let sessionCreatedLocally = false;
         if (!sid) {
           const newSession = await chatApi.createSession();
           sid = newSession.session_id;
           isNewSession = true;
+          sessionCreatedLocally = true;
+          // Bind the newly created session immediately so browser close/reopen
+          // before stream completion can still restore this conversation.
+          onSessionCreated?.(sid);
         }
 
         const res = await fetch(`${API_BASE}/chat/stream`, {
@@ -272,7 +277,7 @@ export function ChatPanel({
                   );
                 } else {
                   if ("session_id" in event && event.session_id) {
-                    if (!sessionId) {
+                    if (!sessionId && !sessionCreatedLocally) {
                       onSessionCreated?.(event.session_id);
                     }
                     if (isNewSession) {

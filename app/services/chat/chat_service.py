@@ -117,24 +117,28 @@ class ChatService:
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
 
-        # Non-blocking finalization
+        # Finalize persistence after the streamed answer is complete.
+        finalize_error: str | None = None
         vids = [c["node_id"] for c in citations if "node_id" in c]
         try:
-            await self.save_assistant_message(
-                session_id=session_id,
-                user_id=user_id,
-                role="assistant",
-                content=clean_answer,
-                citations=citations,
-                tokens_in=prompt_tokens,
-                tokens_out=completion_tokens,
-                latency_ms=int((ai_done_time - start_time) * 1000),
-                model_used=provider.model_name,
-                vector_ids=vids,
+            await asyncio.shield(
+                self.save_assistant_message(
+                    session_id=session_id,
+                    user_id=user_id,
+                    role="assistant",
+                    content=clean_answer,
+                    citations=citations,
+                    tokens_in=prompt_tokens,
+                    tokens_out=completion_tokens,
+                    latency_ms=int((ai_done_time - start_time) * 1000),
+                    model_used=provider.model_name,
+                    vector_ids=vids,
+                )
             )
             self.enqueue_memory_extraction(user_id=user_id, user_message=query, assistant_response=clean_answer)
         except Exception as e:
-            logger.error("Failed to finalize chat session: %s", e)
+            finalize_error = "Failed to persist assistant message"
+            logger.error("Failed to finalize chat session: %s", e, exc_info=True)
 
         from app.utils.chat_utils import compute_cost
 
@@ -153,6 +157,8 @@ class ChatService:
                 "model": provider.model_name,
             },
         }
+        if finalize_error:
+            final_data["error"] = finalize_error
         yield f"data: {json.dumps(final_data)}\n\n"
 
     # ── RAG retrieval ────────────────────────────────────────────────
@@ -204,11 +210,15 @@ class ChatService:
             await self.repo.update_session_title(session_id, new_title)
             session["title"] = new_title
 
-        scope_id = f"user:{user_id}"
-        await self.store.append_message(scope_id, session_id, "user", query)
         logger.info("Saving user message to database: session_id=%s, user_id=%s", session_id, user_id)
         await self.repo.save_user_message(session_id, query)
         logger.info("User message saved successfully: session_id=%s", session_id)
+
+        scope_id = f"user:{user_id}"
+        try:
+            await self.store.append_message(scope_id, session_id, "user", query)
+        except Exception as e:
+            logger.warning("Failed to cache user message in Redis: %s", e)
 
         if not await self.store.history_exists(scope_id, session_id):
             db_msgs = await self.repo.get_messages_for_history(session_id)
@@ -218,21 +228,42 @@ class ChatService:
 
     # ── Message persistence ─────────────────────────────────────────
 
-    async def save_assistant_message(self, **kwargs) -> None:
+    async def save_assistant_message(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+        role: str,
+        content: str,
+        citations: list[dict] | None = None,
+        tokens_in: int | None = None,
+        tokens_out: int | None = None,
+        latency_ms: int | None = None,
+        model_used: str | None = None,
+        vector_ids: list[str] | None = None,
+    ) -> None:
         """Save assistant message to PostgreSQL + Redis."""
         try:
-            session_id = kwargs.get("session_id")
-            user_id = kwargs.get("user_id")
-            logger.info("Saving assistant message: session_id=%s, user_id=%s, role=%s", session_id, user_id, kwargs.get("role"))
-            await self.repo.create_message(**kwargs)
+            logger.info("Saving assistant message: session_id=%s, user_id=%s, role=%s", session_id, user_id, role)
+            await self.repo.create_message(
+                session_id=session_id,
+                role=role,
+                content=content,
+                citations=citations,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                latency_ms=latency_ms,
+                model_used=model_used,
+                vector_ids=vector_ids,
+            )
             logger.info("Successfully saved assistant message: session_id=%s", session_id)
         except Exception as e:
             logger.error("Failed to save chat message: %s", e, exc_info=True)
             raise RuntimeError("Failed to persist assistant message") from e
 
         try:
-            scope_id = f"user:{kwargs['user_id']}"
-            await self.store.append_message(scope_id, kwargs["session_id"], "assistant", kwargs["content"])
+            scope_id = f"user:{user_id}"
+            await self.store.append_message(scope_id, session_id, "assistant", content)
         except Exception as e:
             logger.warning("Failed to cache chat message in Redis: %s", e)
 

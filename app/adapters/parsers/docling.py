@@ -127,7 +127,15 @@ class DoclingParser(BaseParser):
 
             try:
                 logger.info("Converting %s with PaddleOCR...", filename)
-                result = await asyncio.to_thread(self.converter.convert, tmp_path, timeout=120)
+                # DocumentConverter.convert does not accept a `timeout` kwarg (pydantic validation error).
+                # Use asyncio.wait_for around the blocking call to enforce a timeout instead.
+                try:
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(self.converter.convert, tmp_path), timeout=120
+                    )
+                except asyncio.TimeoutError:
+                    logger.exception("Docling+PaddleOCR conversion TIMED OUT for %s", filename)
+                    return None
 
                 # Post-process: fix heading hierarchy via docling-hierarchical-pdf
                 if filename.lower().endswith(".pdf"):
@@ -149,7 +157,8 @@ class DoclingParser(BaseParser):
                 os.unlink(tmp_path)
 
         except Exception as e:
-            logger.error("Docling+PaddleOCR conversion FAILED for %s: %s", filename, e)
+            # Log full traceback to aid debugging (onnx/ocr native errors often hide stack details)
+            logger.exception("Docling+PaddleOCR conversion FAILED for %s: %s", filename, e)
             return None
 
     # ── Method D: Extract directly from Docling items ────────────────────────
