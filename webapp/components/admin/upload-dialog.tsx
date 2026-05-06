@@ -118,6 +118,9 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
       const uploadPromises = newItems.map(async (item) => {
         try {
           const result = await documentsApi.upload(item.file);
+          
+          // Trigger immediate refresh so document appears in table while processing
+          onUploaded();
 
           setItems((prev) =>
             prev.map((i) =>

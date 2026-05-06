@@ -144,30 +144,34 @@ export default function DocumentDetailPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/admin/documents">
-          <Button variant="ghost" size="icon">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-xl font-bold truncate">{doc.file_name}</h1>
-          <p className="text-sm text-muted-foreground">
-            v{doc.version} · {formatSize(doc.file_size)} · {doc.file_type}
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-center gap-3">
+          <Link href="/admin/documents">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold truncate">{doc.file_name}</h1>
+            <p className="text-sm text-muted-foreground truncate">
+              v{doc.version} · {formatSize(doc.file_size)} · {doc.file_type}
+            </p>
+          </div>
         </div>
-        <Badge
-          variant="outline"
-          className={
-            doc.status === "ready"
-              ? "bg-green-500/15 text-green-700"
-              : doc.status === "failed"
-                ? "bg-red-500/15 text-red-700"
-                : "bg-blue-500/15 text-blue-700"
-          }
-        >
-          {doc.status}
-        </Badge>
+        <div className="ml-auto sm:ml-0">
+          <Badge
+            variant="outline"
+            className={
+              doc.status === "ready"
+                ? "bg-green-500/15 text-green-700"
+                : doc.status === "failed"
+                  ? "bg-red-500/15 text-red-700"
+                  : "bg-blue-500/15 text-blue-700"
+            }
+          >
+            {doc.status}
+          </Badge>
+        </div>
       </div>
 
       {/* Info Cards */}
@@ -202,11 +206,11 @@ export default function DocumentDetailPage() {
 
       {/* Node Table */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <CardTitle className="text-lg">
             Nội dung tài liệu ({nodes.length}/{totalNodes})
           </CardTitle>
-          <div className="relative w-64">
+          <div className="relative w-full sm:w-64">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Tìm kiếm nội dung..."
@@ -221,14 +225,14 @@ export default function DocumentDetailPage() {
             <p className="text-sm text-muted-foreground py-4">Không có dữ liệu.</p>
           ) : (
             <>
-              <ScrollArea className="h-[500px]">
+              <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12">#</TableHead>
                       <TableHead className="w-16">Trang</TableHead>
-                      <TableHead>Tiêu đề</TableHead>
-                      <TableHead className="w-20">Ký tự</TableHead>
+                      <TableHead className="min-w-[200px]">Tiêu đề</TableHead>
+                      <TableHead className="w-20 hidden sm:table-cell">Ký tự</TableHead>
                       <TableHead className="w-10"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -246,8 +250,8 @@ export default function DocumentDetailPage() {
                       />
                     ))}
                   </TableBody>
-                </Table>
-              </ScrollArea>
+                  </Table>
+                </div>
 
               {/* Load More */}
               {hasMore && !searchQuery && (
@@ -310,8 +314,8 @@ function NodeRow({
       <TableRow className="cursor-pointer hover:bg-muted/50" onClick={handleToggle}>
         <TableCell className="text-xs text-muted-foreground">{index}</TableCell>
         <TableCell className="text-xs text-muted-foreground">{node.page_range || node.page_number || "?"}</TableCell>
-        <TableCell className="font-medium text-sm truncate max-w-[500px]">{node.title}</TableCell>
-        <TableCell className="text-xs text-muted-foreground">
+        <TableCell className="font-medium text-sm truncate max-w-[200px] sm:max-w-[500px]">{node.title}</TableCell>
+        <TableCell className="text-xs text-muted-foreground hidden sm:table-cell">
           {node.text_length?.toLocaleString()}
         </TableCell>
         <TableCell>

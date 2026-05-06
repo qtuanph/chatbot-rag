@@ -28,7 +28,7 @@ class DocumentRepository:
         """Update document status."""
         try:
             document = await self.session.get(Document, document_id)
-            if document is None:
+            if document is None or document.deleted_at is not None:
                 return False
             document.status = status
             document.parse_error = parse_error[:2000] if parse_error else None
@@ -165,7 +165,7 @@ class DocumentRepository:
         """Set document to ready state with ingestion artifact metadata."""
         try:
             document = await self.session.get(Document, document_id)
-            if document is None:
+            if document is None or document.deleted_at is not None:
                 return False
 
             metadata = dict(document.extra_metadata or {})
@@ -237,6 +237,27 @@ class DocumentRepository:
         result = await self.session.execute(stmt)
         rows = result.all()
         return {str(doc_id): title for doc_id, title in rows}
+
+    async def mark_as_deleted(self, document_id: str) -> bool:
+        """Mark a document as deleted (soft-delete) before hard-delete begins."""
+        try:
+            document = await self.session.get(Document, document_id)
+            if document is None:
+                return False
+            document.deleted_at = datetime.now(timezone.utc)
+            document.status = "deleted"
+            document.status_stage = "deleted"
+            document.status_updated_at = datetime.now(timezone.utc)
+            document.updated_at = datetime.now(timezone.utc)
+            await self.session.commit()
+            logger.info("Document %s marked as deleted", document_id)
+            return True
+        except Exception as e:
+            await self.session.rollback()
+            raise DocumentStoreException(
+                f"Failed to mark document {document_id} as deleted: {str(e)}",
+                error_code="DOCUMENT_STORE_UPDATE_FAILED",
+            )
 
     async def hard_delete(self, document_id: str) -> bool:
         """Hard-delete a document row from PostgreSQL."""

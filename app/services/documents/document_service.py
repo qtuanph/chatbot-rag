@@ -115,6 +115,7 @@ class DocumentService:
                     "task_id": task_id,
                     "document_id": document_id,
                     "file_path": object_uri,
+                    "user_id": user_id,
                 },
                 task_id=task_id,
             )
@@ -228,6 +229,10 @@ class DocumentService:
         if doc is None:
             raise ValueError("Document not found")
 
+        # 1. Immediate marking (Redis + PostgreSQL) to make it disappear from UI
+        await self.registry.delete(document_id)
+        await self.doc_repo.mark_as_deleted(document_id)
+
         delete_task_id = str(uuid4())
         try:
             await asyncio.to_thread(
@@ -264,7 +269,7 @@ class DocumentService:
             details={"status": "delete_queued", "task_id": delete_task_id},
         )
 
-        return {"status": "delete_queued", "document_id": document_id}
+        return {"status": "deleted", "document_id": document_id}
 
     # ── Retry ───────────────────────────────────────────────────────
 
@@ -317,6 +322,7 @@ class DocumentService:
                     "task_id": new_task_id,
                     "document_id": document_id,
                     "file_path": file_path,
+                    "user_id": user_id,
                 },
                 task_id=new_task_id,
             )

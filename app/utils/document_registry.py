@@ -57,8 +57,9 @@ class DocumentRegistry:
             await self.client.json().set(key, "$.status", "deleted")
 
     async def get_active_ids_async(self) -> set[str]:
-        """Return cached active document IDs (Async)."""
-        return set(await self.client.smembers("rag:active_doc_ids"))
+        """Return cached active document IDs (Async). Decode bytes to strings if needed."""
+        members = await self.client.smembers("rag:active_doc_ids")
+        return {m.decode() if isinstance(m, bytes) else m for m in members}
 
     async def set_active_ids_async(self, ids: list[str] | set[str]) -> None:
         """Cache active document IDs (Async)."""

@@ -32,19 +32,22 @@ class DoclingParser(BaseParser):
     def __init__(self, min_quality_score: float = 0.5):
         self.min_quality_score = min_quality_score
         self._initialize_docling()
-
     def _initialize_docling(self) -> None:
         """Initialize Docling converter with MANDATORY PaddleOCR."""
         from docling.document_converter import DocumentConverter, PdfFormatOption, ImageFormatOption, WordFormatOption
         from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import PdfPipelineOptions, RapidOcrOptions
 
+        from app.core.hardware import hardware
+        device = "cuda" if hardware.gpu_count > 0 else "cpu"
+        
         ocr_options = RapidOcrOptions(lang=["vi", "en"])
         pipeline = PdfPipelineOptions(
             do_ocr=True,
             force_full_page_ocr=True,
             ocr_options=ocr_options,
             do_table_structure=True,
+            device=device,
         )
 
         self.converter = DocumentConverter(
@@ -52,9 +55,9 @@ class DoclingParser(BaseParser):
                 InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline),
                 InputFormat.IMAGE: ImageFormatOption(pipeline_options=pipeline),
                 InputFormat.DOCX: WordFormatOption(),
-            }
+            },
         )
-        logger.info("Docling+PaddleOCR initialized [vi, en]")
+        logger.info("Docling+PaddleOCR initialized [vi, en] on device: %s", device)
 
     async def parse(
         self,
@@ -130,8 +133,9 @@ class DoclingParser(BaseParser):
                 # DocumentConverter.convert does not accept a `timeout` kwarg (pydantic validation error).
                 # Use asyncio.wait_for around the blocking call to enforce a timeout instead.
                 try:
+                    # Increased timeout to 3500s (~1 hour) for massive PDFs/OCR tasks (500+ pages)
                     result = await asyncio.wait_for(
-                        asyncio.to_thread(self.converter.convert, tmp_path), timeout=120
+                        asyncio.to_thread(self.converter.convert, tmp_path), timeout=3500
                     )
                 except asyncio.TimeoutError:
                     logger.exception("Docling+PaddleOCR conversion TIMED OUT for %s", filename)

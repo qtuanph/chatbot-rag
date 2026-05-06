@@ -95,9 +95,17 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
         from app.repositories.section_repository import SectionRepository
 
         storage = build_storage()
-        registry = DocumentRegistry(redis_client)
 
         async def _delete_async():
+            # Create a fresh Redis client inside the new event loop
+            from app.core.redis import get_redis_client
+            local_redis = get_redis_client()
+            registry = DocumentRegistry(local_redis)
+
+            # Patch retrieval_service's registry so invalidate_doc_ids_cache uses the fresh loop
+            import app.services.retrieval.retrieval_service as rs
+            rs.registry = registry
+
             async with AsyncSessionLocal() as session:
                 doc_repo = DocumentRepository(session)
                 section_repo = SectionRepository(session)
@@ -117,6 +125,20 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
                 timeout=settings.qdrant_timeout,
             )
             verify = await _verify_deletion_async(document_id, file_path, vector_store, storage)
+            # Audit completion
+            from app.utils.audit import safe_record_audit
+
+            await safe_record_audit(
+                action="document.hard_delete_complete",
+                actor_user_id=user_id,
+                subject_type="document",
+                subject_id=document_id,
+                details={
+                    "cleanup_result": cleanup_result,
+                    "verification": verify,
+                },
+            )
+
             return cleanup_result, verify
 
         cleanup_result, verify = asyncio.run(_delete_async())

@@ -138,8 +138,8 @@ class Settings(BaseSettings):
     ai_http_keepalive_connections: int = 10  # httpx keepalive pool size
 
     # Celery tuning — configurable for server-grade hardware
-    celery_task_time_limit: int = 1800  # 30 min hard kill
-    celery_task_soft_time_limit: int = 1500  # 25 min → SoftTimeLimitExceeded
+    celery_task_time_limit: int = 3600  # 1 hour hard kill for massive PDFs (500+ pages)
+    celery_task_soft_time_limit: int = 3300  # 55 min → SoftTimeLimitExceeded
     celery_worker_max_memory_kb: int = 1_500_000  # 1.5GB — kill child if exceeded
     celery_visibility_timeout: int = 7200  # 2h — Redis re-delivery guard
     celery_result_expires: int = 86400  # 24h — task result TTL

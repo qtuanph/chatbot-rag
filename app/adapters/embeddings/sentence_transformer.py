@@ -141,7 +141,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
             try:
                 import torch
 
-                if torch.cuda.is_available():
+                if hardware.gpu_count > 0:
                     torch.cuda.empty_cache()
                     logger.info("Embedding model unloaded — CUDA cache cleared")
                 else:

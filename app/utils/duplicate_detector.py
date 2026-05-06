@@ -19,6 +19,11 @@ class DuplicateDetector:
 
     def __init__(self, client: redis.Redis) -> None:
         self._r = client
+        try:
+            # Try to reserve the bloom filter on init (ignore errors if already exists)
+            self._ensure_filter()
+        except Exception:
+            pass
 
     async def _ensure_filter(self) -> None:
         """Initialize Bloom Filter if not exists."""

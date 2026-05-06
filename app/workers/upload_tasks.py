@@ -98,9 +98,8 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 content = await asyncio.to_thread(storage.download_bytes, file_path)
                 filename = file_path.split("/")[-1]
 
-                import torch
-
-                device_name = "GPU" if torch.cuda.is_available() else "CPU"
+                from app.core.hardware import hardware
+                device_name = "GPU" if hardware.gpu_count > 0 else "CPU"
 
                 await doc_repo.update_status(
                     document_id,
@@ -121,6 +120,8 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                     section_repo=section_repo,
                 )
 
+                pending_tasks: list[asyncio.Task] = []  # Track progress callback tasks
+
                 async def _progress_callback(stage: str, percent: int, message: str = ""):
                     # Optimized progress update: dedicated connection for atomicity during parallel ingestion
                     translated_msg = message
@@ -139,15 +140,20 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                             status_message=translated_msg or stage,
                         )
 
-                # ── Step 3: Parse & embed ────────────────────────────────────────────
+                # ── Step 3: Parse & embed ──────────────────────────────────────────
                 logger.info("[%s] Parsing with pipeline...", document_id)
-                ingestion_result = await pipeline.ingest(
-                    filename=filename,
-                    content=content,
-                    user_id=user_id or "system",
-                    document_id=document_id,
-                    progress_callback=lambda s, p, m: asyncio.create_task(_progress_callback(s, p, m)),
-                )
+                try:
+                    ingestion_result = await pipeline.ingest(
+                        filename=filename,
+                        content=content,
+                        user_id=user_id or "system",
+                        document_id=document_id,
+                        progress_callback=lambda s, p, m: pending_tasks.append(asyncio.create_task(_progress_callback(s, p, m))),
+                    )
+                finally:
+                    # Always wait for pending progress updates (success or failure)
+                    if pending_tasks:
+                        await asyncio.gather(*pending_tasks, return_exceptions=True)
 
                 # ── Step 4: Verification ──────────────────────────────────────────────
                 await doc_repo.update_status(
@@ -197,6 +203,21 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 # Unload model
                 if hasattr(embedding_service, "unload"):
                     embedding_service.unload()
+
+                # Audit completion
+                from app.utils.audit import safe_record_audit
+
+                await safe_record_audit(
+                    action="document.ingestion_complete",
+                    actor_user_id=user_id,
+                    subject_type="document",
+                    subject_id=document_id,
+                    details={
+                        "node_count": ingestion_result.node_count,
+                        "total_chars": ingestion_result.total_text_chars,
+                        "duration_ms": ingestion_result.duration_ms,
+                    },
+                )
 
                 return {"status": "success", "document_id": document_id}
 

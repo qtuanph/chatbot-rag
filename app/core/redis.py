@@ -13,4 +13,10 @@ _pool = redis.ConnectionPool.from_url(
     retry=Retry(ExponentialBackoff(), retries=3),
     retry_on_timeout=True,
 )
-redis_client = redis.Redis(connection_pool=_pool)
+def get_redis_client() -> redis.Redis:
+    """Return a fresh Redis client instance. Essential for avoiding 'Event loop closed' in isolated asyncio.run() blocks."""
+    return redis.Redis(connection_pool=_pool)
+
+# Global client for API (where the loop is persistent)
+redis_client = get_redis_client()
+

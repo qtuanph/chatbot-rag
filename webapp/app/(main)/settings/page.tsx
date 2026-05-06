@@ -137,13 +137,13 @@ export default function SettingsPage() {
           <CardDescription>Thông tin người dùng hiện tại</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 items-center gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 items-start sm:items-center gap-1 sm:gap-4">
             <Label className="text-muted-foreground">Tên đăng nhập</Label>
-            <div className="col-span-2 font-medium">{session?.user?.name}</div>
+            <div className="sm:col-span-2 font-medium">{session?.user?.name}</div>
           </div>
-          <div className="grid grid-cols-3 items-center gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 items-start sm:items-center gap-1 sm:gap-4">
             <Label className="text-muted-foreground">Vai trò</Label>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <Badge variant="secondary">{session?.role}</Badge>
             </div>
           </div>
@@ -164,18 +164,34 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Add new memory */}
-          <div className="flex gap-2">
-            <Select value={newType} onValueChange={(v) => setNewType(v ?? "instruction")}>
-              <SelectTrigger className="w-[140px] shrink-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="instruction">Chỉ dẫn</SelectItem>
-                <SelectItem value="preference">Sở thích</SelectItem>
-                <SelectItem value="correction">Sửa đổi</SelectItem>
-                <SelectItem value="fact">Thông tin</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex gap-2">
+              <Select value={newType} onValueChange={(v) => setNewType(v ?? "instruction")}>
+                <SelectTrigger className="w-[140px] shrink-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="instruction">Chỉ dẫn</SelectItem>
+                  <SelectItem value="preference">Sở thích</SelectItem>
+                  <SelectItem value="correction">Sửa đổi</SelectItem>
+                  <SelectItem value="fact">Thông tin</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="block sm:hidden flex-1">
+                <Button
+                  onClick={handleAdd}
+                  disabled={!newContent.trim() || saving}
+                  className="w-full gap-1"
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                  Thêm
+                </Button>
+              </div>
+            </div>
             <Input
               placeholder="Nhập ghi nhớ... (vd: Trả lời ngắn gọn, đi thẳng vào vấn đề)"
               value={newContent}
@@ -188,7 +204,7 @@ export default function SettingsPage() {
             <Button
               onClick={handleAdd}
               disabled={!newContent.trim() || saving}
-              className="shrink-0 gap-1"
+              className="hidden sm:flex shrink-0 gap-1"
             >
               {saving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

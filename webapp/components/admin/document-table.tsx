@@ -222,8 +222,11 @@ export function DocumentTable() {
       if (!session) return;
       try {
         await documentsApi.delete(id);
-        toast.success("Đã xếp hàng xóa tài liệu");
+        toast.success("Tài liệu đã được đánh dấu xóa");
         setDeleteTarget(null);
+        if (viewDoc?.document_id === id) {
+          handleCloseView();
+        }
         fetchDocs();
       } catch (err) {
         toast.error(err instanceof ApiError ? err.detail : "Xóa thất bại");
@@ -263,7 +266,7 @@ export function DocumentTable() {
   return (
     <TooltipProvider>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">Tài liệu</h2>
             <p className="text-sm text-muted-foreground">
@@ -273,16 +276,16 @@ export function DocumentTable() {
           <UploadDialog onUploaded={fetchDocs} />
         </div>
 
-        <div className="rounded-md border">
+        <div className="rounded-md border overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Tên file</TableHead>
-                <TableHead>Loại</TableHead>
-                <TableHead>Dung lượng</TableHead>
+                <TableHead className="min-w-[150px]">Tên file</TableHead>
+                <TableHead className="hidden sm:table-cell">Loại</TableHead>
+                <TableHead className="hidden md:table-cell">Dung lượng</TableHead>
                 <TableHead>Trạng thái</TableHead>
-                <TableHead>Tiến trình</TableHead>
-                <TableHead>Ngày tạo</TableHead>
+                <TableHead className="min-w-[100px]">Tiến trình</TableHead>
+                <TableHead className="hidden lg:table-cell">Ngày tạo</TableHead>
                 <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
@@ -300,13 +303,13 @@ export function DocumentTable() {
               ) : (
                 docs.map((doc) => (
                   <TableRow key={doc.document_id}>
-                    <TableCell className="font-medium max-w-[200px] truncate">
+                    <TableCell className="font-medium max-w-[150px] sm:max-w-[300px] truncate">
                       {doc.file_name}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="text-muted-foreground hidden sm:table-cell">
                       {doc.file_type?.split("/").pop()?.toUpperCase() || "—"}
                     </TableCell>
-                    <TableCell>{formatSize(doc.file_size)}</TableCell>
+                    <TableCell className="hidden md:table-cell">{formatSize(doc.file_size)}</TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-1">
                         <Badge
@@ -357,7 +360,7 @@ export function DocumentTable() {
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
+                    <TableCell className="text-muted-foreground text-xs hidden lg:table-cell">
                       {new Date(doc.created_at).toLocaleDateString("vi-VN")}
                     </TableCell>
                     <TableCell className="text-right">
