@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 from datetime import datetime, timezone
-from sqlalchemy import func, select
+from sqlalchemy import func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DocumentStoreException

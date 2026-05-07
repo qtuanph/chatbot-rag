@@ -83,7 +83,7 @@ Request: multipart form with file payload. Response (202):
 { "task_id": "task-uuid", "status": "queued", "document_id": "doc-uuid" }
 ```
 
-Status lifecycle: uploaded → queued → downloading → parsing → embedding → verifying → ready (or failed).
+Status lifecycle: pending → parsing → embedding → ready (or failed).
 
 ```json
 {
@@ -187,7 +187,7 @@ Memory types: `preference` | `correction` | `instruction` | `fact`. Max 1000 cha
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| GET | `/tree/{document_id}` | JWT | Hierarchical document structure, throttled |
+| GET | `/tree/{document_id}` | JWT | Hierarchical document structure (paginated), throttled. Params: `offset`, `limit` |
 | GET | `/tree/{document_id}/nodes/{node_id}` | JWT | Full node detail with text and metadata, throttled |
 | GET | `/tree/{document_id}/search?query=` | JWT | Search nodes by title/content (query 1-500 chars), throttled |
 

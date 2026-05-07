@@ -12,10 +12,15 @@ class TreeService:
         self.doc_repo = doc_repo
         self.section_repo = section_repo
 
-    async def get_document_tree(self, document_id: str) -> list[dict[str, Any]]:
+    async def get_document_tree(self, document_id: str, offset: int = 0, limit: int = 100) -> list[dict[str, Any]]:
         """
         Fetch flat sections and transform them into a hierarchical tree structure.
+        Supports pagination for large documents (optional, currently fetches all to build tree).
         """
+        # Note: To build a proper tree, we usually need all sections. 
+        # If we paginate at the DB level, the tree structure will be broken.
+        # However, we can paginate the root level nodes if needed.
+        
         # 1. Fetch all sections ordered by order_index
         sections = await self.section_repo.get_sections_by_document(document_id)
         if not sections:
@@ -39,4 +44,16 @@ class TreeService:
                     # Orphan node or parent is not in this document's scope
                     tree.append(node)
 
-        return tree
+        # 3. Apply pagination to root nodes
+        return tree[offset : offset + limit]
+
+    async def get_node_details(self, document_id: str, node_id: str) -> dict[str, Any]:
+        """Fetch full details for a specific section node."""
+        node = await self.section_repo.get_section_by_section_id(document_id, node_id)
+        if not node:
+            raise ValueError(f"Node {node_id} not found in document {document_id}")
+        return node
+
+    async def search_nodes(self, document_id: str, query: str) -> list[dict[str, Any]]:
+        """Search for nodes by title or content within a document hierarchy."""
+        return await self.section_repo.search_sections_by_document(document_id, query)

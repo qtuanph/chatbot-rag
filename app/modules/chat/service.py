@@ -96,19 +96,8 @@ class ChatService:
             user_memories=prepared_chat["user_memories"],
         ):
             full_answer += chunk
-            _stream_buf += chunk
-            # Word-boundary buffering: only yield when buffer ends at a
-            # safe boundary (space, newline, punctuation). This prevents
-            # Vietnamese compound words from appearing concatenated when
-            # BPE tokenizer splits them across streaming chunks.
-            if _stream_buf and _stream_buf[-1] in (" ", "\n", "\t", ".", ",", "!", "?", ";", ":", ")", "]", "}", "…"):
-                yield f"data: {json.dumps({'chunk': _stream_buf, 'done': False})}\n\n"
-                _stream_buf = ""
-
-        # Flush remaining buffer (partial word at end of stream)
-        if _stream_buf:
-            yield f"data: {json.dumps({'chunk': _stream_buf, 'done': False})}\n\n"
-            _stream_buf = ""
+            # Immediate yield to prevent word-concatenation and "stuck" feeling in Vietnamese
+            yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
 
         ai_done_time = _time.monotonic()
         clean_answer = strip_reasoning(full_answer.strip())

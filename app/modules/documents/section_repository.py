@@ -1,32 +1,30 @@
 import logging
+from typing import Any
 
 from sqlalchemy import func, select, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DocumentStoreException
 from app.models.document import DocumentSection
+from app.modules.documents.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
-
-class SectionRepository:
+class SectionRepository(BaseRepository[DocumentSection]):
     """Repository for document sections in PostgreSQL."""
 
     def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+        super().__init__(session, DocumentSection)
 
-    async def store_sections(self, document_id: str, sections: list[dict]) -> list[str]:
-        """Bulk insert sections for a document. Returns list of section DB IDs.
-
-        Uses savepoint so that a failure during insert preserves old sections.
-        """
+    async def store_sections(self, document_id: str, sections: list[dict[str, Any]]) -> list[str]:
+        """Bulk insert sections for a document. Returns list of section DB IDs."""
         try:
-            # Delete old sections
-            await self.session.execute(delete(DocumentSection).where(DocumentSection.document_id == document_id))
+            # Delete old sections first (atomic within outer transaction if applicable)
+            await self.session.execute(delete(self.model).where(self.model.document_id == document_id))
 
             async with self.session.begin_nested() as savepoint:
                 for sec in sections:
-                    db_section = DocumentSection(
+                    db_section = self.model(
                         document_id=document_id,
                         section_id=sec["section_id"],
                         parent_section_id=sec.get("parent_section_id"),
@@ -50,7 +48,7 @@ class SectionRepository:
             await self.session.commit()
 
             # Fetch new IDs
-            stmt = select(DocumentSection.id).where(DocumentSection.document_id == document_id)
+            stmt = select(self.model.id).where(self.model.document_id == document_id)
             result = await self.session.execute(stmt)
             ids = [str(row[0]) for row in result.all()]
 
@@ -58,94 +56,87 @@ class SectionRepository:
             return ids
         except Exception as e:
             await self.session.rollback()
+            logger.error("Failed to store sections for %s: %s", document_id, e, exc_info=True)
             raise DocumentStoreException(
                 f"Failed to store sections for {document_id}: {str(e)}",
                 error_code="SECTION_STORE_FAILED",
             )
 
-    async def get_sections_by_document(self, document_id: str) -> list[dict]:
+    async def get_sections_by_document(self, document_id: str) -> list[dict[str, Any]]:
         """Get all sections for a document, ordered by order_index."""
         stmt = (
-            select(DocumentSection)
-            .where(DocumentSection.document_id == document_id)
-            .order_by(DocumentSection.order_index)
+            select(self.model)
+            .where(self.model.document_id == document_id)
+            .order_by(self.model.order_index)
         )
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
-        return [self._section_to_dict(s) for s in rows]
+        return [self._to_dict(s) for s in rows]
 
     async def get_sections_by_document_paginated(
         self, document_id: str, offset: int = 0, limit: int = 20
-    ) -> tuple[list[dict], int]:
-        """Get sections for a document with DB-level pagination. Returns (sections, total_count)."""
-        count_stmt = select(func.count(DocumentSection.id)).where(DocumentSection.document_id == document_id)
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Get sections for a document with pagination."""
+        count_stmt = select(func.count(self.model.id)).where(self.model.document_id == document_id)
         total = (await self.session.execute(count_stmt)).scalar() or 0
 
         data_stmt = (
-            select(DocumentSection)
-            .where(DocumentSection.document_id == document_id)
-            .order_by(DocumentSection.order_index)
+            select(self.model)
+            .where(self.model.document_id == document_id)
+            .order_by(self.model.order_index)
             .offset(offset)
             .limit(limit)
         )
         rows = (await self.session.execute(data_stmt)).scalars().all()
-        return [self._section_to_dict(s) for s in rows], total
+        return [self._to_dict(s) for s in rows], total
 
-    async def get_sections_by_ids(self, document_id: str, section_ids: list[str]) -> list[dict]:
+    async def get_sections_by_ids(self, document_id: str, section_ids: list[str]) -> list[dict[str, Any]]:
         """Get specific sections by section_id within a document."""
         stmt = (
-            select(DocumentSection)
+            select(self.model)
             .where(
-                DocumentSection.document_id == document_id,
-                DocumentSection.section_id.in_(section_ids),
+                self.model.document_id == document_id,
+                self.model.section_id.in_(section_ids),
             )
-            .order_by(DocumentSection.order_index)
+            .order_by(self.model.order_index)
         )
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
-        return [self._section_to_dict(s) for s in rows]
+        return [self._to_dict(s) for s in rows]
 
-    async def get_section_by_section_id(self, document_id: str, section_id: str) -> dict | None:
-        """Get a single section by section_id within a document."""
-        stmt = select(DocumentSection).where(
-            DocumentSection.document_id == document_id,
-            DocumentSection.section_id == section_id,
+    async def get_section_by_section_id(self, document_id: str, section_id: str) -> dict[str, Any] | None:
+        """Get a single section by section_id."""
+        stmt = select(self.model).where(
+            self.model.document_id == document_id,
+            self.model.section_id == section_id,
         )
         result = await self.session.execute(stmt)
         row = result.scalar_one_or_none()
-        return self._section_to_dict(row) if row else None
+        return self._to_dict(row) if row else None
 
-    async def search_sections_by_document(self, document_id: str, query: str) -> list[dict]:
-        """Search sections by title or content within a document."""
+    async def search_sections_by_document(self, document_id: str, query: str) -> list[dict[str, Any]]:
+        """Search sections by title or content."""
         escaped = query.replace("%", r"\%").replace("_", r"\_")
         pattern = f"%{escaped}%"
         stmt = (
-            select(DocumentSection)
+            select(self.model)
             .where(
-                DocumentSection.document_id == document_id,
-                (DocumentSection.title.ilike(pattern) | DocumentSection.content.ilike(pattern)),
+                self.model.document_id == document_id,
+                (self.model.title.ilike(pattern) | self.model.content.ilike(pattern)),
             )
-            .order_by(DocumentSection.order_index)
+            .order_by(self.model.order_index)
         )
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
-        return [self._section_to_dict(s) for s in rows]
-
-    async def count_by_document(self, document_id: str) -> int:
-        """Count sections for a document."""
-        stmt = select(func.count(DocumentSection.id)).where(DocumentSection.document_id == document_id)
-        result = await self.session.execute(stmt)
-        return result.scalar() or 0
+        return [self._to_dict(s) for s in rows]
 
     async def delete_sections(self, document_id: str) -> int:
         """Delete all sections for a document."""
         try:
-            stmt = delete(DocumentSection).where(DocumentSection.document_id == document_id)
+            stmt = delete(self.model).where(self.model.document_id == document_id)
             result = await self.session.execute(stmt)
             await self.session.commit()
-            count = result.rowcount
-            logger.info("Deleted %d sections for document %s", count, document_id)
-            return count
+            return result.rowcount
         except Exception as e:
             await self.session.rollback()
             raise DocumentStoreException(
@@ -153,16 +144,15 @@ class SectionRepository:
                 error_code="SECTION_DELETE_FAILED",
             )
 
-    async def get_sections_for_rag(self, section_doc_pairs: list[tuple[str, str]]) -> list[dict]:
-        """Get sections by (document_id, section_id) pairs for RAG retrieval."""
+    async def get_sections_for_rag(self, section_doc_pairs: list[tuple[str, str]]) -> list[dict[str, Any]]:
+        """Get sections by (document_id, section_id) pairs for RAG."""
         if not section_doc_pairs:
             return []
 
         conditions = [
-            (DocumentSection.document_id == doc_id) & (DocumentSection.section_id == sec_id)
+            (self.model.document_id == doc_id) & (self.model.section_id == sec_id)
             for doc_id, sec_id in section_doc_pairs
         ]
-        stmt = select(DocumentSection).where(or_(*conditions))
         stmt = select(self.model).where(or_(*conditions))
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
@@ -175,8 +165,8 @@ class SectionRepository:
         rows = result.all()
         return {str(row[0]) for row in rows}
 
-    def _to_dict(self, section: DocumentSection) -> dict:
-        """Override to match exact schema from DocumentSection."""
+    def _to_dict(self, section: DocumentSection) -> dict[str, Any]:
+        """Custom override for DocumentSection conversion."""
         if section is None:
             return {}
         data = super()._to_dict(section)

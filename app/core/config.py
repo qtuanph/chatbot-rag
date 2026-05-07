@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     retrieval_bm25_b: float = 0.75  # BM25 length normalization
     retrieval_bm25_vocab_ttl: float = 120.0
 
+    # Context Expansion (Soi sáng)
+    retrieval_context_expansion_window: int = 1  # Number of neighboring nodes to fetch (before & after)
+
     # Cross-encoder reranker — off by default (full section context makes LLM self-rank effectively)
     retrieval_rerank_enabled: bool = False
     retrieval_rerank_top_k: int = 5  # Final number of chunks after reranking

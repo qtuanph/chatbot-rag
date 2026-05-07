@@ -211,6 +211,10 @@ class RetrievalService:
             except Exception as e:
                 logger.warning("Reranking failed: %s", e)
 
+        # ── Stage 2.6: "Soi sáng" (Neighboring Node Expansion) ───────────────
+        if settings.retrieval_context_expansion_window > 0 and deduped_results:
+            deduped_results = await self._expand_neighbor_nodes(vs, deduped_results[:limit])
+
         rag_sections: list[RagSection] = []
         seen_sec_ids: set[str] = set()
 
@@ -272,3 +276,91 @@ class RetrievalService:
             )
 
         return RagContext(nodes=nodes, sections=rag_sections if rag_sections else None)
+
+    async def _expand_neighbor_nodes(
+        self, vs: QdrantVectorStore, seed_results: list[RetrievedDocument]
+    ) -> list[RetrievedDocument]:
+        """
+        Expand a set of seed nodes by fetching their neighbors (before/after).
+        This provides a continuous context window for the LLM.
+        """
+        window = settings.retrieval_context_expansion_window
+        if not window or not seed_results:
+            return seed_results
+
+        expanded_map: dict[str, RetrievedDocument] = {r.node_id: r for r in seed_results}
+        
+        # Identify documents and their order ranges
+        # document_id -> (min_order, max_order)
+        doc_ranges: dict[str, set[int]] = {}
+        for r in seed_results:
+            doc_id = r.document_id
+            order = r.metadata.get("order", 0)
+            if doc_id not in doc_ranges:
+                doc_ranges[doc_id] = set()
+            for o in range(max(0, order - window), order + window + 1):
+                doc_ranges[doc_id].add(o)
+
+        # Fetch neighbors in parallel per document
+        async def fetch_doc_neighbors(doc_id: str, orders: set[int]) -> list[RetrievedDocument]:
+            try:
+                # Build Qdrant filter for the specific document and orders
+                # Note: scroll doesn't support complex range+match well in one go, 
+                # but we can filter by document_id and then filter results in-memory
+                # or use multiple scroll calls if needed.
+                # Optimization: Fetch all points for this document within the min/max order range
+                from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
+                
+                min_o, max_o = min(orders), max(orders)
+                neighbor_filter = Filter(
+                    must=[
+                        FieldCondition(key="document_id", match=MatchValue(value=doc_id)),
+                        FieldCondition(key="order", range=Range(gte=min_o, lte=max_o))
+                    ]
+                )
+                
+                points, _ = await vs.scroll(
+                    query_filter={"must": [{"key": "document_id", "match": {"value": doc_id}}]}, # Simple filter
+                    limit=100, # Assuming a section doesn't have >100 nodes in the window
+                    with_payload=True
+                )
+                
+                # Manual filter for order since our vs.scroll is simplified
+                neighbors = []
+                for p in points:
+                    p_order = p["payload"].get("order") or p["payload"].get("metadata", {}).get("order", 0)
+                    if p_order in orders:
+                        neighbors.append(
+                            RetrievedDocument(
+                                node_id=str(p["payload"].get("node_id", p["id"])),
+                                document_id=str(p["payload"].get("document_id", doc_id)),
+                                text=str(p["payload"].get("text", "")),
+                                score=0.0, # Neighbors don't have search scores
+                                metadata={
+                                    "page_number": p["payload"].get("page_number"),
+                                    "section_title": p["payload"].get("section_title"),
+                                    "section_content": p["payload"].get("section_content", ""),
+                                    "order": p_order,
+                                    "breadcrumb": p["payload"].get("breadcrumb", []),
+                                    "custom": p["payload"].get("metadata", {}),
+                                },
+                            )
+                        )
+                return neighbors
+            except Exception as e:
+                logger.error("Failed to fetch neighbors for doc %s: %s", doc_id, e)
+                return []
+
+        all_neighbors_nested = await asyncio.gather(*[fetch_doc_neighbors(did, o) for did, o in doc_ranges.items()])
+        
+        for neighbor_list in all_neighbors_nested:
+            for n in neighbor_list:
+                if n.node_id not in expanded_map:
+                    expanded_map[n.node_id] = n
+
+        # Final step: Sort by document and then order to ensure linear reading
+        final_results = list(expanded_map.values())
+        final_results.sort(key=lambda x: (x.document_id, x.metadata.get("order", 0)))
+        
+        logger.info("[RAG-EXPANSION] Expanded %d seeds into %d nodes", len(seed_results), len(final_results))
+        return final_results

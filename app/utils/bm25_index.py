@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Any
 
 from app.adapters.sparse_embeddings.vietnamese_bm25 import VietnameseBM25Encoder
@@ -8,20 +9,45 @@ logger = logging.getLogger(__name__)
 
 
 class BM25Manager:
-    """Helper to manage BM25 encoder lifecycle with Redis."""
+    """
+    Helper to manage BM25 encoder lifecycle with Redis.
+    Uses a TTL-cached Singleton pattern to handle 200+ CCU without Redis bottleneck.
+    """
+    _instance: VietnameseBM25Encoder | None = None
+    _last_load_time: float = 0
+    _ttl: int = 120  # Cache vocabulary in memory for 2 minutes
 
-    @staticmethod
-    def get_encoder(redis_client: Any) -> VietnameseBM25Encoder:
-        """Get encoder and load vocab synchronously."""
-        encoder = VietnameseBM25Encoder(redis_client=redis_client)
-        encoder.load_sync()
-        return encoder
+    @classmethod
+    async def get_encoder_async(cls, redis_client: Any) -> VietnameseBM25Encoder:
+        """Get encoder and load vocab asynchronously with in-memory caching."""
+        current_time = time.time()
+        
+        # Check if we can reuse the singleton
+        if cls._instance and (current_time - cls._last_load_time < cls._ttl):
+            return cls._instance
 
-    @staticmethod
-    async def get_encoder_async(redis_client: Any) -> VietnameseBM25Encoder:
-        """Get encoder and load vocab asynchronously."""
+        # Load fresh or initialize
+        logger.info("[PERF] Loading BM25 vocabulary into in-memory singleton...")
         encoder = VietnameseBM25Encoder(redis_client=redis_client)
         await encoder.load_async()
+        
+        cls._instance = encoder
+        cls._last_load_time = current_time
+        return encoder
+
+    @classmethod
+    def get_encoder(cls, redis_client: Any) -> VietnameseBM25Encoder:
+        """Get encoder and load vocab synchronously (for workers)."""
+        current_time = time.time()
+        
+        if cls._instance and (current_time - cls._last_load_time < cls._ttl):
+            return cls._instance
+
+        encoder = VietnameseBM25Encoder(redis_client=redis_client)
+        encoder.load_sync()
+        
+        cls._instance = encoder
+        cls._last_load_time = current_time
         return encoder
 
 
@@ -72,10 +98,8 @@ async def build_bm25_index_from_qdrant(redis_client: Any) -> int:
         return 0
 
     # Stage 2: Tokenize and build vocab
-    # This can be CPU heavy, but for smaller/medium datasets it's fine
     for i, text in enumerate(all_texts):
-        encoder.tokenize(text)  # Populate internal Counter if we had one, but our encoder builds on the fly
-        # In our case, encode() actually populates the vocab
+        encoder.tokenize(text)
         encoder.encode(text)
 
         if i % 1000 == 0:

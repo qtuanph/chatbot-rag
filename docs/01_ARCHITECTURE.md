@@ -22,6 +22,7 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | Reranker | AITeamVN/Vietnamese_Reranker (Remote via AI-Engine) |
 | AI Provider | Google AI Gemma (singleton via lru_cache) |
 | Ingestion | Docling + PaddleOCR + Contextualizer (Global Vision) + DuplicateDetector (Bloom) |
+| BM25 Manager | BM25Manager (class-level Singleton with 120s TTL) |
 | Reverse proxy | nginx on port 80 (SSE, NextAuth, API, Rate Limited) |
 
 ## Storage Split
@@ -135,9 +136,9 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | Queue | API → Redis → Worker | Async task, task_id returned (202) |
 | Parse | Worker → Docling Method D + PaddleOCR (force_full_page_ocr=True) → sections + chunks | Items with page spans, heading levels |
 | Store | SectionRepository → PostgreSQL → Embed → Qdrant | document_sections rows + vectors |
-| Retrieve | SemanticCache (similarity match) → exact cache → hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → full section context assembly |
+| Retrieve | SemanticCache (similarity match) → exact cache → hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → Neighbor Expansion (Soi sáng) → full section context assembly |
 | Memory | UserMemoryService (redis_client shared pool) → Redis cache → inject systemInstruction | Personalized prompt |
-| Stream | ChatService → AI provider adapter → strip_reasoning() → SSE → Browser | Grounded answer with citations |
+| Stream | ChatService → AI provider adapter → Immediate Yield (no buffering) → strip_reasoning() → SSE → Browser | Grounded answer with citations |
 | Persist | Post-stream → `ChatService.save_assistant_message()` → MessagePack binary storage in Redis | Fast persistence |
 | Audit | safe_record_audit → Redis Stream (XADD) → AuditStreamWorker → PostgreSQL | Decoupled logging |
 | Extract | Post-response → Celery extract_memories_task → user_memories | Durable memory extraction |
@@ -150,7 +151,7 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | Async ingestion | Upload must never block on parsing |
 | Provider boundary | Route handlers never call provider factories, provider adapters, or provider SDKs directly. Chat routes delegate generation orchestration to `ChatService`; `ChatService` may use provider adapters. |
 | ID-first boundaries | Cross-layer/service/worker payloads pass stable IDs and URIs. Rich objects are rehydrated inside the owning layer. |
-| Hierarchical retrieval | Retrieve at chunk level, present at section level (full section content to LLM) |
+| Hierarchical retrieval | Retrieve at chunk level, present at section level (full section context to LLM) with Neighbor Expansion |
 | Citation policy | Every grounded answer includes citations |
 | Delete policy | Hard-delete 6-step order (see below) |
 | Version policy | Latest active version preferred during retrieval |
@@ -253,7 +254,7 @@ Gemma 4 outputs chain-of-thought by default. 4 suppression layers:
 | TIGHT | VRAM < 6GB | 1 | 20+20 | 50 | 50+ |
 | PROD | VRAM ≥ 6GB | 4-8 | 100+20 | 100+ | 200+ |
 
-VRAM headroom = total VRAM − 2GB. TIGHT uses 1 worker to prevent OOM. PROD scales connection pools for high-concurrency chatbot workloads.
+VRAM headroom = total VRAM − 2GB. TIGHT uses 1 worker to prevent OOM. PROD scales connection pools for high-concurrency chatbot workloads. High CCU is supported by BM25 Singleton (RAM caching) and Immediate Yield streaming.
 
 ## Celery Configuration
 

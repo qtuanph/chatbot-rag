@@ -12,12 +12,13 @@
       "06_NAMING_CONVENTIONS.md": "Variable, function, class, file naming standards"
     }
   },
-  "v4_performance_tier": {
+  "v0.1_performance_features": {
     "semantic_cache": "Similarity match > 98% (dist < 0.02) via Redis Vector Search (Async)",
     "binary_history": "MessagePack serialization for sub-millisecond chat hydration",
     "decoupled_audit": "XADD stream logging (<1ms) with background AuditStreamWorker",
     "bloom_duplicate": "BF.EXISTS check for O(1) document upload skipping (Redis 8.8)",
-    "cpu_offloading": "Strict asyncio.to_thread usage for OCR, Tokenization, and Embedding to prevent loop blocking"
+    "cpu_offloading": "Strict asyncio.to_thread usage for OCR, Tokenization, and Embedding to prevent loop blocking",
+    "bm25_singleton": "TTL-cached vocabulary in RAM (120s) to handle high concurrency without Redis bottlenecks"
   },
   "core_invariants": [
     {
@@ -25,8 +26,8 @@
       "rule": "Upload returns task_id immediately. Parsing/indexing runs asynchronously via Celery workers."
     },
     {
-      "name": "four_stage_retrieval",
-      "rule": "Hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → dedup → rerank (optional, off by default) → full section context assembly. Retrieve at chunk level, present full section content to LLM. Multi-query expansion opt-in. Doc IDs TTL-cached 60s."
+      "name": "five_stage_retrieval",
+      "rule": "Hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → dedup → rerank (optional) → Neighbor Expansion (Soi sáng) → full section context assembly. Retrieve at chunk level, present expanded section context to LLM. Doc IDs TTL-cached 60s."
     },
     {
       "name": "hard_delete_order",
@@ -45,15 +46,15 @@
       "rule": "Routes never call provider factories, adapters, or SDKs. ChatService owns AI orchestration; routes own the HTTP response shell."
     },
     {
-      "name": "v4_speed_layer",
-      "rule": "Semantic Cache (Redis) → MessagePack History → Hybrid Search → Audit Stream. All high-frequency IO is non-blocking or cached."
+      "name": "v0.1_speed_layer",
+      "rule": "Semantic Cache (Redis) → MessagePack History → Hybrid Search → Audit Stream → BM25 Singleton. All high-frequency IO is non-blocking or cached."
     }
   ],
   "data_location_map": [
     { "data": "sections", "storage": "PostgreSQL 18.3", "table": "document_sections", "notes": "Canonical order source (order_index). Accessed via AsyncSession." },
     { "data": "chunks", "storage": "Qdrant 1.17.1", "notes": "~400 token chunks with section_id metadata. Named dense + sparse-bm25 vectors. AsyncQdrantClient." },
-    { "data": "bm25_vocab", "storage": "disk", "notes": "data/bm25_vocab.json — rebuilt asynchronously via build_bm25_index_from_qdrant_async()." },
-    { "data": "documents", "storage": "PostgreSQL 18.3", "table": "documents", "notes": "status: pending→processing→ready/failed. Async DB access." },
+    { "data": "bm25_vocab", "storage": "Redis + RAM", "notes": "Singleton BM25Manager with 120s TTL. Vocabulary loaded from Redis and cached in-memory." },
+    { "data": "documents", "storage": "PostgreSQL 18.3", "table": "documents", "notes": "status: pending→parsing→embedding→ready/failed. Async DB access." },
     { "data": "chat_messages", "storage": "PostgreSQL + Redis 8.8", "notes": "DB persisted; Redis hot cache uses MessagePack binary serialization for speed/RAM." },
     { "data": "chat_sessions", "storage": "PostgreSQL 18.3", "table": "chat_sessions", "notes": "Hard-deleted after 30 days by Celery Beat. Sidebar ordered by updated_at DESC." },
     { "data": "uploaded_files", "storage": "RustFS", "notes": "S3-compatible; operations wrapped in asyncio.to_thread." },

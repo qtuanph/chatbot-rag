@@ -101,13 +101,21 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                     section_repo=section_repo,
                 )
 
-                def _progress_callback(stage: str, percent: int, message: str = ""):
-                    # Sync call to update status via a separate sync redis or just wait
-                    # NOTE: doc_repo.update_status is async, so we can't call it here directly if we want sync.
-                    # Instead, we rely on the fact that IngestionService calls this via to_thread.
+                async def _progress_callback(stage: str, percent: int, message: str = ""):
+                    """Async callback to update DB status during pipeline execution."""
                     logger.info("[%s] Progress: %d%% - %s", document_id, percent, message)
-                    # NOTE: doc_repo.update_status is async, so we can't call it here directly if we want sync.
-                    # Instead, we rely on the fact that IngestionService calls this via to_thread.
+                    try:
+                        # Create a fresh session or use existing if thread-safe
+                        # Since we are in the same async block, we can use the existing session
+                        await doc_repo.update_status(
+                            document_id,
+                            status="processing",
+                            stage=stage,
+                            progress_percent=percent,
+                            status_message=message
+                        )
+                    except Exception as status_err:
+                        logger.warning("[%s] Failed to update progress in DB: %s", document_id, status_err)
 
                 # Core Ingestion (The only truly async part)
                 ingestion_result = await pipeline.ingest(

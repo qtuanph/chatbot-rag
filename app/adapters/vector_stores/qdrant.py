@@ -217,6 +217,7 @@ class QdrantVectorStore(BaseVectorStore):
                     "section_title": node.section_title,
                     "parent_id": node.parent_id,
                     "node_type": node.node_type,
+                    "order": node.order,
                     "metadata": node.metadata or {},
                     # Enhanced RAG fields: Store the full section context here
                     "section_content": node.metadata.get("section_content", ""),
@@ -355,6 +356,7 @@ class QdrantVectorStore(BaseVectorStore):
                         "page_number": p.payload.get("page_number"),
                         "section_title": p.payload.get("section_title"),
                         "section_content": p.payload.get("section_content", ""),
+                        "order": p.payload.get("order") or p.payload.get("metadata", {}).get("order", 0),
                         "breadcrumb": p.payload.get("breadcrumb", []),
                         "custom": p.payload.get("metadata", {}),
                     },
@@ -416,6 +418,7 @@ class QdrantVectorStore(BaseVectorStore):
                                 "page_number": point.payload.get("page_number"),
                                 "section_title": point.payload.get("section_title"),
                                 "section_content": point.payload.get("section_content", ""),
+                                "order": point.payload.get("order") or point.payload.get("metadata", {}).get("order", 0),
                                 "breadcrumb": point.payload.get("breadcrumb", []),
                                 "custom": point.payload.get("metadata", {}),
                             },

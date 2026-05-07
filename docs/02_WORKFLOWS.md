@@ -4,7 +4,7 @@ Detailed step-by-step logic for the primary system workflows.
 
 ## 1. Document Ingestion Workflow (Admin Only)
 
-The 14-step pipeline for turning raw files into searchable vectors. Runs in `node-ingestion` (solo pool).
+The 13-step pipeline for turning raw files into searchable vectors. Runs in `node-ingestion` (solo pool).
 
 ```mermaid
 sequenceDiagram
@@ -77,7 +77,7 @@ sequenceDiagram
         Note over Retriever: Bypasses Qdrant & Embedding logic
     else Cache MISS
         Retriever->>Qdrant: hybrid search (dense + BM25 RRF fusion)
-        Retriever->>Retriever: section grouping & context assembly
+        Retriever->>Retriever: section grouping & neighbor expansion (Soi sáng)
         Retriever->>Cache: semantic_cache.set(result)
     end
 
@@ -94,7 +94,7 @@ sequenceDiagram
 | **Exact Cache** | Redis exact match check on raw query text for sub-millisecond response |
 | **Binary Serialization** | Chat history stored using **MessagePack** for extreme speed and low RAM |
 | Doc ID cache | TTL-cached 60s, invalidated on upload/delete |
-| 4-stage retrieval | Hybrid search → section grouping (≥0.30) → context assembly → citations |
+| 5-stage retrieval | Hybrid search → section grouping (≥0.30) → Neighbor Expansion → context assembly → citations |
 | Thinking suppressed | 4 layers: thinkingConfig MINIMAL + thought:true filter + ThoughtFilter + strip_reasoning() |
 | Rate limiting | **Sliding Window (Redis Lua)** — 30 req/min per user |
 
@@ -123,7 +123,7 @@ sequenceDiagram
     Cleanup->>Registry: registry.purge()
 ```
 
-## 4. Decoupled Audit Logging (New in V4)
+## 4. Decoupled Audit Logging
 
 High-concurrency logging that never blocks the user.
 

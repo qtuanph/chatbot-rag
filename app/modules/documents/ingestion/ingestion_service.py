@@ -95,7 +95,10 @@ class IngestionService:
         async def report(stage: str, percent: int, message: str = "") -> None:
             if progress_callback:
                 try:
-                    await asyncio.to_thread(progress_callback, stage, percent, message)
+                    if asyncio.iscoroutinefunction(progress_callback):
+                        await progress_callback(stage, percent, message)
+                    else:
+                        await asyncio.to_thread(progress_callback, stage, percent, message)
                 except Exception as cb_exc:
                     logger.warning("[%s] Progress callback error: %s", document_id, cb_exc)
 
