@@ -36,6 +36,7 @@ from app.adapters.base import (
     IngestedNode,
     RetrievedDocument,
 )
+from app.core.config import settings
 from app.core.exceptions import (
     VectorStoreOperationException,
 )
@@ -418,7 +419,8 @@ class QdrantVectorStore(BaseVectorStore):
                                 "page_number": point.payload.get("page_number"),
                                 "section_title": point.payload.get("section_title"),
                                 "section_content": point.payload.get("section_content", ""),
-                                "order": point.payload.get("order") or point.payload.get("metadata", {}).get("order", 0),
+                                "order": point.payload.get("order")
+                                or point.payload.get("metadata", {}).get("order", 0),
                                 "breadcrumb": point.payload.get("breadcrumb", []),
                                 "custom": point.payload.get("metadata", {}),
                             },

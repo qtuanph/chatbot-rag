@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Any
 
 import boto3
 from botocore.client import Config
@@ -13,6 +14,11 @@ from app.core.config import settings
 class ObjectStorage(ABC):
     @abstractmethod
     def save_bytes(self, document_id: str, filename: str, content: bytes) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_fileobj(self, document_id: str, filename: str, fileobj: Any) -> str:
+        """Save a file-like object (stream) to storage."""
         raise NotImplementedError
 
     @abstractmethod
@@ -57,6 +63,18 @@ class S3ObjectStorage(ObjectStorage):
             Key=object_name,
             Body=content,
             ContentType="application/octet-stream",
+        )
+        return f"s3://{self.bucket}/{object_name}"
+
+    def save_fileobj(self, document_id: str, filename: str, fileobj: Any) -> str:
+        self._ensure_bucket()
+        object_name = f"{document_id}/{self._sanitize_filename(filename)}"
+        # Use upload_fileobj for efficient streaming (handles multi-part automatically)
+        self.client.upload_fileobj(
+            Fileobj=fileobj,
+            Bucket=self.bucket,
+            Key=object_name,
+            ExtraArgs={"ContentType": "application/octet-stream"},
         )
         return f"s3://{self.bucket}/{object_name}"
 

@@ -55,7 +55,11 @@ def _detect_gpu_info() -> tuple[int, float]:
             info = pynvml.nvmlDeviceGetMemoryInfo(handle)
             return count, round(info.total / 1024**3, 1)
     except Exception as e:
-        logger.warning("NVML detection failed, falling back to torch: %s", e)
+        if "NVML Shared Library Not Found" in str(e):
+            logger.info("No NVIDIA GPU detected (NVML library not found), falling back to CPU/torch logic.")
+        else:
+            logger.info("NVML detection failed, falling back to torch: %s", e)
+        
         if torch.cuda.is_available():
             return torch.cuda.device_count(), round(torch.cuda.get_device_properties(0).total_memory / 1024**3, 1)
     return 0, 0.0

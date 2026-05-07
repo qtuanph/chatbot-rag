@@ -13,6 +13,7 @@ class BM25Manager:
     Helper to manage BM25 encoder lifecycle with Redis.
     Uses a TTL-cached Singleton pattern to handle 200+ CCU without Redis bottleneck.
     """
+
     _instance: VietnameseBM25Encoder | None = None
     _last_load_time: float = 0
     _ttl: float = settings.bm25_singleton_ttl
@@ -21,7 +22,7 @@ class BM25Manager:
     async def get_encoder_async(cls, redis_client: Any) -> VietnameseBM25Encoder:
         """Get encoder and load vocab asynchronously with in-memory caching."""
         current_time = time.time()
-        
+
         # Check if we can reuse the singleton
         if cls._instance and (current_time - cls._last_load_time < cls._ttl):
             return cls._instance
@@ -30,7 +31,7 @@ class BM25Manager:
         logger.info("[PERF] Loading BM25 vocabulary into in-memory singleton...")
         encoder = VietnameseBM25Encoder(redis_client=redis_client)
         await encoder.load_async()
-        
+
         cls._instance = encoder
         cls._last_load_time = current_time
         return encoder
@@ -39,13 +40,13 @@ class BM25Manager:
     def get_encoder(cls, redis_client: Any) -> VietnameseBM25Encoder:
         """Get encoder and load vocab synchronously (for workers)."""
         current_time = time.time()
-        
+
         if cls._instance and (current_time - cls._last_load_time < cls._ttl):
             return cls._instance
 
         encoder = VietnameseBM25Encoder(redis_client=redis_client)
         encoder.load_sync()
-        
+
         cls._instance = encoder
         cls._last_load_time = current_time
         return encoder

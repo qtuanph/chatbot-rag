@@ -26,9 +26,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class IngestionResult:
     """Result of ingestion pipeline."""
+
     success: bool
     document_id: str
     node_count: int
@@ -41,9 +43,11 @@ class IngestionResult:
     warnings: list[str] = field(default_factory=list)
     duration_ms: float = 0.0
 
+
 @dataclass
 class PipelineContext:
     """Shared state between pipeline steps."""
+
     filename: str
     content: bytes
     document_id: str
@@ -57,7 +61,9 @@ class PipelineContext:
     warnings: list[str] = field(default_factory=list)
     start_time: float = field(default_factory=time.time)
 
+
 ProgressCallback = Callable[[str, int, str], Any]
+
 
 class IngestionService:
     """
@@ -91,7 +97,7 @@ class IngestionService:
     ) -> IngestionResult:
         """Main entry point for ingestion."""
         ctx = PipelineContext(filename, content, document_id, user_id)
-        
+
         async def report(stage: str, percent: int, message: str = "") -> None:
             if progress_callback:
                 try:
@@ -105,21 +111,21 @@ class IngestionService:
         try:
             # ── Step 1: Parse & Refine ──
             await self._parse_step(ctx, report)
-            
+
             # ── Step 2: Validate ──
             await self._validate_step(ctx, report)
-            
+
             # ── Step 3: Store Sections ──
             await self._store_sections_step(ctx, report)
-            
+
             # ── Step 4: Contextualize ──
             await self._enrich_step(ctx, report)
-            
+
             # ── Step 5: Embed & Index ──
             await self._vector_index_step(ctx, report)
 
             duration_ms = (time.time() - ctx.start_time) * 1000
-            
+
             # Success logic (re-used threshold from original code)
             n_nodes = len(ctx.nodes)
             error_threshold = max(1, int(n_nodes * 0.5 / settings.ingestion_embedding_chunk_size)) if n_nodes > 0 else 1
@@ -167,15 +173,15 @@ class IngestionService:
         """Parse document and refine text."""
         await report("parsing", 5, f"Parsing {ctx.filename} using Docling...")
         nodes, metadata = await self.parser.parse(ctx.filename, ctx.content, document_id=ctx.document_id)
-        
+
         await report("parsing", 25, "Cleaning and refining extracted text...")
         ctx.nodes = await asyncio.to_thread(rule_based_refiner.refine_nodes, nodes)
-        
+
         sections_data = getattr(metadata, "sections_data", None) or []
         if sections_data:
             sections_data = await asyncio.to_thread(rule_based_refiner.refine_sections, sections_data)
             metadata.sections_data = sections_data
-        
+
         ctx.parse_metadata = metadata
 
     async def _validate_step(self, ctx: PipelineContext, report: ProgressCallback) -> None:
@@ -183,7 +189,7 @@ class IngestionService:
         await report("parsing", 35, "Validating document hierarchy...")
         report_data = await asyncio.to_thread(self.validator.validate, ctx.nodes)
         ctx.validation_report = report_data
-        
+
         if not report_data.is_valid:
             ctx.errors.extend(report_data.errors)
             ctx.warnings.extend(report_data.warnings)
@@ -215,6 +221,7 @@ class IngestionService:
         """Contextual enrichment for chunks."""
         await report("parsing", 39, "Enriching chunks with document-level context...")
         from app.utils.contextualizer import Contextualizer
+
         contextualizer = Contextualizer()
         ctx.nodes = await asyncio.to_thread(contextualizer.contextualize, ctx.filename, ctx.nodes)
 
@@ -225,8 +232,9 @@ class IngestionService:
 
         chunk_size = settings.ingestion_embedding_chunk_size
         n_chunks = math.ceil(len(ctx.nodes) / chunk_size) or 1
-        
+
         from app.utils.bm25_index import get_async_bm25_encoder
+
         bm25_encoder = await get_async_bm25_encoder(self.redis)
 
         concurrency = max(1, min(settings.ingestion_embed_parallelism or hardware.embed_parallelism, 4))
@@ -256,7 +264,8 @@ class IngestionService:
 
         tasks = []
         for idx, start in enumerate(range(0, len(ctx.nodes), chunk_size)):
-            tasks.append(_process(idx, ctx.nodes[start : start + chunk_size]))
+            end = start + chunk_size
+            tasks.append(_process(idx, ctx.nodes[start:end]))
 
         await asyncio.gather(*tasks)
         await bm25_encoder.save_async()

@@ -10,6 +10,7 @@ import os
 import tempfile
 import re
 import asyncio
+from app.core.config import settings
 
 from app.adapters.base import (
     BaseParser,
@@ -135,8 +136,7 @@ class DoclingParser(BaseParser):
                 # Configurable timeout for massive PDFs/OCR tasks (default 1 hour)
                 try:
                     result = await asyncio.wait_for(
-                        asyncio.to_thread(self.converter.convert, tmp_path), 
-                        timeout=settings.ingestion_parsing_timeout
+                        asyncio.to_thread(self.converter.convert, tmp_path), timeout=settings.ingestion_parsing_timeout
                     )
                 except asyncio.TimeoutError:
                     logger.exception("Docling+PaddleOCR conversion TIMED OUT for %s", filename)
@@ -403,7 +403,8 @@ class DoclingParser(BaseParser):
                         )
 
                     try:
-                        # Use docling's native markdown export for tables if available, else fallback to our manual converter
+                        # Use docling's native markdown export for tables if available,
+                        # else fallback to our manual converter
                         table_md = (
                             item.export_to_markdown()
                             if hasattr(item, "export_to_markdown")

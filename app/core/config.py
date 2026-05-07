@@ -1,6 +1,8 @@
 from functools import lru_cache
 import logging
+from typing import Any
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -14,6 +16,7 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     api_v1_prefix: str = "/api/v1"
+    api_timeout_keep_alive: int = 75
     ai_engine_url: str = "http://ai-engine:8000"
     log_level: str = "INFO"
 
@@ -36,7 +39,24 @@ class Settings(BaseSettings):
     # Embedding pipeline tuning — 0 means auto-detect from hardware profile
     ingestion_min_quality_score: float = 0.5
     ingestion_parsing_timeout: int = 3600  # Default 1 hour for large OCR tasks
-    ingestion_ocr_languages: list[str] = ["vi", "en"]
+    ingestion_ocr_languages: Any = ["vi", "en"]
+
+    @field_validator("ingestion_ocr_languages", mode="before")
+    @classmethod
+    def parse_ocr_languages(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            # Support both JSON list "['vi', 'en']" and comma-separated "vi,en"
+            v = v.strip()
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    import json
+
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [lang.strip() for lang in v.split(",") if lang.strip()]
+        return v
+
     ingestion_embedding_chunk_size: int = 32  # nodes per embed+store batch
     ingestion_embed_parallelism: int = 0  # 0 = use hardware.embed_parallelism
 
@@ -93,11 +113,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
 
-    max_upload_size_mb: int = 50
+    max_upload_size_mb: int = 2048
 
     # Allowed file types for upload (MIME types)
     allowed_file_types: str = (
-        "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,application/vnd.ms-excel,application/msword"
+        "application/pdf,"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document,"
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,"
+        "text/plain,application/vnd.ms-excel,application/msword"
     )
     max_filename_length: int = 255
 
@@ -117,9 +140,8 @@ class Settings(BaseSettings):
 
     # Embedding — local/offline, on-premise
     embedding_model: str = "sentence-transformer"
-    embedding_hf_model: str = (
-        "AITeamVN/Vietnamese_Embedding_v2"  # 1024-dim, 8192 tokens, built-in Normalize layer, Vietnamese fine-tuned BGE-M3
-    )
+    # 1024-dim, 8192 tokens, built-in Normalize layer, Vietnamese fine-tuned BGE-M3
+    embedding_hf_model: str = "AITeamVN/Vietnamese_Embedding_v2"
     embedding_vector_size: int = 1024
     embedding_query_prefix: str = ""
     embedding_passage_prefix: str = ""
@@ -161,7 +183,7 @@ class Settings(BaseSettings):
     celery_max_retries: int = 3  # Max retry attempts for transient failures
 
     # Rate limiting — global middleware
-    rate_limit_global_rpm: int = 300  # Global requests per minute across all users
+    rate_limit_global_rpm: int = 5000  # Increased for 200 CCU support
 
     # Audit Stream (Redis XADD)
     audit_stream_name: str = "audit:stream"
@@ -222,8 +244,8 @@ class Settings(BaseSettings):
         self.qdrant_url = str(self.qdrant_url).strip() or "http://qdrant:6333"
         if self.qdrant_timeout < 1:
             raise ValueError("QDRANT_TIMEOUT must be >= 1")
-        if self.max_upload_size_mb < 1 or self.max_upload_size_mb > 500:
-            raise ValueError("MAX_UPLOAD_SIZE_MB must be between 1 and 500")
+        if self.max_upload_size_mb < 1 or self.max_upload_size_mb > 4096:
+            raise ValueError("MAX_UPLOAD_SIZE_MB must be between 1 and 4096")
         if self.max_filename_length < 20 or self.max_filename_length > 512:
             raise ValueError("MAX_FILENAME_LENGTH must be between 20 and 512")
         if not self.allowed_file_types:

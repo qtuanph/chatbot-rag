@@ -38,22 +38,33 @@ async function proxyHandler(
     duplex: "half",
   } as RequestInit & { duplex: string };
 
-  // Detect SSE requests by URL path — skip timeout for long-lived connections
+  // Detect SSE or Upload requests to adjust timeout
   const isSSERequest = path.some((segment) => segment === "stream");
+  const isUploadRequest = path.some((segment) => segment === "upload");
+
   let controller: AbortController | null = null;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  
   if (!isSSERequest) {
     controller = new AbortController();
     init.signal = controller.signal;
-    timeoutId = setTimeout(() => controller?.abort(), 30_000);
+    
+    // 1 hour timeout for uploads, 30s for others
+    const timeoutMs = isUploadRequest ? 3600_000 : 30_000;
+    timeoutId = setTimeout(() => controller?.abort(), timeoutMs);
   }
 
-  // Forward body for non-GET/HEAD requests (handles JSON, FormData, SSE)
+  // Forward body for non-GET/HEAD requests
   let retryBody: Blob | null = null;
   if (request.method !== "GET" && request.method !== "HEAD") {
-    // Clone body before forwarding — first fetch consumes the Blob
-    retryBody = await request.blob();
-    init.body = retryBody;
+    if (isUploadRequest) {
+      // Use direct stream for large uploads to save RAM. No retry possible.
+      init.body = request.body;
+    } else {
+      // Clone body for small requests to allow retry
+      retryBody = await request.blob();
+      init.body = retryBody;
+    }
   }
 
   let backendRes: Response;
@@ -88,9 +99,12 @@ async function proxyHandler(
       }
     } else {
       const errMsg = err instanceof Error ? err.message : "unknown error";
+      // Identify if it was a timeout
+      const isTimeout = err instanceof Error && (err.name === "AbortError" || /timeout/i.test(err.message));
+      
       return new Response(
-        JSON.stringify({ detail: `Backend request failed: ${errMsg}` }),
-        { status: 502, headers: { "content-type": "application/json" } },
+        JSON.stringify({ detail: isTimeout ? `Backend request timed out (limit: ${isUploadRequest ? "1h" : "30s"})` : `Backend request failed: ${errMsg}` }),
+        { status: isTimeout ? 504 : 502, headers: { "content-type": "application/json" } },
       );
     }
   }

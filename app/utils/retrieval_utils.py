@@ -12,7 +12,10 @@ def build_answer(query: str, context: RagContext) -> dict:
     """Build the answer seed from RAG context for AI provider."""
     if not context.nodes:
         return {
-            "answer": "Hiện tại tôi chưa có tài liệu nào để trả lời câu hỏi này. Vui lòng yêu cầu Admin upload thêm tài liệu vào hệ thống.",
+            "answer": (
+                "Hiện tại tôi chưa có tài liệu nào để trả lời câu hỏi này. "
+                "Vui lòng yêu cầu Admin upload thêm tài liệu vào hệ thống."
+            ),
             "citations": [],
             "context": [],
         }

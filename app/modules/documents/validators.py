@@ -4,6 +4,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class DocumentValidator:
     """Utilities for validating document uploads."""
 
@@ -12,13 +13,15 @@ class DocumentValidator:
         """Validate filename for security and length."""
         if not filename:
             raise http_errors.bad_request("Filename is required")
-        
+
         if len(filename) > settings.max_filename_length:
-            raise http_errors.bad_request(f"Filename exceeds maximum length of {settings.max_filename_length} characters")
-        
+            raise http_errors.bad_request(
+                f"Filename exceeds maximum length of {settings.max_filename_length} characters"
+            )
+
         if "/" in filename or "\\" in filename or ".." in filename or "\x00" in filename:
             raise http_errors.bad_request("Filename contains invalid path characters")
-        
+
         return filename
 
     @staticmethod

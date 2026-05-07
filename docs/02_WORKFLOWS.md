@@ -13,7 +13,7 @@ sequenceDiagram
     participant Bloom as DuplicateDetector (Bloom)
     participant Storage as RustFS
     participant Queue as Redis Queue
-    participant Worker as butler (node-ingestion)
+    participant Worker as worker (node-ingestion)
     participant Parser as Docling + PaddleOCR
     participant Context as Contextualizer
     participant Qdrant
@@ -105,7 +105,7 @@ sequenceDiagram
     participant Client
     participant API
     participant Registry as Redis Registry
-    participant Cleanup as butler (cleanup queue)
+    participant Cleanup as worker (cleanup queue)
     participant Qdrant
     participant RustFS
     participant DB

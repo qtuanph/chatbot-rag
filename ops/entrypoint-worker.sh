@@ -1,5 +1,5 @@
 #!/bin/bash
-# Entrypoint for Butler Celery worker.
+# Entrypoint for Celery workers.
 # Runs 2 worker nodes in 1 container:
 #   node-ingestion: solo pool, GPU, ingestion queue only
 #   node-default:    prefork pool, CPU, cleanup+default queues, Beat scheduler
@@ -11,7 +11,7 @@ MAX_TASKS=${CELERY_MAX_TASKS_PER_CHILD:-$(python -c "from app.core.config import
 # 0. Clean up stale PIDs from previous runs
 rm -f /tmp/celery-*.pid
 
-echo "🎩 Butler worker starting..."
+echo "Worker starting..."
 
 # Detect hardware for prefork concurrency
 HW_INFO=$(python -c "

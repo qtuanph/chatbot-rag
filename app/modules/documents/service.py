@@ -28,15 +28,16 @@ class DocumentService:
         section_repo: SectionRepository,
         registry: DocumentRegistry,
         task_service: TaskService | None = None,
-        tree_service: TreeService | None = None
+        tree_service: TreeService | None = None,
     ) -> None:
         self.doc_repo = doc_repo
         self.section_repo = section_repo
         self.registry = registry
         self.task_service = task_service or TaskService(doc_repo, registry)
         self.tree_service = tree_service or TreeService(doc_repo, section_repo)
-        
+
         from app.utils.duplicate_detector import DuplicateDetector
+
         self.detector = DuplicateDetector(registry.client)
 
     # ── Status ──────────────────────────────────────────────────────
@@ -47,23 +48,23 @@ class DocumentService:
 
     # ── Upload ──────────────────────────────────────────────────────
 
-    async def check_duplicate(self, content: bytes, filename: str) -> tuple[dict | None, int, str]:
+    async def check_duplicate(self, sha256: str, filename: str) -> tuple[dict | None, int]:
         """Check SHA256 duplicate + get next version. Returns (duplicate_doc, next_version)."""
-        sha256 = hashlib.sha256(content).hexdigest()
         if not await self.detector.exists(sha256):
             next_version = await self.doc_repo.get_next_version(filename)
-            return None, next_version, sha256
+            return None, next_version
 
         duplicate = await self.doc_repo.find_by_sha256(sha256)
         next_version = await self.doc_repo.get_next_version(filename)
-        return duplicate, next_version, sha256
+        return duplicate, next_version
 
     async def create_and_enqueue(
         self,
         *,
         document_id: str,
         filename: str,
-        content: bytes,
+        fileobj: Any,
+        file_size: int,
         file_type: str,
         sha256: str,
         next_version: int,
@@ -74,7 +75,7 @@ class DocumentService:
         """Create document record and delegate enqueuing to TaskService."""
         storage = build_storage()
         object_uri = await asyncio.to_thread(
-            storage.save_bytes, document_id=document_id, filename=filename, content=content
+            storage.save_fileobj, document_id=document_id, filename=filename, fileobj=fileobj
         )
 
         await self.doc_repo.insert_document(
@@ -84,7 +85,7 @@ class DocumentService:
             file_path=object_uri,
             sha256=sha256,
             file_type=file_type,
-            file_size=len(content),
+            file_size=file_size,
             version=next_version,
         )
 
@@ -97,16 +98,13 @@ class DocumentService:
             subject_id=document_id,
             ip_address=ip_address,
             user_agent=user_agent,
-            details={"filename": filename, "size": len(content), "file_type": file_type},
+            details={"filename": filename, "size": file_size, "file_type": file_type},
             redis_client_override=self.registry.client,
         )
 
         try:
             task_id = await self.task_service.enqueue_ingestion(
-                document_id=document_id,
-                object_uri=object_uri,
-                filename=filename,
-                user_id=user_id
+                document_id=document_id, object_uri=object_uri, filename=filename, user_id=user_id
             )
             await self.doc_repo.update_status(
                 document_id,
@@ -229,6 +227,7 @@ class DocumentService:
         # Cleanup artifacts via repos
         try:
             from app.adapters.vector_stores import build_vector_store
+
             vector_store = await build_vector_store()
             await vector_store.delete(document_id)
             await self.section_repo.delete_sections(document_id)
@@ -236,13 +235,10 @@ class DocumentService:
             logger.warning("Retry: partial cleanup failed for document %s: %s", document_id, exc)
 
         await self.doc_repo.reset_for_retry(document_id)
-        
+
         try:
             new_task_id = await self.task_service.enqueue_ingestion(
-                document_id=document_id,
-                object_uri=file_path,
-                filename=filename,
-                user_id=user_id
+                document_id=document_id, object_uri=file_path, filename=filename, user_id=user_id
             )
         except Exception as exc:
             logger.error("Retry: failed to enqueue task for document %s: %s", document_id, exc)

@@ -195,7 +195,9 @@ class DocumentRepository(BaseRepository[Document]):
 
     async def find_stuck_documents(self, timeout_threshold: datetime) -> list[str]:
         """Find documents stuck in processing state before timeout_threshold."""
-        stmt = select(self.model).where(self.model.status == "processing", self.model.status_updated_at < timeout_threshold)
+        stmt = select(self.model).where(
+            self.model.status == "processing", self.model.status_updated_at < timeout_threshold
+        )
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
         return [str(doc.id) for doc in rows]
@@ -278,7 +280,7 @@ class DocumentRepository(BaseRepository[Document]):
         """Custom override for Document to include stats from metadata."""
         if obj is None:
             return {}
-        
+
         data = super()._to_dict(obj)
         # Re-map some fields to match the old API format if they were renamed
         data["id"] = str(obj.id)
@@ -287,7 +289,7 @@ class DocumentRepository(BaseRepository[Document]):
         data["deleted_at"] = obj.deleted_at.isoformat() if obj.deleted_at else None
         data["created_at"] = obj.created_at.isoformat() if obj.created_at else None
         data["updated_at"] = obj.updated_at.isoformat() if obj.updated_at else None
-        
+
         # Virtual fields from artifact_metadata
         stats = data["artifact_metadata"].get("stats", {})
         data["node_count"] = stats.get("node_count", 0)

@@ -112,7 +112,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                             status="processing",
                             stage=stage,
                             progress_percent=percent,
-                            status_message=message
+                            status_message=message,
                         )
                     except Exception as status_err:
                         logger.warning("[%s] Failed to update progress in DB: %s", document_id, status_err)

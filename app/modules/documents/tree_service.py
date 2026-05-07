@@ -5,6 +5,7 @@ from app.modules.documents.section_repository import SectionRepository
 
 logger = logging.getLogger(__name__)
 
+
 class TreeService:
     """Service dedicated to document hierarchy and tree visualization."""
 
@@ -17,10 +18,10 @@ class TreeService:
         Fetch flat sections and transform them into a hierarchical tree structure.
         Supports pagination for large documents (optional, currently fetches all to build tree).
         """
-        # Note: To build a proper tree, we usually need all sections. 
+        # Note: To build a proper tree, we usually need all sections.
         # If we paginate at the DB level, the tree structure will be broken.
         # However, we can paginate the root level nodes if needed.
-        
+
         # 1. Fetch all sections ordered by order_index
         sections = await self.section_repo.get_sections_by_document(document_id)
         if not sections:
@@ -45,7 +46,8 @@ class TreeService:
                     tree.append(node)
 
         # 3. Apply pagination to root nodes
-        return tree[offset : offset + limit]
+        end = offset + limit
+        return tree[offset:end]
 
     async def get_node_details(self, document_id: str, node_id: str) -> dict[str, Any]:
         """Fetch full details for a specific section node."""

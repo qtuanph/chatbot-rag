@@ -45,7 +45,7 @@
     {
       "issue_id": 5,
       "title": "SQLAlchemy Reserved Attribute Crash During Startup",
-      "symptom": "api and butler restart loops with InvalidRequestError: Attribute name 'metadata' is reserved.",
+      "symptom": "api and workers restart loops with InvalidRequestError: Attribute name 'metadata' is reserved.",
       "root_cause": "DocumentSection declared ORM attribute metadata, conflicting with Declarative reserved name.",
       "resolution": "Renamed ORM attribute to artifact_metadata and kept DB column name via mapped_column(name=\"metadata\").",
       "lesson_learned": "Never use reserved SQLAlchemy names as mapped attributes; alias at app layer."

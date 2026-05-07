@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from app.modules.documents.task_service import TaskService
     from app.modules.system.service import HealthService
     from app.modules.documents.cleanup_service import CleanupService
+    from app.modules.documents.service import DocumentService
 
 # ── Redis Utility Getters ──────────────────
 

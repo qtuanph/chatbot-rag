@@ -260,7 +260,7 @@ VRAM headroom = total VRAM − 2GB. TIGHT uses 1 worker to prevent OOM. PROD sca
 
 All values configurable via env vars (see `app/core/config.py`). Defaults designed for dev laptop (GTX 1650 4GB).
 
-Butler runs `celery multi` with 2 worker nodes in 1 container:
+Workers service runs `celery multi` with 2 worker nodes in 1 container:
 
 | Node | Pool | Queues | GPU | Beat | Purpose |
 |------|------|--------|-----|------|---------|

@@ -1,12 +1,12 @@
 from typing import Any, TypeVar, Generic, Type
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
 T = TypeVar("T")
+
 
 class BaseRepository(Generic[T]):
     """Base repository with common patterns to reduce boilerplate."""
-    
+
     def __init__(self, session: AsyncSession, model: Type[T]) -> None:
         self.session = session
         self.model = model
@@ -26,7 +26,7 @@ class BaseRepository(Generic[T]):
         """Convert ORM model to dict, handling common conversions."""
         if obj is None:
             return {}
-        
+
         data = {}
         for column in obj.__table__.columns:
             val = getattr(obj, column.name)

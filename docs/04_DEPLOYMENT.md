@@ -11,7 +11,7 @@ Docker Compose with these services:
 | nginx | Reverse proxy — **port 80 (public entry)** | Public |
 | api | FastAPI backend | Internal via nginx |
 | webapp | Next.js 16 frontend | Internal via nginx |
-| butler | Celery multi worker — node-ingestion (solo, GPU) + node-default (prefork, CPU, beat) | Internal |
+| workers | Celery multi worker — node-ingestion (solo, GPU) + node-default (prefork, CPU, beat) | Internal |
 | db | PostgreSQL 18 | Internal |
 | redis | Broker/result/cache | Internal |
 | rustfs | Object storage | Internal |
@@ -74,7 +74,7 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | EMBEDDING_QUERY_PREFIX | Prefix added to query text before embedding (optional) |
 | EMBEDDING_PASSAGE_PREFIX | Prefix added to passage text before embedding (optional) |
 
-Docker Compose: keep webapp variables in root `.env` for single source of truth. Butler worker routing configured in `ops/entrypoint-worker.sh` (no env vars needed).
+Docker Compose: keep webapp variables in root `.env` for single source of truth. Workers service routing configured in `ops/entrypoint-worker.sh` (no env vars needed).
 
 Compose defaults bind to 127.0.0.1. Production: front with ingress/reverse proxy + network policy.
 
@@ -115,13 +115,13 @@ Config: `ops/nginx/nginx.conf` | Image: `nginx:stable-alpine`
 |---------|-------|
 | nginx | No container healthcheck (reverse proxy layer) |
 | API | `/api/v1/health` (via nginx and container healthcheck, 30s interval, 30s start_period) |
-| Butler | celery inspect ping (30s interval, 60s start_period) |
+| Workers | celery inspect ping (30s interval, 60s start_period) |
 | Workers | celery inspect ping (included in API health payload) |
 | PostgreSQL | pg_isready (3s interval) |
 | Redis | redis-cli ping (3s interval) |
 | Qdrant | TCP port 6333 check (3s interval) |
 
-Healthcheck cadence varies by service: 3s for infrastructure (DB, Redis, Qdrant), 30s for application services (API, Butler).
+Healthcheck cadence varies by service: 3s for infrastructure (DB, Redis, Qdrant), 30s for application services (API, Workers).
 
 ## Connection Pool Sizing
 
@@ -142,7 +142,7 @@ AI provider: singleton via `@lru_cache(maxsize=1)` in `app/adapters/ai/__init__.
 |---------|------|--------|-------|
 | api | 4.0 | 6G | Docker deploy limits — increase for production |
 | redis | — | `REDIS_MAXMEMORY` env var (default 512mb) | allkeys-lru eviction |
-| butler | — | — | GPU device reserved |
+| workers | — | — | GPU device reserved |
 
 ## Hardware Auto-Detection
 
@@ -252,5 +252,5 @@ docker compose up -d --build
 docker compose logs -f api
 
 # Scale workers (node-default)
-docker compose up -d --scale butler=2
+docker compose up -d --scale workers=2
 ```

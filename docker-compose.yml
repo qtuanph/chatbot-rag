@@ -12,16 +12,11 @@ services:
     # No published port — all traffic goes through nginx on port 80
     # Internal access via Docker network: api:8000
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rustfs:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
-      ai-engine:
-        condition: service_healthy
+      - db
+      - redis
+      - rustfs
+      - qdrant
+      - ai-engine
     deploy:
       resources:
         limits:
@@ -31,12 +26,6 @@ services:
           cpus: ${API_CPU_RESERVATION:-0.5}
           memory: ${API_MEM_RESERVATION:-1G}
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
     networks:
       - internal
 
@@ -47,16 +36,11 @@ services:
       - .env
     entrypoint: ["/bin/bash", "/app/ops/entrypoint-worker.sh"]
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rustfs:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
-      ai-engine:
-        condition: service_healthy
+      - db
+      - redis
+      - rustfs
+      - qdrant
+      - ai-engine
     deploy:
       resources:
         limits:
@@ -65,15 +49,13 @@ services:
         reservations:
           cpus: ${WORKER_CPU_RESERVATION:-0.5}
           memory: ${WORKER_MEM_RESERVATION:-1G}
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility, compute]
     restart: unless-stopped
     networks:
       - internal
-    healthcheck:
-      test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
 
   ai-engine:
     image: chatbot-rag-app:latest
@@ -97,12 +79,6 @@ services:
     restart: unless-stopped
     networks:
       - internal
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
 
   db:
     image: postgres:18.3-trixie
@@ -126,11 +102,6 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
       - ./ops/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-db-admin} -d ${POSTGRES_DB:-ragbot}"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
     restart: unless-stopped
     networks:
       - internal
@@ -142,11 +113,6 @@ services:
       - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-} ping"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
     restart: unless-stopped
     networks:
       - internal
@@ -162,11 +128,6 @@ services:
       - "127.0.0.1:9001:9001"
     volumes:
       - rustfsdata:/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:9000/health || exit 1"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
     restart: unless-stopped
     networks:
       - internal
@@ -177,11 +138,6 @@ services:
       - "127.0.0.1:6333:6333"
     volumes:
       - qdrantdata:/qdrant/storage
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/v1/readyz"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
     restart: unless-stopped
     networks:
       - internal
@@ -201,14 +157,7 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api/bep}
       - API_INTERNAL_URL=${API_INTERNAL_URL:-http://api:8000/api/v1}
     depends_on:
-      api:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"const http=require('http');http.get('http://127.0.0.1:3000/',r=>process.exit(r.statusCode<400?0:1)).on('error',()=>process.exit(1))\""]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      - api
     restart: unless-stopped
     networks:
       - internal
@@ -220,10 +169,8 @@ services:
     volumes:
       - ./ops/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      api:
-        condition: service_healthy
-      webapp:
-        condition: service_healthy
+      - api
+      - webapp
     restart: unless-stopped
     networks:
       - internal

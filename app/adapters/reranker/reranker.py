@@ -51,7 +51,7 @@ class VietnameseReranker:
                 text = getattr(doc, text_attr, None) or ""
             pairs.append({"query": query, "text": text})
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=settings.ai_stream_timeout) as client:
             try:
                 response = await client.post(f"{self.base_url}/rerank", json={"pairs": pairs, "top_k": top_k})
                 response.raise_for_status()

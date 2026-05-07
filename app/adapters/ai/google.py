@@ -82,7 +82,8 @@ def strip_reasoning(text: str) -> str:
     # Strip content before 'Final Polish:' marker (model-specific reasoning end)
     match = _REASONING_END_MARKER.search(text)
     if match:
-        result = text[match.end() :].strip()
+        end_idx = match.end()
+        result = text[end_idx:].strip()
         if result and len(result) >= 50:
             return result
 
@@ -107,8 +108,9 @@ class _ThoughtFilter:
         while True:
             if self._in_thought:
                 end_idx = self._buffer.find(self._END)
-                if end_idx >= 0:
-                    self._buffer = self._buffer[end_idx + len(self._END) :]
+                if end_idx != -1:
+                    start_slice = end_idx + len(self._END)
+                    self._buffer = self._buffer[start_slice:]
                     self._in_thought = False
                 else:
                     break  # Still in thought, keep buffering
@@ -225,7 +227,9 @@ class GoogleAIProvider(AIProvider):
             return text, current_header
 
         try:
-            res = json.loads(res_text[res_text.find("{") : res_text.rfind("}") + 1])
+            start_idx = res_text.find("{")
+            end_idx = res_text.rfind("}") + 1
+            res = json.loads(res_text[start_idx:end_idx])
             return res.get("cleaned_text", text).strip(), res.get("detected_header") or current_header
         except Exception:
             return text, current_header
@@ -279,7 +283,8 @@ class GoogleAIProvider(AIProvider):
         context = "\n\n".join(self._build_context_blocks(kwargs.get("context") or []))
         contents = []
 
-        history = messages[:-1][-settings.ai_max_history_messages :]
+        max_hist = settings.ai_max_history_messages
+        history = messages[:-1][-max_hist:]
         for msg in history:
             role = "model" if msg["role"] == "assistant" else "user"
             txt = strip_thought_blocks(msg["content"]).strip()

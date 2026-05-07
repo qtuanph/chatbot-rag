@@ -9,6 +9,7 @@ from app.utils.document_registry import DocumentRecord, DocumentRegistry
 
 logger = logging.getLogger(__name__)
 
+
 class TaskService:
     """Specialized service for managing background task lifecycle and status."""
 
@@ -68,7 +69,7 @@ class TaskService:
                 status="queued",
             )
         )
-        
+
         await asyncio.to_thread(
             celery_app.send_task,
             "app.workers.upload_tasks.parse_document_task",
@@ -80,7 +81,7 @@ class TaskService:
             },
             task_id=task_id,
         )
-        
+
         # Initial status in Celery backend
         await asyncio.to_thread(
             celery_app.backend.store_result,
@@ -88,5 +89,5 @@ class TaskService:
             {"stage": "queued", "progress": {"step": "queued", "percent": 0}, "document_id": document_id},
             state="QUEUED",
         )
-        
+
         return task_id

@@ -197,7 +197,8 @@ class RetrievalService:
 
                 reranker = get_reranker()
                 # Re-rank the actual document objects
-                rerank_candidates = deduped_results[: settings.retrieval_rerank_top_n]
+                top_n = settings.retrieval_rerank_top_n
+                rerank_candidates = deduped_results[:top_n]
                 # rerank() now returns the list of objects with updated scores
                 reranked_docs = await reranker.rerank(
                     query=primary_query, documents=rerank_candidates, text_attr="text"
@@ -205,7 +206,7 @@ class RetrievalService:
 
                 # Merge reranked results back into the main list
                 # (Reranked list is sorted, items not reranked stay at the bottom)
-                others = deduped_results[settings.retrieval_rerank_top_n :]
+                others = deduped_results[top_n:]
                 deduped_results = reranked_docs + others
                 logger.info("[PERF-RAG] Reranking complete: %d nodes", len(rerank_candidates))
             except Exception as e:
@@ -289,7 +290,7 @@ class RetrievalService:
             return seed_results
 
         expanded_map: dict[str, RetrievedDocument] = {r.node_id: r for r in seed_results}
-        
+
         # Identify documents and their order ranges
         # document_id -> (min_order, max_order)
         doc_ranges: dict[str, set[int]] = {}
@@ -305,26 +306,17 @@ class RetrievalService:
         async def fetch_doc_neighbors(doc_id: str, orders: set[int]) -> list[RetrievedDocument]:
             try:
                 # Build Qdrant filter for the specific document and orders
-                # Note: scroll doesn't support complex range+match well in one go, 
+                # Note: scroll doesn't support complex range+match well in one go,
                 # but we can filter by document_id and then filter results in-memory
                 # or use multiple scroll calls if needed.
                 # Optimization: Fetch all points for this document within the min/max order range
-                from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
-                
-                min_o, max_o = min(orders), max(orders)
-                neighbor_filter = Filter(
-                    must=[
-                        FieldCondition(key="document_id", match=MatchValue(value=doc_id)),
-                        FieldCondition(key="order", range=Range(gte=min_o, lte=max_o))
-                    ]
-                )
-                
+
                 points, _ = await vs.scroll(
-                    query_filter={"must": [{"key": "document_id", "match": {"value": doc_id}}]}, # Simple filter
-                    limit=100, # Assuming a section doesn't have >100 nodes in the window
-                    with_payload=True
+                    query_filter={"must": [{"key": "document_id", "match": {"value": doc_id}}]},  # Simple filter
+                    limit=100,  # Assuming a section doesn't have >100 nodes in the window
+                    with_payload=True,
                 )
-                
+
                 # Manual filter for order since our vs.scroll is simplified
                 neighbors = []
                 for p in points:
@@ -335,7 +327,7 @@ class RetrievalService:
                                 node_id=str(p["payload"].get("node_id", p["id"])),
                                 document_id=str(p["payload"].get("document_id", doc_id)),
                                 text=str(p["payload"].get("text", "")),
-                                score=0.0, # Neighbors don't have search scores
+                                score=0.0,  # Neighbors don't have search scores
                                 metadata={
                                     "page_number": p["payload"].get("page_number"),
                                     "section_title": p["payload"].get("section_title"),
@@ -352,7 +344,7 @@ class RetrievalService:
                 return []
 
         all_neighbors_nested = await asyncio.gather(*[fetch_doc_neighbors(did, o) for did, o in doc_ranges.items()])
-        
+
         for neighbor_list in all_neighbors_nested:
             for n in neighbor_list:
                 if n.node_id not in expanded_map:
@@ -361,6 +353,6 @@ class RetrievalService:
         # Final step: Sort by document and then order to ensure linear reading
         final_results = list(expanded_map.values())
         final_results.sort(key=lambda x: (x.document_id, x.metadata.get("order", 0)))
-        
+
         logger.info("[RAG-EXPANSION] Expanded %d seeds into %d nodes", len(seed_results), len(final_results))
         return final_results

@@ -10,6 +10,7 @@ from app.modules.documents.base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
+
 class SectionRepository(BaseRepository[DocumentSection]):
     """Repository for document sections in PostgreSQL."""
 
@@ -64,11 +65,7 @@ class SectionRepository(BaseRepository[DocumentSection]):
 
     async def get_sections_by_document(self, document_id: str) -> list[dict[str, Any]]:
         """Get all sections for a document, ordered by order_index."""
-        stmt = (
-            select(self.model)
-            .where(self.model.document_id == document_id)
-            .order_by(self.model.order_index)
-        )
+        stmt = select(self.model).where(self.model.document_id == document_id).order_by(self.model.order_index)
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
         return [self._to_dict(s) for s in rows]

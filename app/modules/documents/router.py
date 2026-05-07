@@ -28,6 +28,7 @@ from app.modules.documents.validators import DocumentValidator
 
 router = APIRouter(tags=["documents"])
 
+
 @router.post("/upload", response_model=UploadAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
     request: Request,
@@ -41,40 +42,43 @@ async def upload_document(
     ):
         raise http_errors.too_many_requests("Too many upload requests")
 
-    # ── Validation ──
+    # ── Validation & SHA256 Calculation (Streaming) ──
     filename = DocumentValidator.validate_filename(file.filename)
     file_type = DocumentValidator.validate_file_type(file.content_type)
-    
-    max_size = settings.max_upload_size_mb * 1024 * 1024
-    content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > max_size:
-        raise http_errors.payload_too_large(f"File size exceeds maximum of {settings.max_upload_size_mb} MB")
 
-    # Stream-read file
-    chunks: list[bytes] = []
+    import hashlib
+    sha256_hash = hashlib.sha256()
     total_size = 0
+
+    # Read in chunks to calculate hash without loading full file into RAM
+    # UploadFile is typically a SpooledTemporaryFile for large uploads
     while True:
-        chunk = await file.read(1024 * 1024)
+        chunk = await file.read(1024 * 1024)  # 1MB chunks
         if not chunk:
             break
         total_size += len(chunk)
         DocumentValidator.validate_size(total_size)
-        chunks.append(chunk)
-    
-    content = b"".join(chunks)
-    DocumentValidator.validate_size(len(content))
+        sha256_hash.update(chunk)
+
+    sha256 = sha256_hash.hexdigest()
+
+    # Reset file pointer for S3 upload
+    await file.seek(0)
 
     # ── Processing ──
     from uuid import uuid4
     document_id = str(uuid4())
-    duplicate, next_version, sha256 = await service.check_duplicate(content, filename)
+
+    duplicate, next_version = await service.check_duplicate(sha256, filename)
     if duplicate is not None:
         raise http_errors.conflict("Document already exists")
 
+    # Pass the underlying file-like object to service
     task_id = await service.create_and_enqueue(
         document_id=document_id,
         filename=filename,
-        content=content,
+        fileobj=file.file,
+        file_size=total_size,
         file_type=file_type,
         sha256=sha256,
         next_version=next_version,

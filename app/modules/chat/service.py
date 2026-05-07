@@ -87,7 +87,6 @@ class ChatService:
 
         full_answer = ""
         start_time = _time.monotonic()
-        _stream_buf = ""
 
         async for chunk in provider.chat_stream(
             [{"role": i["role"], "content": i["content"]} for i in history],

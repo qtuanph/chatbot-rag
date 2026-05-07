@@ -19,8 +19,8 @@ Broker reliability:
   - broker_connection_retry_on_startup=True: Don't crash if Redis unavailable.
 
 Queue routing:
-  - ingestion: butler worker (GPU-bound embedding tasks)
-  - cleanup: butler worker (lightweight delete + beat tasks)
+  - ingestion: workers (GPU-bound embedding tasks)
+  - cleanup: workers (lightweight delete + beat tasks)
   - default: fallback queue (chat message saves, etc.)
 
 Time limits (prevent hung parse tasks):
@@ -74,14 +74,14 @@ celery_app.conf.update(
     result_expires=settings.celery_result_expires,
     # ── Queue routing ─────────────────────────────────────────────────────────
     task_routes={
-        "app.modules.documents.tasks.parse_document_task": {"queue": "ingestion"},
-        "app.modules.documents.cleanup_tasks.delete_document_task": {"queue": "cleanup"},
-        "app.modules.documents.cleanup_tasks.cleanup_old_chat_sessions_task": {"queue": "cleanup"},
-        "app.modules.chat.tasks.save_chat_message_task": {"queue": "default"},
-        "app.modules.system.tasks.rebuild_bm25_index_task": {"queue": "ingestion"},
-        "app.modules.system.tasks.cleanup_orphaned_vectors_task": {"queue": "cleanup"},
-        "app.modules.analytics.audit_worker.process_audit_stream": {"queue": "default"},
-        "app.modules.chat.memory_tasks.extract_memories_task": {"queue": "default"},
+        "app.workers.upload_tasks.parse_document_task": {"queue": "ingestion"},
+        "app.workers.cleanup_tasks.delete_document_task": {"queue": "cleanup"},
+        "app.workers.cleanup_tasks.cleanup_old_chat_sessions_task": {"queue": "cleanup"},
+        "app.workers.chat_tasks.save_chat_message_task": {"queue": "default"},
+        "app.workers.maintenance_tasks.rebuild_bm25_index_task": {"queue": "ingestion"},
+        "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task": {"queue": "cleanup"},
+        "app.workers.audit_worker.process_audit_stream": {"queue": "default"},
+        "app.workers.memory_tasks.extract_memories_task": {"queue": "default"},
     },
     task_default_queue="default",
     # ── Serialization ─────────────────────────────────────────────────────────

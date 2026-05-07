@@ -220,14 +220,14 @@
     "compose_up": "docker compose up --build",
     "health": "curl http://localhost/api/v1/health",
     "api_logs": "docker compose logs -f api",
-    "worker_logs": "docker compose logs -f butler"
+    "worker_logs": "docker compose logs -f workers"
   },
   "infrastructure": {
     "hardware_auto_detect": "app/core/hardware.py — PROD tier: 4-8 workers, 100+ DB/Redis pool for 200+ CCU. TIGHT tier: 1 worker for low VRAM (<6GB).",
     "async_policy": "All I/O is non-blocking. Heavy CPU (OCR, Embed, Rerank) is offloaded to threads via asyncio.to_thread.",
     "redis_8.8_config": "maxmemory via REDIS_MAXMEMORY env var (default 512mb for dev), allkeys-lru, save 60 1000, appendonly yes",
     "redis_db_separation": "DB 0: Celery broker, DB 1: result backend, DB 2: app cache",
-    "celery_config": "All values configurable via env vars: time limits, memory limit, visibility timeout, retry, max-tasks-per-child. Butler uses celery multi with 2 nodes: node-ingestion (solo, GPU, ingestion queue) + node-default (prefork, CPU, cleanup+default queues, Beat scheduler). Routing configured in ops/entrypoint-worker.sh",
+    "celery_config": "All values configurable via env vars: time limits, memory limit, visibility timeout, retry, max-tasks-per-child. Workers service uses celery multi with 2 nodes: node-ingestion (solo, GPU, ingestion queue) + node-default (prefork, CPU, cleanup+default queues, Beat scheduler). Routing configured in ops/entrypoint-worker.sh",
     "celery_tasks": {
       "ingestion_queue": [
         "parse_document_task — document parsing/indexing (upload_tasks.py)",
