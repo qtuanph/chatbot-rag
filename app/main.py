@@ -15,7 +15,6 @@ from app.modules.chat import router as chat
 from app.modules.documents import router as documents
 from app.modules.system import router as system
 from app.modules.chat import memories_router as memories
-from app.modules.documents import tree_router as tree
 from app.api.middleware import (
     SecurityHeadersMiddleware,
     RequestLoggingMiddleware,
@@ -115,7 +114,7 @@ app.add_middleware(RequestLoggingMiddleware)
 if settings.app_env == "production":
     app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.rate_limit_global_rpm)
 
-routers = [auth.router, system.router, documents.router, chat.router, tree.router, memories.router, analytics.router]
+routers = [auth.router, system.router, documents.router, chat.router, memories.router, analytics.router]
 
 for router in routers:
     app.include_router(router, prefix=settings.api_v1_prefix)

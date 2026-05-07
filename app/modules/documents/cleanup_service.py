@@ -74,7 +74,7 @@ class CleanupService:
         retrieval_svc = RetrievalService(redis_client=self.registry.client)
         await retrieval_svc.invalidate_doc_ids_cache()
 
-        from app.workers.maintenance_tasks import rebuild_bm25_index_task
+        from app.modules.system.tasks import rebuild_bm25_index_task
 
         rebuild_bm25_index_task.delay()
 

@@ -272,7 +272,7 @@ class ChatService:
     def enqueue_memory_extraction(*, user_id: str, user_message: str, assistant_response: str) -> None:
         """Dispatch durable memory extraction after a chat turn."""
         try:
-            from app.workers.memory_tasks import extract_memories_task
+            from app.modules.chat.memory_tasks import extract_memories_task
 
             extract_memories_task.delay(
                 user_id=user_id, user_message=user_message, assistant_response=assistant_response

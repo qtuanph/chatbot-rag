@@ -59,7 +59,7 @@ def _detect_gpu_info() -> tuple[int, float]:
             logger.info("No NVIDIA GPU detected (NVML library not found), falling back to CPU/torch logic.")
         else:
             logger.info("NVML detection failed, falling back to torch: %s", e)
-        
+
         if torch.cuda.is_available():
             return torch.cuda.device_count(), round(torch.cuda.get_device_properties(0).total_memory / 1024**3, 1)
     return 0, 0.0
@@ -81,6 +81,7 @@ class HardwareProfile:
     uvicorn_workers: int
     redis_io_threads: int
     celery_concurrency: int
+    celery_autoscale_max: int
     embed_parallelism: int
     inference_concurrency: int
 
@@ -107,10 +108,13 @@ class HardwareProfile:
 
         if tight_gpu:
             uvicorn_workers = 1  # Avoid VRAM duplication on small GPUs
+        elif gpu_count > 0:
+            # On powerful GPUs (like 4090/A100), scale by VRAM (approx 4GB per worker context)
+            # but also respect CPU/RAM and cap at 8.
+            uvicorn_workers = max(1, min(cpu, int(ram // 6), int(vram_headroom // 4), 8))
         else:
-            # Scale workers by CPU/RAM, cap at 8 to avoid context switching overhead
-            # For 200 CCU Chat, 4-8 workers is the sweet spot
-            uvicorn_workers = max(1, min(cpu, int(ram // 2), 8))
+            # CPU only mode: scale by RAM (6GB per worker)
+            uvicorn_workers = max(1, min(cpu, int(ram // 6), 8))
 
         # Redis 8/9 Multi-threading: set io-threads (usually cpu/4, min 1)
         redis_io_threads = max(1, cpu // 4)
@@ -140,7 +144,8 @@ class HardwareProfile:
             gpu_vram_gb=vram,
             uvicorn_workers=uvicorn_workers,
             redis_io_threads=redis_io_threads,
-            celery_concurrency=min(cpu, 8),
+            celery_concurrency=max(1, min(cpu, int(ram // 2), 8)),
+            celery_autoscale_max=max(1, min(cpu * 2, int(ram // 1.5), 16)),
             embed_parallelism=max(1, cpu // 2),
             inference_concurrency=max(1, cpu // 4),
             db_pool_size=db_pool_size,

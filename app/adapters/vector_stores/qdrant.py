@@ -323,7 +323,7 @@ class QdrantVectorStore(BaseVectorStore):
                 prefetch=prefetch_list,
                 query=FusionQuery(fusion=Fusion.RRF),
                 group_by="metadata.section_id",
-                group_capacity=3,  # Max 3 chunks per section to ensure diversity
+                group_size=3,  # Max 3 chunks per section to ensure diversity
                 limit=top_k,  # Return top_k unique sections
                 with_payload=True,
                 search_params=SearchParams(

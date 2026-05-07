@@ -12,19 +12,22 @@ services:
     # No published port — all traffic goes through nginx on port 80
     # Internal access via Docker network: api:8000
     depends_on:
-      - db
-      - redis
-      - rustfs
-      - qdrant
-      - ai-engine
-    deploy:
-      resources:
-        limits:
-          cpus: ${API_CPU_LIMIT:-2.0}
-          memory: ${API_MEM_LIMIT:-4G}
-        reservations:
-          cpus: ${API_CPU_RESERVATION:-0.5}
-          memory: ${API_MEM_RESERVATION:-1G}
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      ai-engine:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     networks:
       - internal
@@ -35,24 +38,24 @@ services:
     env_file:
       - .env
     entrypoint: ["/bin/bash", "/app/ops/entrypoint-worker.sh"]
-    depends_on:
-      - db
-      - redis
-      - rustfs
-      - qdrant
-      - ai-engine
     deploy:
       resources:
-        limits:
-          cpus: ${WORKER_CPU_LIMIT:-2.0}
-          memory: ${WORKER_MEM_LIMIT:-4G}
         reservations:
-          cpus: ${WORKER_CPU_RESERVATION:-0.5}
-          memory: ${WORKER_MEM_RESERVATION:-1G}
           devices:
             - driver: nvidia
               count: all
               capabilities: [gpu, utility, compute]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      ai-engine:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
     restart: unless-stopped
     networks:
       - internal
@@ -64,16 +67,17 @@ services:
     entrypoint: ["python", "-m", "app.modules.inference.server"]
     deploy:
       resources:
-        limits:
-          cpus: ${AI_ENGINE_CPU_LIMIT:-4.0}
-          memory: ${AI_ENGINE_MEM_LIMIT:-8G}
         reservations:
-          cpus: ${AI_ENGINE_CPU_RESERVATION:-1.0}
-          memory: ${AI_ENGINE_MEM_RESERVATION:-2G}
           devices:
             - driver: nvidia
               count: all
               capabilities: [gpu, utility, compute]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      start_period: 5s
     volumes:
       - hf-cache:/home/qtuanph/.cache/huggingface
     restart: unless-stopped
@@ -102,6 +106,12 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
       - ./ops/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     restart: unless-stopped
     networks:
       - internal
@@ -113,6 +123,11 @@ services:
       - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
     networks:
       - internal
@@ -138,6 +153,13 @@ services:
       - "127.0.0.1:6333:6333"
     volumes:
       - qdrantdata:/qdrant/storage
+    shm_size: '2gb'
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     restart: unless-stopped
     networks:
       - internal
@@ -148,8 +170,6 @@ services:
     build:
       context: ./webapp
       dockerfile: Dockerfile
-    # No published port — all traffic goes through nginx on port 80
-    # Internal access via Docker network: webapp:3000
     environment:
       - HOSTNAME=0.0.0.0
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost}
@@ -157,7 +177,8 @@ services:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api/bep}
       - API_INTERNAL_URL=${API_INTERNAL_URL:-http://api:8000/api/v1}
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - internal
@@ -169,8 +190,10 @@ services:
     volumes:
       - ./ops/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      - api
-      - webapp
+      api:
+        condition: service_healthy
+      webapp:
+        condition: service_started
     restart: unless-stopped
     networks:
       - internal

@@ -1,15 +1,15 @@
-"""Documents API — upload, status, list, delete, retry."""
+"""Documents API — upload, status, list, delete, retry, tree."""
 
 from __future__ import annotations
 
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile, status
-from typing import TYPE_CHECKING
+from fastapi import APIRouter, Depends, File, Request, UploadFile, status, Query
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from app.utils.rate_limiter import RateLimiter
 
-from app.api.deps import AuthContext, get_document_service, require_admin, get_rate_limiter
+from app.api.deps import AuthContext, get_document_service, require_admin, get_rate_limiter, get_tree_service, get_auth_context
 from app.core.config import settings
 from app.core import http_errors
 from app.modules.documents.schemas import (
@@ -23,7 +23,7 @@ from app.modules.documents.schemas import (
     UploadAcceptedResponse,
 )
 from app.modules.documents.service import DocumentService
-
+from app.modules.documents.tree_service import TreeService
 from app.modules.documents.validators import DocumentValidator
 
 router = APIRouter(tags=["documents"])
@@ -42,30 +42,34 @@ async def upload_document(
     ):
         raise http_errors.too_many_requests("Too many upload requests")
 
-    # ── Validation & SHA256 Calculation (Streaming) ──
-    filename = DocumentValidator.validate_filename(file.filename)
-    file_type = DocumentValidator.validate_file_type(file.content_type)
+    try:
+        filename = DocumentValidator.validate_filename(file.filename)
+        file_type = DocumentValidator.validate_file_type(file.content_type)
+    except ValueError as e:
+        raise http_errors.bad_request(str(e)) from None
 
     import hashlib
+
     sha256_hash = hashlib.sha256()
     total_size = 0
 
-    # Read in chunks to calculate hash without loading full file into RAM
-    # UploadFile is typically a SpooledTemporaryFile for large uploads
     while True:
         chunk = await file.read(1024 * 1024)  # 1MB chunks
         if not chunk:
             break
         total_size += len(chunk)
-        DocumentValidator.validate_size(total_size)
+        try:
+            DocumentValidator.validate_size(total_size)
+        except ValueError as e:
+            raise http_errors.bad_request(str(e)) from None
+        except RuntimeError as e:
+            raise http_errors.payload_too_large(str(e)) from None
+
         sha256_hash.update(chunk)
 
     sha256 = sha256_hash.hexdigest()
-
-    # Reset file pointer for S3 upload
     await file.seek(0)
 
-    # ── Processing ──
     from uuid import uuid4
     document_id = str(uuid4())
 
@@ -73,7 +77,6 @@ async def upload_document(
     if duplicate is not None:
         raise http_errors.conflict("Document already exists")
 
-    # Pass the underlying file-like object to service
     task_id = await service.create_and_enqueue(
         document_id=document_id,
         filename=filename,
@@ -221,3 +224,63 @@ async def retry_document(
         raise http_errors.bad_request(msg) from None
     except RuntimeError as e:
         raise http_errors.service_unavailable(str(e)) from None
+
+
+# ── Tree & Hierarchy Endpoints ──
+
+@router.get("/tree/{document_id}")
+async def get_document_tree(
+    document_id: str,
+    offset: int = 0,
+    limit: int = 100,
+    auth: AuthContext = Depends(get_auth_context),
+    service: TreeService = Depends(get_tree_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+):
+    if not await rate_limiter.is_allowed(
+        f"tree:list:{auth.user_id}", limit=settings.effective_rate_limit(60), window_ms=60000
+    ):
+        raise http_errors.too_many_requests("Too many tree requests")
+
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+    try:
+        return await service.get_document_tree(document_id=document_id, offset=offset, limit=limit)
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None
+
+
+@router.get("/tree/{document_id}/nodes/{node_id}")
+async def get_node_details(
+    document_id: str,
+    node_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+    service: TreeService = Depends(get_tree_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+):
+    if not await rate_limiter.is_allowed(
+        f"tree:detail:{auth.user_id}", limit=settings.effective_rate_limit(120), window_ms=60000
+    ):
+        raise http_errors.too_many_requests("Too many node detail requests")
+    try:
+        return await service.get_node_details(document_id=document_id, node_id=node_id)
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None
+
+
+@router.get("/tree/{document_id}/search")
+async def search_nodes(
+    document_id: str,
+    query: str = Query(..., min_length=1, max_length=500),
+    auth: AuthContext = Depends(get_auth_context),
+    service: TreeService = Depends(get_tree_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+):
+    if not await rate_limiter.is_allowed(
+        f"tree:search:{auth.user_id}", limit=settings.effective_rate_limit(60), window_ms=60000
+    ):
+        raise http_errors.too_many_requests("Too many tree search requests")
+    try:
+        return await service.search_nodes(document_id=document_id, query=query)
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None

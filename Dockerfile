@@ -89,7 +89,14 @@ RUN --mount=type=cache,id=hf-models,target=/tmp/hf-cache,uid=1000,gid=1000 \
     word_tokenize('warmup', format='text'); \
     from rapidocr_onnxruntime import RapidOCR; \
     engine = RapidOCR(); \
-    print('Static models pre-downloaded')"
+    from docling.document_converter import DocumentConverter, PdfFormatOption; \
+    from docling.datamodel.pipeline_options import PdfPipelineOptions; \
+    from docling.datamodel.base_models import InputFormat; \
+    pipeline_options = PdfPipelineOptions(); \
+    pipeline_options.do_ocr = True; \
+    pipeline_options.do_table_structure = True; \
+    converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}); \
+    print('Docling and OCR models pre-downloaded')"
 
 # --- Final Application Copy (Lightweight Layer) ---
 # Copy application source code. Any code change only invalidates this layer.

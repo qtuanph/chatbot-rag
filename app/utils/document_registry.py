@@ -62,6 +62,19 @@ class DocumentRegistry:
         """Clear the active document IDs cache (Async)."""
         await self.client.delete("rag:active_doc_ids")
 
+    async def get_active_ids_async(self) -> set[str] | None:
+        """Retrieve cached active document IDs (Async)."""
+        data = await self.client.get("rag:active_doc_ids")
+        if data:
+            import json
+            return set(json.loads(data))
+        return None
+
+    async def set_active_ids_async(self, ids: set[str], ttl: int = 60) -> None:
+        """Cache active document IDs for RAG (Async)."""
+        import json
+        await self.client.set("rag:active_doc_ids", json.dumps(list(ids)), ex=ttl)
+
     async def purge_async(self, document_id: str) -> None:
         """Remove record and task mapping from Redis (Async)."""
         record = await self.get_by_document_id(document_id)
@@ -103,6 +116,19 @@ class DocumentRegistry:
     def invalidate_active_ids_sync(self) -> None:
         """Clear the active document IDs cache (Sync)."""
         self.client.delete("rag:active_doc_ids")
+
+    def get_active_ids_sync(self) -> set[str] | None:
+        """Retrieve cached active document IDs (Sync)."""
+        data = self.client.get("rag:active_doc_ids")
+        if data:
+            import json
+            return set(json.loads(data))
+        return None
+
+    def set_active_ids_sync(self, ids: set[str], ttl: int = 60) -> None:
+        """Cache active document IDs for RAG (Sync)."""
+        import json
+        self.client.set("rag:active_doc_ids", json.dumps(list(ids)), ex=ttl)
 
     def purge_sync(self, document_id: str) -> None:
         """Remove record and task mapping from Redis (Sync)."""

@@ -86,7 +86,9 @@ async def build_bm25_index_from_qdrant(redis_client: Any) -> int:
             break
 
         for point in points:
-            text = point.payload.get("content") or point.payload.get("text")
+            # Handle both Record object and dictionary formats
+            payload = getattr(point, "payload", None) or point.get("payload", {})
+            text = payload.get("content") or payload.get("text")
             if text:
                 all_texts.append(text)
 

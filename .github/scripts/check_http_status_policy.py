@@ -85,7 +85,13 @@ def check_file(path: Path) -> list[str]:
 
 def is_api_layer_file(path: Path) -> bool:
     rel = path.relative_to(APP_DIR).as_posix()
-    return rel.startswith("api/routes/") or rel == "api/deps.py"
+    # Support both old and new modular structure
+    return (
+        rel.startswith("api/routes/") 
+        or rel == "api/deps.py"
+        or "router.py" in rel
+        or "server.py" in rel
+    )
 
 
 def _is_http_error_helper_call(call: ast.Call) -> bool:

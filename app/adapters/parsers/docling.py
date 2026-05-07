@@ -307,11 +307,10 @@ class DoclingParser(BaseParser):
 
                     breadcrumb = [heading_stack[heading_key] for heading_key in sorted(heading_stack.keys())]
 
-                    # --- CRITICAL RAG FIX: Context Windowing ---
-                    # If the heading is too deep (level > 2), don't create a new DB section.
+                    # If the heading is too deep (level > 3), don't create a new DB section.
                     # Instead, append it as a Markdown heading to the current section's content.
                     # This ensures the RAG chunker can chunk the parent heading and child paragraphs TOGETHER.
-                    if level > 2:
+                    if level > 3:
                         if current_section is None:
                             current_section = {
                                 "title": "Nội dung mở đầu",

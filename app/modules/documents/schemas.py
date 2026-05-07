@@ -41,6 +41,7 @@ class DocumentSummaryResponse(BaseModel):
     status_message: str | None = None
     created_at: str
     updated_at: str
+    node_count: int = 0
 
 
 class DocumentListResponse(BaseModel):
@@ -73,3 +74,4 @@ class DocumentDetailResponse(BaseModel):
     deleted_at: str | None = None
     created_at: str
     updated_at: str
+    node_count: int = 0

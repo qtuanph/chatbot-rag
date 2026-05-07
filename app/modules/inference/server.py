@@ -9,10 +9,11 @@ from contextlib import asynccontextmanager
 from typing import List, Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.core import http_errors
 from app.core.hardware import hardware
 
 # Setup logging
@@ -135,7 +136,7 @@ async def health():
 @app.post("/embed", response_model=EmbedResponse)
 async def embed(request: EmbedRequest):
     if not engine.embedding_model:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Embedding model not loaded")
+        raise http_errors.service_unavailable("Embedding model not loaded")
 
     start_time = time.perf_counter()
 
@@ -155,7 +156,7 @@ async def embed(request: EmbedRequest):
 @app.post("/rerank", response_model=RerankResponse)
 async def rerank(request: RerankRequest):
     if not engine.reranker_model or not engine.reranker_tokenizer:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Reranker model not loaded")
+        raise http_errors.service_unavailable("Reranker model not loaded")
 
     import torch
 
@@ -192,16 +193,9 @@ async def rerank(request: RerankRequest):
 
 if __name__ == "__main__":
     # Dynamically determine workers based on hardware profile and GPU presence
-    # Note: On GPU systems, we usually want fewer workers but larger batches to avoid VRAM fragmentation
-    if hardware.gpu_count > 0:
-        # High-performance GPU mode: 2 workers per GPU is usually a sweet spot for throughput
-        # This allows parallel inference while sharing VRAM efficiently
-        workers = max(1, hardware.gpu_count * 2)
-        logger.info(f"GPU detected. Starting server with {workers} hardware-optimized workers.")
-    else:
-        # CPU mode: Use logical cores but cap to avoid overhead
-        workers = min(hardware.cpu_count, 4) if hardware.cpu_count > 1 else 1
-        logger.info(f"CPU mode. Starting server with {workers} workers based on {hardware.cpu_count} cores.")
+    # Worker selection: Fully autonomous via hardware profile (no manual overrides)
+    workers = hardware.uvicorn_workers
+    logger.info(f"PRODUCTION MODE: Starting AI-Engine with {workers} workers (hardware auto-detect).")
 
     uvicorn.run(
         "app.modules.inference.server:app",

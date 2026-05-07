@@ -102,18 +102,19 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 )
 
                 async def _progress_callback(stage: str, percent: int, message: str = ""):
-                    """Async callback to update DB status during pipeline execution."""
+                    """Async callback to update DB status using a fresh session for 100% stability."""
                     logger.info("[%s] Progress: %d%% - %s", document_id, percent, message)
                     try:
-                        # Create a fresh session or use existing if thread-safe
-                        # Since we are in the same async block, we can use the existing session
-                        await doc_repo.update_status(
-                            document_id,
-                            status="processing",
-                            stage=stage,
-                            progress_percent=percent,
-                            status_message=message,
-                        )
+                        # Use a fresh session for each update to avoid transaction sharing issues
+                        async with AsyncSessionLocal() as fresh_session:
+                            fresh_repo = DocumentRepository(fresh_session)
+                            await fresh_repo.update_status(
+                                document_id,
+                                status="processing",
+                                stage=stage,
+                                progress_percent=percent,
+                                status_message=message,
+                            )
                     except Exception as status_err:
                         logger.warning("[%s] Failed to update progress in DB: %s", document_id, status_err)
 
@@ -174,7 +175,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
         )
 
         # Trigger maintenance
-        from app.workers.maintenance_tasks import rebuild_bm25_index_task
+        from app.modules.system.tasks import rebuild_bm25_index_task
 
         rebuild_bm25_index_task.delay()
 
