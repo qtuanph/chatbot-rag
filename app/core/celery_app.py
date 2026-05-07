@@ -34,12 +34,12 @@ from celery import Celery
 from app.core.config import settings
 
 _ALL_MODULES = [
-    "app.workers.upload_tasks",
-    "app.workers.cleanup_tasks",
-    "app.workers.chat_tasks",
-    "app.workers.maintenance_tasks",
-    "app.workers.memory_tasks",
-    "app.workers.audit_worker",
+    "app.modules.documents.tasks",
+    "app.modules.documents.cleanup_tasks",
+    "app.modules.chat.tasks",
+    "app.modules.system.tasks",
+    "app.modules.chat.memory_tasks",
+    "app.modules.analytics.audit_worker",
 ]
 
 celery_app = Celery(
@@ -74,14 +74,14 @@ celery_app.conf.update(
     result_expires=settings.celery_result_expires,
     # ── Queue routing ─────────────────────────────────────────────────────────
     task_routes={
-        "app.workers.upload_tasks.parse_document_task": {"queue": "ingestion"},
-        "app.workers.cleanup_tasks.delete_document_task": {"queue": "cleanup"},
-        "app.workers.cleanup_tasks.cleanup_old_chat_sessions_task": {"queue": "cleanup"},
-        "app.workers.chat_tasks.save_chat_message_task": {"queue": "default"},
-        "app.workers.maintenance_tasks.rebuild_bm25_index_task": {"queue": "ingestion"},
-        "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task": {"queue": "cleanup"},
-        "app.workers.audit_worker.process_audit_stream": {"queue": "default"},
-        "app.workers.memory_tasks.extract_memories_task": {"queue": "default"},
+        "app.modules.documents.tasks.parse_document_task": {"queue": "ingestion"},
+        "app.modules.documents.cleanup_tasks.delete_document_task": {"queue": "cleanup"},
+        "app.modules.documents.cleanup_tasks.cleanup_old_chat_sessions_task": {"queue": "cleanup"},
+        "app.modules.chat.tasks.save_chat_message_task": {"queue": "default"},
+        "app.modules.system.tasks.rebuild_bm25_index_task": {"queue": "ingestion"},
+        "app.modules.system.tasks.cleanup_orphaned_vectors_task": {"queue": "cleanup"},
+        "app.modules.analytics.audit_worker.process_audit_stream": {"queue": "default"},
+        "app.modules.chat.memory_tasks.extract_memories_task": {"queue": "default"},
     },
     task_default_queue="default",
     # ── Serialization ─────────────────────────────────────────────────────────
@@ -91,15 +91,15 @@ celery_app.conf.update(
     # ── Beat schedule (periodic tasks) ────────────────────────────────────────
     beat_schedule={
         "cleanup-old-chat-sessions": {
-            "task": "app.workers.cleanup_tasks.cleanup_old_chat_sessions_task",
+            "task": "app.modules.documents.cleanup_tasks.cleanup_old_chat_sessions_task",
             "schedule": settings.chat_session_ttl_days * 86400.0,
         },
         "cleanup-orphaned-vectors": {
-            "task": "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task",
+            "task": "app.modules.system.tasks.cleanup_orphaned_vectors_task",
             "schedule": settings.chat_session_ttl_days * 86400.0,
         },
         "process-audit-stream": {
-            "task": "app.workers.audit_worker.process_audit_stream",
+            "task": "app.modules.analytics.audit_worker.process_audit_stream",
             "schedule": settings.audit_stream_process_interval,
             "args": (settings.audit_stream_batch_size,),
         },

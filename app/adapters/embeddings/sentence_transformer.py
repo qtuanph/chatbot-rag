@@ -1,26 +1,22 @@
 """
-SentenceTransformer Embedding Adapter — Local/Offline.
-
-Wraps HuggingFace SentenceTransformer models for on-premise embedding.
-Default model: AITeamVN/Vietnamese_Embedding_v2 (1024-dim, Vietnamese-optimized).
-GPU: PyTorch fp16. CPU: ONNX runtime (2-3x faster than PyTorch fp32).
+SentenceTransformer Embedding Adapter — Remote Client.
+Calls the standalone AI-Engine service for inference.
 """
 
-import asyncio
 import logging
+import httpx
+from typing import List
 
 from app.adapters.base import BaseEmbedding
-from app.core.hardware import hardware
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class SentenceTransformerEmbedding(BaseEmbedding):
     """
-    Local embedding adapter using HuggingFace SentenceTransformer.
-
-    Supports any sentence-transformers-compatible model.
-    GPU is used automatically when available (torch.cuda).
+    Remote embedding adapter that calls the AI-Engine service.
+    Keeps the same interface but offloads computation.
     """
 
     def __init__(
@@ -31,122 +27,71 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         query_prefix: str = "",
         passage_prefix: str = "",
     ):
-        """
-        Args:
-            model_name: HuggingFace model ID or local path.
-            normalize: L2-normalize embeddings (recommended for cosine similarity).
-            batch_size: Sentences per GPU/CPU batch.
-            query_prefix: Prefix for query texts (e.g. "query: " for E5 models).
-            passage_prefix: Prefix for document texts (e.g. "passage: " for E5 models).
-        """
         self.model_name = model_name
         self.normalize = normalize
         self.batch_size = batch_size
         self.query_prefix = query_prefix
         self.passage_prefix = passage_prefix
-        self._dim: int = 0
-
-        self._model = self._load_model()
-
-    def _load_model(self):
-        """Load model onto GPU (fp16) if available, else CPU with ONNX backend."""
-        from sentence_transformers import SentenceTransformer
-
-        if hardware.gpu_count > 0:
-            model = SentenceTransformer(self.model_name, device="cuda")
-            model = model.half()
-            logger.info("Embedding: CUDA fp16 | %s", self.model_name)
-        else:
-            model = SentenceTransformer(self.model_name, backend="onnx")
-            logger.info("Embedding: CPU ONNX | %s", self.model_name)
-
-        self._dim = model.get_embedding_dimension()
-        return model
-
-    # ------------------------------------------------------------------
-    # BaseEmbedding interface
-    # ------------------------------------------------------------------
+        self.base_url = settings.ai_engine_url.rstrip("/")
+        self._dim = settings.embedding_vector_size
 
     def get_dimension(self) -> int:
         return self._dim
 
-    async def embed(self, text: str, normalize: bool = True) -> list[float]:
-        """Embed a single text string."""
-        text_with_prefix = self.query_prefix + text if self.query_prefix else text
-        vectors = await asyncio.to_thread(
-            self._model.encode,
-            [text_with_prefix],
-            normalize_embeddings=normalize and self.normalize,
-            batch_size=1,
-            show_progress_bar=False,
-        )
-        return vectors[0].tolist()
+    async def embed(self, text: str, normalize: bool = True) -> List[float]:
+        """Embed a single text string via remote call."""
+        results = await self.embed_batch([text], batch_size=1, normalize=normalize)
+        return results[0] if results else []
 
     async def embed_batch(
         self,
         texts: list[str],
         batch_size: int = 32,
         normalize: bool = True,
-    ) -> list[list[float]]:
-        """
-        Embed multiple texts using the local model.
-
-        Note: SentenceTransformer handles batching internally and uses
-        GPU parallelism natively — no ThreadPoolExecutor needed here.
-        The `passage_prefix` is applied to document texts during ingestion.
-        """
+    ) -> List[List[float]]:
+        """Embed multiple texts via AI-Engine remote call."""
         if not texts:
             return []
 
-        actual_batch = batch_size or self.batch_size
-
+        # Apply passage prefix if this is for ingestion
         if self.passage_prefix:
             texts = [self.passage_prefix + t for t in texts]
 
-        vectors = await asyncio.to_thread(
-            self._model.encode,
-            texts,
-            normalize_embeddings=normalize and self.normalize,
-            batch_size=actual_batch,
-            show_progress_bar=False,
-        )
-        return [v.tolist() for v in vectors]
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            try:
+                response = await client.post(
+                    f"{self.base_url}/embed",
+                    json={
+                        "texts": texts,
+                        "batch_size": batch_size or self.batch_size,
+                        "normalize": normalize and self.normalize,
+                        "task_type": "passage" if self.passage_prefix else "query",
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data["embeddings"]
+            except Exception as e:
+                logger.error(f"AI-Engine /embed failed: {e}")
+                raise
 
-    async def embed_query(self, text: str) -> list[float]:
-        """
-        Embed a query text (applies query_prefix if configured).
-        """
+    async def embed_query(self, text: str) -> List[float]:
+        """Embed a query text via remote call."""
+        # Query prefix is handled by the server or here
         prefixed = self.query_prefix + text if self.query_prefix else text
-        vectors = await asyncio.to_thread(
-            self._model.encode,
-            [prefixed],
-            normalize_embeddings=self.normalize,
-            batch_size=1,
-            show_progress_bar=False,
-        )
-        return vectors[0].tolist()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.post(
+                    f"{self.base_url}/embed",
+                    json={"texts": [prefixed], "batch_size": 1, "normalize": self.normalize, "task_type": "query"},
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data["embeddings"][0]
+            except Exception as e:
+                logger.error(f"AI-Engine /embed query failed: {e}")
+                raise
 
     def unload(self) -> None:
-        """
-        Free GPU/CPU memory used by the model.
-
-        Call this at the end of an ingestion task to release VRAM back to the
-        system — letting the vLLM chat model use the full GPU budget.
-        The model will be re-loaded from disk cache on the next task.
-        """
-        try:
-            if self._model is not None:
-                del self._model
-                self._model = None  # type: ignore[assignment]
-            try:
-                import torch
-
-                if hardware.gpu_count > 0:
-                    torch.cuda.empty_cache()
-                    logger.info("Embedding model unloaded — CUDA cache cleared")
-                else:
-                    logger.info("Embedding model unloaded — RAM freed")
-            except ImportError:
-                logger.info("Embedding model unloaded")
-        except Exception:
-            logger.warning("Failed to cleanly unload embedding model", exc_info=True)
+        """No-op for remote client."""
+        pass

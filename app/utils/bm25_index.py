@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Any
 
@@ -7,9 +6,10 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class BM25Manager:
     """Helper to manage BM25 encoder lifecycle with Redis."""
-    
+
     @staticmethod
     def get_encoder(redis_client: Any) -> VietnameseBM25Encoder:
         """Get encoder and load vocab synchronously."""
@@ -62,7 +62,7 @@ async def build_bm25_index_from_qdrant(redis_client: Any) -> int:
             text = point.payload.get("content") or point.payload.get("text")
             if text:
                 all_texts.append(text)
-        
+
         offset = next_offset
         if not offset:
             break
@@ -72,12 +72,12 @@ async def build_bm25_index_from_qdrant(redis_client: Any) -> int:
         return 0
 
     # Stage 2: Tokenize and build vocab
-    # This can be CPU heavy, but for smaller/medium datasets it's fine in async loop
+    # This can be CPU heavy, but for smaller/medium datasets it's fine
     for i, text in enumerate(all_texts):
-        encoder.tokenize(text) # Populate internal Counter if we had one, but our encoder builds on the fly
+        encoder.tokenize(text)  # Populate internal Counter if we had one, but our encoder builds on the fly
         # In our case, encode() actually populates the vocab
         encoder.encode(text)
-        
+
         if i % 1000 == 0:
             logger.info("BM25 Rebuild: Processed %d/%d documents", i, len(all_texts))
 

@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     api_v1_prefix: str = "/api/v1"
+    ai_engine_url: str = "http://ai-engine:8000"
     log_level: str = "INFO"
 
     # Celery worker: which task modules to load ("all" | "upload" | "cleanup")

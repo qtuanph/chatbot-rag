@@ -1,6 +1,7 @@
 services:
   api:
     image: chatbot-rag-app:latest
+    pull_policy: build
     build:
       context: .
       secrets:
@@ -19,16 +20,13 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
+      ai-engine:
+        condition: service_started
     deploy:
       resources:
         limits:
-          cpus: '4.0'
-          memory: 6G
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu, utility, compute]
+          cpus: '2.0'
+          memory: 2G
     volumes:
       - hf-cache:/home/qtuanph/.cache/huggingface
     restart: unless-stopped
@@ -41,8 +39,13 @@ services:
     networks:
       - internal
 
-  butler:
+  workers:
     image: chatbot-rag-app:latest
+    pull_policy: build
+    build:
+      context: .
+      secrets:
+        - hf_token
     # Shares the same image as api — no separate build needed
     env_file:
       - .env
@@ -56,11 +59,40 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
-    shm_size: '2gb'
+      ai-engine:
+        condition: service_started
     deploy:
       resources:
         limits:
-          memory: 4G
+          cpus: '2.0'
+          memory: 2G
+    volumes:
+      - hf-cache:/home/qtuanph/.cache/huggingface
+    restart: unless-stopped
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  ai-engine:
+    image: chatbot-rag-app:latest
+    pull_policy: build
+    build:
+      context: .
+      secrets:
+        - hf_token
+    env_file:
+      - .env
+    entrypoint: ["python", "-m", "app.modules.inference.server"]
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
         reservations:
           devices:
             - driver: nvidia
@@ -72,7 +104,7 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -157,6 +189,7 @@ services:
 
   webapp:
     image: chatbot-rag-webapp:latest
+    pull_policy: build
     build:
       context: ./webapp
       dockerfile: Dockerfile

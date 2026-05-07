@@ -9,7 +9,13 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 
-from app.api.routes import analytics, auth, chat, documents, health, memories, tree
+from app.modules.analytics import router as analytics
+from app.modules.auth import router as auth
+from app.modules.chat import router as chat
+from app.modules.documents import router as documents
+from app.modules.system import router as system
+from app.modules.chat import memories_router as memories
+from app.modules.documents import tree_router as tree
 from app.api.middleware import (
     SecurityHeadersMiddleware,
     RequestLoggingMiddleware,
@@ -38,7 +44,7 @@ async def lifespan(application: FastAPI):
         start = time.time()
         try:
             # 1. Warm Embedding
-            from app.services.retrieval.retrieval_service import build_embedding_service
+            from app.modules.chat.retrieval.retrieval_service import build_embedding_service
 
             embed_svc = build_embedding_service()
             embed_fn = getattr(embed_svc, "embed_query", None) or embed_svc.embed
@@ -109,7 +115,7 @@ app.add_middleware(RequestLoggingMiddleware)
 if settings.app_env == "production":
     app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.rate_limit_global_rpm)
 
-routers = [auth.router, health.router, documents.router, chat.router, tree.router, memories.router, analytics.router]
+routers = [auth.router, system.router, documents.router, chat.router, tree.router, memories.router, analytics.router]
 
 for router in routers:
     app.include_router(router, prefix=settings.api_v1_prefix)

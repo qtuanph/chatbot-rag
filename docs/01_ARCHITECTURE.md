@@ -12,13 +12,14 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 |-----------|-----------|
 | Frontend | Next.js 16 + shadcn/ui v4 + next-auth v5 (JWT) |
 | Backend | FastAPI 100% async (Strict await enforcement) |
-| Workers | butler — `celery multi`: node-ingestion (solo, GPU) + node-default (prefork, CPU, Beat) |
+| Workers | workers — Celery (node-ingestion: solo + node-default: prefork, Beat) |
+| AI-Engine | ai-engine — Standalone FastAPI server for Embedding/Reranking (GPU) |
 | Database | PostgreSQL 18.3 (AsyncSessionLocal, Metadata/Auth/Audit) |
 | Vectors | Qdrant 1.17.1 (AsyncQdrantClient, Sparse+Dense Hybrid) |
 | Object storage | RustFS (S3-compatible, isolated via asyncio.to_thread) |
 | Queue/Cache | Redis 8.8 m03 (Celery, Streams, Semantic Cache, Rate Limiting) |
-| Embedding | AITeamVN/Vietnamese_Embedding_v2 (1024-dim, local, GPU/CPU) |
-| Reranker | AITeamVN/Vietnamese_Reranker (GPU/CPU, isolated via asyncio.to_thread) |
+| Embedding | AITeamVN/Vietnamese_Embedding_v2 (Remote via AI-Engine) |
+| Reranker | AITeamVN/Vietnamese_Reranker (Remote via AI-Engine) |
 | AI Provider | Google AI Gemma (singleton via lru_cache) |
 | Ingestion | Docling + PaddleOCR + Contextualizer (Global Vision) + DuplicateDetector (Bloom) |
 | Reverse proxy | nginx on port 80 (SSE, NextAuth, API, Rate Limited) |
@@ -75,23 +76,23 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 ```mermaid
 graph TD
     Client[Browser] --> WebApp[Next.js 16]
-    WebApp -->|/api/bep/ proxy| API[FastAPI Routes]
-    API --> AuthSvc[AuthService → AuthRepository]
-    API --> DocSvc[DocumentService → DocumentRepository]
-    API --> ChatSvc[ChatService → ChatRepository]
-    API --> TreeSvc[TreeService → SectionRepository]
-    API --> MemSvc[MemoryService → UserMemoryService → MemoryRepository]
-    API --> AnalyticSvc[AnalyticsService → AnalyticsRepository]
-    API --> HealthSvc[HealthService]
-    ChatSvc --> Retriever[RAG Retrieval → DocumentRepository + SectionRepository]
-    Retriever --> Embedder[Vietnamese_Embedding_v2 → Qdrant]
-    ChatSvc --> Memory[UserMemoryService → Redis + PostgreSQL]
+    WebApp -->|/api/bep/ proxy| API[FastAPI Modules]
+    API --> AuthSvc[Auth Module → Repository]
+    API --> DocSvc[Documents Module → Repository]
+    API --> ChatSvc[Chat Module → Repository]
+    API --> AnalyticSvc[Analytics Module → Repository]
+    API --> SystemSvc[System Module → Health/Maintenance]
+    
+    ChatSvc --> Retriever[Retrieval Service]
+    Retriever --> AI_Engine[AI-Engine Service → GPU]
+    AI_Engine -->|Vectors| Qdrant
+    
     DocSvc --> Upload[Upload → Redis queue]
-    Upload --> Worker[butler · celery multi · GPU]
-    Worker --> Parser[DoclingParser → Docling Method D + PaddleOCR]
-    Parser --> Sections[SectionRepository → PostgreSQL]
-    Parser --> EmbedWorker[Vietnamese_Embedding_v2 → Qdrant]
-    Redis --> Cleanup[CleanupService → butler (node-default, cleanup queue)]
+    Upload --> Worker[workers · celery]
+    Worker --> Parser[DoclingParser]
+    Parser --> AI_Engine
+    Worker --> DB[(PostgreSQL)]
+    Redis --> Cleanup[System Module → workers]
 ```
 
 ## Controller-Service-Repository Architecture
@@ -110,23 +111,21 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 
 | Layer | Location | Convention |
 |-------|----------|-----------|
-| Controller | `app/api/routes/*.py` | HTTP only — MUST use `async def`. NO `SessionLocal`, NO business logic. Catches domain exceptions (`ValueError`/`RuntimeError`) from services and translates to `http_errors.*` |
-| Service | `app/services/{domain}/*_service.py` | MUST use `async def`. Takes Repository via constructor. Contains all business logic. Raises `ValueError`/`RuntimeError` only — NEVER `http_errors.*`. Offloads CPU-bound tasks via `asyncio.to_thread`. |
-| Repository | `app/repositories/*_repository.py` | MUST use `async def`. Takes `AsyncSession` via constructor. Performs SQL queries and returns dicts (never leaky ORM models). |
-| DI Wiring | `app/api/deps.py` | FastAPI `Depends()` factories for all repos and services. Manages singleton lifecycles. |
+| Controller | `app/modules/{domain}/router.py` | HTTP only — MUST use `async def`. NO `SessionLocal`, NO business logic. Catches domain exceptions (`ValueError`/`RuntimeError`) from services and translates to `http_errors.*` |
+| Service | `app/modules/{domain}/service.py` | MUST use `async def`. Takes Repository via constructor. Contains all business logic. Raises `ValueError`/`RuntimeError` only — NEVER `http_errors.*`. |
+| Repository | `app/modules/{domain}/repository.py` | MUST use `async def`. Takes `AsyncSession` via constructor. Performs SQL queries and returns dicts (never leaky ORM models). |
+| DI Wiring | `app/api/deps.py` | FastAPI `Depends()` factories for all module services and repos. |
 
-### Current Service/Repository Map
+### Current Module Map
 
-| Domain | Service | Repository |
-|--------|---------|-----------|
-| Auth | `AuthService` | `AuthRepository` |
-| Chat | `ChatService` (prepare_chat, stream orchestration, session/history, persistence) | `ChatRepository` |
-| Documents | `DocumentService` (build_vector_store factory) | `DocumentRepository` (get_latest_active_document_ids, get_titles_by_ids, hard_delete) |
-| Sections | `TreeService` | `SectionRepository` (get_sections_for_rag, get_section_ids_by_document) |
-| Cleanup | `CleanupService` | `DocumentRepository` + `SectionRepository` |
-| Memories | `MemoryService` → `UserMemoryService` | `MemoryRepository` |
-| Analytics | `AnalyticsService` | `AnalyticsRepository` |
-| Health | `HealthService` | (config-only, no repo) |
+| Module | Purpose | Content |
+|--------|---------|---------|
+| `auth` | Identity & Access | Auth/User logic, JWT, Roles |
+| `documents` | Ingestion & Storage | Docling, Sections, Chunks, Tree management |
+| `chat` | Conversation & RAG | History, Retrieval logic, Memories |
+| `analytics` | Monitoring & Audit | Token tracking, Audit stream processing |
+| `system` | Orchestration | Health checks, Maintenance tasks, Global state |
+| `inference` | AI Server | Standalone AI-Engine (FastAPI + Models) |
 
 ## Runtime Data Flow
 

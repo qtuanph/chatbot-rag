@@ -17,23 +17,23 @@ from app.utils.document_registry import DocumentRegistry
 from app.utils.chat_store import ChatStore
 
 if TYPE_CHECKING:
-    from app.repositories.auth_repository import AuthRepository
-    from app.repositories.chat_repository import ChatRepository
-    from app.repositories.analytics_repository import AnalyticsRepository
-    from app.repositories.memory_repository import MemoryRepository
-    from app.repositories.document_repository import DocumentRepository
-    from app.repositories.section_repository import SectionRepository
+    from app.modules.auth.repository import AuthRepository
+    from app.modules.chat.repository import ChatRepository
+    from app.modules.analytics.repository import AnalyticsRepository
+    from app.modules.chat.memory_repository import MemoryRepository
+    from app.modules.documents.repository import DocumentRepository
+    from app.modules.documents.section_repository import SectionRepository
     from app.utils.rate_limiter import RateLimiter
     from app.utils.semantic_cache import SemanticCache
     from app.utils.query_cache import QueryEmbeddingCache, RagResultCache
-    from app.services.auth.auth_service import AuthService
-    from app.services.chat.chat_service import ChatService
-    from app.services.chat.memory_service import MemoryService
-    from app.services.analytics.analytics_service import AnalyticsService
-    from app.services.documents.document_service import DocumentService
-    from app.services.documents.tree_service import TreeService
-    from app.services.system.health_service import HealthService
-    from app.services.documents.cleanup_service import CleanupService
+    from app.modules.auth.service import AuthService
+    from app.modules.chat.service import ChatService
+    from app.modules.chat.memory_service import MemoryService
+    from app.modules.analytics.service import AnalyticsService
+    from app.modules.documents.tree_service import TreeService
+    from app.modules.documents.task_service import TaskService
+    from app.modules.system.service import HealthService
+    from app.modules.documents.cleanup_service import CleanupService
 
 # ── Redis Utility Getters ──────────────────
 
@@ -140,37 +140,37 @@ async def require_admin(request: Request, auth: AuthContext | None = Depends(get
 
 
 async def get_auth_repo(session: AsyncSession = Depends(get_async_session)):
-    from app.repositories.auth_repository import AuthRepository
+    from app.modules.auth.repository import AuthRepository
 
     return AuthRepository(session)
 
 
 async def get_chat_repo(session: AsyncSession = Depends(get_async_session)):
-    from app.repositories.chat_repository import ChatRepository
+    from app.modules.chat.repository import ChatRepository
 
     return ChatRepository(session)
 
 
 async def get_analytics_repo(session: AsyncSession = Depends(get_async_session)):
-    from app.repositories.analytics_repository import AnalyticsRepository
+    from app.modules.analytics.repository import AnalyticsRepository
 
     return AnalyticsRepository(session)
 
 
 async def get_memory_repo(session: AsyncSession = Depends(get_async_session)):
-    from app.repositories.memory_repository import MemoryRepository
+    from app.modules.chat.memory_repository import MemoryRepository
 
     return MemoryRepository(session)
 
 
 async def get_doc_repo(session: AsyncSession = Depends(get_async_session)):
-    from app.repositories.document_repository import DocumentRepository
+    from app.modules.documents.repository import DocumentRepository
 
     return DocumentRepository(session)
 
 
 async def get_section_repo(session: AsyncSession = Depends(get_async_session)):
-    from app.repositories.section_repository import SectionRepository
+    from app.modules.documents.section_repository import SectionRepository
 
     return SectionRepository(session)
 
@@ -182,7 +182,7 @@ async def get_auth_service(
     repo: AuthRepository = Depends(get_auth_repo),
     blacklist: TokenBlacklist = Depends(get_token_blacklist),
 ) -> AuthService:
-    from app.services.auth.auth_service import AuthService
+    from app.modules.auth.service import AuthService
 
     return AuthService(repo=repo, blacklist=blacklist)
 
@@ -193,15 +193,15 @@ async def get_chat_service(
     store: ChatStore = Depends(get_chat_store),
     r_client: Any = Depends(get_redis_client),
 ) -> ChatService:
-    from app.services.chat.chat_service import ChatService
-    from app.services.chat.user_memory_service import UserMemoryService
+    from app.modules.chat.service import ChatService
+    from app.modules.chat.user_memory_service import UserMemoryService
 
     user_memory_service = UserMemoryService(redis_client=r_client, memory_repo=memory_repo)
     return ChatService(repo=repo, store=store, user_memory_service=user_memory_service)
 
 
 async def get_analytics_service(repo: AnalyticsRepository = Depends(get_analytics_repo)) -> AnalyticsService:
-    from app.services.analytics.analytics_service import AnalyticsService
+    from app.modules.analytics.service import AnalyticsService
 
     return AnalyticsService(repo=repo)
 
@@ -210,34 +210,51 @@ async def get_memory_service(
     memory_repo: MemoryRepository = Depends(get_memory_repo),
     r_client: Any = Depends(get_redis_client),
 ) -> MemoryService:
-    from app.services.chat.memory_service import MemoryService
-    from app.services.chat.user_memory_service import UserMemoryService
+    from app.modules.chat.memory_service import MemoryService
+    from app.modules.chat.user_memory_service import UserMemoryService
 
     user_memory_service = UserMemoryService(redis_client=r_client, memory_repo=memory_repo)
     return MemoryService(repo=memory_repo, user_memory_service=user_memory_service)
 
 
-async def get_document_service(
+async def get_task_service(
     doc_repo: DocumentRepository = Depends(get_doc_repo),
-    section_repo: SectionRepository = Depends(get_section_repo),
     registry: DocumentRegistry = Depends(get_document_registry),
-) -> DocumentService:
-    from app.services.documents.document_service import DocumentService
+) -> TaskService:
+    from app.modules.documents.task_service import TaskService
 
-    return DocumentService(doc_repo=doc_repo, section_repo=section_repo, registry=registry)
+    return TaskService(doc_repo=doc_repo, registry=registry)
 
 
 async def get_tree_service(
     doc_repo: DocumentRepository = Depends(get_doc_repo),
     section_repo: SectionRepository = Depends(get_section_repo),
 ) -> TreeService:
-    from app.services.documents.tree_service import TreeService
+    from app.modules.documents.tree_service import TreeService
 
     return TreeService(doc_repo=doc_repo, section_repo=section_repo)
 
 
+async def get_document_service(
+    doc_repo: DocumentRepository = Depends(get_doc_repo),
+    section_repo: SectionRepository = Depends(get_section_repo),
+    registry: DocumentRegistry = Depends(get_document_registry),
+    task_service: TaskService = Depends(get_task_service),
+    tree_service: TreeService = Depends(get_tree_service),
+) -> DocumentService:
+    from app.modules.documents.service import DocumentService
+
+    return DocumentService(
+        doc_repo=doc_repo,
+        section_repo=section_repo,
+        registry=registry,
+        task_service=task_service,
+        tree_service=tree_service,
+    )
+
+
 async def get_health_service() -> HealthService:
-    from app.services.system.health_service import HealthService
+    from app.modules.system.service import HealthService
 
     return HealthService()
 
@@ -247,7 +264,7 @@ async def get_cleanup_service(
     section_repo: SectionRepository = Depends(get_section_repo),
     registry: DocumentRegistry = Depends(get_document_registry),
 ) -> CleanupService:
-    from app.services.documents.cleanup_service import CleanupService
+    from app.modules.documents.cleanup_service import CleanupService
 
     return CleanupService(doc_repo=doc_repo, section_repo=section_repo, registry=registry)
 
@@ -257,7 +274,7 @@ async def get_recovery_service(
     section_repo: SectionRepository = Depends(get_section_repo),
     r_client: Any = Depends(get_redis_client),
 ) -> Any:
-    from app.services.ingestion.recovery_service import RecoveryService
+    from app.modules.documents.ingestion.recovery_service import RecoveryService
 
     service = RecoveryService(doc_repo=doc_repo, section_repo=section_repo, redis_client=r_client)
     return await service.initialize()

@@ -104,7 +104,7 @@ class QdrantVectorStore(BaseVectorStore):
             # Check existence first
             collections = await client.get_collections()
             exists = any(col.name == self.collection_name for col in collections.collections)
-            
+
             if exists:
                 info = await client.get_collection(self.collection_name)
                 # Check if it has our required 'dense' vector config
@@ -114,11 +114,11 @@ class QdrantVectorStore(BaseVectorStore):
                     is_valid = True
                 elif isinstance(vectors_config, dict) and "dense" in vectors_config:
                     is_valid = True
-                    
+
                 if is_valid:
                     logger.debug("Collection '%s' already exists and is valid", self.collection_name)
                     return
-                
+
                 logger.warning("Collection '%s' exists but is invalid. Recreating...", self.collection_name)
                 await client.delete_collection(self.collection_name)
 
