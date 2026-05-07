@@ -11,6 +11,35 @@ SET timezone = 'Asia/Ho_Chi_Minh';
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- ============= UUID v7 FUNCTION =============
+-- PostgreSQL 18+ has native uuidv7(). For older versions, we provide a fallback.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'uuidv7') THEN
+        CREATE FUNCTION uuidv7() RETURNS uuid AS $func$
+        DECLARE
+          v_time timestamp with time zone:= clock_timestamp();
+          v_giga_ms bigint := cast(extract(epoch from v_time) * 1000 as bigint);
+          v_msec_hex text := lpad(to_hex(v_giga_ms), 12, '0');
+          v_rand_a_hex text := lpad(to_hex((random() * 4095)::int), 3, '0');
+          v_rand_b_hex text := lpad(to_hex((random() * 4611686018427387903)::bigint), 16, '0');
+        BEGIN
+          RETURN (
+            substring(v_msec_hex, 1, 8) || '-' ||
+            substring(v_msec_hex, 9, 4) || '-' ||
+            '7' || substring(v_rand_a_hex, 1, 3) || '-' ||
+            to_hex(((to_number(substring(v_rand_b_hex, 1, 1), 'x')::int & 3) | 8)) ||
+            substring(v_rand_b_hex, 2, 3) || '-' ||
+            substring(v_rand_b_hex, 5, 12)
+          )::uuid;
+        END;
+        $func$ LANGUAGE plpgsql VOLATILE;
+        RAISE NOTICE 'Custom uuidv7 fallback function created.';
+    ELSE
+        RAISE NOTICE 'Native uuidv7 function detected, skipping custom definition.';
+    END IF;
+END $$;
+
 -- ============= ROLES & PERMISSIONS =============
 DO $$
 DECLARE

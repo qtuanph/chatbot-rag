@@ -21,13 +21,13 @@ class SentenceTransformerEmbedding(BaseEmbedding):
 
     def __init__(
         self,
-        model_name: str = "AITeamVN/Vietnamese_Embedding_v2",
+        model_name: str | None = None,
         normalize: bool = True,
         batch_size: int = 32,
         query_prefix: str = "",
         passage_prefix: str = "",
     ):
-        self.model_name = model_name
+        self.model_name = model_name or settings.embedding_hf_model
         self.normalize = normalize
         self.batch_size = batch_size
         self.query_prefix = query_prefix
@@ -57,7 +57,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         if self.passage_prefix:
             texts = [self.passage_prefix + t for t in texts]
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=settings.ai_stream_timeout) as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/embed",
@@ -79,7 +79,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         """Embed a query text via remote call."""
         # Query prefix is handled by the server or here
         prefixed = self.query_prefix + text if self.query_prefix else text
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=settings.ai_http_timeout_refine) as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/embed",

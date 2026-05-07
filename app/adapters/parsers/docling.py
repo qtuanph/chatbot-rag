@@ -29,8 +29,8 @@ class DoclingParser(BaseParser):
     OCR: PaddleOCR (RapidOCR ONNX backend) — MANDATORY for all documents.
     """
 
-    def __init__(self, min_quality_score: float = 0.5):
-        self.min_quality_score = min_quality_score
+    def __init__(self, min_quality_score: float | None = None):
+        self.min_quality_score = min_quality_score or settings.ingestion_min_quality_score
         self._initialize_docling()
 
     def _initialize_docling(self) -> None:
@@ -43,7 +43,7 @@ class DoclingParser(BaseParser):
 
         device = "cuda" if hardware.gpu_count > 0 else "cpu"
 
-        ocr_options = RapidOcrOptions(lang=["vi", "en"])
+        ocr_options = RapidOcrOptions(lang=settings.ingestion_ocr_languages)
         pipeline = PdfPipelineOptions(
             do_ocr=True,
             force_full_page_ocr=True,
@@ -132,11 +132,12 @@ class DoclingParser(BaseParser):
 
             try:
                 logger.info("Converting %s with PaddleOCR...", filename)
-                # DocumentConverter.convert does not accept a `timeout` kwarg (pydantic validation error).
-                # Use asyncio.wait_for around the blocking call to enforce a timeout instead.
+                # Configurable timeout for massive PDFs/OCR tasks (default 1 hour)
                 try:
-                    # Increased timeout to 3500s (~1 hour) for massive PDFs/OCR tasks (500+ pages)
-                    result = await asyncio.wait_for(asyncio.to_thread(self.converter.convert, tmp_path), timeout=3500)
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(self.converter.convert, tmp_path), 
+                        timeout=settings.ingestion_parsing_timeout
+                    )
                 except asyncio.TimeoutError:
                     logger.exception("Docling+PaddleOCR conversion TIMED OUT for %s", filename)
                     return None

@@ -15,7 +15,7 @@ class BM25Manager:
     """
     _instance: VietnameseBM25Encoder | None = None
     _last_load_time: float = 0
-    _ttl: int = 120  # Cache vocabulary in memory for 2 minutes
+    _ttl: float = settings.bm25_singleton_ttl
 
     @classmethod
     async def get_encoder_async(cls, redis_client: Any) -> VietnameseBM25Encoder:
@@ -69,7 +69,7 @@ async def build_bm25_index_from_qdrant(redis_client: Any) -> int:
     encoder.vocab = {}
     encoder._next_id = 0
 
-    batch_size = 500
+    batch_size = settings.retrieval_bm25_rebuild_batch_size
     offset = None
     all_texts = []
 

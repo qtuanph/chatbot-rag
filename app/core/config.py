@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     ingestion_min_non_empty_nodes: int = 1
     ingestion_min_total_text_chars: int = 80
     # Embedding pipeline tuning — 0 means auto-detect from hardware profile
+    ingestion_min_quality_score: float = 0.5
+    ingestion_parsing_timeout: int = 3600  # Default 1 hour for large OCR tasks
+    ingestion_ocr_languages: list[str] = ["vi", "en"]
     ingestion_embedding_chunk_size: int = 32  # nodes per embed+store batch
     ingestion_embed_parallelism: int = 0  # 0 = use hardware.embed_parallelism
 
@@ -50,7 +53,8 @@ class Settings(BaseSettings):
     # Hybrid search (Dense + BM25) — always on, no toggle
     retrieval_bm25_k1: float = 1.5  # BM25 term frequency saturation
     retrieval_bm25_b: float = 0.75  # BM25 length normalization
-    retrieval_bm25_vocab_ttl: float = 120.0
+    bm25_singleton_ttl: float = 120.0
+    retrieval_bm25_rebuild_batch_size: int = 500
 
     # Context Expansion (Soi sáng)
     retrieval_context_expansion_window: int = 1  # Number of neighboring nodes to fetch (before & after)
@@ -123,7 +127,7 @@ class Settings(BaseSettings):
     embedding_normalize: bool = True
     vector_store: str = "qdrant"
     qdrant_url: str = "http://qdrant:6333"
-    qdrant_api_key: str = ""  # Empty for in-memory; set for cloud Qdrant
+    qdrant_api_key: str | None = None
     qdrant_collection: str = "documents_vectors"
     qdrant_timeout: int = 30  # Seconds
 
@@ -135,7 +139,12 @@ class Settings(BaseSettings):
     # AI generation parameters — configurable per deployment
     ai_temperature: float = 0.3
     ai_max_output_tokens: int = 8192
-    ai_max_history_messages: int = 20  # Multi-turn context window
+    ai_max_history_messages: int = 20
+    ai_google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    ai_google_thinking_level: str = "MINIMAL"
+    ai_http_timeout_refine: float = 30.0
+    ai_http_keepalive_expiry: float = 30.0
+    # Multi-turn context window
     ai_stream_timeout: float = 300.0  # HTTP timeout for AI streaming (seconds)
     ai_http_max_connections: int = 50  # httpx connection pool size
     ai_http_keepalive_connections: int = 10  # httpx keepalive pool size

@@ -51,11 +51,11 @@ class QdrantVectorStore(BaseVectorStore):
 
     def __init__(
         self,
-        url: str = "http://localhost:6333",
+        url: str | None = None,
         api_key: str | None = None,
-        collection_name: str = "documents_vectors",
-        vector_size: int = 1024,  # Vietnamese_Embedding_v2 dimension
-        timeout: int = 30,
+        collection_name: str | None = None,
+        vector_size: int | None = None,
+        timeout: int | None = None,
     ):
         """
         Initialize Qdrant vector store connection.
@@ -67,11 +67,11 @@ class QdrantVectorStore(BaseVectorStore):
             vector_size: Dimension of vectors (1024 for Vietnamese_Embedding_v2)
             timeout: Request timeout in seconds
         """
-        self.url = url
-        self.api_key = api_key
-        self.collection_name = collection_name
-        self.vector_size = vector_size
-        self.timeout = timeout
+        self.url = url or settings.qdrant_url
+        self.api_key = api_key or settings.qdrant_api_key
+        self.collection_name = collection_name or settings.qdrant_collection
+        self.vector_size = vector_size or settings.embedding_vector_size
+        self.timeout = timeout or settings.qdrant_timeout
         self.client: Any = None
         self._initialized = False
 

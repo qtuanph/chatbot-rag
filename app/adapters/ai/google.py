@@ -151,7 +151,7 @@ class GoogleAIProvider(AIProvider):
 
     def __init__(self) -> None:
         self.model = settings.google_model
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
+        self.base_url = settings.ai_google_base_url.rstrip("/")
         self.api_key = settings.google_api_key
         if not self.api_key:
             raise ValueError("GOOGLE_API_KEY must be configured when AI_PROVIDER=google")
@@ -161,7 +161,7 @@ class GoogleAIProvider(AIProvider):
         self._limits = httpx.Limits(
             max_keepalive_connections=settings.ai_http_keepalive_connections,
             max_connections=settings.ai_http_max_connections,
-            keepalive_expiry=30.0,
+            keepalive_expiry=settings.ai_http_keepalive_expiry,
         )
         self._client: httpx.AsyncClient | None = None
         self._refine_client: httpx.AsyncClient | None = None
@@ -185,7 +185,7 @@ class GoogleAIProvider(AIProvider):
         current_loop = asyncio.get_running_loop()
         if self._refine_client is None or self._refine_client.is_closed or self._loop is not current_loop:
             self._loop = current_loop
-            self._refine_client = httpx.AsyncClient(timeout=30.0, limits=self._limits)
+            self._refine_client = httpx.AsyncClient(timeout=settings.ai_http_timeout_refine, limits=self._limits)
         return self._refine_client
 
     async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> dict[str, Any]:
@@ -245,7 +245,7 @@ class GoogleAIProvider(AIProvider):
             "generationConfig": {
                 "temperature": settings.ai_temperature,
                 "maxOutputTokens": settings.ai_max_output_tokens,
-                "thinkingConfig": {"thinkingLevel": "MINIMAL"},
+                "thinkingConfig": {"thinkingLevel": settings.ai_google_thinking_level},
             },
         }
 

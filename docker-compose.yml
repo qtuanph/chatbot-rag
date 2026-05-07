@@ -19,16 +19,17 @@ services:
       rustfs:
         condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
       ai-engine:
-        condition: service_started
+        condition: service_healthy
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
-    volumes:
-      - hf-cache:/home/qtuanph/.cache/huggingface
+          cpus: ${API_CPU_LIMIT:-2.0}
+          memory: ${API_MEM_LIMIT:-4G}
+        reservations:
+          cpus: ${API_CPU_RESERVATION:-0.5}
+          memory: ${API_MEM_RESERVATION:-1G}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
@@ -41,11 +42,6 @@ services:
 
   workers:
     image: chatbot-rag-app:latest
-    pull_policy: build
-    build:
-      context: .
-      secrets:
-        - hf_token
     # Shares the same image as api — no separate build needed
     env_file:
       - .env
@@ -58,16 +54,17 @@ services:
       rustfs:
         condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
       ai-engine:
-        condition: service_started
+        condition: service_healthy
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
-    volumes:
-      - hf-cache:/home/qtuanph/.cache/huggingface
+          cpus: ${WORKER_CPU_LIMIT:-2.0}
+          memory: ${WORKER_MEM_LIMIT:-4G}
+        reservations:
+          cpus: ${WORKER_CPU_RESERVATION:-0.5}
+          memory: ${WORKER_MEM_RESERVATION:-1G}
     restart: unless-stopped
     networks:
       - internal
@@ -80,20 +77,17 @@ services:
 
   ai-engine:
     image: chatbot-rag-app:latest
-    pull_policy: build
-    build:
-      context: .
-      secrets:
-        - hf_token
     env_file:
       - .env
     entrypoint: ["python", "-m", "app.modules.inference.server"]
     deploy:
       resources:
         limits:
-          cpus: '4.0'
-          memory: 8G
+          cpus: ${AI_ENGINE_CPU_LIMIT:-4.0}
+          memory: ${AI_ENGINE_MEM_LIMIT:-8G}
         reservations:
+          cpus: ${AI_ENGINE_CPU_RESERVATION:-1.0}
+          memory: ${AI_ENGINE_MEM_RESERVATION:-2G}
           devices:
             - driver: nvidia
               count: all
@@ -108,7 +102,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s
 
   db:
     image: postgres:18.3-trixie
@@ -183,6 +177,11 @@ services:
       - "127.0.0.1:6333:6333"
     volumes:
       - qdrantdata:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/v1/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
     networks:
       - internal

@@ -191,4 +191,24 @@ async def rerank(request: RerankRequest):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Dynamically determine workers based on hardware profile and GPU presence
+    # Note: On GPU systems, we usually want fewer workers but larger batches to avoid VRAM fragmentation
+    if hardware.gpu_count > 0:
+        # High-performance GPU mode: 2 workers per GPU is usually a sweet spot for throughput
+        # This allows parallel inference while sharing VRAM efficiently
+        workers = max(1, hardware.gpu_count * 2)
+        logger.info(f"GPU detected. Starting server with {workers} hardware-optimized workers.")
+    else:
+        # CPU mode: Use logical cores but cap to avoid overhead
+        workers = min(hardware.cpu_count, 4) if hardware.cpu_count > 1 else 1
+        logger.info(f"CPU mode. Starting server with {workers} workers based on {hardware.cpu_count} cores.")
+
+    uvicorn.run(
+        "app.modules.inference.server:app",
+        host="0.0.0.0",
+        port=8000,
+        workers=workers,
+        loop="auto",
+        http="h11",
+        timeout_keep_alive=settings.api_timeout_keep_alive,
+    )
