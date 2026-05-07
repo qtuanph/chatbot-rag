@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from typing import List, Optional
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
 
 from app.core.config import settings
@@ -135,7 +135,7 @@ async def health():
 @app.post("/embed", response_model=EmbedResponse)
 async def embed(request: EmbedRequest):
     if not engine.embedding_model:
-        raise HTTPException(status_code=503, detail="Embedding model not loaded")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Embedding model not loaded")
 
     start_time = time.perf_counter()
 
@@ -155,7 +155,7 @@ async def embed(request: EmbedRequest):
 @app.post("/rerank", response_model=RerankResponse)
 async def rerank(request: RerankRequest):
     if not engine.reranker_model or not engine.reranker_tokenizer:
-        raise HTTPException(status_code=503, detail="Reranker model not loaded")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Reranker model not loaded")
 
     import torch
 
