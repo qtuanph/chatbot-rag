@@ -4,8 +4,6 @@ services:
     pull_policy: build
     build:
       context: .
-      args:
-        HF_TOKEN: ${HF_TOKEN}
       secrets:
         - hf_token
     env_file:

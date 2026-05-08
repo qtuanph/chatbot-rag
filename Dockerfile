@@ -62,21 +62,24 @@ USER qtuanph
 
 # --- Pre-download Models (Heavy Layers - Cached) ---
 # These are placed BEFORE the code copy so they are NOT re-run when code changes.
+# HF_TOKEN is passed via BuildKit secret mount (id=hf_token).
 
 # 1. Embedding model (~2.2 GB)
 RUN --mount=type=cache,id=hf-models,target=/tmp/hf-cache,uid=1000,gid=1000 \
+    --mount=type=secret,id=hf_token \
     HF_HOME=/tmp/hf-cache \
     python -c "from sentence_transformers import SentenceTransformer; \
-    SentenceTransformer('AITeamVN/Vietnamese_Embedding_v2'); \
+    SentenceTransformer('AITeamVN/Vietnamese_Embedding_v2', use_auth_token=$(cat /run/secrets/hf_token)); \
     print('Embedding model cached')" && \
     cp -rn /tmp/hf-cache/* /home/qtuanph/.cache/huggingface/ 2>/dev/null; true
 
 # 2. Reranker model (~500 MB)
 RUN --mount=type=cache,id=hf-models,target=/tmp/hf-cache,uid=1000,gid=1000 \
+    --mount=type=secret,id=hf_token \
     HF_HOME=/tmp/hf-cache \
     python -c "from transformers import AutoModelForSequenceClassification, AutoTokenizer; \
-    AutoTokenizer.from_pretrained('AITeamVN/Vietnamese_Reranker'); \
-    AutoModelForSequenceClassification.from_pretrained('AITeamVN/Vietnamese_Reranker'); \
+    AutoTokenizer.from_pretrained('AITeamVN/Vietnamese_Reranker', use_auth_token=$(cat /run/secrets/hf_token)); \
+    AutoModelForSequenceClassification.from_pretrained('AITeamVN/Vietnamese_Reranker', use_auth_token=$(cat /run/secrets/hf_token)); \
     print('Reranker model cached')" && \
     cp -rn /tmp/hf-cache/* /home/qtuanph/.cache/huggingface/ 2>/dev/null; true
 
