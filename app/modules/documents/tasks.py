@@ -6,14 +6,13 @@ Uses SYNCHRONOUS Redis for status updates to ensure 100% stability.
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
-from app.modules.documents.repository import DocumentRepository
+from app.modules.documents.repositories import DocumentRepository, SectionRepository
 from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.adapters.storage import build_storage
 from app.modules.documents.ingestion.ingestion_service import IngestionService
-from app.modules.documents.section_repository import SectionRepository
 from app.core.redis import get_sync_redis_client
-from app.utils.document_registry import DocumentRegistry
+from app.modules.documents.utils.document_registry import DocumentRegistry
 from app.utils.audit import safe_record_audit
 import asyncio
 import logging

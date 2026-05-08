@@ -1,6 +1,6 @@
 {
   "document": "Known Issues & Post-Mortems",
-  "version": "2026-05-06",
+  "version": "2026-05-07",
   "schema": {
     "issue_id": "integer",
     "title": "string",
@@ -65,6 +65,30 @@
       "root_cause": "app/services/retrieval/__init__.py still re-exported legacy function names after class-based refactor.",
       "resolution": "Updated re-exports to RetrievalService and removed stale function names from __all__.",
       "lesson_learned": "Keep package-level re-export modules synchronized after function-to-class refactors."
+    },
+    {
+      "issue_id": 8,
+      "title": "BM25 Sync/Async Bug Causing Short Answers",
+      "symptom": "Chat returns short answers; BM25 vocab missing in Redis; hybrid search only uses dense vectors.",
+      "root_cause": "retrieval_service.py:131 called get_bm25_encoder() (sync) in async context. With async Redis client, encoder.load_sync() fails silently because self._redis.get() returns coroutine instead of data. Result: bm25_encoder.is_ready = False.",
+      "resolution": "Changed import from get_bm25_encoder to get_async_bm25_encoder; changed call to await get_async_bm25_encoder(self.redis).",
+      "lesson_learned": "In hybrid Sync/Async systems, always verify async/sync match. Use async Redis client method when in async context."
+    },
+    {
+      "issue_id": 9,
+      "title": "Memory Extraction Too Restrictive - AI Loses Context Between Turns",
+      "symptom": "AI gives generic answers ignoring previous context; user has to repeat information across turns.",
+      "root_cause": "should_extract_memory() only triggered extraction when user message matched patterns like 'nhớ', 'remember', 'sai', etc. Normal questions like 'Nói chi tiết hơn được không?' were skipped, so AI lost context.",
+      "resolution": "Removed should_extract_memory() trigger check. Now extracts memories from every chat turn. Added content deduplication in add_memory() to prevent duplicate entries.",
+      "lesson_learned": "Context memory should be extracted proactively, not only on explicit recall keywords. Users should not need to say 'nhớ' to be remembered."
+    },
+    {
+      "issue_id": 10,
+      "title": "Cache Layer Gaps for 200+ CCU - Missing LLM Response Cache",
+      "symptom": "No LLM response caching; every query hits expensive LLM API even for repeated/similar questions. TTLs too short (30min-1h). Semantic threshold too strict (0.02).",
+      "root_cause": "System only cached RAG context (nodes/sections) but not final LLM response. Cache hit rate very low. Query not normalized reducing exact match hits.",
+      "resolution": "Added LLMResponseCache (2-layer: exact + semantic). Added query normalization. Fixed semantic threshold 0.02→0.08. Increased TTLs: QueryEmbeddingCache 1h→4h, RagResultCache 30min→4h. Added TTL refresh on semantic cache hit.",
+      "lesson_learned": "For 200+ CCU, must cache full LLM response to bypass expensive API calls. Query normalization critical for exact match cache hits."
     }
   ]
 }

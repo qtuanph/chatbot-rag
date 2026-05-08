@@ -14,10 +14,10 @@ from dataclasses import dataclass, field
 
 from app.adapters.base import IngestedNode, ParsingMetadata
 from app.adapters.parsers.docling import DoclingParser
-from app.utils.hierarchy_validator import HierarchyValidator, ValidationReport
-from app.utils.text_refiner import rule_based_refiner
+from app.modules.documents.validators import HierarchyValidator, ValidationReport
+from app.modules.documents.utils import rule_based_refiner
 from app.core.config import settings
-from app.modules.documents.section_repository import SectionRepository
+from app.modules.documents.repositories import SectionRepository
 from app.core.hardware import hardware
 
 if TYPE_CHECKING:
@@ -220,7 +220,7 @@ class IngestionService:
     async def _enrich_step(self, ctx: PipelineContext, report: ProgressCallback) -> None:
         """Contextual enrichment for chunks."""
         await report("parsing", 39, "Enriching chunks with document-level context...")
-        from app.utils.contextualizer import Contextualizer
+        from app.modules.documents.utils.contextualizer import Contextualizer
 
         contextualizer = Contextualizer()
         ctx.nodes = await asyncio.to_thread(contextualizer.contextualize, ctx.filename, ctx.nodes)
@@ -233,7 +233,7 @@ class IngestionService:
         chunk_size = settings.ingestion_embedding_chunk_size
         n_chunks = math.ceil(len(ctx.nodes) / chunk_size) or 1
 
-        from app.utils.bm25_index import get_async_bm25_encoder
+        from app.modules.documents.utils import get_async_bm25_encoder
 
         bm25_encoder = await get_async_bm25_encoder(self.redis)
 

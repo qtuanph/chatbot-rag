@@ -27,8 +27,6 @@ class DocumentRegistry:
     def _task_key(self, task_id: str) -> str:
         return f"task:{task_id}"
 
-    # ── Async Methods ────────────────────────────────────────────────
-
     async def put(self, record: DocumentRecord) -> None:
         """Store record using JSON.SET (Async)."""
         async with self.client.pipeline(transaction=True) as pipe:
@@ -67,12 +65,14 @@ class DocumentRegistry:
         data = await self.client.get("rag:active_doc_ids")
         if data:
             import json
+
             return set(json.loads(data))
         return None
 
     async def set_active_ids_async(self, ids: set[str], ttl: int = 60) -> None:
         """Cache active document IDs for RAG (Async)."""
         import json
+
         await self.client.set("rag:active_doc_ids", json.dumps(list(ids)), ex=ttl)
 
     async def purge_async(self, document_id: str) -> None:
@@ -81,8 +81,6 @@ class DocumentRegistry:
         if record:
             await self.client.delete(self._key(document_id), self._task_key(record.task_id))
         await self.invalidate_active_ids_async()
-
-    # ── Sync Methods (For Celery Workers) ──────────────────────────
 
     def put_sync(self, record: DocumentRecord) -> None:
         """Store record using JSON.SET (Sync)."""
@@ -122,12 +120,14 @@ class DocumentRegistry:
         data = self.client.get("rag:active_doc_ids")
         if data:
             import json
+
             return set(json.loads(data))
         return None
 
     def set_active_ids_sync(self, ids: set[str], ttl: int = 60) -> None:
         """Cache active document IDs for RAG (Sync)."""
         import json
+
         self.client.set("rag:active_doc_ids", json.dumps(list(ids)), ex=ttl)
 
     def purge_sync(self, document_id: str) -> None:

@@ -4,8 +4,8 @@ from uuid import uuid4
 from celery.result import AsyncResult
 
 from app.core.celery_app import celery_app
-from app.modules.documents.repository import DocumentRepository
-from app.utils.document_registry import DocumentRecord, DocumentRegistry
+from app.modules.documents.repositories import DocumentRepository
+from app.modules.documents.utils.document_registry import DocumentRecord, DocumentRegistry
 
 logger = logging.getLogger(__name__)
 

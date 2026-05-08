@@ -14,8 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.adapters.ai import build_ai_provider
 from app.adapters.ai.google import strip_reasoning
 from app.core.config import settings
-from app.modules.chat.repository import ChatRepository
-from app.utils.chat_store import ChatStore
+from app.modules.chat.repositories.repository import ChatRepository
+from app.modules.chat.utils.chat_store import ChatStore, compute_cost, normalize_query
+from app.modules.chat.retrieval import build_answer
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class ChatService:
 
     async def prepare_chat(self, *, user_id: str, query: str, session_id: str | None = None) -> dict:
         """Prepare full chat context: validate → session → retrieval → answer seed."""
-        from app.utils.chat_utils import validate_query
+        from app.modules.chat.utils import validate_query, deduplicate_citations
 
         validate_query(query)
         scope_id = f"user:{user_id}"
@@ -61,11 +62,7 @@ class ChatService:
         # RAG retrieval
         context = await self.retrieve_rag_context(self.repo.session, queries, resolved_session_id, 20)
 
-        from app.utils.retrieval_utils import build_answer
-
         assistant_seed = build_answer(query, context)
-
-        from app.utils.chat_utils import deduplicate_citations
 
         citations = deduplicate_citations(assistant_seed.get("citations") or [])
 
@@ -80,6 +77,9 @@ class ChatService:
 
     async def stream_chat_events(self, *, user_id: str, query: str, prepared_chat: dict) -> AsyncGenerator[str, None]:
         """Generate SSE events for chat."""
+        from app.core.config import settings
+        from app.utils.cache import LLMResponseCache
+
         provider = build_ai_provider()
         session_id = prepared_chat["session_id"]
         history = prepared_chat["history"]
@@ -87,6 +87,45 @@ class ChatService:
 
         full_answer = ""
         start_time = _time.monotonic()
+
+        normalized_query = normalize_query(query) if settings.query_normalize_enabled else query
+
+        llm_cache = None
+        if settings.llm_cache_enabled:
+            try:
+                llm_cache = LLMResponseCache(redis_client=self.store.client)
+                cached = await llm_cache.get(normalized_query, None)
+                if cached:
+                    logger.info("[LLM-CACHE] Cache HIT - returning cached response")
+                    cache_hit_time = _time.monotonic()
+                    cached_answer = cached.get("answer", "")
+                    cached_stats = cached.get("stats", {})
+                    cached_citations = cached.get("citations", citations)
+
+                    if cached_answer:
+                        yield f"data: {json.dumps({'chunk': cached_answer, 'done': False})}\n\n"
+
+                    cache_latency_ms = int((cache_hit_time - start_time) * 1000)
+                    final_data = {
+                        "chunk": "",
+                        "done": True,
+                        "session_id": session_id,
+                        "citations": cached_citations,
+                        "stats": {
+                            "total_ms": cache_latency_ms,
+                            "chars": len(cached_answer),
+                            "prompt_tokens": cached_stats.get("prompt_tokens", 0),
+                            "completion_tokens": cached_stats.get("completion_tokens", 0),
+                            "total_tokens": cached_stats.get("total_tokens", 0),
+                            "estimated_cost_usd": cached_stats.get("estimated_cost_usd", 0),
+                            "model": cached_stats.get("model", "cached"),
+                            "cache_hit": True,
+                        },
+                    }
+                    yield f"data: {json.dumps(final_data)}\n\n"
+                    return
+            except Exception as e:
+                logger.warning("[LLM-CACHE] Cache check failed: %s", e)
 
         async for chunk in provider.chat_stream(
             [{"role": i["role"], "content": i["content"]} for i in history],
@@ -104,6 +143,24 @@ class ChatService:
 
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
+
+        if llm_cache and clean_answer:
+            try:
+                cache_data = {
+                    "answer": clean_answer,
+                    "citations": citations,
+                    "stats": {
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": prompt_tokens + completion_tokens,
+                        "estimated_cost_usd": compute_cost(prompt_tokens, completion_tokens),
+                        "model": provider.model_name,
+                    },
+                }
+                await llm_cache.set(normalized_query, None, cache_data)
+                logger.debug("[LLM-CACHE] Stored response for query: %s", normalized_query[:50])
+            except Exception as e:
+                logger.warning("[LLM-CACHE] Cache store failed: %s", e)
 
         # Finalize persistence after the streamed answer is complete.
         finalize_error: str | None = None
@@ -127,8 +184,6 @@ class ChatService:
         except Exception as e:
             finalize_error = "Failed to persist assistant message"
             logger.error("Failed to finalize chat session: %s", e, exc_info=True)
-
-        from app.utils.chat_utils import compute_cost
 
         final_data = {
             "chunk": "",
@@ -272,7 +327,7 @@ class ChatService:
     def enqueue_memory_extraction(*, user_id: str, user_message: str, assistant_response: str) -> None:
         """Dispatch durable memory extraction after a chat turn."""
         try:
-            from app.modules.chat.memory_tasks import extract_memories_task
+            from app.modules.chat.tasks.memory_tasks import extract_memories_task
 
             extract_memories_task.delay(
                 user_id=user_id, user_message=user_message, assistant_response=assistant_response

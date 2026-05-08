@@ -33,8 +33,6 @@ class RedisLock:
         self._locked = False
         self._is_async = hasattr(self.client, "pipeline") and callable(self.client.pipeline)
 
-    # ── Async Interface ───────────────────────────────────────────
-
     async def __aenter__(self) -> "RedisLock":
         if await self.acquire():
             return self
@@ -61,8 +59,6 @@ class RedisLock:
             await self.client.eval(RELEASE_LUA, 1, self.key, self.token)
         finally:
             self._locked = False
-
-    # ── Sync Interface (For Workers) ──────────────────────────────
 
     def __enter__(self) -> "RedisLock":
         if self.acquire_sync():

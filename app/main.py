@@ -53,8 +53,30 @@ async def lifespan(application: FastAPI):
             from app.adapters.reranker import get_reranker
 
             reranker = get_reranker()
-            # rerank is async now
             await reranker.rerank("warmup", [{"text": "warmup", "full_text": "warmup", "score": 0.0}], top_k=1)
+
+            # 3. Warm Semantic Cache Index (for 200+ CCU fast lookup)
+            from app.core.redis import get_redis_client
+            from app.utils.cache import SemanticCache
+
+            redis = await get_redis_client()
+            sem_cache = SemanticCache(vector_dim=settings.embedding_vector_size, client=redis)
+            await sem_cache.init_index()
+            logger.info("Semantic cache index warmed")
+
+            # 4. Warm Active Doc IDs (avoid DB hit on first query)
+            from app.db.session import AsyncSessionLocal
+            from app.modules.documents.repositories import DocumentRepository
+
+            async with AsyncSessionLocal() as db_session:
+                doc_repo = DocumentRepository(db_session)
+                ids = await doc_repo.get_latest_active_document_ids()
+                if ids:
+                    from app.modules.documents.utils.document_registry import DocumentRegistry
+
+                    registry = DocumentRegistry(redis)
+                    await registry.set_active_ids_async(ids)
+                    logger.info("Active doc IDs warmed: %d docs", len(ids))
 
             elapsed = time.time() - start
             logger.info("AI models pre-warmed in %.1fs", elapsed)

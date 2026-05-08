@@ -1,7 +1,6 @@
 import logging
 from typing import Any
-from app.modules.documents.repository import DocumentRepository
-from app.modules.documents.section_repository import SectionRepository
+from app.modules.documents.repositories import DocumentRepository, SectionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +29,13 @@ class TreeService:
                 "document_title": doc["title"],
                 "total_nodes": 0,
                 "max_depth": 0,
-                "nodes": []
+                "nodes": [],
             }
 
         # 3. Build the tree with mapping to Frontend TreeNode format
         lookup = {}
         max_depth = 0
-        
+
         for s in sections:
             node = {
                 "node_id": s["section_id"],
@@ -44,11 +43,11 @@ class TreeService:
                 "level": s["level"],
                 "breadcrumb": " > ".join(s.get("breadcrumb", [])),
                 "parent_id": s.get("parent_section_id"),
-                "child_count": 0, # Calculated later if needed, or use a placeholder
+                "child_count": 0,  # Calculated later if needed, or use a placeholder
                 "text_length": len(s.get("content") or ""),
                 "page_number": s.get("page_range") or 1,
                 "page_range": s.get("page_range"),
-                "children": []
+                "children": [],
             }
             lookup[s["section_id"]] = node
             max_depth = max(max_depth, s["level"])
@@ -75,7 +74,7 @@ class TreeService:
             "document_title": doc["title"],
             "total_nodes": len(sections),
             "max_depth": max_depth,
-            "nodes": paginated_nodes
+            "nodes": paginated_nodes,
         }
 
     async def get_node_details(self, document_id: str, node_id: str) -> dict[str, Any]:
@@ -83,7 +82,7 @@ class TreeService:
         s = await self.section_repo.get_section_by_section_id(document_id, node_id)
         if not s:
             raise ValueError(f"Node {node_id} not found in document {document_id}")
-        
+
         return {
             "node_id": s["section_id"],
             "title": s["title"],
@@ -96,22 +95,24 @@ class TreeService:
                 "node_type": s.get("section_type", "section"),
                 "order": s.get("order_index", 0),
                 "char_count": len(s.get("content") or ""),
-                "token_count": len(s.get("content") or "") // 4 # Rough estimate if not stored
-            }
+                "token_count": len(s.get("content") or "") // 4,  # Rough estimate if not stored
+            },
         }
 
     async def search_nodes(self, document_id: str, query: str) -> dict[str, Any]:
         """Search for nodes and return in TreeSearchResult format."""
         results = await self.section_repo.search_sections_by_document(document_id, query)
-        
+
         mapped_results = []
         for r in results:
             content = r.get("content") or ""
-            mapped_results.append({
-                "node_id": r["section_id"],
-                "title": r["title"],
-                "preview": content[:200] + "..." if len(content) > 200 else content,
-                "highlight": r["title"] # Simple highlight for now
-            })
-            
+            mapped_results.append(
+                {
+                    "node_id": r["section_id"],
+                    "title": r["title"],
+                    "preview": content[:200] + "..." if len(content) > 200 else content,
+                    "highlight": r["title"],  # Simple highlight for now
+                }
+            )
+
         return {"results": mapped_results}

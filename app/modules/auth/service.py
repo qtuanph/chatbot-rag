@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 
 from app.modules.auth.repository import AuthRepository
-from app.utils.auth import create_access_token, hash_password, verify_password
-from app.utils.token_blacklist import TokenBlacklist
+from app.modules.auth.utils.auth import create_access_token, hash_password, verify_password
+from app.modules.auth.utils.token_blacklist import TokenBlacklist
 from app.utils.audit import safe_record_audit
 
 logger = logging.getLogger(__name__)

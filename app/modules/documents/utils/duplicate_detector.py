@@ -23,8 +23,6 @@ class DuplicateDetector:
         self._r = client
         self._filter_ready = False
 
-    # ── Async Methods ────────────────────────────────────────────────
-
     async def _ensure_filter(self) -> None:
         """Initialize Bloom Filter (Async)."""
         try:
@@ -50,8 +48,6 @@ class DuplicateDetector:
             await self._r.execute_command("BF.ADD", self.KEY, sha256)
         except Exception:
             pass
-
-    # ── Sync Methods (For Workers) ──────────────────────────────────
 
     def _ensure_filter_sync(self) -> None:
         """Initialize Bloom Filter (Sync)."""

@@ -23,11 +23,9 @@ class BM25Manager:
         """Get encoder and load vocab asynchronously with in-memory caching."""
         current_time = time.time()
 
-        # Check if we can reuse the singleton
         if cls._instance and (current_time - cls._last_load_time < cls._ttl):
             return cls._instance
 
-        # Load fresh or initialize
         logger.info("[PERF] Loading BM25 vocabulary into in-memory singleton...")
         encoder = VietnameseBM25Encoder(redis_client=redis_client)
         await encoder.load_async()
@@ -66,7 +64,6 @@ async def build_bm25_index_from_qdrant(redis_client: Any) -> int:
     )
 
     encoder = VietnameseBM25Encoder(redis_client=redis_client)
-    # Start fresh if rebuilding
     encoder.vocab = {}
     encoder._next_id = 0
 
@@ -74,7 +71,6 @@ async def build_bm25_index_from_qdrant(redis_client: Any) -> int:
     offset = None
     all_texts = []
 
-    # Stage 1: Fetch all texts from Qdrant
     logger.info("Starting BM25 rebuild from Qdrant...")
     while True:
         points, next_offset = await vs.scroll(
@@ -86,7 +82,6 @@ async def build_bm25_index_from_qdrant(redis_client: Any) -> int:
             break
 
         for point in points:
-            # Handle both Record object and dictionary formats
             payload = getattr(point, "payload", None) or point.get("payload", {})
             text = payload.get("content") or payload.get("text")
             if text:
@@ -100,7 +95,6 @@ async def build_bm25_index_from_qdrant(redis_client: Any) -> int:
         logger.warning("No texts found in Qdrant for BM25 rebuild")
         return 0
 
-    # Stage 2: Tokenize and build vocab
     for i, text in enumerate(all_texts):
         encoder.tokenize(text)
         encoder.encode(text)
@@ -108,7 +102,6 @@ async def build_bm25_index_from_qdrant(redis_client: Any) -> int:
         if i % 1000 == 0:
             logger.info("BM25 Rebuild: Processed %d/%d documents", i, len(all_texts))
 
-    # Stage 3: Save to Redis
     await encoder.save_async()
     logger.info("BM25 rebuild complete. Vocab size: %d", len(encoder.vocab))
     return len(all_texts)

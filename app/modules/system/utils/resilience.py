@@ -51,7 +51,6 @@ class CircuitBreaker:
         try:
             result = await func(*args, **kwargs)
 
-            # Successful call resets failure count
             if self.state != CircuitState.CLOSED:
                 logger.info("[RESILIENCE] Circuit %s recovered, state set to CLOSED", self.name)
                 self.state = CircuitState.CLOSED

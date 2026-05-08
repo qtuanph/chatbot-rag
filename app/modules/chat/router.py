@@ -15,7 +15,7 @@ from app.api.deps import AuthContext, get_auth_context, get_chat_service, get_ra
 from app.core.config import settings
 from app.core import http_errors
 from app.modules.chat.schemas import ChatRequest, MessageFeedbackRequest, MessageFeedbackResponse
-from app.modules.chat.service import ChatService
+from app.modules.chat.services import ChatService
 
 router = APIRouter(tags=["chat"])
 logger = logging.getLogger(__name__)

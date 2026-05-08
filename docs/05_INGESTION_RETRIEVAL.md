@@ -37,13 +37,44 @@ Qdrant for retrieval. PostgreSQL for metadata/state. Redis for cache and queue. 
 | Dimensions | 1024 |
 | Batch size | 32 (`INGESTION_EMBEDDING_CHUNK_SIZE`) |
 
-## Retrieval Pipeline (5-Stage)
+## Retrieval Pipeline (5-Stage + LLM Response Cache)
 
 1. **Rate limit**: Atomic Lua script — 30 req/min per user.
-2. **Semantic Cache**: Redis Vector Search matching similarity < 0.02. HIT → return immediately.
-3. **Hybrid search**: Parallel Dense (Semantic) + Sparse (BM25 Keyword) + Recommendation (Feedback).
-4. **Section grouping**: Merge queries → dedupe → top 3 sections (score ≥ 0.30).
-5. **Neighbor Expansion (Soi sáng)**: Fetch +/- N chunks by `order` to ensure narrative flow (configurable expansion window).
+2. **LLM Response Cache** (v1): Exact match via `hash(normalized_query)`. HIT → return immediately (bypasses LLM API). Semantic similarity layer planned for v2.
+3. **Semantic Cache**: Redis Vector Search matching similarity threshold 0.08 (≈0.92 similarity). HIT → return RAG context from retrieval_service.
+4. **Hybrid search**: Parallel Dense (Semantic) + Sparse (BM25 Keyword) + Recommendation (Feedback).
+5. **Section grouping**: Merge queries → dedupe → top 3 sections (score ≥ 0.30).
+6. **Neighbor Expansion (Soi sáng)**: Fetch +/- N chunks by `order` to ensure narrative flow (configurable expansion window).
+
+### Cache Layers (2026 Optimization for 200+ CCU)
+
+| Layer | Key | TTL | Status |
+|-------|-----|-----|--------|
+| LLM Response Cache | `hash(normalized_query)` | 4h | ✅ IMPLEMENTED (exact match only) |
+| Semantic Cache (RAG Context) | `vector(query_embedding)` | 24h | ✅ IMPLEMENTED |
+| Query Embedding Cache | `hash(normalized_query)` | 4h | ✅ IMPLEMENTED (was 1h) |
+| RAG Context Cache | `hash(query + doc_ids)` | 4h | ✅ IMPLEMENTED (was 30min) |
+| Active Doc IDs | `rag:active_doc_ids` | 60s | ✅ IMPLEMENTED |
+
+**Expected cache hit rate (v1 exact match)**: ~40% for identical queries.
+**Planned v2 semantic match**: ~70-80% for paraphrased queries.
+
+### Query Normalization
+
+All cache layers use normalized queries:
+- Lowercase
+- Strip whitespace
+- Collapse multiple spaces
+- Remove stopwords (Vietnamese/ERP boilerplate)
+
+Example: "Xin chào, cho tôi biết SEO là gì?" → "seo là gì"
+
+### Key Fixes Applied (2026-05-07)
+
+- Semantic threshold: 0.02 → 0.08 (was too strict, missing valid cache hits)
+- QueryEmbeddingCache TTL: 1h → 4h
+- RagResultCache TTL: 30min → 4h
+- Semantic cache TTL refresh on access (keeps hot data alive)
 
 ### Stage 2.6: "Soi sáng" (Neighboring Node Expansion)
 To ensure the LLM receives a coherent narrative, the system performs a "Neighbor Lookup":
@@ -65,12 +96,14 @@ To ensure the LLM receives a coherent narrative, the system performs a "Neighbor
 |----------------|--------|
 | PaddleOCR (mandatory) | `app/modules/documents/ingestion/docling.py` |
 | Hierarchy checks | `app/utils/hierarchy_validator.py` |
-| Section storage | `app/modules/documents/repository.py` (SectionRepository) |
+| Section storage | `app/modules/documents/repositories/section_repository.py` (SectionRepository) |
 | Vector store adapter | `app/adapters/vector_stores/qdrant.py` |
 | BM25 index management | `app/utils/bm25_index.py` |
 | 5-stage retrieval | `app/modules/chat/retrieval/service.py` |
 | Multi-query expansion | `app/modules/chat/retrieval/query_expand.py` |
-| User memory service | `app/modules/chat/user_memory_service.py` |
+| User memory service | `app/modules/chat/services/user_memory_service.py` |
 | AI provider (Google) | `app/adapters/ai/google.py` |
 | Chat store | `app/utils/chat_store.py:ChatStore` — Redis pipeline atomic ops, history_exists() check |
-| Doc ID cache | `app/services/retrieval/retrieval_service.py` — threading.Lock for thread safety |
+| LLM Response Cache | `app/utils/llm_response_cache.py` — 2-layer cache for bypassing LLM calls |
+| Query Normalizer | `app/utils/query_normalizer.py` — normalize query for better cache hits |
+| Doc ID cache | `app/utils/document_registry.py` — threading.Lock for thread safety |

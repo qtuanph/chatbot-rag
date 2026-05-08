@@ -161,7 +161,7 @@
       "artifact_metadata": "Use 'artifact_metadata' in all dictionaries, schemas, and pipeline outputs representing arbitrary extra JSON metadata (replaces legacy 'extra_metadata', 'metadata')."
     },
     "service": {
-      "location": "app/services/{domain}/",
+      "location": "app/modules/{domain}/services/",
       "files": {
         "auth/auth_service.py": "AuthService — login, logout, user CRUD",
         "chat/chat_service.py": "ChatService — prepare_chat, provider stream orchestration, session mgmt, message persistence, memory extraction dispatch",
@@ -179,7 +179,7 @@
       }
     },
     "repository": {
-      "location": "app/repositories/",
+      "location": "app/modules/{domain}/repositories/",
       "files": {
         "auth_repository.py": "AuthRepository — users, roles",
         "chat_repository.py": "ChatRepository — sessions, messages",

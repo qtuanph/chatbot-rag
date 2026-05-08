@@ -12,12 +12,11 @@ from app.adapters.base import BaseEmbedding
 from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.core.config import settings
-from app.utils.bm25_index import get_bm25_encoder
-from app.utils.query_cache import QueryEmbeddingCache, RagResultCache
-from app.utils.semantic_cache import SemanticCache
+from app.modules.documents.utils import get_async_bm25_encoder
+from app.utils.cache import QueryEmbeddingCache, RagResultCache, SemanticCache
 
 from app.models.rag import RagNode, RagSection, RagContext
-from app.utils.document_registry import DocumentRegistry
+from app.modules.documents.utils.document_registry import DocumentRegistry
 from app.adapters.base import RetrievedDocument
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,7 +72,7 @@ class RetrievalService:
         if cached:
             return cached
 
-        from app.modules.documents.repository import DocumentRepository
+        from app.modules.documents.repositories import DocumentRepository
 
         ids = await DocumentRepository(session).get_latest_active_document_ids()
         if ids:
@@ -89,7 +88,7 @@ class RetrievalService:
         negative_point_ids: list[str] | None = None,
     ) -> RagContext:
         """Retrieve relevant document context using 4-stage retrieval."""
-        from app.modules.documents.repository import DocumentRepository
+        from app.modules.documents.repositories import DocumentRepository
 
         queries = [query] if isinstance(query, str) else query
         original_query = queries[0] if isinstance(query, str) else str(query)
@@ -128,7 +127,7 @@ class RetrievalService:
         # ── Stage 1: Unified Multi-Intent Search ──────────────────────────────
         svc = self._get_embedding_service()
         vs = self._get_vector_store()
-        bm25_encoder = get_bm25_encoder(self.redis)
+        bm25_encoder = await get_async_bm25_encoder(self.redis)
 
         async def _get_embedding(q_text: str):
             v = await self.query_cache.get(q_text)

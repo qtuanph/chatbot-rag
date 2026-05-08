@@ -53,7 +53,6 @@ class HierarchyValidator:
                 depth=0,
             )
 
-        # Check 1: Duplicate node IDs in O(N)
         node_ids = [node.node_id for node in nodes]
         seen_ids = set()
         duplicates = []
@@ -66,7 +65,6 @@ class HierarchyValidator:
         if duplicates:
             errors.append(f"Duplicate node IDs: {duplicates[:5]}")
 
-        # Check 2: Parent references validity
         node_id_set = set(node_ids)
         orphaned = []
         for node in nodes:
@@ -77,22 +75,18 @@ class HierarchyValidator:
         if orphaned:
             errors.append(f"Orphaned parent references: {orphaned[:5]}")
 
-        # Check 3: Cycles detection
         cycles = HierarchyValidator._detect_cycles(nodes)
         if cycles:
             errors.append(f"Parent-child cycles detected: {cycles[:3]}")
 
-        # Check 4: Text content
         empty_nodes = [n.node_id for n in nodes if not n.text or not n.text.strip()]
         if empty_nodes:
             warnings.append(f"Empty nodes (no text): {len(empty_nodes)}")
 
-        # Check 5: Object validity
         for node in nodes:
             if not node.node_id or not node.document_id:
                 errors.append(f"Node missing required ID fields: {node}")
 
-        # Calculate statistics
         hierarchical_nodes = sum(1 for n in nodes if n.parent_id)
         depth = HierarchyValidator._calculate_depth(nodes)
 
@@ -117,12 +111,7 @@ class HierarchyValidator:
 
     @staticmethod
     def _detect_cycles(nodes: list[IngestedNode]) -> list[tuple[str, str]]:
-        """
-        Detect cycles in parent-child relationships using DFS.
-
-        Returns:
-            List of tuples representing cyclic paths
-        """
+        """Detect cycles in parent-child relationships using DFS."""
         parent_map = {node.node_id: node.parent_id for node in nodes}
         visited: Set[str] = set()
         rec_stack: Set[str] = set()
@@ -136,7 +125,6 @@ class HierarchyValidator:
             parent = parent_map.get(node_id)
             if parent:
                 if parent in rec_stack:
-                    # Cycle detected
                     cycle_start = path.index(parent)
                     cycle = path[cycle_start:] + [parent]
                     cycles.append((cycle[0], cycle[1] if len(cycle) > 1 else cycle[0]))

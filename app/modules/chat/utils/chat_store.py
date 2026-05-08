@@ -25,8 +25,6 @@ class ChatStore:
     def history_key(self, scope_id: str, session_id: str) -> str:
         return f"chat:history:{scope_id}:{session_id}"
 
-    # ── Async Methods ────────────────────────────────────────────────
-
     async def set_active_session(self, scope_id: str, session_id: str) -> None:
         await self.client.set(self.active_key(scope_id), session_id)
 
@@ -68,8 +66,6 @@ class ChatStore:
             await pipe.ltrim(key, -settings.chat_history_limit, -1)
             await pipe.expire(key, settings.chat_history_redis_ttl)
             await pipe.execute()
-
-    # ── Sync Methods (For Workers) ──────────────────────────────────
 
     def set_active_session_sync(self, scope_id: str, session_id: str) -> None:
         self.client.set(self.active_key(scope_id), session_id)

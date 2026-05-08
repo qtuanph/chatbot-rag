@@ -7,7 +7,7 @@ from app.core import http_errors
 from app.core.config import settings
 from app.modules.chat.memories_schemas import MemoryInput, MemoryListResponse, MemoryResponse, MemoryUpdate
 from app.utils.rate_limiter import RateLimiter
-from app.modules.chat.memory_service import MemoryService
+from app.modules.chat.services import MemoryService
 
 router = APIRouter(tags=["memories"])
 

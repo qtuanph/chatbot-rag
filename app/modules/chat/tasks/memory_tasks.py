@@ -25,8 +25,8 @@ def extract_memories_task(user_id: str, user_message: str, assistant_response: s
     sync_redis = get_sync_redis_client()
 
     async def _run_extraction():
-        from app.modules.chat.user_memory_service import UserMemoryService
-        from app.modules.chat.memory_repository import MemoryRepository
+        from app.modules.chat.services import UserMemoryService
+        from app.modules.chat.repositories import MemoryRepository
         from app.adapters.ai import build_ai_provider
 
         # Isolated Async context for AI & DB

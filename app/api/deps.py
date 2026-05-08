@@ -12,29 +12,22 @@ import jwt
 from app.core.config import settings
 from app.core import http_errors
 from app.db.session import get_async_session
-from app.utils.token_blacklist import TokenBlacklist
-from app.utils.document_registry import DocumentRegistry
-from app.utils.chat_store import ChatStore
+from app.modules.auth.utils.token_blacklist import TokenBlacklist
+from app.modules.documents.utils.document_registry import DocumentRegistry
+from app.modules.chat.utils.chat_store import ChatStore
 
 if TYPE_CHECKING:
     from app.modules.auth.repository import AuthRepository
-    from app.modules.chat.repository import ChatRepository
+    from app.modules.chat.repositories import ChatRepository, MemoryRepository
     from app.modules.analytics.repository import AnalyticsRepository
-    from app.modules.chat.memory_repository import MemoryRepository
-    from app.modules.documents.repository import DocumentRepository
-    from app.modules.documents.section_repository import SectionRepository
+    from app.modules.documents.repositories import DocumentRepository, SectionRepository
     from app.utils.rate_limiter import RateLimiter
-    from app.utils.semantic_cache import SemanticCache
-    from app.utils.query_cache import QueryEmbeddingCache, RagResultCache
+    from app.utils.cache import SemanticCache, QueryEmbeddingCache, RagResultCache
     from app.modules.auth.service import AuthService
-    from app.modules.chat.service import ChatService
-    from app.modules.chat.memory_service import MemoryService
+    from app.modules.chat.services import ChatService, MemoryService
     from app.modules.analytics.service import AnalyticsService
-    from app.modules.documents.tree_service import TreeService
-    from app.modules.documents.task_service import TaskService
+    from app.modules.documents.services import TreeService, TaskService, CleanupService, DocumentService
     from app.modules.system.service import HealthService
-    from app.modules.documents.cleanup_service import CleanupService
-    from app.modules.documents.service import DocumentService
 
 # ── Redis Utility Getters ──────────────────
 
@@ -64,21 +57,21 @@ async def get_rate_limiter(r_client: Any = Depends(get_redis_client)) -> RateLim
 
 
 async def get_semantic_cache(r_client: Any = Depends(get_redis_client)) -> SemanticCache:
-    from app.utils.semantic_cache import SemanticCache
+    from app.utils.cache import SemanticCache
     from app.core.config import settings
 
     return SemanticCache(vector_dim=settings.embedding_vector_size, client=r_client)
 
 
 async def get_query_cache(r_client: Any = Depends(get_redis_client)) -> QueryEmbeddingCache:
-    from app.utils.query_cache import QueryEmbeddingCache
+    from app.utils.cache import QueryEmbeddingCache
     from app.core.config import settings
 
     return QueryEmbeddingCache(r_client, model_name=settings.embedding_hf_model)
 
 
 async def get_rag_result_cache(r_client: Any = Depends(get_redis_client)) -> RagResultCache:
-    from app.utils.query_cache import RagResultCache
+    from app.utils.cache import RagResultCache
 
     return RagResultCache(r_client)
 
@@ -147,7 +140,7 @@ async def get_auth_repo(session: AsyncSession = Depends(get_async_session)):
 
 
 async def get_chat_repo(session: AsyncSession = Depends(get_async_session)):
-    from app.modules.chat.repository import ChatRepository
+    from app.modules.chat.repositories import ChatRepository
 
     return ChatRepository(session)
 
@@ -159,19 +152,19 @@ async def get_analytics_repo(session: AsyncSession = Depends(get_async_session))
 
 
 async def get_memory_repo(session: AsyncSession = Depends(get_async_session)):
-    from app.modules.chat.memory_repository import MemoryRepository
+    from app.modules.chat.repositories import MemoryRepository
 
     return MemoryRepository(session)
 
 
 async def get_doc_repo(session: AsyncSession = Depends(get_async_session)):
-    from app.modules.documents.repository import DocumentRepository
+    from app.modules.documents.repositories import DocumentRepository
 
     return DocumentRepository(session)
 
 
 async def get_section_repo(session: AsyncSession = Depends(get_async_session)):
-    from app.modules.documents.section_repository import SectionRepository
+    from app.modules.documents.repositories import SectionRepository
 
     return SectionRepository(session)
 
@@ -194,8 +187,7 @@ async def get_chat_service(
     store: ChatStore = Depends(get_chat_store),
     r_client: Any = Depends(get_redis_client),
 ) -> ChatService:
-    from app.modules.chat.service import ChatService
-    from app.modules.chat.user_memory_service import UserMemoryService
+    from app.modules.chat.services import ChatService, UserMemoryService
 
     user_memory_service = UserMemoryService(redis_client=r_client, memory_repo=memory_repo)
     return ChatService(repo=repo, store=store, user_memory_service=user_memory_service)
@@ -211,8 +203,7 @@ async def get_memory_service(
     memory_repo: MemoryRepository = Depends(get_memory_repo),
     r_client: Any = Depends(get_redis_client),
 ) -> MemoryService:
-    from app.modules.chat.memory_service import MemoryService
-    from app.modules.chat.user_memory_service import UserMemoryService
+    from app.modules.chat.services import MemoryService, UserMemoryService
 
     user_memory_service = UserMemoryService(redis_client=r_client, memory_repo=memory_repo)
     return MemoryService(repo=memory_repo, user_memory_service=user_memory_service)
@@ -222,7 +213,7 @@ async def get_task_service(
     doc_repo: DocumentRepository = Depends(get_doc_repo),
     registry: DocumentRegistry = Depends(get_document_registry),
 ) -> TaskService:
-    from app.modules.documents.task_service import TaskService
+    from app.modules.documents.services import TaskService
 
     return TaskService(doc_repo=doc_repo, registry=registry)
 
@@ -231,7 +222,7 @@ async def get_tree_service(
     doc_repo: DocumentRepository = Depends(get_doc_repo),
     section_repo: SectionRepository = Depends(get_section_repo),
 ) -> TreeService:
-    from app.modules.documents.tree_service import TreeService
+    from app.modules.documents.services import TreeService
 
     return TreeService(doc_repo=doc_repo, section_repo=section_repo)
 
@@ -243,7 +234,7 @@ async def get_document_service(
     task_service: TaskService = Depends(get_task_service),
     tree_service: TreeService = Depends(get_tree_service),
 ) -> DocumentService:
-    from app.modules.documents.service import DocumentService
+    from app.modules.documents.services import DocumentService
 
     return DocumentService(
         doc_repo=doc_repo,
@@ -265,7 +256,7 @@ async def get_cleanup_service(
     section_repo: SectionRepository = Depends(get_section_repo),
     registry: DocumentRegistry = Depends(get_document_registry),
 ) -> CleanupService:
-    from app.modules.documents.cleanup_service import CleanupService
+    from app.modules.documents.services import CleanupService
 
     return CleanupService(doc_repo=doc_repo, section_repo=section_repo, registry=registry)
 

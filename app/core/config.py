@@ -31,7 +31,15 @@ class Settings(BaseSettings):
 
     # Semantic Cache (Redis Vector Search)
     retrieval_semantic_cache_enabled: bool = True
-    retrieval_semantic_cache_threshold: float = 0.02  # Cosine distance (1 - similarity)
+    retrieval_semantic_cache_threshold: float = 0.08  # COSINE distance (1-similarity), 0.08 ≈ 0.92 similarity
+
+    # LLM Response Cache (for 200+ CCU optimization)
+    llm_cache_enabled: bool = True
+    llm_cache_ttl: int = 14400  # 4 hours
+    llm_cache_exact_first: bool = True  # Check exact before semantic
+
+    # Query Normalization (improves cache hit rate)
+    query_normalize_enabled: bool = True
 
     ingestion_engine: str = "docling"
     ingestion_min_non_empty_nodes: int = 1

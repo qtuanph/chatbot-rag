@@ -23,8 +23,6 @@ class Contextualizer:
         if not nodes:
             return nodes
 
-        # 1. Simple heuristic: use the first 500 chars of the document as global context
-        # Or use the document title and main headings.
         all_text = " ".join([n.text for n in nodes[:5]])
         context_summary = all_text[: self.max_context_chars].replace("\n", " ").strip()
 
@@ -33,8 +31,6 @@ class Contextualizer:
         logger.info("Contextualizing %d nodes with filename: %s", len(nodes), filename)
 
         for node in nodes:
-            # We don't modify the original text field to keep OCR integrity,
-            # instead we enrich the text used for embedding and retrieval.
             node.text = f"{context_prefix}{node.text}"
 
         return nodes

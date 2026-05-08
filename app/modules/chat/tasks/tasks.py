@@ -8,7 +8,7 @@ import logging
 from app.core.celery_app import celery_app
 from app.db.session import AsyncSessionLocal
 from app.core.redis import get_sync_redis_client
-from app.utils.chat_store import ChatStore
+from app.modules.chat.utils.chat_store import ChatStore
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ def save_chat_message_task(**kwargs) -> None:
 
     # 2. Async DB Save (Isolated)
     async def _save_to_db():
-        from app.modules.chat.repository import ChatRepository
+        from app.modules.chat.repositories import ChatRepository
 
         async with AsyncSessionLocal() as session:
             repo = ChatRepository(session)

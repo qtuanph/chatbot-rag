@@ -4,12 +4,19 @@ from __future__ import annotations
 
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile, status, Query
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.utils.rate_limiter import RateLimiter
 
-from app.api.deps import AuthContext, get_document_service, require_admin, get_rate_limiter, get_tree_service, get_auth_context
+from app.api.deps import (
+    AuthContext,
+    get_document_service,
+    require_admin,
+    get_rate_limiter,
+    get_tree_service,
+    get_auth_context,
+)
 from app.core.config import settings
 from app.core import http_errors
 from app.modules.documents.schemas import (
@@ -22,8 +29,7 @@ from app.modules.documents.schemas import (
     TaskStatusResponse,
     UploadAcceptedResponse,
 )
-from app.modules.documents.service import DocumentService
-from app.modules.documents.tree_service import TreeService
+from app.modules.documents.services import DocumentService, TreeService
 from app.modules.documents.validators import DocumentValidator
 
 router = APIRouter(tags=["documents"])
@@ -71,6 +77,7 @@ async def upload_document(
     await file.seek(0)
 
     from uuid import uuid4
+
     document_id = str(uuid4())
 
     duplicate, next_version = await service.check_duplicate(sha256, filename)
@@ -227,6 +234,7 @@ async def retry_document(
 
 
 # ── Tree & Hierarchy Endpoints ──
+
 
 @router.get("/tree/{document_id}")
 async def get_document_tree(

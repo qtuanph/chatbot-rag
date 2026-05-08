@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from typing import TYPE_CHECKING, Any
 from app.core.config import settings
 
 if TYPE_CHECKING:
     from app.adapters.ai.base import AIProvider
-    from app.modules.chat.memory_repository import MemoryRepository
+    from app.modules.chat.repositories import MemoryRepository
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +49,14 @@ class UserMemoryService:
         return "THÔNG TIN ĐÃ GHI NHỚ VỀ NGƯỜI DÙNG:\n" + "\n".join(lines)
 
     async def add_memory(self, user_id: str, memory_type: str, content: str) -> None:
-        """Add memory to DB and append to RedisJSON array."""
+        """Add memory to DB and append to RedisJSON array. Deduplicates by content similarity."""
+        existing = await self.get_active_memories(user_id)
+        content_lower = content.lower().strip()
+        for ex in existing:
+            if ex["content"].lower().strip() == content_lower:
+                logger.debug("Memory duplicate skipped: %s", content[:50])
+                return
+
         m = await self._memory_repo.create(user_id=user_id, memory_type=memory_type, content=content)
         cache_key = self._cache_key(user_id)
         msg = {"type": memory_type, "content": content, "id": str(m["id"])}
@@ -63,19 +69,6 @@ class UserMemoryService:
     async def invalidate_cache(self, user_id: str) -> None:
         await self._redis.delete(self._cache_key(user_id))
 
-    def should_extract_memory(self, user_message: str) -> bool:
-        if not user_message:
-            return False
-
-        explicit_patterns = [r"nhớ", r"remember", r"ghi nhớ", r"lưu ý"]
-        correction_patterns = [r"sai", r"không đúng", r"đừng", r"muốn", r"cần", r"nên"]
-
-        msg_lower = user_message.lower()
-        for pattern in explicit_patterns + correction_patterns:
-            if re.search(pattern, msg_lower):
-                return True
-        return False
-
     async def extract_memories_from_turn(
         self,
         user_id: str,
@@ -83,10 +76,7 @@ class UserMemoryService:
         assistant_response: str,
         ai_provider: AIProvider,
     ) -> None:
-        """Extract memorable facts using Gemini."""
-        if not self.should_extract_memory(user_message):
-            return
-
+        """Extract memorable facts using Gemini from every chat turn."""
         try:
             extraction_prompt = (
                 "Trích xuất sở thích, sửa đổi, chỉ dẫn hoặc thông tin cá nhân từ tin nhắn người dùng.\n\n"

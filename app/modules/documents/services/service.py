@@ -9,12 +9,10 @@ from uuid import uuid4
 
 from app.adapters.storage import build_storage
 from app.core.celery_app import celery_app
-from app.modules.documents.repository import DocumentRepository
-from app.modules.documents.section_repository import SectionRepository
-from app.utils.document_registry import DocumentRegistry
+from app.modules.documents.repositories import DocumentRepository, SectionRepository
+from app.modules.documents.services import TaskService, TreeService
+from app.modules.documents.utils.document_registry import DocumentRegistry
 from app.utils.audit import safe_record_audit
-from app.modules.documents.task_service import TaskService
-from app.modules.documents.tree_service import TreeService
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +34,7 @@ class DocumentService:
         self.task_service = task_service or TaskService(doc_repo, registry)
         self.tree_service = tree_service or TreeService(doc_repo, section_repo)
 
-        from app.utils.duplicate_detector import DuplicateDetector
+        from app.modules.documents.utils import DuplicateDetector
 
         self.detector = DuplicateDetector(registry.client)
 

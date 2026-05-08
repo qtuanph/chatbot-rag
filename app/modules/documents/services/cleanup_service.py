@@ -10,11 +10,10 @@ from app.adapters.storage import build_storage
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.core.celery_app import celery_app
 from app.core.config import settings
-from app.utils.document_registry import DocumentRegistry
+from app.modules.documents.utils.document_registry import DocumentRegistry
 
 if TYPE_CHECKING:
-    from app.modules.documents.repository import DocumentRepository
-    from app.modules.documents.section_repository import SectionRepository
+    from app.modules.documents.repositories import DocumentRepository, SectionRepository
 
 logger = logging.getLogger(__name__)
 

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from app.modules.chat.memory_repository import MemoryRepository
-from app.modules.chat.user_memory_service import UserMemoryService
+from app.modules.chat.repositories.memory_repository import MemoryRepository
+from app.modules.chat.services.user_memory_service import UserMemoryService
 
 VALID_MEMORY_TYPES = ("preference", "correction", "instruction", "fact")
 

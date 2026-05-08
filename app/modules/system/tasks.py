@@ -9,7 +9,7 @@ import logging
 from app.core.celery_app import celery_app
 from app.db.session import AsyncSessionLocal
 from app.core.redis import get_sync_redis_client
-from app.utils.bm25_index import build_bm25_index_from_qdrant
+from app.modules.documents.utils import build_bm25_index_from_qdrant
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +53,7 @@ def cleanup_orphaned_vectors_task() -> None:
 
     async def _run_cleanup():
         from app.modules.documents.ingestion.recovery_service import RecoveryService
-        from app.modules.documents.repository import DocumentRepository
-        from app.modules.documents.section_repository import SectionRepository
+        from app.modules.documents.repositories import DocumentRepository, SectionRepository
 
         # Isolated Async context
         async with AsyncSessionLocal() as session:
