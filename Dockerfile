@@ -65,7 +65,6 @@ USER qtuanph
 
 # 1. Embedding model (~2.2 GB)
 RUN --mount=type=cache,id=hf-models,target=/tmp/hf-cache,uid=1000,gid=1000 \
-    --mount=type=secret,id=hf_token,env=HF_TOKEN \
     HF_HOME=/tmp/hf-cache \
     python -c "from sentence_transformers import SentenceTransformer; \
     SentenceTransformer('AITeamVN/Vietnamese_Embedding_v2'); \
@@ -74,7 +73,6 @@ RUN --mount=type=cache,id=hf-models,target=/tmp/hf-cache,uid=1000,gid=1000 \
 
 # 2. Reranker model (~500 MB)
 RUN --mount=type=cache,id=hf-models,target=/tmp/hf-cache,uid=1000,gid=1000 \
-    --mount=type=secret,id=hf_token,env=HF_TOKEN \
     HF_HOME=/tmp/hf-cache \
     python -c "from transformers import AutoModelForSequenceClassification, AutoTokenizer; \
     AutoTokenizer.from_pretrained('AITeamVN/Vietnamese_Reranker'); \
