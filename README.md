@@ -7,14 +7,23 @@
 Self-hosted. No cloud lock-in. Complete control over your data.
 
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![CI](https://github.com/qtuanph/chatbot-rag/actions/workflows/status-code-guardrail.yml/badge.svg)](https://github.com/qtuanph/chatbot-rag/actions)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.135-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Qdrant](https://img.shields.io/badge/Qdrant-1.17-DC2D5E?logo=qdrant&logoColor=white)](https://qdrant.tech/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![GitHub Release](https://img.shields.io/github/v/release/qtuanph/chatbot-rag?include_prereleases&label=latest)](https://github.com/qtuanph/chatbot-rag/releases)
+[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white)](https://conventionalcommits.org)
 
 </div>
+
+---
+
+## Quick Links
+
+📦 **[Latest Release: v0.1.0](https://github.com/qtuanph/chatbot-rag/releases/tag/v0.1.0)** · 🚀 [Getting Started](#getting-started) · 📖 [Architecture](#architecture) · 📡 [API Reference](#api-reference) · 📂 [Full Changelog](https://github.com/qtuanph/chatbot-rag/releases)
 
 ---
 
@@ -50,7 +59,7 @@ Vietnamese enterprises need AI-powered document Q&A that:
 
 <table>
 <tr><td width="180"><b>Hierarchical Indexing</b></td><td>Docs → Sections (H1–H6) → Chunks (~400 tokens). Preserves document structure for accurate context retrieval.</td></tr>
-<tr><td><b>2-Stage Retrieval</b></td><td>Single Qdrant query → in-memory section grouping → chunk re-ranking. No double round-trip to vector DB.</td></tr>
+<tr><td><b>5-Stage Retrieval</b></td><td>Hybrid dense + BM25 (RRF fusion) → in-memory section grouping → dedup → <b>neighbor expansion</b> (±3 nodes) → context assembly. Reranker optional (off by default).</td></tr>
 <tr><td><b>Vietnamese-Optimized</b></td><td><code>AITeamVN/Vietnamese_Embedding_v2</code> — BGE-M3 fine-tuned on Vietnamese data, +16% Accuracy@1 vs base model.</td></tr>
 <tr><td><b>Smart OCR</b></td><td>2-pass strategy: native PDFs skip OCR for speed, scanned docs auto-detected and OCR'd via EasyOCR (vi + en).</td></tr>
 <tr><td><b>Async Ingestion</b></td><td>Upload returns instantly with <code>task_id</code>. Parsing/indexing runs in background via Celery with live progress tracking.</td></tr>
@@ -184,7 +193,7 @@ sequenceDiagram
 
 | Decision | Why |
 |----------|-----|
-| **Single Qdrant query** | Fetch enough results once, re-rank in-memory — eliminates ~20-50ms per chat request |
+| **Hybrid search (dense + BM25)** | Dense (embedding) + sparse (BM25) via RRF fusion — leverages both semantic similarity and keyword matching for Vietnamese |
 | **TTL-cached document IDs** (60s) | Avoids PostgreSQL subquery on every chat; invalidated on upload/delete |
 | **Redis-cached query embeddings** (1h) | Repeated questions skip embedding entirely — 0ms, 0 model cost |
 | **API gateway proxy** | Browser never sees Bearer token; auth via HttpOnly session cookie |
@@ -255,26 +264,41 @@ flowchart LR
     C -->|MISS| D["Embed Query<br/>(Vietnamese_Embedding_v2)"]
     D --> E
     E --> F["Doc ID Cache<br/>(TTL 60s)"]
-    F --> G["Single Qdrant Query<br/>(top 50-80, int8)"]
-    G --> H["Stage 1: Section Grouping<br/>(score ≥ 0.30)"]
-    H --> I["Stage 2: Chunk Re-ranking<br/>(score ≥ 0.35)"]
-    I --> J["Build Context +<br/>User Memories"]
-    J --> K["AI Streaming<br/>(SSE + Citations)"]
+    F --> G["Dense Search<br/>(Vietnamese_Embedding_v2)"]
+    F --> H["BM25 Search<br/>(VietnameseBM25Encoder<br/>Underthesea tokenization)"]
+    G --> I["RRF Fusion<br/>(k=60)"]
+    H --> I
+    I --> J["Stage 1: Section Grouping<br/>(score >= 0.30)"]
+    J --> K["Dedup by section_id"]
+    K --> L["Neighbor Expansion<br/>(+/- 3 nodes by order)"]
+    L --> M{"Rerank?<br/>(RETRIEVAL_RERANK_ENABLED)"}
+    M -->|ON| N["Cross-Encoder<br/>(Vietnamese_Reranker)"]
+    M -->|OFF| O["Context Assembly<br/>+ User Memories"]
+    N --> O
+    O --> P["AI Streaming<br/>(SSE + Citations)"]
 
     style C fill:#fff3cd,stroke:#856404
     style G fill:#d1ecf1,stroke:#0c5460
-    style H fill:#d4edda,stroke:#155724
+    style H fill:#f8d7da,stroke:#721c24
     style I fill:#d4edda,stroke:#155724
+    style J fill:#d4edda,stroke:#155724
+    style L fill:#d1ecf1,stroke:#0c5460
+    style M fill:#e2e3fe,stroke:#383a40
 ```
 
-| Stage | What Happens | Threshold |
-|-------|-------------|-----------|
+| Stage | What Happens | Threshold / Notes |
+|-------|-------------|-------------------|
 | **Cache check** | MD5-keyed Redis lookup for query vector | TTL = 1 hour |
 | **Doc scope** | TTL-cached active document IDs from PostgreSQL | TTL = 60s |
-| **Vector search** | Single Qdrant query, filtered to active docs | top_k = 50-80 |
-| **Stage 1** | Group results by `section_id`, pick top 3 sections | score ≥ 0.30 |
-| **Stage 2** | Re-rank chunks within top sections first, then fill | score ≥ 0.35 |
-| **Context build** | Load section details, merge user memories, build prompt | — |
+| **Dense search** | Single Qdrant query with Vietnamese_Embedding_v2 | top_k = 50-80 |
+| **BM25 search** | Underthesea tokenization, VietnameseBM25Encoder | top_k = 50-80 |
+| **RRF fusion** | Reciprocal Rank Fusion combining dense + BM25 | k = 60 |
+| **Stage 1** | Group results by `section_id`, pick top 3 sections | score >= 0.30 |
+| **Dedup** | Remove duplicate chunks from same section | — |
+| **Neighbor expansion** | Fetch +/- 3 adjacent nodes by `order_index` per section | section context completeness |
+| **Rerank** | Cross-encoder scores (optional, off by default) | `RETRIEVAL_RERANK_ENABLED=false` |
+| **Context build** | Load section details, merge user memories, build prompt | DB-less assembly from cache |
+| **Streaming** | AI response via SSE with grouped citations | — |
 
 ---
 
@@ -371,55 +395,70 @@ docker compose up --build
 
 ## API Reference
 
+All endpoints are prefixed with `/api/v1`. Authentication uses JWT Bearer token.
+
 ### Authentication
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/v1/auth/login` | POST | public | JWT authentication |
-| `/api/v1/auth/logout` | DELETE | JWT | Revoke token |
-| `/api/v1/auth/me` | GET | JWT | Current user info |
-| `/api/v1/auth/users` | POST | admin | Create user |
-| `/api/v1/auth/users` | GET | admin | List users |
+| `/auth/login` | POST | public | JWT authentication |
+| `/auth/logout` | POST | JWT | Revoke token |
+| `/auth/me` | GET | JWT | Current user info |
+| `/auth/users` | POST | admin | Create user |
+| `/auth/users` | GET | admin | List users |
+| `/auth/users/{username}` | DELETE | admin | Delete user |
+| `/auth/roles` | GET | admin | List roles |
 
 ### Documents
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/v1/upload` | POST | admin | Upload document → returns `task_id` |
-| `/api/v1/status/{task_id}` | GET | JWT | Poll ingestion progress |
-| `/api/v1/documents` | GET | member | List documents |
-| `/api/v1/documents/{id}` | DELETE | admin | Hard-delete document |
+| `/documents/upload` | POST | admin | Upload document → returns `task_id` |
+| `/documents/status/{task_id}` | GET | JWT | Poll ingestion progress |
+| `/documents` | GET | member | List documents |
+| `/documents/{document_id}` | GET | member | Document details |
+| `/documents/{document_id}` | DELETE | admin | Hard-delete document |
+| `/documents/{document_id}/retry` | POST | admin | Retry failed ingestion |
 
 ### Chat
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/v1/chat/stream` | POST | member | Chat with SSE streaming |
-| `/api/v1/chat` | POST | member | Chat (non-streaming) |
-| `/api/v1/chat/sessions` | GET | member | List chat sessions |
+| `/chat/stream` | POST | member | Chat with SSE streaming |
+| `/chat/sessions` | POST | member | Create chat session |
+| `/chat/sessions` | GET | member | List chat sessions |
+| `/chat/messages` | GET | member | Get messages in session |
+| `/chat/messages/{message_id}/feedback` | POST | member | Submit message feedback |
 
 ### Document Tree
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/v1/tree/{document_id}` | GET | member | Hierarchical tree structure |
-| `/api/v1/tree/{id}/nodes/{nid}` | GET | member | Node details |
-| `/api/v1/tree/{id}/search` | GET | member | Search within document |
+| `/documents/{document_id}/tree` | GET | member | Hierarchical tree structure |
+| `/documents/{document_id}/tree/nodes/{node_id}` | GET | member | Node details |
+| `/documents/{document_id}/tree/search` | GET | member | Search within document |
 
 ### User Memory
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/v1/memories` | GET | member | List user memories |
-| `/api/v1/memories` | POST | member | Create memory |
-| `/api/v1/memories/{id}` | PATCH | member | Update memory |
-| `/api/v1/memories/{id}` | DELETE | member | Delete memory |
+| `/memories` | GET | member | List user memories |
+| `/memories` | POST | member | Create memory |
+| `/memories/{memory_id}` | PATCH | member | Update memory |
+| `/memories/{memory_id}` | DELETE | member | Delete memory |
+
+### Analytics
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/analytics/stats` | GET | member | Usage statistics |
 
 ### System
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/api/v1/health` | GET | public | Service health check |
+| `/health` | GET | public | Service health check |
+| `/health/data` | GET | public | Detailed health with storage info |
 
 ---
 
@@ -479,6 +518,19 @@ Read `AGENTS.md` first, then the JSON quick reference and topic docs.
 | API contracts & security | `docs/03_API_CONTRACTS.md` | 10 min |
 | Deployment & observability | `docs/04_DEPLOYMENT.md` | 5 min |
 | Ingestion & retrieval | `docs/05_INGESTION_RETRIEVAL.md` | 10 min |
+
+---
+
+## Contributing
+
+Contributions are welcome! Please read [AGENTS.md](AGENTS.md) for agent/dev guidelines, then:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feat/your-feature`)
+3. Commit using [Conventional Commits](https://www.conventionalcommits.org/) format
+4. Push and open a Pull Request
+
+All changes must pass linting (`flake8`, `black --line-length=120`) and CI guardrails before merge.
 
 ---
 
