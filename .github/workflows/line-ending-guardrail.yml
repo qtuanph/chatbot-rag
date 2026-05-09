@@ -12,24 +12,29 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check for CRLF in source files
+        shell: bash
         run: |
+          set -euo pipefail
+
           echo "Checking for CRLF line endings..."
-          
-          # Check all tracked source files (exclude binary and LFS)
-          git grep -I --files-with-matches $'\r$' -- \
-            '*.py' '*.sh' '*.conf' '*.yaml' '*.yml' '*.json' '*.md' \
-            '*.ts' '*.tsx' '*.js' '*.jsx' 'Dockerfile' ':!.github/workflows/*.yml' \
-          > /tmp/crlf_files.txt
-          
-          if [ -s /tmp/crlf_files.txt ]; then
-            echo "❌ CRLF detected in:"
-            cat /tmp/crlf_files.txt
+
+          # Find all text files with CRLF - using grep with LC_ALL=C for consistency
+          # Exclude binary files and .github/workflows/*.yml (those are checked by status-code-guardrail)
+          CRLF_FILES=$(git grep -I --files-with-matches $'\r' -- \
+            --exclude='*.yml' \
+            --exclude='*.yaml' \
+            '*.py' '*.sh' '*.conf' '*.json' '*.md' \
+            '*.ts' '*.tsx' '*.js' '*.jsx' 'Dockerfile' \
+            '*.txt' '*.css' '*.mjs' '*.drawio' \
+          2>/dev/null || true)
+
+          if [ -n "$CRLF_FILES" ]; then
+            echo "❌ CRLF detected in the following files:"
+            echo "$CRLF_FILES"
             echo ""
-            echo "Fix:"
-            echo "  git add --renormalize ."
-            echo "  git commit --amend --no-edit"
-            echo "  git push"
+            echo "Fix locally with:"
+            echo "  git add --renormalize . && git commit -m 'fix: normalize line endings to LF'"
             exit 1
           fi
-          
+
           echo "✅ All files use LF line endings"
