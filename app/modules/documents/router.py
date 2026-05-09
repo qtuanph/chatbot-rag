@@ -30,7 +30,7 @@ from app.modules.documents.schemas import (
     UploadAcceptedResponse,
 )
 from app.modules.documents.services import DocumentService, TreeService
-from app.modules.documents.validators import DocumentValidator
+from app.modules.documents.document_validator import DocumentValidator
 
 router = APIRouter(tags=["documents"])
 

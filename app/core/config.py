@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     ai_provider: str = "google"
     google_api_key: str = ""
-    google_model: str = "gemma-4-26b-a4b-it"
+    google_model: str = "gemma-4-31b-it"
     ai_input_cost_per_1m: float = 0.0  # Gemma 4 26B free tier on Google AI Studio
     ai_output_cost_per_1m: float = 0.0  # Set to actual cost when switching models
 
@@ -98,14 +98,14 @@ class Settings(BaseSettings):
 
     database_url: str = "replace-me"
     redis_password: str = ""  # Set via REDIS_PASSWORD env var
-    redis_url: str = "redis://redis:6379/2"  # App cache — DB 2
-    redis_broker_db: int = 0  # Celery broker — DB 0
+    redis_url: str = "redis://redis:6379/0"  # App cache + RediSearch — DB 0
+    redis_broker_db: int = 2  # Celery broker — DB 2
     redis_result_db: int = 1  # Celery result — DB 1
 
     @property
     def redis_url_auth(self) -> str:
         pwd = f":{self.redis_password}@" if self.redis_password else ""
-        return f"redis://{pwd}redis:6379/2"
+        return f"redis://{pwd}redis:6379/0"
 
     @property
     def celery_broker_url_auth(self) -> str:

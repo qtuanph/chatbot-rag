@@ -7,6 +7,7 @@ import re
 from typing import Any, AsyncGenerator
 
 import httpx
+from httpx import HTTPStatusError
 
 from app.adapters.ai.base import AIProvider
 from app.core.config import settings
@@ -117,7 +118,9 @@ class _ThoughtFilter:
             else:
                 start_idx = self._buffer.find(self._START)
                 if start_idx >= 0:
+                    # Yield content BEFORE the thought block (before marker starts)
                     result_parts.append(self._buffer[:start_idx])
+                    # Keep only from marker onward for next iteration to find </channel|>
                     self._buffer = self._buffer[start_idx:]
                     self._in_thought = True
                 else:
@@ -257,6 +260,10 @@ class GoogleAIProvider(AIProvider):
         client = self._get_client()
 
         async with client.stream("POST", url, json=payload, headers=self._headers) as response:
+            if response.status_code == 500:
+                logger.error(f"Google API 500 error: {response.text}")
+                yield "Server bận, sẽ xử lý sau."
+                return
             response.raise_for_status()
             thought_filter = _ThoughtFilter()
             async for line in response.aiter_lines():

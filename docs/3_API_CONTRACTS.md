@@ -1,6 +1,6 @@
-# 03 — API Contracts and Security
+# 3 — API Contracts and Security
 
-Full route reference, security architecture, and error handling. Architecture in `01_ARCHITECTURE.md`, workflows in `02_WORKFLOWS.md`.
+Full route reference, security architecture, and error handling. Architecture in `1_ARCHITECTURE.md`, workflows in `2_WORKFLOWS.json`.
 
 ## Security Architecture
 
@@ -163,7 +163,7 @@ Chat features:
 - Cost estimation: Configurable pricing via `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0 for free tier)
 - Input validation: nh3 HTML sanitization for query input
 - SSE abort: Frontend AbortController cancels stream on unmount/new message
-- Thinking suppressed: 4 layers (see 01_ARCHITECTURE.md)
+- Thinking suppressed: 4 layers (see 1_ARCHITECTURE.md)
 
 ### User Memories
 

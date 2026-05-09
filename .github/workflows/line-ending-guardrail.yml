@@ -1,0 +1,35 @@
+name: Line Ending Guardrail
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  check-line-endings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for CRLF in source files
+        run: |
+          echo "Checking for CRLF line endings..."
+          
+          # Check all tracked source files (exclude binary and LFS)
+          git grep -I --files-with-matches $'\r$' -- \
+            '*.py' '*.sh' '*.conf' '*.yaml' '*.yml' '*.json' '*.md' \
+            '*.ts' '*.tsx' '*.js' '*.jsx' 'Dockerfile' ':!.github/workflows/*.yml' \
+          > /tmp/crlf_files.txt
+          
+          if [ -s /tmp/crlf_files.txt ]; then
+            echo "❌ CRLF detected in:"
+            cat /tmp/crlf_files.txt
+            echo ""
+            echo "Fix:"
+            echo "  git add --renormalize ."
+            echo "  git commit --amend --no-edit"
+            echo "  git push"
+            exit 1
+          fi
+          
+          echo "✅ All files use LF line endings"

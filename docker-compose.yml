@@ -12,7 +12,7 @@ services:
     # No published port — all traffic goes through nginx on port 80
     # Internal access via Docker network: api:8000
     depends_on:
-      db:
+      db: 
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -80,6 +80,7 @@ services:
       start_period: 5s
     volumes:
       - hf-cache:/home/qtuanph/.cache/huggingface
+      - rapidocr-cache:/home/qtuanph/.rapidocr
     restart: unless-stopped
     networks:
       - internal
@@ -204,6 +205,7 @@ volumes:
   rustfsdata:
   qdrantdata:
   hf-cache:
+  rapidocr-cache:
 
 networks:
   internal:

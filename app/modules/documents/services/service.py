@@ -10,7 +10,8 @@ from uuid import uuid4
 from app.adapters.storage import build_storage
 from app.core.celery_app import celery_app
 from app.modules.documents.repositories import DocumentRepository, SectionRepository
-from app.modules.documents.services import TaskService, TreeService
+from app.modules.documents.services.task_service import TaskService
+from app.modules.documents.services.tree_service import TreeService
 from app.modules.documents.utils.document_registry import DocumentRegistry
 from app.utils.audit import safe_record_audit
 

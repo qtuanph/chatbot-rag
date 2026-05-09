@@ -512,12 +512,14 @@ Read `AGENTS.md` first, then the JSON quick reference and topic docs.
 
 | Topic | File | Time |
 |-------|------|------|
-| Rules & patterns | `docs/00_QUICK_REFERENCE.json` | 5 min |
-| Architecture & data model | `docs/01_ARCHITECTURE.md` | 10 min |
-| Core workflows | `docs/02_WORKFLOWS.md` | 10 min |
-| API contracts & security | `docs/03_API_CONTRACTS.md` | 10 min |
-| Deployment & observability | `docs/04_DEPLOYMENT.md` | 5 min |
-| Ingestion & retrieval | `docs/05_INGESTION_RETRIEVAL.md` | 10 min |
+| Rules & patterns | `docs/0_QUICK_REFERENCE.json` | 5 min |
+| Architecture & data model | `docs/1_ARCHITECTURE.md` | 10 min |
+| Core workflows | `docs/2_WORKFLOWS.json` (children: 2.1-2.5) | 10 min |
+| API contracts & security | `docs/3_API_CONTRACTS.md` | 10 min |
+| Deployment & observability | `docs/4_DEPLOYMENT.md` | 5 min |
+| Ingestion & retrieval | `docs/2.1_WORKFLOWS_INGESTION.md` | 10 min |
+| Naming conventions | `docs/5_NAMING_CONVENTIONS.md` | 3 min |
+| Known issues | `docs/6_KNOWN_ISSUES.json` | 2 min |
 
 ---
 

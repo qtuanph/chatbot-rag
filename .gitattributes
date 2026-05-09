@@ -1,2 +1,29 @@
-# Auto detect text files and perform LF normalization
+# Auto-detect and normalize line endings
+# Windows: check out as CRLF, commit as LF
+# Linux/Mac/Docker: check out as LF (no conversion needed)
+
 * text=auto
+
+# Explicitly declare files that MUST use LF (Linux containers)
+*.sh      eol=lf
+*.py      eol=lf
+*.conf    eol=lf
+*.yaml    eol=lf
+*.yml     eol=lf
+*.json    eol=lf
+*.md      eol=lf
+*.sql     eol=lf
+Dockerfile eol=lf
+
+# Binary files - no conversion
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.whl  binary
+*.parquet binary
+*.arrow binary

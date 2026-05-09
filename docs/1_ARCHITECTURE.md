@@ -1,6 +1,6 @@
-# 01 — Architecture and Data Model
+# 1 — Architecture and Data Model
 
-Single source of truth for system design, data model, and invariants. Security details in `03_API_CONTRACTS.md`.
+Single source of truth for system design, data model, and invariants. Security details in `3_API_CONTRACTS.md`.
 
 ## Purpose
 
@@ -17,7 +17,7 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | Database | PostgreSQL 18.3 (AsyncSessionLocal, Metadata/Auth/Audit) |
 | Vectors | Qdrant 1.17.1 (AsyncQdrantClient, Sparse+Dense Hybrid) |
 | Object storage | RustFS (S3-compatible, isolated via asyncio.to_thread) |
-| Queue/Cache | Redis 8.8 m03 (Celery, Streams, Semantic Cache, Rate Limiting) |
+| Queue/Cache | Redis 8.x (Celery, Streams, Semantic Cache, Rate Limiting) |
 | Embedding | AITeamVN/Vietnamese_Embedding_v2 (Remote via AI-Engine) |
 | Reranker | AITeamVN/Vietnamese_Reranker (Remote via AI-Engine) |
 | AI Provider | Google AI Gemma (singleton via lru_cache) |
@@ -32,7 +32,7 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | PostgreSQL | Auth, roles, documents, **document_sections** (canonical tree order), chat sessions/messages, user_memories, audit |
 | Qdrant | Chunk vectors + payload with `section_id` metadata |
 | RustFS | Raw uploaded files + ingestion artifacts |
-| Redis 8.8 | Celery broker/backend (DB 0/1), app cache (DB 2), query embedding cache, rate limiting, semantic cache (Vector Search), chat history (MessagePack), audit stream (XADD). allkeys-lru |
+| Redis 8.x | Celery broker (DB 2), result backend (DB 1), app cache + RediSearch semantic cache (DB 0), query embedding cache, rate limiting, chat history (MessagePack), audit stream (XADD). allkeys-lru |
 
 ## Core PostgreSQL Tables
 
@@ -279,9 +279,9 @@ Workers service runs `celery multi` with 2 worker nodes in 1 container:
 | CELERY_MAX_RETRIES | 3 | Max retry attempts |
 | broker_connection_retry_on_startup | true | Don't crash if Redis unavailable |
 | worker_disable_rate_limits | true | Rate limit at API level |
-| Redis DB 0 | Celery broker | Task messages |
+| Redis DB 0 | App cache + RediSearch semantic cache | Query cache, rate limits, chat history, vector similarity |
 | Redis DB 1 | Result backend | Task results |
-| Redis DB 2 | App cache | Query cache, rate limits, chat history |
+| Redis DB 2 | Celery broker | Task messages |
 | Queue routing | node-ingestion (solo): ingestion. node-default (prefork): cleanup, default. Beat on node-default | `ops/entrypoint-worker.sh` |
 
 ## Planned (Phase 2)

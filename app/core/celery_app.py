@@ -38,7 +38,6 @@ _ALL_MODULES = [
     "app.modules.documents.cleanup_tasks",
     "app.modules.chat.tasks",
     "app.modules.system.tasks",
-    "app.modules.chat.memory_tasks",
     "app.modules.analytics.audit_worker",
 ]
 

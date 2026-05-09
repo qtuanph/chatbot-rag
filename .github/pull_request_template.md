@@ -6,12 +6,12 @@ Describe what changed and why.
 
 - [ ] I read docs first before coding, in this order:
   - [ ] `AGENTS.md`
-  - [ ] `docs/00_QUICK_REFERENCE.json`
-  - [ ] `docs/01_ARCHITECTURE.md`
-  - [ ] `docs/02_WORKFLOWS.md`
-  - [ ] `docs/03_API_CONTRACTS.md`
-  - [ ] `docs/04_DEPLOYMENT.md`
-  - [ ] `docs/05_INGESTION_RETRIEVAL.md` (if ingestion/retrieval related)
+  - [ ] `docs/0_QUICK_REFERENCE.json`
+  - [ ] `docs/1_ARCHITECTURE.md`
+  - [ ] `docs/2_WORKFLOWS.json` + child docs (2.1-2.5)
+  - [ ] `docs/3_API_CONTRACTS.md`
+  - [ ] `docs/4_DEPLOYMENT.md`
+  - [ ] `docs/2.1_WORKFLOWS_INGESTION.md` (if ingestion/retrieval related)
 - [ ] I can answer all 12 preflight checks from AGENTS.md
 
 ## Docs/Memory Update (Required for code changes)

@@ -451,21 +451,27 @@ export function ChatPanel({
       {/* Stats bar */}
       {lastStats && !streaming && (
         <div className="flex items-center justify-center gap-2 px-4 py-1.5 text-xs text-muted-foreground border-t bg-muted/30 flex-wrap">
-          <span>{(lastStats.total_ms / 1000).toFixed(1)}s</span>
+          <span className="font-medium">{(lastStats.total_ms / 1000).toFixed(2)}s</span>
           <span className="text-border">|</span>
-          {lastStats.ttft_ms != null && (
-            <>
-              <span>TTFT {(lastStats.ttft_ms / 1000).toFixed(1)}s</span>
-              <span className="text-border">|</span>
-            </>
-          )}
-          <span>{lastStats.chars} ký tự</span>
+          <span title="Time To First Token - Thời gian đến chunk đầu tiên">
+            TTFT <span className="font-medium">{(lastStats.ttft_ms != null ? (lastStats.ttft_ms / 1000).toFixed(2) : '0')}s</span>
+          </span>
+          <span className="text-border">|</span>
+          <span>{lastStats.chars.toLocaleString()} ký tự</span>
           {(lastStats.total_tokens ?? 0) > 0 && (
             <>
               <span className="text-border">|</span>
-              <span>{(lastStats.total_tokens ?? 0).toLocaleString()} tokens</span>
+              <span title="Prompt tokens">
+                In: <span className="font-medium">{(lastStats.prompt_tokens ?? 0).toLocaleString()}</span>
+              </span>
               <span className="text-border">|</span>
-              <span>${(lastStats.estimated_cost_usd ?? 0).toFixed(4)}</span>
+              <span title="Completion tokens">
+                Out: <span className="font-medium">{(lastStats.completion_tokens ?? 0).toLocaleString()}</span>
+              </span>
+              <span className="text-border">|</span>
+              <span className="font-medium">{((lastStats.total_tokens ?? 0)).toLocaleString()}</span> tokens
+              <span className="text-border">|</span>
+              <span className="text-green-600 font-medium">${(lastStats.estimated_cost_usd ?? 0).toFixed(4)}</span>
             </>
           )}
         </div>

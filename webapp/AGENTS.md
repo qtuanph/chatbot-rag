@@ -6,11 +6,11 @@ This is NOT a standalone Next.js app. Read backend docs before making changes.
 
 **MUST READ** (in order, ALL required):
 1. `../AGENTS.md` (repo guardrails)
-2. `../docs/00_QUICK_REFERENCE.json` (rules & patterns)
-3. `../docs/01_ARCHITECTURE.md` (architecture, data model, AI control)
-4. `../docs/03_API_CONTRACTS.md` (API contracts, security baseline)
-5. `../docs/02_WORKFLOWS.md` (chat session lifecycle, workflows)
-6. `../docs/06_NAMING_CONVENTIONS.md` (variable, function, file naming)
+2. `../docs/0_QUICK_REFERENCE.json` (rules & patterns)
+3. `../docs/1_ARCHITECTURE.md` (architecture, data model, AI control)
+4. `../docs/3_API_CONTRACTS.md` (API contracts, security baseline)
+5. `../docs/2_WORKFLOWS.json` (chat session lifecycle, workflows - children: 2.1-2.5)
+6. `../docs/5_NAMING_CONVENTIONS.md` (variable, function, file naming)
 
 ## Critical Coupling Points
 
@@ -58,18 +58,18 @@ This is NOT a standalone Next.js app. Read backend docs before making changes.
 - **Next.js 16** — check `package.json` for exact version
 - **next-auth v5** with custom JWT provider
 - **Tailwind CSS** + **shadcn/ui v4** (uses @base-ui/react, NOT Radix)
-- **API**: Tight coupling to `../docs/03_API_CONTRACTS.md` endpoints
+- **API**: Tight coupling to `../docs/3_API_CONTRACTS.md` endpoints
 
 ## Common Changes
 
 ### Adding new API endpoint to chat
-1. Backend dev adds endpoint → updates `docs/03_API_CONTRACTS.md`
+1. Backend dev adds endpoint → updates `docs/3_API_CONTRACTS.md`
 2. Wait for docs update before implementing frontend
 3. Update `lib/api-client.ts` to call new endpoint
 4. Test via Postman first
 
 ### Changing auth flow
-1. Read `docs/03_API_CONTRACTS.md` → Auth section
+1. Read `../docs/3_API_CONTRACTS.md` → Auth section
 2. Update backend first
 3. Update `lib/auth.ts` to match
 4. Verify against tests

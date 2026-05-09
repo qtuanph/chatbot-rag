@@ -15,7 +15,7 @@ from app.adapters.ai import build_ai_provider
 from app.adapters.ai.google import strip_reasoning
 from app.core.config import settings
 from app.modules.chat.repositories.repository import ChatRepository
-from app.modules.chat.utils.chat_store import ChatStore, compute_cost, normalize_query
+from app.modules.chat.utils import ChatStore, compute_cost, normalize_query
 from app.modules.chat.retrieval import build_answer
 
 logger = logging.getLogger(__name__)
@@ -87,6 +87,7 @@ class ChatService:
 
         full_answer = ""
         start_time = _time.monotonic()
+        first_chunk_time: float | None = None
 
         normalized_query = normalize_query(query) if settings.query_normalize_enabled else query
 
@@ -113,6 +114,7 @@ class ChatService:
                         "citations": cached_citations,
                         "stats": {
                             "total_ms": cache_latency_ms,
+                            "ttft_ms": 0,
                             "chars": len(cached_answer),
                             "prompt_tokens": cached_stats.get("prompt_tokens", 0),
                             "completion_tokens": cached_stats.get("completion_tokens", 0),
@@ -123,6 +125,24 @@ class ChatService:
                         },
                     }
                     yield f"data: {json.dumps(final_data)}\n\n"
+
+                    # Persist cached response to DB (same as normal flow)
+                    try:
+                        await asyncio.shield(
+                            self.save_assistant_message(
+                                session_id=session_id,
+                                user_id=user_id,
+                                role="assistant",
+                                content=cached_answer,
+                                citations=cached_citations,
+                                tokens_in=cached_stats.get("prompt_tokens", 0),
+                                tokens_out=cached_stats.get("completion_tokens", 0),
+                                latency_ms=cache_latency_ms,
+                                model_used=cached_stats.get("model", "cached"),
+                            )
+                        )
+                    except Exception as e:
+                        logger.error("Failed to persist cached assistant message: %s", e, exc_info=True)
                     return
             except Exception as e:
                 logger.warning("[LLM-CACHE] Cache check failed: %s", e)
@@ -133,6 +153,8 @@ class ChatService:
             citations=citations,
             user_memories=prepared_chat["user_memories"],
         ):
+            if first_chunk_time is None:
+                first_chunk_time = _time.monotonic()
             full_answer += chunk
             # Immediate yield to prevent word-concatenation and "stuck" feeling in Vietnamese
             yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
@@ -143,6 +165,7 @@ class ChatService:
 
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
+        ttft_ms = int((first_chunk_time - start_time) * 1000) if first_chunk_time else 0
 
         if llm_cache and clean_answer:
             try:
@@ -192,6 +215,7 @@ class ChatService:
             "citations": citations,
             "stats": {
                 "total_ms": int((ai_done_time - start_time) * 1000),
+                "ttft_ms": ttft_ms,
                 "chars": len(clean_answer),
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,

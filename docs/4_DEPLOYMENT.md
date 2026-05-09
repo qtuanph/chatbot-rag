@@ -1,6 +1,6 @@
-# 04 — Deployment and Observability
+# 4 — Deployment and Observability
 
-Docker topology, nginx configuration, environment, and health. Architecture in `01_ARCHITECTURE.md`.
+Docker topology, nginx configuration, environment, and health. Architecture in `1_ARCHITECTURE.md`.
 
 ## Deployment Topology
 
@@ -34,8 +34,8 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | Variable | Purpose |
 |----------|---------|
 | DATABASE_URL | PostgreSQL connection |
-| REDIS_URL | Redis connection (DB 2 for app cache) |
-| CELERY_BROKER_URL | Redis DB 0 (Celery broker) |
+| REDIS_URL | Redis connection (DB 0 for app cache + RediSearch semantic cache) |
+| CELERY_BROKER_URL | Redis DB 2 (Celery broker) |
 | CELERY_RESULT_BACKEND | Redis DB 1 (task results) |
 | S3_* | Object storage configuration |
 | QDRANT_URL | Qdrant endpoint |

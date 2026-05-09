@@ -1,0 +1,84 @@
+{
+  "title": "Workflows",
+  "description": "Detailed step-by-step logic for the primary system workflows. See child documents for detailed documentation.",
+  "index": [
+    {
+      "id": "ingestion",
+      "title": "Document Ingestion",
+      "file": "2.1_WORKFLOWS_INGESTION.md",
+      "summary": "13-step pipeline for turning raw files into searchable vectors. Includes 5-stage retrieval pipeline.",
+      "key_rules": [
+        "Redis Bloom Filter for O(1) duplicate detection",
+        "Upload returns 202 immediately (async processing)",
+        "Contextualizer prepends document-level summary to every chunk",
+        "Hybrid indexing: dense (1024-dim) + sparse (BM25)"
+      ]
+    },
+    {
+      "id": "chat",
+      "title": "Chat → Retrieve → Generate → Response",
+      "file": "2.2_WORKFLOWS_CHAT.md",
+      "summary": "5-layer cache architecture + 5-stage retrieval with Neighbor Expansion (Soi sáng).",
+      "key_rules": [
+        "SemanticCache (Redis Vector) for similarity > 98%",
+        "LLM Response Cache bypasses LLM API entirely",
+        "4-layer thinking suppression for Gemma 4",
+        "Sliding Window rate limiting: 30 req/min per user"
+      ]
+    },
+    {
+      "id": "delete",
+      "title": "Hard Delete",
+      "file": "2.3_WORKFLOWS_DELETE.md",
+      "summary": "6-step hard-delete order (STRICT). Sections before DB row for referential integrity.",
+      "key_rules": [
+        "registry.delete() → vectors → sections → file → DB row → purge",
+        "Sections deleted BEFORE DB row",
+        "Redis Registry marks deleted immediately",
+        "Qdrant vectors removed before PostgreSQL"
+      ]
+    },
+    {
+      "id": "audit",
+      "title": "Decoupled Audit Logging",
+      "file": "2.4_WORKFLOWS_AUDIT.md",
+      "summary": "Fire-and-forget logging via Redis Stream. Never blocks API response.",
+      "key_rules": [
+        "API never writes to SecurityAudit table directly",
+        "XADD to Redis Stream returns in < 1ms",
+        "AuditStreamWorker batches every 5-10s",
+        "Redis Stream provides durability until DB ready"
+      ]
+    },
+    {
+      "id": "analytics",
+      "title": "Analytics Data Flow",
+      "file": "2.5_WORKFLOWS_ANALYTICS.md",
+      "summary": "Token tracking per message, aggregated by user. Admin sees system-wide, member sees own.",
+      "key_rules": [
+        "tokens_in, tokens_out, latency_ms stored per ChatMessage",
+        "estimated_cost_usd calculated from configurable pricing",
+        "Admin sees system-wide stats, member sees own only",
+        "Rate limited: 60/min per user"
+      ]
+    }
+  ],
+  "error_handling": [
+    {
+      "strategy": "Circuit Breaker",
+      "handling": "Trips to OPEN if Qdrant/GPU fails repeatedly, prevents loop hanging"
+    },
+    {
+      "strategy": "Distributed Lock",
+      "handling": "Redis Mutex prevents race conditions during session hydration"
+    },
+    {
+      "strategy": "Rate Limiter",
+      "handling": "Sliding window protects AI resources from abuse"
+    },
+    {
+      "strategy": "Parse failure",
+      "handling": "status=failed, parse_error set, SoftTimeLimitExceeded handled"
+    }
+  ]
+}
