@@ -1,4 +1,4 @@
-# Force LF for all text files (Docker/Linux containers)
+﻿# Force LF for all text files (Docker/Linux containers)
 * eol=lf
 
 # Binary files - no conversion

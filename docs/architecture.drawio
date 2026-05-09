@@ -1,4 +1,4 @@
-<mxfile host="65bd71144e">
+﻿<mxfile host="65bd71144e">
     <diagram name="chatbot-rag Architecture" id="main">
         <mxGraphModel dx="702" dy="563" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1200" math="0" shadow="0">
             <root>
@@ -25,13 +25,13 @@
                 <mxCell id="nginx" value="nginx :80" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=12;" parent="1" vertex="1">
                     <mxGeometry x="30" y="130" width="120" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="nextjs" value="Next.js 16 + shadcn/ui v4 next-auth v5 · SSE streaming" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" parent="1" vertex="1">
+                <mxCell id="nextjs" value="Next.js 16 + shadcn/ui v4 next-auth v5 Â· SSE streaming" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" parent="1" vertex="1">
                     <mxGeometry x="170" y="125" width="200" height="50" as="geometry"/>
                 </mxCell>
-                <mxCell id="proxy" value="API Gateway Proxy /api/bep/ → getToken() → Bearer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="proxy" value="API Gateway Proxy /api/bep/ â†’ getToken() â†’ Bearer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="390" y="125" width="220" height="50" as="geometry"/>
                 </mxCell>
-                <mxCell id="api" value="FastAPI Backend JWT Auth · RBAC · Rate Limit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=10;" parent="1" vertex="1">
+                <mxCell id="api" value="FastAPI Backend JWT Auth Â· RBAC Â· Rate Limit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=10;" parent="1" vertex="1">
                     <mxGeometry x="630" y="125" width="250" height="50" as="geometry"/>
                 </mxCell>
                 <mxCell id="r_upload" value="POST /upload" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
@@ -43,10 +43,10 @@
                 <mxCell id="q_ing" value="Redis Queue (ingestion)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" parent="1" vertex="1">
                     <mxGeometry x="40" y="310" width="120" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="w_ing" value="upload-pipeline (GPU Worker) ──────────────────────── ① Download from RustFS ② Parse Docling + PaddleOCR (mandatory, single-pass) ③ Validate hierarchy + Rule-based refine ④ Embed Vietnamese_Embedding_v2 (fp16) ⑤ Upsert chunks to Qdrant (section_id) ⑥ Persist sections to PostgreSQL ⑦ status=ready · invalidate doc ID cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=left;spacingLeft=8;" parent="1" vertex="1">
+                <mxCell id="w_ing" value="upload-pipeline (GPU Worker) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ â‘  Download from RustFS â‘¡ Parse Docling + PaddleOCR (mandatory, single-pass) â‘¢ Validate hierarchy + Rule-based refine â‘£ Embed Vietnamese_Embedding_v2 (fp16) â‘¤ Upsert chunks to Qdrant (section_id) â‘¥ Persist sections to PostgreSQL â‘¦ status=ready Â· invalidate doc ID cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=left;spacingLeft=8;" parent="1" vertex="1">
                     <mxGeometry x="28" y="380" width="260" height="150" as="geometry"/>
                 </mxCell>
-                <mxCell id="smart_ocr" value="PaddleOCR (mandatory) ───────────────── force_full_page_ocr=True RapidOCR ONNX backend Vietnamese + English Single-pass (no detection)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="smart_ocr" value="PaddleOCR (mandatory) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ force_full_page_ocr=True RapidOCR ONNX backend Vietnamese + English Single-pass (no detection)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="170" y="550" width="190" height="85" as="geometry"/>
                 </mxCell>
                 <mxCell id="r_chat" value="POST /chat/stream (SSE)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
@@ -58,13 +58,13 @@
                 <mxCell id="r_memories" value="GET/POST/PATCH/DELETE /memories" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" parent="1" vertex="1">
                     <mxGeometry x="775" y="235" width="110" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_redis" value="Redis Cache ───────────────── Query embedding (MD5, TTL=1h) Doc ID cache (TTL=60s) Rate limit (Lua atomic) User memories (TTL=5min)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="r_redis" value="Redis Cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Query embedding (MD5, TTL=1h) Doc ID cache (TTL=60s) Rate limit (Lua atomic) User memories (TTL=5min)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="460" y="310" width="180" height="90" as="geometry"/>
                 </mxCell>
-                <mxCell id="embedding" value="Vietnamese_Embedding_v2 ───────────────── 1024-dim · GPU fp16 / CPU ONNX BGE-M3 fine-tuned · 1.1M VN triplets +16% Accuracy@1 · sentence-transformers Offline · Pre-downloaded in Docker build" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;fontStyle=0;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="embedding" value="Vietnamese_Embedding_v2 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ 1024-dim Â· GPU fp16 / CPU ONNX BGE-M3 fine-tuned Â· 1.1M VN triplets +16% Accuracy@1 Â· sentence-transformers Offline Â· Pre-downloaded in Docker build" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;fontStyle=0;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="660" y="310" width="220" height="90" as="geometry"/>
                 </mxCell>
-                <mxCell id="retrieval" value="4-Stage Retrieval ────────────────────────────────── Stage 1: Hybrid search (dense + BM25 RRF fusion) Stage 2: Section grouping → top sections (score ≥ 0.30) Stage 3: Cross-encoder rerank → top 5 chunks Stage 4: Context assembly with breadcrumbs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="retrieval" value="4-Stage Retrieval â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Stage 1: Hybrid search (dense + BM25 RRF fusion) Stage 2: Section grouping â†’ top sections (score â‰¥ 0.30) Stage 3: Cross-encoder rerank â†’ top 5 chunks Stage 4: Context assembly with breadcrumbs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="460" y="420" width="280" height="90" as="geometry"/>
                 </mxCell>
                 <mxCell id="llm_g" value="Google AI gemma-4-26b-a4b-it (demo)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="1" vertex="1">
@@ -73,7 +73,7 @@
                 <mxCell id="llm_v" value="vLLM (on-prem)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
                     <mxGeometry x="600" y="550" width="100" height="55" as="geometry"/>
                 </mxCell>
-                <mxCell id="memory_svc" value="UserMemoryService ───────────────── Load from Redis → PG fallback Inject into systemInstruction Async extract post-response" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="memory_svc" value="UserMemoryService â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Load from Redis â†’ PG fallback Inject into systemInstruction Async extract post-response" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="720" y="545" width="170" height="80" as="geometry"/>
                 </mxCell>
                 <mxCell id="r_del" value="DELETE /documents/{id}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" parent="1" vertex="1">
@@ -82,22 +82,22 @@
                 <mxCell id="q_del" value="Redis Queue (cleanup)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" parent="1" vertex="1">
                     <mxGeometry x="950" y="310" width="120" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="w_del" value="cleanup-pipeline (Lightweight + Beat) ────────────────────────────────── Hard-delete sequence (order matters): ① registry.delete() → status=&#39;deleted&#39; (immediate) ② Delete Qdrant vectors ③ Delete PostgreSQL sections ④ Delete RustFS file ⑤ DELETE PostgreSQL row ⑥ registry.purge() ⑦ invalidate_doc_ids_cache()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;align=left;spacingLeft=8;" parent="1" vertex="1">
+                <mxCell id="w_del" value="cleanup-pipeline (Lightweight + Beat) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Hard-delete sequence (order matters): â‘  registry.delete() â†’ status=&#39;deleted&#39; (immediate) â‘¡ Delete Qdrant vectors â‘¢ Delete PostgreSQL sections â‘£ Delete RustFS file â‘¤ DELETE PostgreSQL row â‘¥ registry.purge() â‘¦ invalidate_doc_ids_cache()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;align=left;spacingLeft=8;" parent="1" vertex="1">
                     <mxGeometry x="920" y="380" width="240" height="150" as="geometry"/>
                 </mxCell>
-                <mxCell id="pg" value="PostgreSQL 18 ───────────────── documents · document_sections users · roles · audit user_memories · chat_sessions" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="pg" value="PostgreSQL 18 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ documents Â· document_sections users Â· roles Â· audit user_memories Â· chat_sessions" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="30" y="690" width="190" height="85" as="geometry"/>
                 </mxCell>
-                <mxCell id="qdrant" value="Qdrant v1.17 ───────────────── int8 scalar quantization HNSW index (m=16, ef_construct=128) Chunks with section_id metadata Cosine similarity" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="qdrant" value="Qdrant v1.17 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ int8 scalar quantization HNSW index (m=16, ef_construct=128) Chunks with section_id metadata Cosine similarity" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="260" y="690" width="200" height="85" as="geometry"/>
                 </mxCell>
-                <mxCell id="redis" value="Redis 8 ───────────────── Celery broker + result Query embedding cache Doc ID TTL cache Rate limit (atomic Lua) User memory cache" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="redis" value="Redis 8 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Celery broker + result Query embedding cache Doc ID TTL cache Rate limit (atomic Lua) User memory cache" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="500" y="690" width="190" height="85" as="geometry"/>
                 </mxCell>
-                <mxCell id="rustfs" value="RustFS (S3) ───────────────── Original files PDF · DOCX · XLSX" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="rustfs" value="RustFS (S3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Original files PDF Â· DOCX Â· XLSX" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="730" y="690" width="160" height="85" as="geometry"/>
                 </mxCell>
-                <mxCell id="hf_cache" value="HuggingFace Cache ───────────────── Vietnamese_Embedding_v2 PaddleOCR (RapidOCR ONNX) Vietnamese_Reranker Shared Docker volume" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
+                <mxCell id="hf_cache" value="HuggingFace Cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Vietnamese_Embedding_v2 PaddleOCR (RapidOCR ONNX) Vietnamese_Reranker Shared Docker volume" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
                     <mxGeometry x="930" y="690" width="190" height="85" as="geometry"/>
                 </mxCell>
                 <mxCell id="e_user_nginx" value="http://localhost" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#666666;fontSize=9;" parent="1" source="user" target="nginx" edge="1">
@@ -136,7 +136,7 @@
                 <mxCell id="e_chat_redis" value="cache + rate limit" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;fontSize=9;" parent="1" source="r_chat" target="r_redis" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e_redis_emb" value="cache miss → embed" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;fontSize=9;" parent="1" source="r_redis" target="embedding" edge="1">
+                <mxCell id="e_redis_emb" value="cache miss â†’ embed" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;fontSize=9;" parent="1" source="r_redis" target="embedding" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="e_emb_retrieval" value="query vector" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;fontSize=9;" parent="1" source="embedding" target="retrieval" edge="1">
