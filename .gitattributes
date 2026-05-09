@@ -1,23 +1,5 @@
-# Auto-detect and normalize line endings
-# Windows: check out as CRLF, commit as LF
-# Linux/Mac/Docker: check out as LF (no conversion needed)
-
-* text=auto
-
-# Explicitly declare files that MUST use LF (Linux containers)
-*.sh      eol=lf
-*.py      eol=lf
-*.ts      eol=lf
-*.tsx     eol=lf
-*.js      eol=lf
-*.jsx     eol=lf
-*.conf    eol=lf
-*.yaml    eol=lf
-*.yml     eol=lf
-*.json    eol=lf
-*.md      eol=lf
-*.sql     eol=lf
-Dockerfile eol=lf
+# Force LF for all text files (Docker/Linux containers)
+* eol=lf
 
 # Binary files - no conversion
 *.png  binary
