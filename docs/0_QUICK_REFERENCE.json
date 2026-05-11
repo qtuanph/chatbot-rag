@@ -12,7 +12,7 @@
       "2.4_WORKFLOWS_AUDIT.md": "Audit logging",
       "2.5_WORKFLOWS_ANALYTICS.md": "Analytics data flow",
       "3_API_CONTRACTS.md": "Full route reference, security, rate limits, error handling",
-      "4_DEPLOYMENT.md": "Docker topology, nginx, env vars, health probes, backup",
+      "4_DEPLOYMENT.md": "Docker topology, Traefik v3.7, env vars, health probes, backup",
       "5_NAMING_CONVENTIONS.md": "Variable, function, class, file naming standards"
     }
   },

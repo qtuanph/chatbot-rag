@@ -23,7 +23,7 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | AI Provider | Google AI Gemma (singleton via lru_cache) |
 | Ingestion | Docling + PaddleOCR + Contextualizer (Global Vision) + DuplicateDetector (Bloom) |
 | BM25 Manager | BM25Manager (class-level Singleton with 120s TTL) |
-| Reverse proxy | nginx on port 80 (SSE, NextAuth, API, Rate Limited) |
+| Reverse proxy | Traefik v3.7 on port 80 (auto-discovery via Docker labels, SSE, NextAuth, API, Rate Limited) |
 
 ## Storage Split
 

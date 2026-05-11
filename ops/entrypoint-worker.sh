@@ -1,10 +1,28 @@
 #!/bin/bash
 # Entrypoint for Celery workers.
+# Runtime lazy load: model download happens here, not in Docker build.
+# HF_HOME volume ensures cache persists across restarts.
 # Runs 2 worker nodes in 1 container:
 #   node-ingestion: solo pool, GPU, ingestion queue only
 #   node-default:    prefork pool, CPU, cleanup+default queues, Beat scheduler
 
 set -e
+
+HF_HOME="${HF_HOME:-/home/qtuanph/.cache/huggingface}"
+mkdir -p "$HF_HOME"
+
+echo "Checking HuggingFace cache..."
+
+# Lazy load embedding model (only downloads if not cached)
+EMBEDDING_MODEL_DIR="$HF_HOME/models--AITeamVN--Vietnamese_Embedding_v2"
+if [ ! -d "$EMBEDDING_MODEL_DIR" ]; then
+    echo "First start: downloading embedding model (this may take a few minutes)..."
+    hf download AITeamVN/Vietnamese_Embedding_v2 \
+        --local-dir "$EMBEDDING_MODEL_DIR"
+    echo "Embedding model ready"
+else
+    echo "Embedding model found in cache: $EMBEDDING_MODEL_DIR"
+fi
 
 MAX_TASKS=${CELERY_MAX_TASKS_PER_CHILD:-$(python -c "from app.core.config import settings; print(settings.celery_max_tasks_per_child)" 2>/dev/null || echo "50")}
 

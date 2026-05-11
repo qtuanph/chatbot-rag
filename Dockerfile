@@ -1,5 +1,4 @@
 # syntax=docker/dockerfile:1
-ARG HF_TOKEN
 FROM python:3.12-slim AS builder
 
 LABEL org.opencontainers.image.authors="qtuanph"
@@ -63,38 +62,6 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 RUN chown -R qtuanph:qtuanph /usr/local/lib/python3.12/site-packages/rapidocr/models/ 2>/dev/null; true
 
 USER qtuanph
-
-# ── Pre-download Models: cached mount, only re-runs if this RUN changes ──
-# HF_TOKEN: from build ARG (set via Windows env var or docker compose build --build-arg)
-RUN --mount=type=cache,target=/tmp/hf-cache \
-    --mount=type=cache,target=/tmp/rapidocr-cache \
-    HF_HOME=/tmp/hf-cache \
-    python -c "\
-import os; \
-hf_token = os.environ.get('HF_TOKEN', ''); \
-print(f'Using HF_TOKEN: {hf_token[:8]}...' if hf_token else 'No HF_TOKEN'); \
-from sentence_transformers import SentenceTransformer; \
-SentenceTransformer('AITeamVN/Vietnamese_Embedding_v2', token=hf_token if hf_token else None); \
-print('Embedding model cached'); \
-from transformers import AutoModelForSequenceClassification, AutoTokenizer; \
-AutoTokenizer.from_pretrained('AITeamVN/Vietnamese_Reranker', token=hf_token if hf_token else None); \
-AutoModelForSequenceClassification.from_pretrained('AITeamVN/Vietnamese_Reranker', token=hf_token if hf_token else None); \
-print('Reranker model cached'); \
-from underthesea import word_tokenize; \
-word_tokenize('warmup', format='text'); \
-from rapidocr_onnxruntime import RapidOCR; \
-engine = RapidOCR(); \
-from docling.document_converter import DocumentConverter, PdfFormatOption; \
-from docling.datamodel.pipeline_options import PdfPipelineOptions; \
-from docling.datamodel.base_models import InputFormat; \
-pipeline_options = PdfPipelineOptions(); \
-pipeline_options.do_ocr = True; \
-pipeline_options.do_table_structure = True; \
-converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}); \
-print('Docling and OCR models pre-downloaded'); \
-" && \
-cp -rn /tmp/hf-cache/* /home/qtuanph/.cache/huggingface/ 2>/dev/null; true && \
-cp -rn /tmp/rapidocr-cache/* /home/qtuanph/.rapidocr/ 2>/dev/null; true
 
 # ── Application code: LAST layer, only invalidates on code change ──
 COPY --chown=qtuanph:qtuanph . .

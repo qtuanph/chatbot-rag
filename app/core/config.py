@@ -144,7 +144,7 @@ class Settings(BaseSettings):
     s3_bucket: str = "rag-documents"
     s3_secure: bool = False
     allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0"
-    cors_origins: str = "http://localhost"  # All traffic through nginx port 80
+    cors_origins: str = "http://localhost"  # All traffic through Traefik port 80
 
     # Embedding — local/offline, on-premise
     embedding_model: str = "sentence-transformer"

@@ -80,7 +80,7 @@ graph TB
     end
 
     subgraph Gateway["Reverse Proxy"]
-        Nginx["nginx :80"]
+        Traefik["Traefik v3.7 :80"]
     end
 
     subgraph Frontend["Frontend — Next.js 16"]
@@ -115,9 +115,9 @@ graph TB
         vLLM["vLLM<br/>planned on-premise"]
     end
 
-    Browser --> Nginx
-    Nginx --> Frontend
-    Nginx --> Backend
+    Browser --> Traefik
+    Traefik --> Frontend
+    Traefik --> Backend
 
     Proxy -->|"HttpOnly JWT"| APIRouter
     APIRouter --> ChatRoute
@@ -250,7 +250,7 @@ graph LR
 | **OCR** | EasyOCR (vi + en) | Scanned document text extraction |
 | **Parsing** | Docling (Method D) | PDF/DOCX structured extraction |
 | **Storage** | RustFS (S3-compatible) | Original file storage |
-| **Reverse Proxy** | nginx | All traffic routing, SSE, security headers |
+| **Reverse Proxy** | Traefik v3.7 | All traffic routing, SSE, security headers, auto-discovery |
 
 ---
 
@@ -329,7 +329,7 @@ flowchart TB
 
 | Layer | Mechanism |
 |-------|-----------|
-| **Network** | nginx reverse proxy — all traffic on port 80, no direct service access |
+| **Network** | Traefik reverse proxy — all traffic on port 80, no direct service access |
 | **Authentication** | JWT (HS256) stored in encrypted HttpOnly cookie — never exposed to client JS |
 | **API Gateway** | Next.js Route Handler reads JWT server-side → attaches Bearer header to backend |
 | **Authorization** | Server-side `auth()` guards in layout files — admin/member role enforcement |

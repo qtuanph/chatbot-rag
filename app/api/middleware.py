@@ -166,7 +166,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # No longer instantiate here, as we need a loop-safe client later
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # Use X-Real-IP (set by nginx) or X-Forwarded-For to get the real client IP,
+        # Use X-Real-IP (set by reverse proxy) or X-Forwarded-For to get the real client IP,
         # not the Docker bridge IP from request.client.host
         client_ip = (
             request.headers.get("X-Real-IP")

@@ -56,7 +56,7 @@ Applied via `next.config.ts` `headers()` on all routes:
 | `POST /chat/stream` | 30/min per user | existing chat throttle |
 | `POST /chat/messages/{id}/feedback` | 60/min per user | `throttle:feedback:{user_id}` |
 | `GET /analytics/stats` | 60/min per user | `throttle:analytics:{user_id}` |
-| SSE endpoint | nginx rate limit 100r/s burst=20 | nginx limit_req zone |
+| SSE endpoint | Traefik rate limit 100r/s burst=20 | Traefik limit_req zone |
 
 - Non-production: relax via `RATE_LIMIT_RELAXED_MODE` + `RATE_LIMIT_RELAXED_FLOOR`
 - Throttled → 429 with clear detail message

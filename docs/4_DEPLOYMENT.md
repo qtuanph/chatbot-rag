@@ -1,6 +1,6 @@
 # 4 — Deployment and Observability
 
-Docker topology, nginx configuration, environment, and health. Architecture in `1_ARCHITECTURE.md`.
+Docker topology, Traefik v3.7.0 configuration, environment, and health. Architecture in `1_ARCHITECTURE.md`.
 
 ## Deployment Topology
 
@@ -8,9 +8,9 @@ Docker Compose with these services:
 
 | Service | Role | Access |
 |---------|------|--------|
-| nginx | Reverse proxy — **port 80 (public entry)** | Public |
-| api | FastAPI backend | Internal via nginx |
-| webapp | Next.js 16 frontend | Internal via nginx |
+| traefik | Reverse proxy — **port 80 (public entry)** | Public |
+| api | FastAPI backend | Internal via Traefik |
+| webapp | Next.js 16 frontend | Internal via Traefik |
 | workers | Celery multi worker — node-ingestion (solo, GPU) + node-default (prefork, CPU, beat) | Internal |
 | db | PostgreSQL 18 | Internal |
 | redis | Broker/result/cache | Internal |
@@ -18,7 +18,7 @@ Docker Compose with these services:
 | qdrant | Vector retrieval | Internal |
 | vllm | Planned on-prem profile (adapter not enabled) | — |
 
-All traffic through nginx on port 80. No direct port access.
+All traffic through Traefik on port 80. No direct port access.
 
 ## Container Runtime Users
 
@@ -78,43 +78,46 @@ Docker Compose: keep webapp variables in root `.env` for single source of truth.
 
 Compose defaults bind to 127.0.0.1. Production: front with ingress/reverse proxy + network policy.
 
-## Nginx Configuration
+## Traefik Configuration
 
-Config: `ops/nginx/nginx.conf` | Image: `nginx:stable-alpine`
+Image: `traefik:v3.7` | Dashboard: http://localhost:8080
 
-### Location Block Order (Critical)
+### Routing via Docker Labels
 
-```
-1. /api/auth/         → webapp (NextAuth routes — MUST be before /api/)
-2. /api/bep/          → webapp (API gateway proxy — browser calls, SSE, upload)
-3. /api/v1/chat/stream → api_backend (SSE — unbuffered)
-4. /api/               → api_backend (general API — rate limited)
-5. /view/              → api_backend (demo UI)
-6. /                   → webapp (Next.js app)
-7. /_next/static/      → webapp (aggressive caching 365d)
-```
+Traefik auto-discovers services via Docker labels — no static config file needed:
 
-### Key Features
+| Service | Rule | Purpose |
+|---------|------|---------|
+| api | `PathPrefix(/api)` | All API traffic |
+| webapp | `Host(\`localhost\`)` | Web app frontend |
 
-| Feature | Config |
-|---------|--------|
-| SSE streaming | `proxy_buffering off; gzip off; chunked_transfer_encoding off` |
+### Rate Limiting Middleware
+
+Applied via Traefik middleware labels on the API service:
+
+| Label | Value |
+|-------|-------|
+| `traefik.http.middlewares.api-ratelimit.ratelimit.average` | 100 |
+| `traefik.http.middlewares.api-ratelimit.ratelimit.burst` | 50 |
+
+### Key Traefik Features
+
+| Feature | Implementation |
+|---------|----------------|
+| SSE streaming | Native WebSocket/SSE support (no buffering config needed) |
 | API gateway | `/api/bep/` → webapp — browser never calls backend directly |
-| Connection pooling | `keepalive 64` on both upstreams |
-| Rate limiting | `api_limit` 100r/s burst=100, `upload_limit` 2r/s |
-| SSE rate limit | `limit_req zone=api_limit burst=20 nodelay` on SSE endpoint |
-| Proxy failover | `proxy_next_upstream error timeout http_502 http_503` with `proxy_next_upstream_non_idempotent off` so POST/PUT/PATCH/DELETE are not replayed by nginx |
-| WebSocket/HMR | `map $http_upgrade $connection_upgrade` for Next.js hot reload |
-| Upload size | `client_max_body_size 50m` (matches MAX_UPLOAD_SIZE_MB) |
-| Long timeout | `proxy_read_timeout 86400s` for SSE and HMR |
-| Version hidden | `server_tokens off` |
+| Auto-discovery | Docker provider reads labels from running containers |
+| WebSocket/HMR | Native support via Traefik's HTTP/WS handling |
+| Upload size | Configured via Traefik's default or per-service limits |
+| Hot reload | Labels change → Traefik reloads automatically |
+| Dashboard | http://localhost:8080 (insecure mode enabled) |
 
 ## Health and Readiness
 
 | Service | Probe |
 |---------|-------|
-| nginx | No container healthcheck (reverse proxy layer) |
-| API | `/api/v1/health` (via nginx and container healthcheck, 30s interval, 30s start_period) |
+| traefik | `--ping=true` built-in health endpoint |
+| API | `/api/v1/health` (container healthcheck, 10s interval, 10s start_period) |
 | Workers | celery inspect ping (30s interval, 60s start_period) |
 | Workers | celery inspect ping (included in API health payload) |
 | PostgreSQL | pg_isready (3s interval) |
