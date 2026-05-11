@@ -4,8 +4,10 @@ services:
     pull_policy: build
     build:
       context: .
-      secrets:
-        - hf_token
+      args:
+        - HF_TOKEN
+    secrets:
+      - hf_token
     env_file:
       - .env
     entrypoint: ["/bin/bash", "/app/ops/entrypoint-api.sh"]
@@ -213,4 +215,4 @@ networks:
 
 secrets:
   hf_token:
-    environment: HF_TOKEN
+    file: ./hf_token.txt

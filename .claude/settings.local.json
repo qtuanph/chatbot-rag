@@ -19,14 +19,15 @@
       "mcp__exa__*",
       "mcp__web_reader__*",
       "mcp__zai-mcp-server__*",
-      "mcp__4_5v_mcp__*"
+      "mcp__4_5v_mcp__*",
+      "WebFetch"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "playwright",
     "sequential-thinking",
     "next-devtools",
     "shadcn"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

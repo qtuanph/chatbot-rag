@@ -1,16 +1,16 @@
-﻿-r requirements.txt
+-r requirements.txt
 
 # Test/development-only dependencies (do not install in runtime Docker image)
 pytest==8.4.2
 
 # Security scanning
-bandit>=1.9.0
+bandit==1.9.0
 
 # Static type checking
-mypy>=1.16.0
+mypy==1.16.0
 
 # Code formatting
-black>=25.1.0
+black==25.1.0
 
 # Linting
-flake8>=7.3.0
+flake8==7.3.0

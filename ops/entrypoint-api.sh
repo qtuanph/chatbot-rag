@@ -6,7 +6,14 @@ set -e
 
 echo "🔍 Detecting hardware for API service..."
 
-WORKERS=$(python -c "from app.core.hardware import hardware; print(hardware.uvicorn_workers)" 2>/dev/null || echo "4")
+# Capture output and validate it is a positive integer
+WORKERS=$(python -c "from app.core.hardware import hardware; print(hardware.uvicorn_workers)" 2>/dev/null) || WORKERS=1
+
+# Validate: must be a positive integer, fallback to 1 if invalid
+if ! [[ "$WORKERS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "⚠️  Invalid worker count from hardware detection: '$WORKERS', using 1 worker"
+    WORKERS=1
+fi
 
 echo "🚀 Starting uvicorn with $WORKERS workers"
 echo ""

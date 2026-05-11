@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1
+ARG HF_TOKEN
 FROM python:3.12-slim AS builder
 
 LABEL org.opencontainers.image.authors="qtuanph"
@@ -64,19 +65,20 @@ RUN chown -R qtuanph:qtuanph /usr/local/lib/python3.12/site-packages/rapidocr/mo
 USER qtuanph
 
 # ── Pre-download Models: cached mount, only re-runs if this RUN changes ──
-# HF_TOKEN via BuildKit secret mount (id=hf_token).
-# Cache mounts persist across rebuilds — models only downloaded once.
+# HF_TOKEN: from build ARG (set via Windows env var or docker compose build --build-arg)
 RUN --mount=type=cache,id=hf-models,target=/tmp/hf-cache,uid=1000,gid=1000 \
     --mount=type=cache,id=rapidocr-models,target=/tmp/rapidocr-cache,uid=1000,gid=1000 \
-    --mount=type=secret,id=hf_token \
     HF_HOME=/tmp/hf-cache \
     python -c "\
+import os; \
+hf_token = os.environ.get('HF_TOKEN', ''); \
+print(f'Using HF_TOKEN: {hf_token[:8]}...' if hf_token else 'No HF_TOKEN'); \
 from sentence_transformers import SentenceTransformer; \
-SentenceTransformer('AITeamVN/Vietnamese_Embedding_v2', use_auth_token=$(cat /run/secrets/hf_token)); \
+SentenceTransformer('AITeamVN/Vietnamese_Embedding_v2', token=hf_token if hf_token else None); \
 print('Embedding model cached'); \
 from transformers import AutoModelForSequenceClassification, AutoTokenizer; \
-AutoTokenizer.from_pretrained('AITeamVN/Vietnamese_Reranker', use_auth_token=$(cat /run/secrets/hf_token)); \
-AutoModelForSequenceClassification.from_pretrained('AITeamVN/Vietnamese_Reranker', use_auth_token=$(cat /run/secrets/hf_token)); \
+AutoTokenizer.from_pretrained('AITeamVN/Vietnamese_Reranker', token=hf_token if hf_token else None); \
+AutoModelForSequenceClassification.from_pretrained('AITeamVN/Vietnamese_Reranker', token=hf_token if hf_token else None); \
 print('Reranker model cached'); \
 from underthesea import word_tokenize; \
 word_tokenize('warmup', format='text'); \

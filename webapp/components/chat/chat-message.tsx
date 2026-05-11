@@ -20,7 +20,6 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
   const [localFeedback, setLocalFeedback] = useState<number>(message.feedback || 0);
 
   const handleFeedback = async (value: number) => {
-    // If clicking same feedback again, reset to 0
     const newValue = localFeedback === value ? 0 : value;
     setLocalFeedback(newValue);
     try {
@@ -30,11 +29,12 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
       setLocalFeedback(message.feedback || 0);
     }
   };
+
   const isUser = message.role === "user";
   const isLoading = !isUser && isStreaming && !message.content;
 
   return (
-    <div className={`flex gap-3 px-4 py-3 group ${isUser ? "justify-end" : ""}`}>
+    <div className={`flex gap-3 px-4 py-3 ${isUser ? "justify-end" : ""}`}>
       {!isUser && (
         <Avatar className="h-8 w-8 shrink-0">
           <AvatarFallback className="text-xs bg-primary text-primary-foreground">AI</AvatarFallback>
@@ -50,7 +50,6 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
 
         {!isUser && (
           <>
-            {/* Loading indicator — waiting for first chunk */}
             {isLoading && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground rounded-2xl bg-muted px-4 py-3">
                 <span className="flex gap-1">
@@ -62,7 +61,6 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
               </div>
             )}
 
-            {/* Answer — stream live with markdown */}
             {message.content && (
               <div className={`rounded-2xl bg-muted px-4 py-2.5 ${isStreaming ? "streaming-active" : ""}`}>
                 <MarkdownRenderer content={message.content} />
@@ -72,34 +70,12 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
               </div>
             )}
 
-            {/* Citations — only after stream completes */}
             {message.citations && message.citations.length > 0 && !isStreaming && (
-              <div>
-                <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => setShowCitations(!showCitations)}>
-                    <FileText className="h-3 w-3" />
-                    {message.citations.length} nguồn
-                  </Button>
-
-                  <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={`h-7 w-7 ${localFeedback === 1 ? "text-green-500 bg-green-500/10" : "text-muted-foreground"}`}
-                      onClick={() => handleFeedback(1)}
-                    >
-                      <ThumbsUp className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={`h-7 w-7 ${localFeedback === -1 ? "text-red-500 bg-red-500/10" : "text-muted-foreground"}`}
-                      onClick={() => handleFeedback(-1)}
-                    >
-                      <ThumbsDown className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
+              <div className="mt-2">
+                <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => setShowCitations(!showCitations)}>
+                  <FileText className="h-3 w-3" />
+                  {message.citations.length} nguồn
+                </Button>
 
                 {showCitations && (
                   <div className="mt-1 space-y-1">
@@ -108,12 +84,49 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
                         <Badge variant="outline" className="shrink-0 text-[10px]">{i + 1}</Badge>
                         <div>
                           <span className="font-medium">{c.title}</span>
-                          {c.heading && <span className="text-muted-foreground"> &gt; {c.heading}</span>}
+                          {c.heading && <span className="text-muted-foreground">{" > "}{c.heading}</span>}
                           {c.page_range && <span className="text-muted-foreground"> (trang {c.page_range})</span>}
                         </div>
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+            )}
+
+            {!isUser && !isStreaming && message.content && (
+              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/30">
+                <span className="text-xs text-muted-foreground">Câu trả lời này:</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-7 px-2 gap-1 text-xs ${
+                    localFeedback === 1
+                      ? "text-green-600 bg-green-500/10"
+                      : "text-muted-foreground hover:text-green-600"
+                  }`}
+                  onClick={() => handleFeedback(1)}
+                >
+                  <ThumbsUp className="h-3.5 w-3.5" />
+                  <span>Hữu ích</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-7 px-2 gap-1 text-xs ${
+                    localFeedback === -1
+                      ? "text-red-600 bg-red-500/10"
+                      : "text-muted-foreground hover:text-red-600"
+                  }`}
+                  onClick={() => handleFeedback(-1)}
+                >
+                  <ThumbsDown className="h-3.5 w-3.5" />
+                  <span>Không hữu ích</span>
+                </Button>
+                {localFeedback !== 0 && (
+                  <span className="text-xs text-muted-foreground animate-in fade-in">
+                    Đã ghi nhận!
+                  </span>
                 )}
               </div>
             )}

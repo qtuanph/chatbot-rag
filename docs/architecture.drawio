@@ -1,227 +1,233 @@
-﻿<mxfile host="65bd71144e">
+<mxfile host="65bd71144e">
     <diagram name="chatbot-rag Architecture" id="main">
-        <mxGraphModel dx="702" dy="563" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1200" math="0" shadow="0">
+        <mxGraphModel dx="964" dy="573" grid="1" gridSize="15" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="800" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
                 <mxCell id="zone_gateway" value="Gateway Layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;opacity=30;fontSize=11;fontStyle=1;verticalAlign=top;" parent="1" vertex="1">
-                    <mxGeometry x="20" y="100" width="880" height="90" as="geometry"/>
+                    <mxGeometry x="20" y="20" width="300" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="zone_upload" value="Upload / Ingestion Flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;opacity=30;fontSize=11;fontStyle=1;verticalAlign=top;" parent="1" vertex="1">
-                    <mxGeometry x="20" y="210" width="400" height="440" as="geometry"/>
+                <mxCell id="zone_backend" value="Backend Services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;opacity=30;fontSize=11;fontStyle=1;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="340" y="20" width="540" height="200" as="geometry"/>
                 </mxCell>
-                <mxCell id="zone_chat" value="Chat / Retrieval Flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=30;fontSize=11;fontStyle=1;verticalAlign=top;" parent="1" vertex="1">
-                    <mxGeometry x="440" y="210" width="460" height="440" as="geometry"/>
+                <mxCell id="zone_ingestion" value="Upload / Ingestion" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;opacity=30;fontSize=11;fontStyle=1;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="240" width="250" height="320" as="geometry"/>
                 </mxCell>
-                <mxCell id="zone_delete" value="Delete Flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#82b366;opacity=30;fontSize=11;fontStyle=1;verticalAlign=top;" parent="1" vertex="1">
-                    <mxGeometry x="920" y="210" width="250" height="440" as="geometry"/>
+                <mxCell id="zone_chat" value="Chat / Retrieval" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=30;fontSize=11;fontStyle=1;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="290" y="240" width="300" height="320" as="geometry"/>
+                </mxCell>
+                <mxCell id="zone_delete" value="Delete Flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;opacity=30;fontSize=11;fontStyle=1;verticalAlign=top;" parent="1" vertex="1">
+                    <mxGeometry x="610" y="240" width="270" height="320" as="geometry"/>
                 </mxCell>
                 <mxCell id="zone_data" value="Data Layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;opacity=30;fontSize=11;fontStyle=1;verticalAlign=top;" parent="1" vertex="1">
-                    <mxGeometry x="20" y="670" width="1150" height="120" as="geometry"/>
+                    <mxGeometry x="20" y="590" width="860" height="100" as="geometry"/>
                 </mxCell>
-                <mxCell id="user" value="User / Client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;" parent="1" vertex="1">
-                    <mxGeometry x="390" y="30" width="160" height="40" as="geometry"/>
+                <mxCell id="user" value="User" style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="40" width="60" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="nginx" value="nginx :80" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=12;" parent="1" vertex="1">
-                    <mxGeometry x="30" y="130" width="120" height="40" as="geometry"/>
+                <mxCell id="nginx" value="nginx :80" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="120" y="40" width="80" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="nextjs" value="Next.js 16 + shadcn/ui v4 next-auth v5 Â· SSE streaming" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="170" y="125" width="200" height="50" as="geometry"/>
+                <mxCell id="nextjs" value="Next.js 16&#xa;SSE + API Proxy" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="40" width="80" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="proxy" value="API Gateway Proxy /api/bep/ â†’ getToken() â†’ Bearer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;" parent="1" vertex="1">
-                    <mxGeometry x="390" y="125" width="220" height="50" as="geometry"/>
+                <mxCell id="api" value="FastAPI Backend&#xa;JWT Auth · RBAC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="40" width="100" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="api" value="FastAPI Backend JWT Auth Â· RBAC Â· Rate Limit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="630" y="125" width="250" height="50" as="geometry"/>
+                <mxCell id="routes" value="Routes Layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="500" y="40" width="120" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="services" value="Services Layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;dashed=1;" parent="1" vertex="1">
+                    <mxGeometry x="640" y="40" width="100" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="rate_limit" value="Rate Limit&#xa;(300 RPM)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="760" y="40" width="80" height="40" as="geometry"/>
                 </mxCell>
                 <mxCell id="r_upload" value="POST /upload" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="40" y="240" width="120" height="30" as="geometry"/>
+                    <mxGeometry x="40" y="270" width="100" height="28" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_status" value="GET /status/{id}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;dashed=1;" parent="1" vertex="1">
-                    <mxGeometry x="170" y="240" width="110" height="30" as="geometry"/>
+                <mxCell id="q_ing" value="Redis Queue&#xa;(ingestion)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="320" width="90" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="q_ing" value="Redis Queue (ingestion)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="40" y="310" width="120" height="40" as="geometry"/>
+                <mxCell id="w_ing" value="GPU Worker&#xa;Upload Pipeline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="385" width="90" height="35" as="geometry"/>
                 </mxCell>
-                <mxCell id="w_ing" value="upload-pipeline (GPU Worker) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ â‘  Download from RustFS â‘¡ Parse Docling + PaddleOCR (mandatory, single-pass) â‘¢ Validate hierarchy + Rule-based refine â‘£ Embed Vietnamese_Embedding_v2 (fp16) â‘¤ Upsert chunks to Qdrant (section_id) â‘¥ Persist sections to PostgreSQL â‘¦ status=ready Â· invalidate doc ID cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=left;spacingLeft=8;" parent="1" vertex="1">
-                    <mxGeometry x="28" y="380" width="260" height="150" as="geometry"/>
+                <mxCell id="ing_steps" value="1. Download from RustFS&#xa;2. Parse: Docling + PaddleOCR&#xa;3. Validate hierarchy&#xa;4. Embed (Vietnamese_Embedding)&#xa;5. Upsert Qdrant&#xa;6. Persist PostgreSQL" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#82b366;fontSize=8;align=left;spacingLeft=4;" parent="1" vertex="1">
+                    <mxGeometry x="150" y="270" width="110" height="120" as="geometry"/>
                 </mxCell>
-                <mxCell id="smart_ocr" value="PaddleOCR (mandatory) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ force_full_page_ocr=True RapidOCR ONNX backend Vietnamese + English Single-pass (no detection)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
-                    <mxGeometry x="170" y="550" width="190" height="85" as="geometry"/>
+                <mxCell id="pg_ing" value="PostgreSQL" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="450" width="80" height="55" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_chat" value="POST /chat/stream (SSE)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="460" y="240" width="170" height="30" as="geometry"/>
+                <mxCell id="qdrant_ing" value="Qdrant" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="520" width="80" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="rustfs_ing" value="RustFS (S3)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="150" y="520" width="80" height="55" as="geometry"/>
+                </mxCell>
+                <mxCell id="r_chat" value="POST /chat/stream" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="310" y="270" width="120" height="28" as="geometry"/>
                 </mxCell>
                 <mxCell id="r_docs" value="GET /documents" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="650" y="240" width="110" height="30" as="geometry"/>
+                    <mxGeometry x="310" y="305" width="120" height="28" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_memories" value="GET/POST/PATCH/DELETE /memories" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" parent="1" vertex="1">
-                    <mxGeometry x="775" y="235" width="110" height="40" as="geometry"/>
+                <mxCell id="r_memories" value="GET/POST /memories" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="310" y="340" width="100" height="28" as="geometry"/>
                 </mxCell>
-                <mxCell id="r_redis" value="Redis Cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Query embedding (MD5, TTL=1h) Doc ID cache (TTL=60s) Rate limit (Lua atomic) User memories (TTL=5min)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
-                    <mxGeometry x="460" y="310" width="180" height="90" as="geometry"/>
+                <mxCell id="redis_cache" value="Redis Cache&#xa;Query embed | Rate limit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="450" y="270" width="100" height="45" as="geometry"/>
                 </mxCell>
-                <mxCell id="embedding" value="Vietnamese_Embedding_v2 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ 1024-dim Â· GPU fp16 / CPU ONNX BGE-M3 fine-tuned Â· 1.1M VN triplets +16% Accuracy@1 Â· sentence-transformers Offline Â· Pre-downloaded in Docker build" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;fontStyle=0;align=left;spacingLeft=6;" parent="1" vertex="1">
-                    <mxGeometry x="660" y="310" width="220" height="90" as="geometry"/>
+                <mxCell id="embedding" value="Embedding&#xa;Vietnamese_Embedding_v2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="310" y="400" width="100" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="retrieval" value="4-Stage Retrieval â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Stage 1: Hybrid search (dense + BM25 RRF fusion) Stage 2: Section grouping â†’ top sections (score â‰¥ 0.30) Stage 3: Cross-encoder rerank â†’ top 5 chunks Stage 4: Context assembly with breadcrumbs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
-                    <mxGeometry x="460" y="420" width="280" height="90" as="geometry"/>
+                <mxCell id="retrieval" value="4-Stage Retrieval" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="430" y="400" width="110" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="llm_g" value="Google AI gemma-4-26b-a4b-it (demo)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="460" y="530" width="130" height="55" as="geometry"/>
+                <mxCell id="ret_steps" value="1. Hybrid: dense + BM25&#xa;2. Section grouping &gt;= 0.30&#xa;3. Rerank top 5&#xa;4. Context assembly" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;fontSize=8;align=left;spacingLeft=4;" parent="1" vertex="1">
+                    <mxGeometry x="430" y="455" width="140" height="65" as="geometry"/>
                 </mxCell>
-                <mxCell id="llm_v" value="vLLM (on-prem)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="600" y="550" width="100" height="55" as="geometry"/>
+                <mxCell id="llm" value="LLM&#xa;Gemma 4 / vLLM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="310" y="455" width="100" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="memory_svc" value="UserMemoryService â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Load from Redis â†’ PG fallback Inject into systemInstruction Async extract post-response" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
-                    <mxGeometry x="720" y="545" width="170" height="80" as="geometry"/>
+                <mxCell id="memory_svc" value="UserMemory&#xa;Inject context" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="310" y="510" width="90" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="qdrant_chat" value="Qdrant" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="430" y="530" width="70" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="redis_chat" value="Redis" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="520" y="530" width="70" height="50" as="geometry"/>
                 </mxCell>
                 <mxCell id="r_del" value="DELETE /documents/{id}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="930" y="240" width="160" height="30" as="geometry"/>
+                    <mxGeometry x="630" y="270" width="140" height="28" as="geometry"/>
                 </mxCell>
-                <mxCell id="q_del" value="Redis Queue (cleanup)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" parent="1" vertex="1">
-                    <mxGeometry x="950" y="310" width="120" height="40" as="geometry"/>
+                <mxCell id="q_del" value="Redis Queue&#xa;(cleanup)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="640" y="320" width="90" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="w_del" value="cleanup-pipeline (Lightweight + Beat) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Hard-delete sequence (order matters): â‘  registry.delete() â†’ status=&#39;deleted&#39; (immediate) â‘¡ Delete Qdrant vectors â‘¢ Delete PostgreSQL sections â‘£ Delete RustFS file â‘¤ DELETE PostgreSQL row â‘¥ registry.purge() â‘¦ invalidate_doc_ids_cache()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;align=left;spacingLeft=8;" parent="1" vertex="1">
-                    <mxGeometry x="920" y="380" width="240" height="150" as="geometry"/>
+                <mxCell id="w_del" value="Worker&#xa;Cleanup Pipeline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=10;" parent="1" vertex="1">
+                    <mxGeometry x="640" y="385" width="90" height="35" as="geometry"/>
                 </mxCell>
-                <mxCell id="pg" value="PostgreSQL 18 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ documents Â· document_sections users Â· roles Â· audit user_memories Â· chat_sessions" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
-                    <mxGeometry x="30" y="690" width="190" height="85" as="geometry"/>
+                <mxCell id="del_steps" value="1. registry.delete()&#xa;   status=deleted&#xa;2. Delete Qdrant vectors&#xa;3. Delete PG sections&#xa;4. Delete RustFS file&#xa;5. DELETE PG row&#xa;6. registry.purge()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#b85450;fontSize=8;align=left;spacingLeft=4;" parent="1" vertex="1">
+                    <mxGeometry x="780" y="248" width="120" height="120" as="geometry"/>
                 </mxCell>
-                <mxCell id="qdrant" value="Qdrant v1.17 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ int8 scalar quantization HNSW index (m=16, ef_construct=128) Chunks with section_id metadata Cosine similarity" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
-                    <mxGeometry x="260" y="690" width="200" height="85" as="geometry"/>
+                <mxCell id="qdrant_del" value="Qdrant" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="640" y="450" width="70" height="50" as="geometry"/>
                 </mxCell>
-                <mxCell id="redis" value="Redis 8 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Celery broker + result Query embedding cache Doc ID TTL cache Rate limit (atomic Lua) User memory cache" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
-                    <mxGeometry x="500" y="690" width="190" height="85" as="geometry"/>
+                <mxCell id="pg_del" value="PostgreSQL" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="730" y="450" width="70" height="50" as="geometry"/>
                 </mxCell>
-                <mxCell id="rustfs" value="RustFS (S3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Original files PDF Â· DOCX Â· XLSX" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
-                    <mxGeometry x="730" y="690" width="160" height="85" as="geometry"/>
+                <mxCell id="rustfs_del" value="RustFS" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="640" y="520" width="70" height="50" as="geometry"/>
                 </mxCell>
-                <mxCell id="hf_cache" value="HuggingFace Cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Vietnamese_Embedding_v2 PaddleOCR (RapidOCR ONNX) Vietnamese_Reranker Shared Docker volume" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;align=left;spacingLeft=6;" parent="1" vertex="1">
-                    <mxGeometry x="930" y="690" width="190" height="85" as="geometry"/>
+                <mxCell id="pg" value="PostgreSQL 18&#xa;documents | users | chat" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="610" width="100" height="65" as="geometry"/>
                 </mxCell>
-                <mxCell id="e_user_nginx" value="http://localhost" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#666666;fontSize=9;" parent="1" source="user" target="nginx" edge="1">
+                <mxCell id="qdrant" value="Qdrant v1.17&#xa;HNSW | int8" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="170" y="610" width="90" height="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="redis" value="Redis 8&#xa;Broker | Cache" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="290" y="610" width="90" height="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="rustfs" value="RustFS (S3)&#xa;Original files" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="410" y="610" width="90" height="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="hf_cache" value="HF Cache&#xa;Embedding model" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="530" y="610" width="90" height="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#666666;" parent="1" source="user" target="nginx" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e_nginx_next" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;" parent="1" source="nginx" target="nextjs" edge="1">
+                <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;" parent="1" source="nginx" target="nextjs" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e_next_proxy" value="auth + SSE" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;fontSize=9;" parent="1" source="nextjs" target="proxy" edge="1">
+                <mxCell id="e3" value="SSE" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;fontSize=9;" parent="1" source="nextjs" target="api" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e_proxy_api" value="Bearer JWT" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;fontSize=9;fontStyle=1;" parent="1" source="proxy" target="api" edge="1">
+                <mxCell id="e4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;" parent="1" source="api" target="routes" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e_api_upload" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" parent="1" source="api" target="r_upload" edge="1">
+                <mxCell id="e5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;" parent="1" source="routes" target="services" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e_api_chat" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;" parent="1" source="api" target="r_chat" edge="1">
+                <mxCell id="e6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;" parent="1" source="services" target="rate_limit" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e_api_del" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;" parent="1" source="api" target="r_del" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_api_mem" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;" parent="1" source="api" target="r_memories" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_upload_q" value="enqueue" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;fontSize=9;" parent="1" source="r_upload" target="q_ing" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_q_wing" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" parent="1" source="q_ing" target="w_ing" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_wing_ocr" value="parse" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;fontSize=9;" parent="1" source="w_ing" target="smart_ocr" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_chat_redis" value="cache + rate limit" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;fontSize=9;" parent="1" source="r_chat" target="r_redis" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_redis_emb" value="cache miss â†’ embed" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;fontSize=9;" parent="1" source="r_redis" target="embedding" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_emb_retrieval" value="query vector" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;fontSize=9;" parent="1" source="embedding" target="retrieval" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_retrieval_llm" value="context + memories" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;fontSize=9;" parent="1" source="retrieval" target="llm_g" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_retrieval_vllm" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;dashed=1;" parent="1" source="retrieval" target="llm_v" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_mem_svc" value="inject" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;fontSize=9;dashed=1;" parent="1" source="memory_svc" target="llm_g" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_del_q" value="enqueue" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;fontSize=9;" parent="1" source="r_del" target="q_del" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_q_wdel" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;" parent="1" source="q_del" target="w_del" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_wing_pg" value="sections + status" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;fontSize=9;" parent="1" source="w_ing" target="pg" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="e_wing_qdrant" value="upsert vectors" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;fontSize=9;" parent="1" source="w_ing" target="qdrant" edge="1">
+                <mxCell id="e7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" parent="1" source="routes" target="r_upload" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
-                            <mxPoint x="158" y="670"/>
-                            <mxPoint x="360" y="670"/>
+                            <mxPoint x="560" y="150"/>
+                            <mxPoint x="195" y="150"/>
+                            <mxPoint x="195" y="284"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="e_wing_rustfs" value="download" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;fontSize=9;dashed=1;" parent="1" source="w_ing" target="rustfs" edge="1">
+                <mxCell id="e8" value="enqueue" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;fontSize=8;" parent="1" source="r_upload" target="q_ing" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e_retrieval_qdrant" value="vector search (int8)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;fontSize=9;" parent="1" source="retrieval" target="qdrant" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="600" y="620"/>
-                            <mxPoint x="380" y="620"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="e_retrieval_pg" value="section details" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;fontSize=9;" parent="1" source="retrieval" target="pg" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="600" y="590"/>
-                            <mxPoint x="125" y="590"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="e_wdel_qdrant" value="del vectors" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;fontSize=9;" parent="1" source="w_del" target="qdrant" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="1040" y="660"/>
-                            <mxPoint x="390" y="660"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="e_wdel_pg" value="del row" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;fontSize=9;" parent="1" source="w_del" target="pg" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="1240" y="455"/>
-                            <mxPoint x="1240" y="820"/>
-                            <mxPoint x="125" y="820"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="e_wdel_rustfs" value="del file" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;fontSize=9;" parent="1" source="w_del" target="rustfs" edge="1">
+                <mxCell id="e9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#82b366;" parent="1" source="q_ing" target="w_ing" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="e_mem_redis" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;fontSize=9;dashed=1;" parent="1" source="memory_svc" target="redis" edge="1">
+                <mxCell id="e10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;" parent="1" source="w_ing" target="pg_ing" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;" parent="1" source="w_ing" target="qdrant_ing" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e12" value="download" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;fontSize=8;dashed=1;" parent="1" source="w_ing" target="rustfs_ing" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;" parent="1" source="routes" target="r_chat" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
-                            <mxPoint x="805" y="640"/>
-                            <mxPoint x="595" y="640"/>
+                            <mxPoint x="525" y="120"/>
+                            <mxPoint x="370" y="120"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="e_mem_pg" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;fontSize=9;dashed=1;" parent="1" source="memory_svc" target="pg" edge="1">
+                <mxCell id="e14" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;" parent="1" source="r_chat" target="redis_cache" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e15" value="embed" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;fontSize=8;" parent="1" source="redis_cache" target="embedding" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
-                            <mxPoint x="805" y="630"/>
-                            <mxPoint x="140" y="630"/>
+                            <mxPoint x="500" y="390"/>
+                            <mxPoint x="360" y="390"/>
                         </Array>
                     </mxGeometry>
+                </mxCell>
+                <mxCell id="e16" value="vector" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;fontSize=8;" parent="1" source="embedding" target="retrieval" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e17" value="context" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;fontSize=8;" parent="1" source="retrieval" target="llm" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e18" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#9673a6;dashed=1;" parent="1" source="memory_svc" target="llm" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e19" value="search" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;fontSize=8;" parent="1" source="retrieval" target="qdrant_chat" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e20" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;" parent="1" source="routes" target="r_del" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="585" y="135"/>
+                            <mxPoint x="700" y="135"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e21" value="enqueue" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;fontSize=8;" parent="1" source="r_del" target="q_del" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e22" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#b85450;" parent="1" source="q_del" target="w_del" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e23" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#6c8ebf;" parent="1" source="w_del" target="qdrant_del" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e24" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d6b656;" parent="1" source="w_del" target="pg_del" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e25" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#d79b00;" parent="1" source="w_del" target="rustfs_del" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
             </root>
         </mxGraphModel>

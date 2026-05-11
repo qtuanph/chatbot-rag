@@ -261,8 +261,9 @@ class GoogleAIProvider(AIProvider):
 
         async with client.stream("POST", url, json=payload, headers=self._headers) as response:
             if response.status_code == 500:
-                logger.error(f"Google API 500 error: {response.text}")
-                yield "Server bận, sẽ xử lý sau."
+                # For streaming responses, we can't read .text - just yield error
+                logger.error("Google API 500 error during streaming")
+                yield "Server bận, vui lòng thử lại sau."
                 return
             response.raise_for_status()
             thought_filter = _ThoughtFilter()
