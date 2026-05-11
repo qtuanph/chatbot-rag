@@ -1,0 +1,429 @@
+"""Documents API — upload, status, list, delete, retry, tree."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import logging
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status, Query
+from typing import TYPE_CHECKING
+from starlette.responses import StreamingResponse
+
+if TYPE_CHECKING:
+    from app.utils.rate_limiter import RateLimiter
+
+from app.modules.auth.deps import require_admin, get_auth_context
+from app.modules.auth.context import AuthContext
+from app.utils.permissions import resolve_strict_tenant_scope, resolve_loose_tenant_scope
+from app.modules.documents.deps import get_document_service, get_tree_service
+from app.core.deps import get_rate_limiter, get_pagination, PaginationParams
+from app.core.http_errors import handle_domain_errors
+from app.core.config import settings
+from app.core import http_errors
+from app.modules.documents.schemas import (
+    DocumentAccessResponse,
+    DocumentAccessUpdateRequest,
+    DocumentDeleteResponse,
+    DocumentDetailResponse,
+    DocumentListResponse,
+    DocumentRechunkResponse,
+    DocumentRetryResponse,
+    DocumentSummaryResponse,
+    TaskProgressInfo,
+    TaskStatusResponse,
+    TenantBrief,
+    UploadAcceptedResponse,
+)
+from app.modules.documents.services import DocumentService, TreeService
+from app.modules.documents.document_validator import DocumentValidator
+
+router = APIRouter(tags=["documents"])
+logger = logging.getLogger(__name__)
+
+
+def _build_document_list_response(result: dict) -> DocumentListResponse:
+    items = [
+        DocumentSummaryResponse(
+            document_id=row["document_id"],
+            tenant_id=row.get("tenant_id"),
+            title=row["title"],
+            file_name=row["file_name"],
+            file_type=row["file_type"],
+            file_size=row["file_size"],
+            version=row["version"],
+            status=row["status"],
+            stage=row["stage"],
+            progress_percent=row["progress_percent"],
+            status_message=row["status_message"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            allowed_tenants=[TenantBrief(id=t["id"], name=t["name"]) for t in row.get("allowed_tenants", [])],
+        )
+        for row in result["items"]
+    ]
+    return DocumentListResponse(items=items, total=result["total"], offset=result["offset"], limit=result["limit"])
+
+
+@router.post("/upload", response_model=UploadAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
+async def upload_document(
+    request: Request,
+    tenant_id: str | None = Form(None),
+    file: UploadFile = File(...),
+    auth: AuthContext = Depends(require_admin),
+    service: DocumentService = Depends(get_document_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+) -> UploadAcceptedResponse:
+    if not await rate_limiter.is_allowed(
+        f"upload:{auth.user_id}", limit=settings.effective_rate_limit(5), window_ms=300000
+    ):
+        raise http_errors.too_many_requests("Too many upload requests")
+
+    try:
+        filename = DocumentValidator.validate_filename(file.filename)
+        file_type = DocumentValidator.validate_file_type(file.content_type, filename)
+    except ValueError as e:
+        raise http_errors.bad_request(str(e)) from None
+
+    sha256_hash = hashlib.sha256()
+    total_size = 0
+
+    while True:
+        chunk = await file.read(1024 * 1024)  # 1MB chunks
+        if not chunk:
+            break
+        total_size += len(chunk)
+        try:
+            DocumentValidator.validate_size(total_size)
+        except ValueError as e:
+            raise http_errors.bad_request(str(e)) from None
+        except RuntimeError as e:
+            raise http_errors.payload_too_large(str(e)) from None
+
+        sha256_hash.update(chunk)
+
+    sha256 = sha256_hash.hexdigest()
+    await file.seek(0)
+
+    document_id = str(uuid4())
+
+    duplicate, next_version = await service.check_duplicate(sha256, filename, tenant_id)
+    if duplicate is not None:
+        raise http_errors.conflict("Document already exists")
+
+    task_id = await service.create_and_enqueue(
+        document_id=document_id,
+        filename=filename,
+        fileobj=file.file,
+        file_size=total_size,
+        file_type=file_type,
+        sha256=sha256,
+        next_version=next_version,
+        tenant_id=tenant_id,
+        user_id=auth.user_id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return UploadAcceptedResponse(task_id=task_id, status="queued", document_id=document_id)
+
+
+@router.get("/status/{task_id}", response_model=TaskStatusResponse)
+async def get_status(
+    task_id: str,
+    _auth=Depends(require_admin),
+    service: DocumentService = Depends(get_document_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+) -> TaskStatusResponse:
+    if not await rate_limiter.is_allowed(
+        f"status:{_auth.user_id}", limit=settings.effective_rate_limit(60), window_ms=60000
+    ):
+        raise http_errors.too_many_requests("Too many status requests")
+
+    result = await service.get_task_status(task_id)
+    return TaskStatusResponse(
+        task_id=result["task_id"],
+        status=result["status"],
+        stage=result["stage"],
+        progress=TaskProgressInfo(step=result["stage"], percent=result["percent"]),
+        document_id=result["document_id"],
+        status_message=result["status_message"],
+        error=result["error"],
+        result=result["result"],
+    )
+
+
+@router.get("/documents", response_model=DocumentListResponse)
+async def list_documents(
+    pagination: PaginationParams = Depends(get_pagination),
+    tenant_id: str | None = None,
+    auth: AuthContext = Depends(get_auth_context),
+    service: DocumentService = Depends(get_document_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+) -> DocumentListResponse:
+    if not await rate_limiter.is_allowed(
+        f"documents:{auth.user_id}", limit=settings.effective_rate_limit(30), window_ms=60000
+    ):
+        raise http_errors.too_many_requests("Too many document list requests")
+
+    effective_tenant_id = resolve_strict_tenant_scope(auth, tenant_id)
+
+    with handle_domain_errors():
+        result = await service.list_documents(
+            offset=pagination.offset, limit=pagination.limit, tenant_id=effective_tenant_id
+        )
+    return _build_document_list_response(result)
+
+
+@router.get("/documents/stream")
+async def stream_documents(
+    request: Request,
+    pagination: PaginationParams = Depends(get_pagination),
+    tenant_id: str | None = None,
+    auth: AuthContext = Depends(get_auth_context),
+    service: DocumentService = Depends(get_document_service),
+) -> StreamingResponse:
+
+    effective_tenant_id = resolve_strict_tenant_scope(auth, tenant_id)
+
+    async def event_generator():
+        last_payload = ""
+        keepalive_ticks = 0
+        yield "retry: 1000\n\n"
+
+        while True:
+            if await request.is_disconnected():
+                break
+
+            try:
+                with handle_domain_errors():
+                    result = await service.list_documents(
+                        offset=pagination.offset, limit=pagination.limit, tenant_id=effective_tenant_id
+                    )
+                payload = _build_document_list_response(result).model_dump_json()
+
+                if payload != last_payload:
+                    last_payload = payload
+                    keepalive_ticks = 0
+                    yield f"event: documents\ndata: {payload}\n\n"
+                else:
+                    keepalive_ticks += 1
+                    if keepalive_ticks >= 15:
+                        keepalive_ticks = 0
+                        yield ": keepalive\n\n"
+            except Exception as exc:
+                logger.warning("Document SSE stream loop recovered from error: %s", exc, exc_info=True)
+                yield ": transient-error-recovered\n\n"
+
+            await asyncio.sleep(max(2.0, float(settings.document_progress_stream_interval)))
+
+    headers = {
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
+
+
+@router.get("/documents/{document_id}", response_model=DocumentDetailResponse)
+async def get_document_detail(
+    document_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentDetailResponse:
+    try:
+        tenant_scope = resolve_loose_tenant_scope(auth)
+        doc = await service.get_document_detail(document_id, tenant_id=tenant_scope)
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None
+    return DocumentDetailResponse(
+        document_id=doc["id"],
+        tenant_id=str(doc["tenant_id"]),
+        title=doc["title"],
+        file_name=doc["file_name"],
+        sha256=doc["sha256"],
+        file_type=doc["file_type"],
+        file_size=doc["file_size"],
+        version=doc["version"],
+        status=doc["status"],
+        stage=doc["status_stage"],
+        progress_percent=doc["progress_percent"],
+        status_message=doc["status_message"],
+        parse_error=doc["parse_error"],
+        artifact_metadata=doc["artifact_metadata"],
+        deleted_at=doc["deleted_at"],
+        created_at=doc["created_at"],
+        updated_at=doc["updated_at"],
+        allowed_tenants=[TenantBrief(id=t["id"], name=t["name"]) for t in doc.get("allowed_tenants", [])],
+    )
+
+
+@router.get("/documents/{document_id}/access", response_model=DocumentAccessResponse)
+async def get_document_access(
+    document_id: str,
+    _auth=Depends(require_admin),
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentAccessResponse:
+    try:
+        res = await service.get_document_access(document_id)
+        return DocumentAccessResponse(
+            document_id=res["document_id"],
+            tenants=[TenantBrief(id=t["id"], name=t["name"]) for t in res["tenants"]],
+        )
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None
+
+
+@router.put("/documents/{document_id}/access", response_model=DocumentAccessResponse)
+async def update_document_access(
+    document_id: str,
+    payload: DocumentAccessUpdateRequest,
+    auth: AuthContext = Depends(require_admin),
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentAccessResponse:
+    try:
+        res = await service.set_document_access(document_id, payload.tenant_ids, granted_by=auth.user_id)
+        return DocumentAccessResponse(
+            document_id=res["document_id"],
+            tenants=[TenantBrief(id=t["id"], name=t["name"]) for t in res["tenants"]],
+        )
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None
+
+
+@router.delete("/documents/{document_id}", response_model=DocumentDeleteResponse)
+async def delete_document(
+    request: Request,
+    document_id: str,
+    _auth=Depends(require_admin),
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentDeleteResponse:
+    try:
+        result = await service.delete_document(
+            document_id=document_id,
+            user_id=_auth.user_id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+        return DocumentDeleteResponse(**result)
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None
+    except RuntimeError as e:
+        raise http_errors.service_unavailable(str(e)) from None
+
+
+@router.post("/documents/{document_id}/retry", response_model=DocumentRetryResponse)
+async def retry_document(
+    request: Request,
+    document_id: str,
+    auth: AuthContext = Depends(require_admin),
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentRetryResponse:
+    try:
+        result = await service.retry_document(
+            document_id=document_id,
+            user_id=auth.user_id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+        return DocumentRetryResponse(**result)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg:
+            raise http_errors.not_found(msg) from None
+        raise http_errors.bad_request(msg) from None
+    except RuntimeError as e:
+        raise http_errors.service_unavailable(str(e)) from None
+
+
+@router.post("/documents/{document_id}/rechunk", response_model=DocumentRechunkResponse)
+async def rechunk_document(
+    request: Request,
+    document_id: str,
+    auth: AuthContext = Depends(require_admin),
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentRechunkResponse:
+    try:
+        result = await service.rechunk_document(
+            document_id=document_id,
+            user_id=auth.user_id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+        return DocumentRechunkResponse(**result)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg:
+            raise http_errors.not_found(msg) from None
+        raise http_errors.bad_request(msg) from None
+    except RuntimeError as e:
+        raise http_errors.service_unavailable(str(e)) from None
+
+
+# ── Tree & Hierarchy Endpoints ──
+
+
+@router.get("/tree/{document_id}")
+async def get_document_tree(
+    document_id: str,
+    offset: int = 0,
+    limit: int = 100,
+    auth: AuthContext = Depends(get_auth_context),
+    service: TreeService = Depends(get_tree_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+):
+    if not await rate_limiter.is_allowed(
+        f"tree:list:{auth.user_id}", limit=settings.effective_rate_limit(60), window_ms=60000
+    ):
+        raise http_errors.too_many_requests("Too many tree requests")
+
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+    try:
+        tenant_scope = resolve_loose_tenant_scope(auth)
+        return await service.get_document_tree(
+            document_id=document_id,
+            offset=offset,
+            limit=limit,
+            tenant_id=tenant_scope,
+        )
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None
+
+
+@router.get("/tree/{document_id}/nodes/{node_id}")
+async def get_node_details(
+    document_id: str,
+    node_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+    service: TreeService = Depends(get_tree_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+):
+    if not await rate_limiter.is_allowed(
+        f"tree:detail:{auth.user_id}", limit=settings.effective_rate_limit(120), window_ms=60000
+    ):
+        raise http_errors.too_many_requests("Too many node detail requests")
+    try:
+        tenant_scope = resolve_loose_tenant_scope(auth)
+        return await service.get_node_details(document_id=document_id, node_id=node_id, tenant_id=tenant_scope)
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None
+
+
+@router.get("/tree/{document_id}/search")
+async def search_nodes(
+    document_id: str,
+    query: str = Query(..., min_length=1, max_length=500),
+    auth: AuthContext = Depends(get_auth_context),
+    service: TreeService = Depends(get_tree_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+):
+    if not await rate_limiter.is_allowed(
+        f"tree:search:{auth.user_id}", limit=settings.effective_rate_limit(60), window_ms=60000
+    ):
+        raise http_errors.too_many_requests("Too many tree search requests")
+    try:
+        tenant_scope = resolve_loose_tenant_scope(auth)
+        return await service.search_nodes(document_id=document_id, query=query, tenant_id=tenant_scope)
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None
