@@ -107,28 +107,11 @@ class ChatService:
                         yield f"data: {json.dumps({'chunk': cached_answer, 'done': False})}\n\n"
 
                     cache_latency_ms = int((cache_hit_time - start_time) * 1000)
-                    final_data = {
-                        "chunk": "",
-                        "done": True,
-                        "session_id": session_id,
-                        "citations": cached_citations,
-                        "stats": {
-                            "total_ms": cache_latency_ms,
-                            "ttft_ms": 0,
-                            "chars": len(cached_answer),
-                            "prompt_tokens": cached_stats.get("prompt_tokens", 0),
-                            "completion_tokens": cached_stats.get("completion_tokens", 0),
-                            "total_tokens": cached_stats.get("total_tokens", 0),
-                            "estimated_cost_usd": cached_stats.get("estimated_cost_usd", 0),
-                            "model": cached_stats.get("model", "cached"),
-                            "cache_hit": True,
-                        },
-                    }
-                    yield f"data: {json.dumps(final_data)}\n\n"
 
-                    # Persist cached response to DB (same as normal flow)
+                    # Persist cached response to DB FIRST to get real message_id
+                    cached_message_id: str | None = None
                     try:
-                        await asyncio.shield(
+                        cached_message_id = await asyncio.shield(
                             self.save_assistant_message(
                                 session_id=session_id,
                                 user_id=user_id,
@@ -143,6 +126,26 @@ class ChatService:
                         )
                     except Exception as e:
                         logger.error("Failed to persist cached assistant message: %s", e, exc_info=True)
+
+                    final_data = {
+                        "chunk": "",
+                        "done": True,
+                        "session_id": session_id,
+                        "message_id": cached_message_id,
+                        "citations": cached_citations,
+                        "stats": {
+                            "total_ms": cache_latency_ms,
+                            "ttft_ms": 0,
+                            "chars": len(cached_answer),
+                            "prompt_tokens": cached_stats.get("prompt_tokens", 0),
+                            "completion_tokens": cached_stats.get("completion_tokens", 0),
+                            "total_tokens": cached_stats.get("total_tokens", 0),
+                            "estimated_cost_usd": cached_stats.get("estimated_cost_usd", 0),
+                            "model": cached_stats.get("model", "cached"),
+                            "cache_hit": True,
+                        },
+                    }
+                    yield f"data: {json.dumps(final_data)}\n\n"
                     return
             except Exception as e:
                 logger.warning("[LLM-CACHE] Cache check failed: %s", e)
@@ -188,8 +191,9 @@ class ChatService:
         # Finalize persistence after the streamed answer is complete.
         finalize_error: str | None = None
         vids = [c["node_id"] for c in citations if "node_id" in c]
+        message_id: str | None = None
         try:
-            await asyncio.shield(
+            message_id = await asyncio.shield(
                 self.save_assistant_message(
                     session_id=session_id,
                     user_id=user_id,
@@ -212,6 +216,7 @@ class ChatService:
             "chunk": "",
             "done": True,
             "session_id": session_id,
+            "message_id": message_id,
             "citations": citations,
             "stats": {
                 "total_ms": int((ai_done_time - start_time) * 1000),
@@ -313,11 +318,12 @@ class ChatService:
         latency_ms: int | None = None,
         model_used: str | None = None,
         vector_ids: list[str] | None = None,
-    ) -> None:
-        """Save assistant message to PostgreSQL + Redis."""
+    ) -> str:
+        """Save assistant message to PostgreSQL + Redis. Returns the message_id."""
+        msg_dict: dict
         try:
             logger.info("Saving assistant message: session_id=%s, user_id=%s, role=%s", session_id, user_id, role)
-            await self.repo.create_message(
+            msg_dict = await self.repo.create_message(
                 session_id=session_id,
                 role=role,
                 content=content,
@@ -328,7 +334,8 @@ class ChatService:
                 model_used=model_used,
                 vector_ids=vector_ids,
             )
-            logger.info("Successfully saved assistant message: session_id=%s", session_id)
+            message_id = msg_dict["id"]
+            logger.info("Successfully saved assistant message: session_id=%s, message_id=%s", session_id, message_id)
         except Exception as e:
             logger.error("Failed to save chat message: %s", e, exc_info=True)
             raise RuntimeError("Failed to persist assistant message") from e
@@ -338,6 +345,8 @@ class ChatService:
             await self.store.append_message(scope_id, session_id, "assistant", content)
         except Exception as e:
             logger.warning("Failed to cache chat message in Redis: %s", e)
+
+        return message_id
 
     async def set_message_feedback(self, message_id: str, user_id: str, feedback: int) -> dict:
         """Record user feedback for a message. Raises ValueError if not found or unauthorized."""

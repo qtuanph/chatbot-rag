@@ -66,8 +66,8 @@ USER qtuanph
 
 # ── Pre-download Models: cached mount, only re-runs if this RUN changes ──
 # HF_TOKEN: from build ARG (set via Windows env var or docker compose build --build-arg)
-RUN --mount=type=cache,id=hf-models,target=/tmp/hf-cache,uid=1000,gid=1000 \
-    --mount=type=cache,id=rapidocr-models,target=/tmp/rapidocr-cache,uid=1000,gid=1000 \
+RUN --mount=type=cache,target=/tmp/hf-cache \
+    --mount=type=cache,target=/tmp/rapidocr-cache \
     HF_HOME=/tmp/hf-cache \
     python -c "\
 import os; \

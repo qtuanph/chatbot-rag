@@ -6,6 +6,7 @@ services:
       context: .
       args:
         - HF_TOKEN
+        - BUILDKIT_INLINE_CACHE=1
     secrets:
       - hf_token
     env_file:
@@ -173,6 +174,8 @@ services:
     build:
       context: ./webapp
       dockerfile: Dockerfile
+      args:
+        - BUILDKIT_INLINE_CACHE=1
     environment:
       - HOSTNAME=0.0.0.0
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost}

@@ -16,7 +16,7 @@ import { ChatMessage } from "@/components/chat/chat-message";
 import { toast } from "sonner";
 import { API_BASE, analyticsApi, chatApi } from "@/lib/api-client";
 import type { ChatMessage as ChatMessageType } from "@/types/chat";
-import type { ChatSession, Citation, ChatStreamEvent, AnalyticsStats } from "@/types/api";
+import type { ChatSession, Citation, ChatStreamEvent, ChatStreamDone, AnalyticsStats } from "@/types/api";
 
 const PAGE_SIZE = 20;
 
@@ -292,10 +292,17 @@ export function ChatPanel({
                   if ("stats" in event && event.stats) {
                     setLastStats(event.stats);
                   }
+                  // Update with real message_id from DB, content, and citations
+                  const doneEvent = event as ChatStreamDone;
                   setMessages((prev) =>
                     prev.map((m) =>
                       m.id === assistantId
-                        ? { ...m, content: fullText, citations }
+                        ? {
+                            ...m,
+                            id: doneEvent.message_id || m.id,
+                            content: fullText,
+                            citations,
+                          }
                         : m,
                     ),
                   );
@@ -331,6 +338,10 @@ export function ChatPanel({
     },
     [session, sessionId, streaming, onSessionCreated, onSessionUpdate, onRefreshSessions],
   );
+
+  const handleStop = useCallback(() => {
+      abortRef.current?.abort();
+    }, []);
 
   const handleSelectSession = useCallback(
     (id: string) => {
@@ -478,7 +489,7 @@ export function ChatPanel({
       )}
 
       {/* Input */}
-      <ChatInput onSend={handleSend} disabled={streaming || restoring} />
+      <ChatInput onSend={handleSend} onStop={handleStop} disabled={streaming || restoring} streaming={streaming} />
     </div>
   );
 }

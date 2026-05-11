@@ -85,6 +85,7 @@ export interface ChatStreamDone {
   chunk: string;
   done: true;
   session_id: string;
+  message_id: string;
   citations: Citation[];
   stats?: {
     total_ms: number;
