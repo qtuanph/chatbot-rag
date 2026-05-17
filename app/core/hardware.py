@@ -39,28 +39,12 @@ def _get_container_memory_limit() -> float:
 
 
 def _detect_amd_gpu_info() -> Tuple[int, float]:
-    """Detect AMD GPU count and VRAM using amdsmi (ROCm)."""
-    try:
-        from amdsmi import amdsmi_init, amdsmi_shut_down, amdsmi_get_processor_handles, amdsmi_get_gpu_memory_info
-        try:
-            amdsmi_init()
-            try:
-                handles = amdsmi_get_processor_handles()
-                if not handles:
-                    return 0, 0.0
-                # Get VRAM from first GPU
-                mem_info = amdsmi_get_gpu_memory_info(handles[0])
-                total_vram = mem_info.get("VRAM", 0)
-                vram_gb = round(total_vram / (1024 ** 3), 1)
-                return len(handles), vram_gb
-            finally:
-                amdsmi_shut_down()
-        except Exception as e:
-            logger.debug("AMD SMI init failed: %s", e)
-    except ImportError:
-        logger.debug("amdsmi not installed, skipping AMD GPU detection")
-    except Exception as e:
-        logger.debug("AMD GPU detection failed: %s", e)
+    """AMD GPU detection via amdsmi — disabled (amdsmi not in requirements).
+
+    amdsmi was removed because this deployment uses NVIDIA GPU (pynvml handles detection).
+    The C library libamd_smi.so is not present, causing spurious stdout warnings.
+    Keeping the stub so _detect_gpu_info call chain remains unchanged.
+    """
     return 0, 0.0
 
 

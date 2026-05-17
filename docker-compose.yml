@@ -12,11 +12,9 @@ services:
       - hf_token
     volumes:
       - hf-cache:/home/qtuanph/.cache/huggingface
-    entrypoint: ["/bin/bash", "/app/ops/entrypoint-api.sh"]
-    # No published port — all traffic goes through Traefik on port 80
-    # Internal access via Docker network: api:8000
+    entrypoint: [ "/bin/bash", "/app/ops/entrypoint-api.sh" ]
     depends_on:
-      db: 
+      db:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -29,7 +27,7 @@ services:
       rustfs:
         condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -55,7 +53,7 @@ services:
       - hf_token
     volumes:
       - hf-cache:/home/qtuanph/.cache/huggingface
-    entrypoint: ["/bin/bash", "/app/ops/entrypoint-worker.sh"]
+    entrypoint: [ "/bin/bash", "/app/ops/entrypoint-worker.sh" ]
     depends_on:
       db:
         condition: service_healthy
@@ -68,6 +66,13 @@ services:
       rustfs:
         condition: service_started
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu, utility, compute ]
     networks:
       - internal
 
@@ -77,16 +82,16 @@ services:
       - .env
     secrets:
       - hf_token
-    entrypoint: ["/bin/bash", "/app/ops/entrypoint-ai-engine.sh"]
+    entrypoint: [ "/bin/bash", "/app/ops/entrypoint-ai-engine.sh" ]
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: all
-              capabilities: [gpu, utility, compute]
+              capabilities: [ gpu, utility, compute ]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 10s
       timeout: 30s
       retries: 60
@@ -104,7 +109,7 @@ services:
       - .env
     environment:
       MANAGEMENT_PASSWORD: ${MANAGEMENT_PASSWORD:-123456}
-    entrypoint: ["/bin/sh", "/ops/entrypoint-ai-proxy.sh"]
+    entrypoint: [ "/bin/sh", "/ops/entrypoint-ai-proxy.sh" ]
     ports:
       - "127.0.0.1:8317:8317"
     volumes:
@@ -137,7 +142,7 @@ services:
       - pgdata:/var/lib/postgresql
       - ./ops/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
       interval: 3s
       timeout: 3s
       retries: 5
@@ -154,7 +159,7 @@ services:
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD-SHELL", "if [ -z \"$REDIS_PASSWORD\" ]; then redis-cli ping; else redis-cli -a \"$REDIS_PASSWORD\" ping; fi"]
+      test: [ "CMD-SHELL", "if [ -z \"$REDIS_PASSWORD\" ]; then redis-cli ping; else redis-cli -a \"$REDIS_PASSWORD\" ping; fi" ]
       interval: 3s
       timeout: 3s
       retries: 5
@@ -185,7 +190,7 @@ services:
       - qdrantdata:/qdrant/storage
     shm_size: '2gb'
     healthcheck:
-      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      test: [ "CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1" ]
       interval: 3s
       timeout: 3s
       retries: 5

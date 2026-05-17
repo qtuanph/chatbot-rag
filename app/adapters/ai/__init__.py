@@ -1,13 +1,5 @@
-from app.adapters.ai.google import GoogleAIProvider
-from app.core.config import settings
+"""AI adapters — CLIProxyAPI bridge for LLM access."""
 
+from app.adapters.ai.cliproxy_bridge import CLIProxyBridge
 
-def build_ai_provider():
-    """Returns a new AI provider instance (loop-safe)."""
-    provider = settings.ai_provider.strip().lower()
-    if provider == "google":
-        return GoogleAIProvider()
-    raise ValueError(f"Unsupported AI provider: '{provider}'. Supported: 'google'. " f"Set AI_PROVIDER in .env.")
-
-
-__all__ = ["GoogleAIProvider", "build_ai_provider"]
+__all__ = ["CLIProxyBridge"]

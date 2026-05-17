@@ -18,7 +18,7 @@ Browser → /api/bep/v1/... → Next.js Route Handler → getToken() (HttpOnly c
 | Route Handler | `webapp/app/api/bep/[...path]/route.ts` — reads JWT via `getToken()` from encrypted HttpOnly cookie |
 | Backend | Receives standard Bearer token — no changes to auth logic |
 | Session type | Client Session has `role` + `userId` only — `accessToken` stays server-side |
-| SSE | Stream forwarded as `ReadableStream` with `X-Accel-Buffering: no` |
+| WebSocket | Real-time bidirectional streaming via `/ws/chat/stream` |
 | Upload | `multipart/form-data` forwarded with `duplex: 'half'` |
 | Retry | Route Handler retries once on socket close; returns 502 JSON |
 
@@ -53,14 +53,16 @@ Applied via `next.config.ts` `headers()` on all routes:
 | `POST /memories` | 20/min per user | `throttle:memory:create:{user_id}` |
 | `PATCH /memories/{id}` | 20/min per user | `throttle:memory:update:{user_id}` |
 | `DELETE /memories/{id}` | 20/min per user | `throttle:memory:delete:{user_id}` |
-| `POST /chat/stream` | 30/min per user | existing chat throttle |
+| `POST /chat/sessions` | 30/min per user | `throttle:chat:sessions:{user_id}` |
+| `WebSocket /ws/chat/stream` | 30/min per user | existing chat throttle |
 | `POST /chat/messages/{id}/feedback` | 60/min per user | `throttle:feedback:{user_id}` |
 | `GET /analytics/stats` | 60/min per user | `throttle:analytics:{user_id}` |
-| SSE endpoint | Traefik rate limit 100r/s burst=20 | Traefik limit_req zone |
+| Admin endpoints | 20/min per admin | `throttle:admin:{admin_id}` |
 
 - Non-production: relax via `RATE_LIMIT_RELAXED_MODE` + `RATE_LIMIT_RELAXED_FLOOR`
 - Throttled → 429 with clear detail message
 - Production has coarse global fallback middleware rate limit
+- WebSocket throttled at 30 req/min per user
 
 ## Contract Stability
 
@@ -101,7 +103,7 @@ Request:
 { "query": "question text", "session_id": "optional-session-id" }
 ```
 
-Streaming only: SSE with `{"chunk": "...", "done": false}` chunks, final `{"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "chunks", "chars", "prompt_tokens", "completion_tokens", "total_tokens", "model", "estimated_cost_usd"}}`.
+Streaming only: WebSocket with `{"chunk": "...", "done": false}` chunks, final `{"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "chunks", "chars", "prompt_tokens", "completion_tokens", "total_tokens", "model", "estimated_cost_usd"}}`.
 
 ## Error Response Envelope
 
@@ -137,7 +139,7 @@ Validation: username 3-64 chars (normalized lowercase + trim), password 8-256 ch
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | POST | `/upload` | Admin | multipart/form-data field `file` → `{task_id, document_id}` 202. Multi-file parallel supported |
-| GET | `/status/{task_id}` | JWT | Poll pipeline status |
+| GET | `/status/{task_id}` | Admin | Poll pipeline status |
 | GET | `/documents` | Admin | List documents (excludes soft-deleted) |
 | GET | `/documents/{document_id}` | Admin | Document detail |
 | DELETE | `/documents/{document_id}` | Admin | Trigger hard-delete worker |
@@ -147,7 +149,7 @@ Validation: username 3-64 chars (normalized lowercase + trim), password 8-256 ch
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| POST | `/chat/stream` | Member | SSE stream, thinkingConfig MINIMAL |
+| WebSocket | `/ws/chat/stream` | Member | Real-time streaming |
 | POST | `/chat/sessions` | Member | Create empty session → `{session_id, title, ...}` |
 | GET | `/chat/sessions` | Member | Sessions ordered by `updated_at DESC` |
 | GET | `/chat/messages?session_id=...` | Member | Messages ordered by `created_at ASC`, pagination with limit/offset |
@@ -156,14 +158,13 @@ Validation: username 3-64 chars (normalized lowercase + trim), password 8-256 ch
 Chat features:
 - Session default: empty "Chat mới" on page load, sidebar for history
 - Auto-title: first user message truncated to 80 chars
-- Multi-turn: last 20 messages as Gemini contents array
+- Multi-turn: last 20 messages as OpenAI messages array
 - Memory injection: active memories → systemInstruction
-- Memory extraction: Celery extract_memories_task (queue=default) post-response via provider singleton → user_memories — durable, survives API restart
-- Token tracking: usageMetadata from Gemini → persisted synchronously before final SSE completion to ChatMessage + frontend stats bar
+- Memory extraction: Celery extract_memories_task (queue=default) post-response via CLIProxyBridge singleton → user_memories — durable, survives API restart
+- Token tracking: response usage from LlamaIndex OpenAI → persisted synchronously before final WebSocket completion to ChatMessage + frontend stats bar
 - Cost estimation: Configurable pricing via `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0 for free tier)
 - Input validation: nh3 HTML sanitization for query input
-- SSE abort: Frontend AbortController cancels stream on unmount/new message
-- Thinking suppressed: 4 layers (see 1_ARCHITECTURE.md)
+- Stream abort: Frontend AbortController cancels WebSocket on unmount/new message
 
 ### User Memories
 
@@ -187,11 +188,23 @@ Memory types: `preference` | `correction` | `instruction` | `fact`. Max 1000 cha
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| GET | `/tree/{document_id}` | JWT | Hierarchical document structure (paginated), throttled. Params: `offset`, `limit` |
-| GET | `/tree/{document_id}/nodes/{node_id}` | JWT | Full node detail with text and metadata, throttled |
-| GET | `/tree/{document_id}/search?query=` | JWT | Search nodes by title/content (query 1-500 chars), throttled |
+| GET | `/tree/{document_id}` | Member | Hierarchical document structure (paginated), throttled. Params: `offset`, `limit` |
+| GET | `/tree/{document_id}/nodes/{node_id}` | Member | Full node detail with text and metadata, throttled |
+| GET | `/tree/{document_id}/search?query=` | Member | Search nodes by title/content (query 1-500 chars), throttled |
 
 Tree ordering: `document_sections.order_index` is canonical sort key. `page_number` is display hint (may be range string like "1-3").
+
+### Admin — Provider Management
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| GET | `/admin/providers` | Admin | List all providers with status (enabled/disabled) |
+| POST | `/admin/providers` | Admin | Add provider: `{name, base_url, api_key, models, alias?}` |
+| PATCH | `/admin/providers/{name}/toggle` | Admin | Toggle provider on/off (disables all others if enabling) |
+| DELETE | `/admin/providers/{name}` | Admin | Remove provider |
+| GET | `/admin/models` | Admin | List available models across all enabled providers |
+
+Rate limit: 20/min per admin. Delegates to CLIProxyAPI Management API (`/v0/management/openai-compatibility`).
 
 ### Analytics
 
@@ -204,22 +217,13 @@ Response:
 {
   "total_messages": 150, "total_sessions": 12, "total_tokens_in": 50000,
   "total_tokens_out": 120000, "total_tokens": 170000, "avg_latency_ms": 2500,
-  "estimated_cost_usd": 0.0, "model_used": "gemma-4-26b-a4b-it",
+  "estimated_cost_usd": 0.0, "model_used": "model-from-cliproxy-config",
   "daily": [{"date": "2026-04-28", "messages": 10, "tokens_in": 3000, "tokens_out": 8000, "avg_latency_ms": 2200, "cost_usd": 0.0}],
-  "pricing": {"input_per_1m": 0.0, "output_per_1m": 0.0, "model": "gemma-4-26b-a4b-it", "note": "Free tier"}
+  "pricing": {"input_per_1m": 0.0, "output_per_1m": 0.0, "model": "from-CLIPROXY_DEFAULT_MODEL", "note": "Free tier"}
 }
 ```
 
 Rate limit: 60/min per user. Throttle key: `throttle:analytics:{user_id}`.
-
-### Demo UI (app/view/ — removable at go-live)
-
-| Method | Path | Notes |
-|--------|------|-------|
-| GET | `/` | SPA Admin/Chat (client-side JWT auth) |
-| GET | `/view/stats` | JSON dashboard summary |
-| GET | `/view/nodes` | HTML node list |
-| GET | `/view/node` | HTML node detail |
 
 ## Routing Guardrails
 
@@ -240,12 +244,12 @@ Rate limit: 60/min per user. Throttle key: `throttle:analytics:{user_id}`.
 
 | Area | Current | Planned |
 |------|---------|---------|
-| AI_PROVIDER | google | vllm (not implemented) |
+| AI_PROVIDER | CLIProxyAPI (OpenAI-compatible) | vllm (not implemented) |
 | Application endpoints | Unchanged | Unchanged |
 | Auth model | Unchanged | Unchanged |
 | Retrieval pipeline | Unchanged | Unchanged |
 
-Provider abstraction normalizes request/response so `/chat/stream` stays unchanged across phases.
+Provider abstraction via LlamaIndex OpenAI normalizes request/response so `/ws/chat/stream` stays unchanged across phases.
 
 ## Version Conflict Resolution
 

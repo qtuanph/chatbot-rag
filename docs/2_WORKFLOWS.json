@@ -10,7 +10,7 @@
       "key_rules": [
         "Redis Bloom Filter for O(1) duplicate detection",
         "Upload returns 202 immediately (async processing)",
-        "Contextualizer prepends document-level summary to every chunk",
+        "Embedding via AI-Engine (GPU) — AITeamVN/Vietnamese_Embedding_v2",
         "Hybrid indexing: dense (1024-dim) + sparse (BM25)"
       ]
     },
@@ -18,11 +18,11 @@
       "id": "chat",
       "title": "Chat → Retrieve → Generate → Response",
       "file": "2.2_WORKFLOWS_CHAT.md",
-      "summary": "5-layer cache architecture + 5-stage retrieval with Neighbor Expansion (Soi sáng).",
+      "summary": "3-layer cache architecture + 5-stage retrieval with Neighbor Expansion (Soi sáng).",
       "key_rules": [
-        "SemanticCache (Redis Vector) for similarity > 98%",
-        "LLM Response Cache bypasses LLM API entirely",
-        "4-layer thinking suppression for Gemma 4",
+        "SemanticCache (Redis Vector) for similarity > 98% (dist < 0.08)",
+        "LLM Response Cache bypasses LLM API entirely (4h TTL)",
+        "Query Embedding Cache skips embedding on repeat queries (4h TTL)",
         "Sliding Window rate limiting: 30 req/min per user"
       ]
     },

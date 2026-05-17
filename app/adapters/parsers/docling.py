@@ -1,6 +1,6 @@
 """
 Docling Parser: Primary document parser using Docling iterate_items() API.
-OCR: PaddleOCR (RapidOCR ONNX) — mandatory, no fallback.
+OCR: EasyOCR (RapidOCR ONNX) — mandatory, no fallback.
 If OCR fails → document parsing fails with clear error.
 """
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class DoclingParser(BaseParser):
     """
     Primary parser using Docling iterate_items() for 100% metadata preservation.
-    OCR: PaddleOCR (RapidOCR ONNX backend) — MANDATORY for all documents.
+    OCR: EasyOCR (RapidOCR ONNX backend) — MANDATORY for all documents.
     """
 
     def __init__(self, min_quality_score: float | None = None):
@@ -35,16 +35,16 @@ class DoclingParser(BaseParser):
         self._initialize_docling()
 
     def _initialize_docling(self) -> None:
-        """Initialize Docling converter with MANDATORY PaddleOCR."""
+        """Initialize Docling converter with EasyOCR (better Vietnamese accuracy)."""
         from docling.document_converter import DocumentConverter, PdfFormatOption, ImageFormatOption, WordFormatOption
         from docling.datamodel.base_models import InputFormat
-        from docling.datamodel.pipeline_options import PdfPipelineOptions, RapidOcrOptions
+        from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions
 
         from app.core.hardware import hardware
 
         device = "cuda" if hardware.gpu_count > 0 else "cpu"
 
-        ocr_options = RapidOcrOptions(lang=settings.ingestion_ocr_languages)
+        ocr_options = EasyOcrOptions(lang=settings.ingestion_ocr_languages)
         pipeline = PdfPipelineOptions(
             do_ocr=True,
             force_full_page_ocr=True,
@@ -60,7 +60,7 @@ class DoclingParser(BaseParser):
                 InputFormat.DOCX: WordFormatOption(),
             },
         )
-        logger.info("Docling+PaddleOCR initialized [vi, en] on device: %s", device)
+        logger.info("Docling+EasyOCR initialized %s on device: %s", settings.ingestion_ocr_languages, device)
 
     async def parse(
         self,
@@ -68,7 +68,7 @@ class DoclingParser(BaseParser):
         content: bytes,
         document_id: str | None = None,
     ) -> tuple[list[IngestedNode], ParsingMetadata]:
-        """Parse document with Docling + PaddleOCR."""
+        """Parse document with Docling + EasyOCR."""
         import time
 
         start_time = time.time()
@@ -114,13 +114,13 @@ class DoclingParser(BaseParser):
         content: bytes,
     ) -> object | None:
         """
-        Convert document using Docling + PaddleOCR.
+        Convert document using Docling + EasyOCR.
         Always runs OCR on every page (force_full_page_ocr=True).
 
         Returns: ConversionResult or None
         """
         if not self.converter:
-            logger.error("Docling converter not initialized — PaddleOCR missing?")
+            logger.error("Docling converter not initialized — EasyOCR missing?")
             return None
 
         try:
@@ -132,14 +132,14 @@ class DoclingParser(BaseParser):
                 tmp_path = tmp.name
 
             try:
-                logger.info("Converting %s with PaddleOCR...", filename)
+                logger.info("Converting %s with EasyOCR...", filename)
                 # Configurable timeout for massive PDFs/OCR tasks (default 1 hour)
                 try:
                     result = await asyncio.wait_for(
                         asyncio.to_thread(self.converter.convert, tmp_path), timeout=settings.ingestion_parsing_timeout
                     )
                 except asyncio.TimeoutError:
-                    logger.exception("Docling+PaddleOCR conversion TIMED OUT for %s", filename)
+                    logger.exception("Docling+EasyOCR conversion TIMED OUT for %s", filename)
                     return None
 
                 # Post-process: fix heading hierarchy via docling-hierarchical-pdf
@@ -163,7 +163,7 @@ class DoclingParser(BaseParser):
 
         except Exception as e:
             # Log full traceback to aid debugging (onnx/ocr native errors often hide stack details)
-            logger.exception("Docling+PaddleOCR conversion FAILED for %s: %s", filename, e)
+            logger.exception("Docling+EasyOCR conversion FAILED for %s: %s", filename, e)
             return None
 
     # ── Method D: Extract directly from Docling items ────────────────────────
@@ -867,10 +867,15 @@ class DoclingParser(BaseParser):
 
     def _refine_nodes(self, nodes: list[IngestedNode]) -> list[IngestedNode]:
         """Simple text refinement: normalize whitespace and basic cleaning."""
+        # Vietnamese uppercase chars for sentence boundary detection
+        _VI_UP = r"AĂÂBCDEFGHIKLMNOPQRSTUVXYĐ"
         for node in nodes:
             # Fix common OCR artifacts and normalize spaces
             text = node.text or ""
-            text = re.sub(r"[ \t]+", " ", text)
+            # Collapse all Unicode whitespace (incl. non-breaking spaces from EasyOCR)
+            text = re.sub(r"[\s\xa0\u2000-\u200a\u202f\u205f\u3000]+", " ", text)
+            # Ensure space after period/colon before Vietnamese uppercase (sentence boundary)
+            text = re.sub(r"([.!?])([" + _VI_UP + r"])", r"\1 \2", text)
             text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
             node.text = text.strip()
         return nodes

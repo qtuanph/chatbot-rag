@@ -1,54 +1,18 @@
-"""Chat API — streaming chat endpoint."""
+"""Chat API endpoints."""
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from app.utils.rate_limiter import RateLimiter
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
 
-from app.api.deps import AuthContext, get_auth_context, get_chat_service, get_rate_limiter
-from app.core.config import settings
+from app.api.deps import AuthContext, get_auth_context, get_chat_service
 from app.core import http_errors
-from app.modules.chat.schemas import ChatRequest, MessageFeedbackRequest, MessageFeedbackResponse
+from app.modules.chat.schemas import MessageFeedbackRequest, MessageFeedbackResponse
 from app.modules.chat.services import ChatService
 
 router = APIRouter(tags=["chat"])
 logger = logging.getLogger(__name__)
-
-
-@router.post("/chat/stream")
-async def chat_stream(
-    request: ChatRequest,
-    auth: AuthContext = Depends(get_auth_context),
-    service: ChatService = Depends(get_chat_service),
-    rate_limiter: RateLimiter = Depends(get_rate_limiter),
-):
-    """Streaming chat endpoint — SSE format."""
-    if not await rate_limiter.is_allowed(auth.user_id, limit=settings.effective_rate_limit(30), window_ms=60000):
-        raise http_errors.too_many_requests("Too many chat requests. Please wait a moment before trying again.")
-
-    try:
-        prep = await service.prepare_chat(
-            user_id=auth.user_id,
-            query=request.query,
-            session_id=request.session_id,
-        )
-    except ValueError as e:
-        raise http_errors.bad_request(str(e)) from None
-    except Exception as e:
-        logger.error("Error preparing chat context: %s", e, exc_info=True)
-        raise http_errors.internal_server_error("Failed to prepare chat context. Please try again.") from None
-
-    return StreamingResponse(
-        service.stream_chat_events(user_id=auth.user_id, query=request.query, prepared_chat=prep),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
-    )
 
 
 @router.post("/chat/sessions")

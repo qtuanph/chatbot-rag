@@ -326,6 +326,7 @@ class QdrantVectorStore(BaseVectorStore):
                 group_size=3,  # Max 3 chunks per section to ensure diversity
                 limit=top_k,  # Return top_k unique sections
                 with_payload=True,
+                with_vectors=False,
                 search_params=SearchParams(
                     hnsw_ef=hardware.qdrant_hnsw_ef,
                     quantization=(

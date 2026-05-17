@@ -1,12 +1,11 @@
 """
-Query Embedding Cache & RAG Result Cache: Redis-backed caches using BaseRedisCache.
+Query Embedding Cache: Redis-backed cache using BaseRedisCache.
 Supports both Async (FastAPI) and Sync (Celery) clients.
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import msgpack
 from typing import Any
@@ -53,42 +52,3 @@ class QueryEmbeddingCache(BaseRedisCache):
 
     def set_sync(self, text: str, vector: list[float]) -> None:
         super().set_sync(self._key(text), vector)
-
-
-class RagResultCache(BaseRedisCache):
-    """
-    Redis cache for final RAG context.
-
-    Key format: rag_cache:{doc_hash}:{query_hash}
-    TTL: 4 hours (14400 seconds)
-    """
-
-    PREFIX = "rag_cache:"
-    TTL = 14400
-
-    def _key(self, query: str, document_ids: list[str] | None = None) -> str:
-        doc_hash = hashlib.md5(str(sorted(document_ids or [])).encode()).hexdigest()[:8]
-        query_hash = hashlib.md5(query.encode()).hexdigest()
-        return f"{doc_hash}:{query_hash}"
-
-    def _serialize(self, data: Any) -> bytes:
-        return json.dumps(data).encode("utf-8")
-
-    def _deserialize(self, data: bytes) -> Any:
-        return json.loads(data.decode("utf-8"))
-
-    async def get(self, query: str, document_ids: list[str] | None = None) -> Any | None:
-        return await super().get(self._key(query, document_ids))
-
-    async def set(self, query: str, document_ids: list[str] | None = None, result: Any = None) -> None:
-        if not result:
-            return
-        await super().set(self._key(query, document_ids), result)
-
-    def get_sync(self, query: str, document_ids: list[str] | None = None) -> Any | None:
-        return super().get_sync(self._key(query, document_ids))
-
-    def set_sync(self, query: str, document_ids: list[str] | None = None, result: Any = None) -> None:
-        if not result:
-            return
-        super().set_sync(self._key(query, document_ids), result)

@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Settings,
   BarChart3,
+  Plug,
 } from "lucide-react";
 import {
   Sidebar,
@@ -28,6 +29,7 @@ const adminNavItems = [
   { title: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { title: "Thống kê", href: "/admin/analytics", icon: BarChart3 },
   { title: "Tài liệu", href: "/admin/documents", icon: FileText },
+  { title: "Kết nối AI", href: "/admin/providers", icon: Plug },
   { title: "Người dùng", href: "/admin/users", icon: Users },
   { title: "Chat", href: "/chat", icon: MessageSquare },
   { title: "Cài đặt", href: "/settings", icon: Settings },

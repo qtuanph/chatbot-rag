@@ -1,7 +1,7 @@
 {
   "document": {
     "id": "0_QUICK_REFERENCE",
-    "version": "2026-05-09",
+    "version": "2026-05-16",
     "purpose": "Rules and patterns cheat sheet for AI/agent preflight. Read first, then task-specific docs.",
     "doc_guide": {
       "1_ARCHITECTURE.md": "System design, data model, storage, invariants, delete/version policy, AI control",
@@ -12,13 +12,14 @@
       "2.4_WORKFLOWS_AUDIT.md": "Audit logging",
       "2.5_WORKFLOWS_ANALYTICS.md": "Analytics data flow",
       "3_API_CONTRACTS.md": "Full route reference, security, rate limits, error handling",
-      "4_DEPLOYMENT.md": "Docker topology, Traefik v3.7, env vars, health probes, backup",
-      "5_NAMING_CONVENTIONS.md": "Variable, function, class, file naming standards"
+      "4_DEPLOYMENT.md": "Docker topology, Traefik v3.7.1, env vars, health probes, backup",
+      "5_NAMING_CONVENTIONS.md": "Variable, function, class, file naming standards",
+      "6_KNOWN_ISSUES.json": "Bug tracking, post-mortems"
     }
   },
   "v0.1_performance_features": {
-    "semantic_cache": "Similarity match > 98% (dist < 0.02) via Redis Vector Search (Async)",
-    "binary_history": "MessagePack serialization for sub-millisecond chat hydration",
+    "semantic_cache": "Similarity match > 98% (dist < 0.08) via Redis Vector Search (Async), 24h TTL",
+    "binary_history": "MessagePack serialization for sub-millisecond chat hydration (Redis RPUSH + pipeline atomic)",
     "decoupled_audit": "XADD stream logging (<1ms) with background AuditStreamWorker",
     "bloom_duplicate": "BF.EXISTS check for O(1) document upload skipping (Redis 8.x)",
     "cpu_offloading": "Strict asyncio.to_thread usage for OCR, Tokenization, and Embedding to prevent loop blocking",
@@ -31,7 +32,7 @@
     },
     {
       "name": "five_stage_retrieval",
-      "rule": "Hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → dedup → rerank (optional) → Neighbor Expansion (Soi sáng) → full section context assembly. Retrieve at chunk level, present expanded section context to LLM. Doc IDs TTL-cached 60s."
+      "rule": "Hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → Rerank (AI-Engine, top 5) → Neighbor Expansion (Soi sáng) → full section context assembly + citations. 3-layer cache: LLM Response (4h) → Semantic (24h) → Query Embedding (4h). Retrieve at chunk level, present expanded section context to LLM. Doc IDs TTL-cached 60s."
     },
     {
       "name": "hard_delete_order",
@@ -65,18 +66,21 @@
     { "data": "semantic_cache", "storage": "Redis 8.x (HNSW)", "notes": "Redis Vector Search (RediSearch) for rapid intent matching." },
     { "data": "audit_stream", "storage": "Redis Stream", "key": "audit:stream", "notes": "Asynchronous event buffer via XADD." },
     { "data": "duplicate_bloom", "storage": "Redis 8.x Bloom", "key": "bf:document:sha256", "notes": "O(1) SHA256 existence check." },
-    { "data": "query_embedding_cache", "storage": "Redis 8.x", "notes": "MD5 keyed; TTL 1 hour" },
+    { "data": "query_embedding_cache", "storage": "Redis 8.x", "notes": "MD5 keyed; TTL 4 hours" },
     { "data": "user_memories", "storage": "PostgreSQL + Redis 8.x", "table": "user_memories", "notes": "Redis cache 5min TTL; injected into AI systemInstruction" },
     { "data": "user_sessions", "storage": "JWT (PyJWT) + Redis 8.x blacklist", "notes": "Token revocation on logout. Role cached in JWT payload." }
   ],
   "critical_env": {
     "ai": {
-      "AI_PROVIDER": "google",
-      "GOOGLE_API_KEY": "required",
-      "GOOGLE_MODEL": "gemma-4-26b-a4b-it",
+      "CLIPROXY_URL": "http://ai-proxy:8317",
+      "CLIPROXY_API_KEY": "sk-proxy-default",
+      "CLIPROXY_MANAGEMENT_PASSWORD": "set for remote provider management",
+      "CLIPROXY_DEFAULT_MODEL": "model name in CLIProxyAPI (can be empty for multi-model)",
+      "AI_ENGINE_URL": "http://ai-engine:8000",
       "EMBEDDING_HF_MODEL": "AITeamVN/Vietnamese_Embedding_v2",
-      "AI_INPUT_COST_PER_1M": "0.0 (Gemma 4 free tier)",
-      "AI_OUTPUT_COST_PER_1M": "0.0 (set to actual cost when switching models)"
+      "RETRIEVAL_RERANK_MODEL": "AITeamVN/Vietnamese_Reranker",
+      "AI_INPUT_COST_PER_1M": "0.0",
+      "AI_OUTPUT_COST_PER_1M": "0.0"
     },
     "retrieval": {
       "RETRIEVAL_SECTION_MIN_SCORE": 0.3,
@@ -97,8 +101,8 @@
       "API_INTERNAL_URL": "http://api:8000/api/v1 (server-side)"
     },
     "celery": {
-      "CELERY_TASK_TIME_LIMIT": "1800 (30 min hard kill)",
-      "CELERY_TASK_SOFT_TIME_LIMIT": "1500 (25 min soft)",
+"CELERY_TASK_TIME_LIMIT": "3600 (1 hour hard kill)",
+"CELERY_TASK_SOFT_TIME_LIMIT": "3300 (55 min soft)",
       "CELERY_WORKER_MAX_MEMORY_KB": "1500000 (1.5GB)",
       "CELERY_VISIBILITY_TIMEOUT": "7200 (2h)",
       "CELERY_MAX_TASKS_PER_CHILD": "50",
@@ -111,7 +115,11 @@
       "AI_MAX_HISTORY_MESSAGES": "20",
       "AI_STREAM_TIMEOUT": "300.0 (seconds)",
       "AI_HTTP_MAX_CONNECTIONS": "50",
-      "RATE_LIMIT_GLOBAL_RPM": "300 (production middleware)"
+      "CHAT_SESSION_TTL_DAYS": "30",
+      "MEMORY_CACHE_TTL": "300 (5min)",
+      "RATE_LIMIT_GLOBAL_RPM": "5000 (production middleware)",
+      "RATE_LIMIT_RELAXED_MODE": "true (dev)",
+      "RATE_LIMIT_RELAXED_FLOOR": "10000"
     }
   },
   "api_summary": {
@@ -125,24 +133,30 @@
       { "method": "GET", "path": "/auth/roles", "auth": "admin" },
       { "method": "DELETE", "path": "/auth/users/{username}", "auth": "admin" },
       { "method": "POST", "path": "/upload", "auth": "admin", "returns": "task_id" },
-      { "method": "GET", "path": "/status/{task_id}", "auth": "jwt" },
+      { "method": "GET", "path": "/status/{task_id}", "auth": "admin" },
       { "method": "GET", "path": "/documents", "auth": "admin" },
       { "method": "GET", "path": "/documents/{id}", "auth": "admin" },
       { "method": "DELETE", "path": "/documents/{id}", "auth": "admin" },
       { "method": "POST", "path": "/documents/{id}/retry", "auth": "admin" },
-      { "method": "POST", "path": "/chat/stream", "auth": "member" },
+      { "method": "WebSocket", "path": "/ws/chat/stream", "auth": "member" },
+      { "method": "POST", "path": "/chat/messages/{id}/feedback", "auth": "member" },
       { "method": "POST", "path": "/chat/sessions", "auth": "member" },
       { "method": "GET", "path": "/chat/sessions", "auth": "member" },
       { "method": "GET", "path": "/chat/messages", "auth": "member", "params": "session_id" },
       { "method": "GET", "path": "/tree/{id}", "auth": "member" },
       { "method": "GET", "path": "/tree/{id}/search", "auth": "member", "params": "query" },
       { "method": "GET", "path": "/health", "auth": "public" },
-      { "method": "GET", "path": "/health/data", "auth": "jwt" },
+      { "method": "GET", "path": "/health/data", "auth": "admin" },
       { "method": "GET", "path": "/memories", "auth": "member" },
       { "method": "POST", "path": "/memories", "auth": "member" },
       { "method": "PATCH", "path": "/memories/{id}", "auth": "member" },
       { "method": "DELETE", "path": "/memories/{id}", "auth": "member" },
-      { "method": "GET", "path": "/analytics/stats", "auth": "jwt" }
+      { "method": "GET", "path": "/analytics/stats", "auth": "jwt" },
+      { "method": "GET", "path": "/admin/providers", "auth": "admin" },
+      { "method": "POST", "path": "/admin/providers", "auth": "admin" },
+      { "method": "PATCH", "path": "/admin/providers/{name}/toggle", "auth": "admin" },
+      { "method": "DELETE", "path": "/admin/providers/{name}", "auth": "admin" },
+      { "method": "GET", "path": "/admin/models", "auth": "admin" }
     ]
   },
   "anti_patterns": [
@@ -158,41 +172,43 @@
     "pattern": "Controller-Service-Repository (CSR) - 100% Async",
     "description": "Strict 3-layer separation. Routes = HTTP only. Services = business logic. Repositories = data access. All layers strictly await I/O.",
     "controller": {
-      "location": "app/api/routes/",
+      "location": "app/modules/{domain}/router.py (+ app/api/routes/websocket.py)",
       "responsibility": "HTTP parsing, auth deps, response formatting, status codes. NO business logic, NO AsyncSessionLocal inside routes (use deps)."
     },
     "canonical_dict_keys": {
       "artifact_metadata": "Use 'artifact_metadata' in all dictionaries, schemas, and pipeline outputs representing arbitrary extra JSON metadata (replaces legacy 'extra_metadata', 'metadata')."
     },
     "service": {
-      "location": "app/modules/{domain}/services/",
+      "location": "app/modules/{domain}/services/ or app/modules/{domain}/service.py",
       "files": {
-        "auth/auth_service.py": "AuthService — login, logout, user CRUD",
-        "chat/chat_service.py": "ChatService — prepare_chat, provider stream orchestration, session mgmt, message persistence, memory extraction dispatch",
-        "chat/memory_service.py": "MemoryService — CRUD for user memories (receives UserMemoryService via DI)",
-        "chat/user_memory_service.py": "UserMemoryService — Redis + MemoryRepository via DI in request paths; short-lived repo fallback only for worker context",
-        "documents/document_service.py": "DocumentService — upload, status, delete, retry (uses build_vector_store factory)",
-        "documents/tree_service.py": "TreeService — document tree exploration",
-        "documents/cleanup_service.py": "CleanupService — hard delete orchestration (class, uses DocumentRepository + SectionRepository)",
-        "analytics/analytics_service.py": "AnalyticsService — stats aggregation",
-        "system/health_service.py": "HealthService — passive health config",
-        "ingestion/ingestion_service.py": "IngestionService — accepts optional section_repo via constructor",
-        "ingestion/recovery_service.py": "RecoveryService — uses Repository methods instead of raw ORM",
-        "retrieval/retrieval_service.py": "retrieve_context(), build_answer() — uses DocumentRepository + SectionRepository methods",
-        "retrieval/expansion_service.py": "expand_query() — multi-query domain logic for RAG"
+        "auth/service.py": "AuthService — login, logout, user CRUD",
+        "chat/services/service.py": "ChatService — prepare_chat, CLIProxyBridge stream orchestration, session mgmt, message persistence, memory extraction dispatch",
+        "chat/services/memory_service.py": "MemoryService — CRUD for user memories",
+        "chat/services/user_memory_service.py": "UserMemoryService — Redis + MemoryRepository via DI",
+        "chat/retrieval/retrieval_service.py": "RetrievalService — 5-stage retrieval (hybrid → group → rerank → expand → context)",
+        "chat/retrieval/expansion_service.py": "ExpansionService — multi-query domain logic for RAG",
+        "documents/services/service.py": "DocumentService — upload, status, delete, retry",
+        "documents/services/tree_service.py": "TreeService — document tree exploration",
+        "documents/services/task_service.py": "TaskService — task orchestration",
+        "documents/services/cleanup_service.py": "CleanupService — hard delete orchestration",
+        "documents/ingestion/ingestion_service.py": "IngestionService — accepts optional section_repo via constructor",
+        "documents/ingestion/recovery_service.py": "RecoveryService — repository-based recovery logic",
+        "admin/services/model_provider_service.py": "ModelProviderService — CLIProxyAPI provider CRUD via Management API",
+        "analytics/service.py": "AnalyticsService — stats aggregation",
+        "system/service.py": "SystemService — health & maintenance"
       }
     },
     "repository": {
-      "location": "app/modules/{domain}/repositories/",
+      "location": "app/modules/{domain}/repositories/ or app/modules/{domain}/repository.py",
       "files": {
-        "auth_repository.py": "AuthRepository — users, roles",
-        "chat_repository.py": "ChatRepository — sessions, messages",
-        "document_repository.py": "DocumentRepository — documents, get_latest_active_document_ids(), get_titles_by_ids(), hard_delete()",
-        "section_repository.py": "SectionRepository — document_sections, get_sections_for_rag(), get_section_ids_by_document()",
-        "analytics_repository.py": "AnalyticsRepository — aggregation queries",
-        "memory_repository.py": "MemoryRepository — user_memories"
+        "auth/repository.py": "AuthRepository — users, roles",
+        "chat/repositories/repository.py": "ChatRepository — sessions, messages",
+        "chat/repositories/memory_repository.py": "MemoryRepository — user_memories",
+        "documents/repositories/repository.py": "DocumentRepository — documents, hard_delete()",
+        "documents/repositories/section_repository.py": "SectionRepository — document_sections, get_sections_for_rag()",
+        "analytics/repository.py": "AnalyticsRepository — aggregation queries"
       },
-      "convention": "{domain}_repository.py naming. Takes Session via constructor, returns dicts (not ORM models)"
+      "convention": "repository.py or repositories/repository.py naming. Takes Session via constructor, returns dicts (not ORM models)"
     },
     "di_wiring": {
       "location": "app/api/deps.py",

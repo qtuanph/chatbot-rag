@@ -5,7 +5,8 @@ LABEL org.opencontainers.image.authors="qtuanph"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=off \
+    PIP_DEFAULT_TIMEOUT=300 \
+    PIP_RETRIES=5 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DEBIAN_FRONTEND=noninteractive
 
@@ -13,16 +14,15 @@ WORKDIR /app
 
 # ── System deps: cached via BuildKit mount, only re-runs if this RUN changes ──
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ make \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Requirements: pip cache mount persists across rebuilds ──
+# ── Requirements: persistent pip cache for fast rebuilds ──
 COPY requirements.txt .
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip setuptools wheel && \
+    pip install --upgrade setuptools wheel && \
     pip install -r requirements.txt && \
     # Purge build toolchain from builder image — reduces 300MB, faster COPY to runtime
     apt-get purge -y gcc g++ make && \
@@ -44,7 +44,6 @@ WORKDIR /app
 
 # ── System deps: cached mount, only re-runs if this RUN changes ──
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 libglib2.0-0 libgl1 libsm6 libxext6 libxrender1 poppler-utils curl \
     libreoffice-writer-nogui \
@@ -52,7 +51,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 # ── Non-root user + dirs ──
 RUN useradd -m -u 1000 -s /bin/bash qtuanph && \
-    mkdir -p /home/qtuanph/.cache/huggingface /home/qtuanph/.rapidocr /app && \
+    mkdir -p /home/qtuanph/.cache/huggingface /app && \
     chown -R qtuanph:qtuanph /home/qtuanph /app
 
 # ── Copy python packages from builder ──

@@ -13,7 +13,7 @@ from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.core.config import settings
 from app.modules.documents.utils import get_async_bm25_encoder
-from app.utils.cache import QueryEmbeddingCache, RagResultCache, SemanticCache
+from app.utils.cache import QueryEmbeddingCache, SemanticCache
 
 from app.models.rag import RagNode, RagSection, RagContext
 from app.modules.documents.utils.document_registry import DocumentRegistry
@@ -45,7 +45,6 @@ class RetrievalService:
         self.redis = redis_client
         self.registry = DocumentRegistry(redis_client)
         self.query_cache = QueryEmbeddingCache(redis_client, model_name=settings.embedding_hf_model)
-        self.rag_cache = RagResultCache(redis_client)
         self.semantic_cache = SemanticCache(vector_dim=settings.embedding_vector_size, client=redis_client)
 
     @lru_cache(maxsize=1)
@@ -97,6 +96,12 @@ class RetrievalService:
         if not primary_query or len(primary_query.strip()) < 3:
             return RagContext(nodes=[])
 
+        # Knowledge Graph enhancement (optional)
+        if settings.kg_enabled:
+            kg_contexts = await self._get_kg_context(primary_query)
+            if kg_contexts:
+                logger.info("[RAG-KG] Enhanced query with %d KG contexts", len(kg_contexts))
+
         _t0 = time.monotonic()
 
         latest_doc_ids = await self._latest_document_ids(session)
@@ -104,20 +109,6 @@ class RetrievalService:
             return RagContext(nodes=[])
 
         doc_ids = sorted(list(latest_doc_ids))
-
-        # ── Stage 0: Cache Layers ──────────────────────────
-        if isinstance(query, str):
-            cached_result = await self.rag_cache.get(original_query, doc_ids)
-            if cached_result:
-                logger.info("[PERF-RAG] Exact Cache Hit: %s", original_query)
-                return RagContext(
-                    nodes=[RagNode(**n) for n in cached_result.get("nodes", [])],
-                    sections=(
-                        [RagSection(**s) for s in cached_result.get("sections", [])]
-                        if cached_result.get("sections")
-                        else None
-                    ),
-                )
 
         doc_repo = DocumentRepository(session)
         title_by_id = await doc_repo.get_titles_by_ids(doc_ids)
@@ -196,7 +187,7 @@ class RetrievalService:
 
                 reranker = get_reranker()
                 # Re-rank the actual document objects
-                top_n = settings.retrieval_rerank_top_n
+                top_n = settings.retrieval_rerank_top_k
                 rerank_candidates = deduped_results[:top_n]
                 # rerank() now returns the list of objects with updated scores
                 reranked_docs = await reranker.rerank(
@@ -269,13 +260,21 @@ class RetrievalService:
                 "nodes": [dataclasses.asdict(n) for n in nodes],
                 "sections": [dataclasses.asdict(s) for s in rag_sections] if rag_sections else None,
             }
-            await asyncio.gather(
-                self.rag_cache.set(original_query, doc_ids, result_dict),
-                self.semantic_cache.set(original_query, query_vectors[0], result_dict),
-                return_exceptions=True,
-            )
+            await self.semantic_cache.set(original_query, query_vectors[0], result_dict)
 
         return RagContext(nodes=nodes, sections=rag_sections if rag_sections else None)
+
+    async def _get_kg_context(self, query: str) -> list[str]:
+        """Get context from Knowledge Graph for query enhancement."""
+        try:
+            from app.modules.documents.kg import get_knowledge_graph
+
+            kg = get_knowledge_graph()
+            results = await kg.query(query, top_k=3)
+            return [r.get("entity", "") for r in results if r.get("entity")]
+        except Exception as e:
+            logger.warning("[KG] Failed to get context: %s", e)
+            return []
 
     async def _expand_neighbor_nodes(
         self, vs: QdrantVectorStore, seed_results: list[RetrievedDocument]

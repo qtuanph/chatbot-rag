@@ -1,6 +1,6 @@
 # 4 — Deployment and Observability
 
-Docker topology, Traefik v3.7.0 configuration, environment, and health. Architecture in `1_ARCHITECTURE.md`.
+Docker topology, Traefik v3.7.1 configuration, environment, and health. Architecture in `1_ARCHITECTURE.md`.
 
 ## Deployment Topology
 
@@ -12,10 +12,12 @@ Docker Compose with these services:
 | api | FastAPI backend | Internal via Traefik |
 | webapp | Next.js 16 frontend | Internal via Traefik |
 | workers | Celery multi worker — node-ingestion (solo, GPU) + node-default (prefork, CPU, beat) | Internal |
+| ai-proxy | CLIProxyAPI (Go, OpenAI-compatible proxy) — port 8317 | Internal (api→ai-proxy) |
 | db | PostgreSQL 18 | Internal |
 | redis | Broker/result/cache | Internal |
 | rustfs | Object storage | Internal |
 | qdrant | Vector retrieval | Internal |
+| ai-engine | AI-Engine (GPU) — Embedding + Reranker FastAPI server | Internal |
 | vllm | Planned on-prem profile (adapter not enabled) | — |
 
 All traffic through Traefik on port 80. No direct port access.
@@ -34,16 +36,19 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | Variable | Purpose |
 |----------|---------|
 | DATABASE_URL | PostgreSQL connection |
-| REDIS_URL | Redis connection (DB 0 for app cache + RediSearch semantic cache) |
-| CELERY_BROKER_URL | Redis DB 2 (Celery broker) |
-| CELERY_RESULT_BACKEND | Redis DB 1 (task results) |
+| REDIS_URL | Redis connection (DB 0 for app cache + RediSearch semantic cache). Celery broker/result URLs constructed internally from this + `REDIS_PASSWORD` — do NOT set `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND` directly |
 | S3_* | Object storage configuration |
 | QDRANT_URL | Qdrant endpoint |
 | QDRANT_COLLECTION | Vector collection name |
-| QDRANT_SEGMENT_NUMBER | Auto-set from `hnsw_m // 4` — segments processed in parallel |
-| EMBEDDING_MODEL | Embedding model selection |
+| EMBEDDING_MODEL | Embedding model selection (default `sentence-transformer`) |
 | EMBEDDING_VECTOR_SIZE | Qdrant dimension (default 1024) |
-| AI_PROVIDER | Chat generation backend |
+| CLIPROXY_URL | CLIProxyAPI endpoint (default `http://ai-proxy:8317`) |
+| CLIPROXY_API_KEY | CLIProxyAPI API key (default `sk-proxy-default`) |
+| CLIPROXY_MANAGEMENT_PASSWORD | CLIProxyAPI Management API password for provider admin |
+| CLIPROXY_DEFAULT_MODEL | Default model name for chat (CLIProxyAPI model name, optional) |
+| AI_ENGINE_URL | AI-Engine endpoint (default `http://ai-engine:8000`) |
+| EMBEDDING_HF_MODEL | HuggingFace embedding model (default `AITeamVN/Vietnamese_Embedding_v2`) |
+| RETRIEVAL_RERANK_MODEL | Reranker model (default `AITeamVN/Vietnamese_Reranker`) |
 | AI_INPUT_COST_PER_1M | Input token cost per 1M tokens (default 0.0) |
 | AI_OUTPUT_COST_PER_1M | Output token cost per 1M tokens (default 0.0) |
 | NEXTAUTH_URL | Public webapp base URL |
@@ -51,8 +56,9 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | NEXT_PUBLIC_API_URL | Browser API URL (`/api/bep`) |
 | API_INTERNAL_URL | Server-side API URL (`http://api:8000/api/v1`) |
 | REDIS_MAXMEMORY | Redis maxmemory (default 512mb) |
-| CELERY_TASK_TIME_LIMIT | Task hard kill in seconds (default 1800) |
-| CELERY_TASK_SOFT_TIME_LIMIT | Task soft kill in seconds (default 1500) |
+| REDIS_PASSWORD | Redis AUTH password (optional, used in all Redis URLs) |
+| CELERY_TASK_TIME_LIMIT | Task hard kill in seconds (default 3600) |
+| CELERY_TASK_SOFT_TIME_LIMIT | Task soft kill in seconds (default 3300) |
 | CELERY_WORKER_MAX_MEMORY_KB | Worker memory limit (default 1500000) |
 | CELERY_MAX_TASKS_PER_CHILD | Recycle after N tasks (default 50) |
 | AI_TEMPERATURE | Generation temperature (default 0.3) |
@@ -60,17 +66,23 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | AI_MAX_HISTORY_MESSAGES | Multi-turn context window (default 20) |
 | AI_STREAM_TIMEOUT | HTTP timeout for AI streaming (default 300s) |
 | AI_HTTP_MAX_CONNECTIONS | httpx connection pool (default 50) |
-| RATE_LIMIT_GLOBAL_RPM | Global rate limit, production only (default 300) |
-| RATE_LIMIT_RELAXED_MODE | Bypass rate limiting when true (default false) |
-| RATE_LIMIT_RELAXED_FLOOR | Minimum RPM even in relaxed mode (default 1000) |
-| CHAT_HISTORY_LIMIT | Redis messagepack history cap (default 20) |
+| RATE_LIMIT_GLOBAL_RPM | Global rate limit, production only (default 5000 for 200 CCU) |
+| RATE_LIMIT_RELAXED_MODE | Bypass rate limiting when true (default true in dev) |
+| RATE_LIMIT_RELAXED_FLOOR | Minimum RPM even in relaxed mode (default 10000) |
+| CHAT_HISTORY_LIMIT | Redis messagepack history cap (default 40) |
 | CHAT_SESSION_TTL_DAYS | Session hard-delete TTL in days (default 30) |
-| AUDIT_STREAM_ENABLED | Enable Redis Stream audit logging (default true) |
 | AUDIT_STREAM_MAXLEN | Max entries retained in audit stream (default 50000) |
 | AUDIT_STREAM_NAME | Redis Stream key for audit events (default `audit:stream`) |
-| RETRIEVAL_SEMANTIC_CACHE_THRESHOLD | Cosine distance threshold for semantic cache hit (default 0.05) |
-| RETRIEVAL_SEMANTIC_CACHE_TTL | Semantic cache entry TTL in seconds (default 86400) |
+| RETRIEVAL_SEMANTIC_CACHE_THRESHOLD | Cosine distance threshold for semantic cache hit (default 0.08) |
 | MEMORY_CACHE_TTL | User memory Redis cache TTL in seconds (default 300) |
+| INGESTION_ENGINE | Document parser engine — docling or classic (default `docling`) |
+| INGESTION_MIN_QUALITY_SCORE | Minimum quality score for parsed docs (default 0.5) |
+| RETRIEVAL_SECTION_TOP_K | Top sections retrieved per query (default 3) |
+| RETRIEVAL_CHUNK_TOP_K | Top chunks per section (default 5) |
+| RETRIEVAL_CONTEXT_EXPANSION_WINDOW | Neighbor nodes to fetch (Soi sáng) (default 1) |
+| RETRIEVAL_RERANK_ENABLED | Enable cross-encoder reranker (default false) |
+| LLM_CACHE_ENABLED | Enable 4-hour LLM response cache (default true) |
+| QUERY_NORMALIZE_ENABLED | Enable query normalization for cache hit rate (default true) |
 | EMBEDDING_QUERY_PREFIX | Prefix added to query text before embedding (optional) |
 | EMBEDDING_PASSAGE_PREFIX | Prefix added to passage text before embedding (optional) |
 
@@ -80,7 +92,7 @@ Compose defaults bind to 127.0.0.1. Production: front with ingress/reverse proxy
 
 ## Traefik Configuration
 
-Image: `traefik:v3.7` | Dashboard: http://localhost:8080
+Image: `traefik:v3.7.1` | Dashboard: http://localhost:8080
 
 ### Routing via Docker Labels
 
@@ -111,6 +123,7 @@ Applied via Traefik middleware labels on the API service:
 | Upload size | Configured via Traefik's default or per-service limits |
 | Hot reload | Labels change → Traefik reloads automatically |
 | Dashboard | http://localhost:8080 (insecure mode enabled) |
+| RFC 3986 | `--entrypoints.web.http.encodedCharacters.allowEncodedSlash=true` |
 
 ## Health and Readiness
 
@@ -118,10 +131,10 @@ Applied via Traefik middleware labels on the API service:
 |---------|-------|
 | traefik | `--ping=true` built-in health endpoint |
 | API | `/api/v1/health` (container healthcheck, 10s interval, 10s start_period) |
-| Workers | celery inspect ping (30s interval, 60s start_period) |
-| Workers | celery inspect ping (included in API health payload) |
+| Workers | celery inspect ping (included in API health payload — no dedicated docker healthcheck) |
 | PostgreSQL | pg_isready (3s interval) |
 | Redis | redis-cli ping (3s interval) |
+| AI-Engine | HTTP /health (5s interval, 120s start_period) |
 | Qdrant | TCP port 6333 check (3s interval) |
 
 Healthcheck cadence varies by service: 3s for infrastructure (DB, Redis, Qdrant), 30s for application services (API, Workers).
@@ -132,12 +145,11 @@ Healthcheck cadence varies by service: 3s for infrastructure (DB, Redis, Qdrant)
 |---------|------|----------|-------|
 | PostgreSQL (api) | `hardware.db_pool_size` | `hardware.db_max_overflow` | Auto-scales: `max(20, min(100, 250/workers))` |
 | PostgreSQL (celery) | — | — | ~4 |
-| httpx (Gemini) | `AI_HTTP_MAX_CONNECTIONS` (default 50) | `AI_HTTP_KEEPALIVE_CONNECTIONS` (default 10) | Shared singleton |
 | Redis | per-instance | — | ~7 instances |
 
 PostgreSQL: pool auto-calculated as `max(10, uvicorn_workers * 5)`. SQLAlchemy engine in `app/db/session.py` reads from `app/core/hardware.py`.
 
-AI provider: singleton via `@lru_cache(maxsize=1)` in `app/adapters/ai/__init__.py`. httpx pool configurable via `AI_HTTP_MAX_CONNECTIONS` / `AI_HTTP_KEEPALIVE_CONNECTIONS`.
+AI provider: `CLIProxyBridge` wraps LlamaIndex `OpenAI` LLM — connection pooling managed by `httpx` via LlamaIndex internals.
 
 ## Resource Limits
 
@@ -171,9 +183,9 @@ redis-server --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lr
 
 | DB | Purpose |
 |----|---------|
-| 0 | Celery broker (task messages) |
+| 0 | App cache + RediSearch semantic cache (query cache, rate limits, chat history, vector similarity) |
 | 1 | Celery result backend (task results) |
-| 2 | App cache (query embedding cache, rate limits, chat history) |
+| 2 | Celery broker (task messages) |
 
 Separation prevents `allkeys-lru` eviction from deleting broker task messages.
 
@@ -183,8 +195,8 @@ All values configurable via env vars. Defaults designed for dev laptop.
 
 | Setting | Env Var | Default | Purpose |
 |---------|---------|---------|---------|
-| task_time_limit | CELERY_TASK_TIME_LIMIT | 1800s | Hard kill |
-| task_soft_time_limit | CELERY_TASK_SOFT_TIME_LIMIT | 1500s | Graceful SoftTimeLimitExceeded |
+| task_time_limit | CELERY_TASK_TIME_LIMIT | 3600s | Hard kill |
+| task_soft_time_limit | CELERY_TASK_SOFT_TIME_LIMIT | 3300s | Graceful SoftTimeLimitExceeded |
 | worker_max_memory_per_child | CELERY_WORKER_MAX_MEMORY_KB | 1,500,000 (1.5GB) | Kill child if RSS exceeded |
 | visibility_timeout | CELERY_VISIBILITY_TIMEOUT | 7200s (2h) | Prevent Redis re-delivery |
 | result_expires | CELERY_RESULT_EXPIRES | 86400s (24h) | Task result TTL |
@@ -202,10 +214,9 @@ All values configurable via env vars. Defaults designed for dev laptop.
 
 | Task | Schedule | Queue | Purpose |
 |------|----------|-------|---------|
-| `cleanup_old_chat_sessions_task` | Every 24h | cleanup | Hard-delete sessions older than `CHAT_SESSION_TTL_DAYS` (default 30) |
-| `cleanup_orphaned_vectors_task` | Every 24h | cleanup | Remove Qdrant vectors without matching DB sections |
+| `cleanup_old_chat_sessions_task` | Every `CHAT_SESSION_TTL_DAYS` (default 30 days) | cleanup | Hard-delete expired sessions |
+| `cleanup_orphaned_vectors_task` | Every `CHAT_SESSION_TTL_DAYS` (default 30 days) | cleanup | Remove Qdrant vectors without matching DB sections |
 | `process_audit_stream` | Every 10s | default | Batch persist Redis Stream audit events to PostgreSQL (XREADGROUP consumer group) |
-| `refresh_mv_daily_stats` | Every 5min | default | Refresh `mv_daily_stats` materialized view for analytics |
 
 ## Observability Baseline
 

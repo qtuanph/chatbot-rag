@@ -16,6 +16,9 @@ import type {
   NodeDetail,
   HealthData,
   AnalyticsStats,
+  ProviderItem,
+  ProviderCreate,
+  ModelItem,
 } from "@/types/api";
 
 // Browser: calls go through Next.js Route Handler proxy (/api/bep/...)
@@ -141,6 +144,18 @@ export const chatApi = {
       method: "POST",
       body: JSON.stringify({ feedback }),
     }),
+
+  chatStream: (query: string, sessionId: string | null, userId: string, thinkingMode: boolean = false) => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/api/v1/ws/chat/stream`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ query, session_id: sessionId, user_id: userId, thinking_mode: thinkingMode }));
+    };
+
+    return ws;
+  },
 };
 
 // --- Documents ---
@@ -242,6 +257,37 @@ export const memoriesApi = {
 export const analyticsApi = {
   getStats: (): Promise<AnalyticsStats> =>
     apiFetch<AnalyticsStats>("/analytics/stats"),
+};
+
+// --- Admin Providers ---
+// NOTE: Backend wraps responses as {providers:[...]} and {models:[...]}
+export const adminApi = {
+  listProviders: async (): Promise<ProviderItem[]> => {
+    const res = await apiFetch<{ providers: ProviderItem[] }>("/admin/providers");
+    return Array.isArray(res?.providers) ? res.providers : [];
+  },
+
+  addProvider: (data: ProviderCreate): Promise<{ status: string }> =>
+    apiFetch<{ status: string }>("/admin/providers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  toggleProvider: (name: string): Promise<{ status: string; name: string; disabled: boolean }> =>
+    apiFetch<{ status: string; name: string; disabled: boolean }>(
+      `/admin/providers/${encodeURIComponent(name)}/toggle`,
+      { method: "PATCH" }
+    ),
+
+  deleteProvider: (name: string): Promise<{ status: string }> =>
+    apiFetch<{ status: string }>(`/admin/providers/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
+
+  listModels: async (): Promise<ModelItem[]> => {
+    const res = await apiFetch<{ models: ModelItem[] }>("/admin/models");
+    return Array.isArray(res?.models) ? res.models : [];
+  },
 };
 
 export { ApiError };

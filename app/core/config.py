@@ -23,11 +23,12 @@ class Settings(BaseSettings):
     # Celery worker: which task modules to load ("all" | "upload" | "cleanup")
     celery_include: str = "all"
 
-    ai_provider: str = "google"
-    google_api_key: str = ""
-    google_model: str = "gemma-4-31b-it"
-    ai_input_cost_per_1m: float = 0.0  # Gemma 4 26B free tier on Google AI Studio
-    ai_output_cost_per_1m: float = 0.0  # Set to actual cost when switching models
+    cliproxy_url: str = "http://ai-proxy:8317"
+    cliproxy_api_key: str = "sk-proxy-default"
+    cliproxy_management_password: str = ""
+    cliproxy_default_model: str = ""
+    ai_input_cost_per_1m: float = 0.0
+    ai_output_cost_per_1m: float = 0.0
 
     # Semantic Cache (Redis Vector Search)
     retrieval_semantic_cache_enabled: bool = True
@@ -75,7 +76,7 @@ class Settings(BaseSettings):
     retrieval_section_top_k: int = 3  # Stage 1: top sections to retrieve
     retrieval_chunk_top_k: int = 5  # Stage 2: top chunks per section
     retrieval_chunk_size: int = 400  # Target chunk size in tokens
-    retrieval_chunk_overlap: int = 75  # Overlap between chunks in tokens
+    retrieval_chunk_overlap: int = 100  # Overlap between chunks in tokens (~25%)
     retrieval_section_min_score: float = 0.30  # Lower threshold for sections (coarser search)
 
     # Hybrid search (Dense + BM25) — always on, no toggle
@@ -92,9 +93,19 @@ class Settings(BaseSettings):
     retrieval_rerank_top_k: int = 5  # Final number of chunks after reranking
     retrieval_rerank_model: str = "AITeamVN/Vietnamese_Reranker"  # Vietnamese cross-encoder
 
+    # Query refinement
+    retrieval_query_refinement_enabled: bool = True  # Refine query before retrieval
+    retrieval_query_refinement_ttl: int = 600  # 10 min cache for refined queries
+
     # Multi-query expansion
     retrieval_query_expansion_enabled: bool = False  # Default OFF — opt-in
     retrieval_query_expansion_variants: int = 3  # Number of query variants to generate
+
+    # RAGAS Evaluation
+    ragas_evaluation_enabled: bool = False  # Enable RAGAS metrics after each response
+
+    # Knowledge Graph
+    kg_enabled: bool = False  # Enable Knowledge Graph for query enhancement
 
     database_url: str = "replace-me"
     redis_password: str = ""  # Set via REDIS_PASSWORD env var
@@ -170,8 +181,6 @@ class Settings(BaseSettings):
     ai_temperature: float = 0.3
     ai_max_output_tokens: int = 8192
     ai_max_history_messages: int = 20
-    ai_google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
-    ai_google_thinking_level: str = "MINIMAL"
     ai_http_timeout_refine: float = 30.0
     ai_http_keepalive_expiry: float = 30.0
     # Multi-turn context window
@@ -293,8 +302,8 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     s = Settings()
-    if not s.google_api_key:
-        logger.error("GOOGLE_API_KEY is not set — AI features will not work")
+    if not s.cliproxy_api_key:
+        logger.warning("CLIPROXY_API_KEY is not set — AI features will not work")
     if s.rate_limit_relaxed_mode and s.app_env != "development":
         logger.warning(
             "RATE_LIMIT_RELAXED_MODE is enabled in %s environment — rate limits are relaxed. "

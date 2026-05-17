@@ -244,6 +244,27 @@ export interface HealthCheck {
   [key: string]: unknown;
 }
 
+// Provider
+export interface ProviderItem {
+  name: string;
+  base_url: string;
+  models: { name: string; alias?: string }[];
+  disabled: boolean;
+}
+
+export interface ProviderCreate {
+  name: string;
+  base_url: string;
+  api_key: string;
+  models: string[];
+  alias?: string;
+}
+
+export interface ModelItem {
+  name: string;
+  provider: string;
+}
+
 export interface HealthData {
   status: string;
   timestamp: string;

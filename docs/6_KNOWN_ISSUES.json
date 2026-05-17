@@ -1,6 +1,6 @@
 {
   "document": "Known Issues & Post-Mortems",
-  "version": "2026-05-08",
+  "version": "2026-05-16",
   "schema": {
     "issue_id": "integer",
     "title": "string",
@@ -89,6 +89,30 @@
       "root_cause": "System only cached RAG context (nodes/sections) but not final LLM response. Cache hit rate very low. Query not normalized reducing exact match hits.",
       "resolution": "Added LLMResponseCache (2-layer: exact + semantic). Added query normalization. Fixed semantic threshold 0.02→0.08. Increased TTLs: QueryEmbeddingCache 1h→4h, RagResultCache 30min→4h. Added TTL refresh on semantic cache hit.",
       "lesson_learned": "For 200+ CCU, must cache full LLM response to bypass expensive API calls. Query normalization critical for exact match cache hits."
+    },
+    {
+      "issue_id": 11,
+      "title": "Dashboard Stats Show 0 Documents Despite Ready Status",
+      "symptom": "Admin dashboard shows 0 total and 0 active documents even after successful ingestion.",
+      "root_cause": "HealthService.get_health_data() was a static method returning only configuration status without querying the DocumentRepository for live counts.",
+      "resolution": "Updated HealthService to accept DocumentRepository via DI and implemented a get_counts() method in the repository to fetch real-time stats.",
+      "lesson_learned": "Aggregated metrics for system overview must be explicitly integrated with their respective repositories."
+    },
+    {
+      "issue_id": 12,
+      "title": "Document Detail 'Load More' Button Stuck/Silent Failure",
+      "symptom": "Clicking 'Load more' in document details fetches no new data, and total count (e.g., 54) doesn't match displayed nodes.",
+      "root_cause": "TreeService.get_document_tree() paginated on root-level sections only, but the total count returned was for ALL sections. If children were expanded, the offset became out of sync with root nodes.",
+      "resolution": "Refactored TreeService to return a flat paginated list of all sections for the table view, ensuring total_nodes and displayed items are consistent.",
+      "lesson_learned": "Ensure pagination logic matches the flat or hierarchical nature of the UI component consuming the data."
+    },
+    {
+      "issue_id": 13,
+      "title": "Celery Worker Crash — AMD ROCm stdout Pollution Corrupts Concurrency Value",
+      "symptom": "workers-1 container restart-loops with: `Error: Invalid value for '-c' / '--concurrency': '/opt/rocm/lib/libamd_smi.so:\\nUnable\\n3' is not a valid integer.`",
+      "root_cause": "entrypoint-worker.sh captured hardware concurrency via `$(python -c '... print(concurrency autoscale)' 2>/dev/null)`. The amdsmi library (AMD ROCm GPU detection) prints warning lines like `/opt/rocm/lib/libamd_smi.so: Unable to...` to STDOUT (not stderr), bypassing the 2>/dev/null redirect. These lines were prepended to the actual integer output, making CONCURRENCY an invalid multi-line string passed to `celery worker -c`.",
+      "resolution": "Added `| tail -n 1` after each Python hardware-detect call to capture only the last printed line (the actual integer). Added regex validation (`^[1-9][0-9]*$`) on CONCURRENCY and AUTOSCALE_MAX with safe fallback values (2/4). Same pattern already existed in entrypoint-api.sh for WORKERS.",
+      "lesson_learned": "Never trust subprocess stdout to be clean when third-party C libraries (GPU drivers, BLAS, etc.) are imported. Always pipe through `tail -n 1` and validate with regex before using as a numeric argument."
     }
   ]
 }

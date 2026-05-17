@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 from app.core.config import settings
 
 if TYPE_CHECKING:
-    from app.adapters.ai.base import AIProvider
+    from app.adapters.ai.cliproxy_bridge import CLIProxyBridge
     from app.modules.chat.repositories import MemoryRepository
 
 logger = logging.getLogger(__name__)
@@ -74,9 +74,9 @@ class UserMemoryService:
         user_id: str,
         user_message: str,
         assistant_response: str,
-        ai_provider: AIProvider,
+        ai_provider: "CLIProxyBridge",
     ) -> None:
-        """Extract memorable facts using Gemini from every chat turn."""
+        """Extract memorable facts using CLIProxyAPI from every chat turn."""
         try:
             extraction_prompt = (
                 "Trích xuất sở thích, sửa đổi, chỉ dẫn hoặc thông tin cá nhân từ tin nhắn người dùng.\n\n"

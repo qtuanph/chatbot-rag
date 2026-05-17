@@ -11,8 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.adapters.ai import build_ai_provider
-from app.adapters.ai.google import strip_reasoning
+from app.adapters.ai.cliproxy_bridge import CLIProxyBridge
 from app.core.config import settings
 from app.modules.chat.repositories.repository import ChatRepository
 from app.modules.chat.utils import ChatStore, compute_cost, normalize_query
@@ -49,13 +48,23 @@ class ChatService:
             history = await history_task
             user_memories = None
 
-        # Multi-query expansion
-        queries = [query]
+        # Query refinement
+        refined_query = query
+        if settings.retrieval_query_refinement_enabled:
+            from app.modules.chat.services.query_refiner import refine_query
+
+            try:
+                refined_query = await asyncio.wait_for(refine_query(query, history), timeout=2.0)
+            except Exception:
+                logger.warning("Query refinement timed out, using original query.")
+
+        # Multi-query expansion (using refined query)
+        queries = [refined_query]
         if settings.retrieval_query_expansion_enabled:
             from app.modules.chat.retrieval.expansion_service import expand_query
 
             try:
-                queries = await asyncio.wait_for(expand_query(query), timeout=3.0)
+                queries = await asyncio.wait_for(expand_query(refined_query), timeout=3.0)
             except asyncio.TimeoutError:
                 logger.warning("Query expansion timed out, using original query.")
 
@@ -75,12 +84,14 @@ class ChatService:
             "user_memories": user_memories,
         }
 
-    async def stream_chat_events(self, *, user_id: str, query: str, prepared_chat: dict) -> AsyncGenerator[str, None]:
+    async def stream_chat_events(
+        self, *, user_id: str, query: str, prepared_chat: dict, thinking_mode: bool = False
+    ) -> AsyncGenerator[str, None]:
         """Generate SSE events for chat."""
         from app.core.config import settings
         from app.utils.cache import LLMResponseCache
 
-        provider = build_ai_provider()
+        provider = CLIProxyBridge(thinking_mode=thinking_mode)
         session_id = prepared_chat["session_id"]
         history = prepared_chat["history"]
         citations = prepared_chat["citations"]
@@ -163,7 +174,7 @@ class ChatService:
             yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
 
         ai_done_time = _time.monotonic()
-        clean_answer = strip_reasoning(full_answer.strip())
+        clean_answer = full_answer.strip()
         usage = getattr(provider, "last_usage", {})
 
         prompt_tokens = usage.get("prompt_tokens", 0)
@@ -183,8 +194,7 @@ class ChatService:
                         "model": provider.model_name,
                     },
                 }
-                await llm_cache.set(normalized_query, None, cache_data)
-                logger.debug("[LLM-CACHE] Stored response for query: %s", normalized_query[:50])
+                asyncio.create_task(llm_cache.set(normalized_query, None, cache_data))
             except Exception as e:
                 logger.warning("[LLM-CACHE] Cache store failed: %s", e)
 
@@ -208,6 +218,11 @@ class ChatService:
                 )
             )
             self.enqueue_memory_extraction(user_id=user_id, user_message=query, assistant_response=clean_answer)
+
+            # Run RAGAS evaluation async (best-effort)
+            if settings.ragas_evaluation_enabled:
+                asyncio.create_task(self._run_ragas_evaluation(query, clean_answer, prepared_chat))
+
         except Exception as e:
             finalize_error = "Failed to persist assistant message"
             logger.error("Failed to finalize chat session: %s", e, exc_info=True)
@@ -347,6 +362,30 @@ class ChatService:
             logger.warning("Failed to cache chat message in Redis: %s", e)
 
         return message_id
+
+    async def _run_ragas_evaluation(self, query: str, answer: str, prepared_chat: dict) -> None:
+        """Run RAGAS evaluation async after chat response."""
+        try:
+            from app.modules.analytics.ragas_evaluator import RagasEvaluator
+
+            contexts = []
+            if prepared_chat.get("assistant_seed", {}).get("context"):
+                for ctx in prepared_chat["assistant_seed"]["context"]:
+                    if isinstance(ctx, dict):
+                        contexts.append(ctx.get("full_text", "")[:500])
+
+            evaluator = RagasEvaluator()
+            metrics = await evaluator.evaluate(query=query, answer=answer, contexts=contexts)
+
+            logger.info(
+                "[RAGAS] faithfulness=%.2f answer_relevancy=%.2f context_relevancy=%.2f overall=%.2f",
+                metrics.faithfulness,
+                metrics.answer_relevancy,
+                metrics.context_relevancy,
+                metrics.overall_score,
+            )
+        except Exception as e:
+            logger.warning("[RAGAS] Evaluation failed: %s", e)
 
     async def set_message_feedback(self, message_id: str, user_id: str, feedback: int) -> dict:
         """Record user feedback for a message. Raises ValueError if not found or unauthorized."""

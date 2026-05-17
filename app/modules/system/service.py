@@ -25,9 +25,9 @@ class HealthService:
                 "redis": {"configured": bool(settings.redis_url)},
                 "storage": {"configured": bool(settings.s3_endpoint)},
                 "ai_provider": {
-                    "configured": bool(settings.google_api_key and settings.google_api_key != "replace-me"),
-                    "provider": settings.ai_provider,
-                    "model": settings.google_model,
+                    "configured": bool(settings.cliproxy_url),
+                    "provider": "cliproxapi",
+                    "model": settings.cliproxy_default_model or "default",
                 },
                 "vector_db": {"configured": bool(settings.qdrant_url)},
                 "workers": {"broker": "celery+redis"},

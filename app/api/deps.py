@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from app.modules.analytics.repository import AnalyticsRepository
     from app.modules.documents.repositories import DocumentRepository, SectionRepository
     from app.utils.rate_limiter import RateLimiter
-    from app.utils.cache import SemanticCache, QueryEmbeddingCache, RagResultCache
+    from app.utils.cache import SemanticCache, QueryEmbeddingCache
     from app.modules.auth.service import AuthService
     from app.modules.chat.services import ChatService, MemoryService
     from app.modules.analytics.service import AnalyticsService
@@ -68,12 +68,6 @@ async def get_query_cache(r_client: Any = Depends(get_redis_client)) -> QueryEmb
     from app.core.config import settings
 
     return QueryEmbeddingCache(r_client, model_name=settings.embedding_hf_model)
-
-
-async def get_rag_result_cache(r_client: Any = Depends(get_redis_client)) -> RagResultCache:
-    from app.utils.cache import RagResultCache
-
-    return RagResultCache(r_client)
 
 
 @dataclass(frozen=True)

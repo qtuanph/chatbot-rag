@@ -23,7 +23,7 @@ Self-hosted. No cloud lock-in. Complete control over your data.
 
 ## Quick Links
 
-📦 **[Latest Release: v0.1.0](https://github.com/qtuanph/chatbot-rag/releases/tag/v0.1.0)** · 🚀 [Getting Started](#getting-started) · 📖 [Architecture](#architecture) · 📡 [API Reference](#api-reference) · 📂 [Full Changelog](https://github.com/qtuanph/chatbot-rag/releases)
+📦 **[Latest Release: v0.2.0](https://github.com/qtuanph/chatbot-rag/releases/tag/v0.2.0)** · 🚀 [Getting Started](#getting-started) · 📖 [Architecture](#architecture) · 📡 [API Reference](#api-reference) · 📂 [Full Changelog](https://github.com/qtuanph/chatbot-rag/releases)
 
 ---
 
@@ -38,7 +38,6 @@ Self-hosted. No cloud lock-in. Complete control over your data.
 - [Getting Started](#getting-started)
 - [API Reference](#api-reference)
 - [Configuration](#configuration)
-- [Planned Local LLM (vLLM)](#planned-local-llm-vllm)
 - [Documentation](#documentation)
 - [License](#license)
 
@@ -58,13 +57,19 @@ Vietnamese enterprises need AI-powered document Q&A that:
 ## Features
 
 <table>
-<tr><td width="180"><b>Hierarchical Indexing</b></td><td>Docs → Sections (H1–H6) → Chunks (~400 tokens). Preserves document structure for accurate context retrieval.</td></tr>
-<tr><td><b>5-Stage Retrieval</b></td><td>Hybrid dense + BM25 (RRF fusion) → in-memory section grouping → dedup → <b>neighbor expansion</b> (±3 nodes) → context assembly. Reranker optional (off by default).</td></tr>
+<tr><td width="180"><b>Hierarchical Indexing</b></td><td>Docs → Sections (H1–H6) → Chunks (~1536 tokens). Preserves document structure for accurate context retrieval.</td></tr>
+<tr><td><b>5-Stage Retrieval</b></td><td>Hybrid dense + BM25 (RRF fusion) → in-memory section grouping (≥0.30) → dedup → <b>neighbor expansion</b> (±1 nodes) → full section context to LLM. Optional cross-encoder reranker.</td></tr>
 <tr><td><b>Vietnamese-Optimized</b></td><td><code>AITeamVN/Vietnamese_Embedding_v2</code> — BGE-M3 fine-tuned on Vietnamese data, +16% Accuracy@1 vs base model.</td></tr>
-<tr><td><b>Smart OCR</b></td><td>2-pass strategy: native PDFs skip OCR for speed, scanned docs auto-detected and OCR'd via EasyOCR (vi + en).</td></tr>
+<tr><td><b>AI-Engine Service</b></td><td>Dedicated GPU service for embedding + reranker inference. Hardware auto-detect: 3-tier VRAM scaling.</td></tr>
+<tr><td><b>Smart OCR</b></td><td>Docling + EasyOCR on GPU/CUDA. DOCX → PDF conversion for accurate layout extraction.</td></tr>
 <tr><td><b>Async Ingestion</b></td><td>Upload returns instantly with <code>task_id</code>. Parsing/indexing runs in background via Celery with live progress tracking.</td></tr>
-<tr><td><b>Real-time Chat</b></td><td>SSE streaming with conversational Vietnamese AI. Citations grouped by document with merged page ranges.</td></tr>
+<tr><td><b>Real-time Chat</b></td><td>WebSocket streaming with conversational Vietnamese AI. Citations grouped by document with merged page ranges.</td></tr>
+<tr><td><b>Query Refinement</b></td><td>Automatic query rewriting for better retrieval — enabled by default. Handles follow-ups and Vietnamese phrasing.</td></tr>
 <tr><td><b>User Memory</b></td><td>ChatGPT-like persistent memory per user — preferences, corrections, facts injected into AI context automatically.</td></tr>
+<tr><td><b>Multi-Provider AI</b></td><td>CLIProxyAPI (Go proxy) connects any OpenAI-compatible provider: NVIDIA NIM, OpenAI, Groq, Anthropic, DeepSeek, and more.</td></tr>
+<tr><td><b>3-Layer Cache</b></td><td>LLM Response Cache + Semantic Cache (Redis vector) + Query Embedding Cache — reduced from 5 layers, faster hit rate.</td></tr>
+<tr><td><b>RAGAS Evaluation</b></td><td>Optional LLM-as-judge evaluation: faithfulness, answer relevancy, context precision, context recall.</td></tr>
+<tr><td><b>Knowledge Graph</b></td><td>Optional entity extraction and relationship mapping from ingested documents.</td></tr>
 <tr><td><b>Document Tree</b></td><td>Hierarchical navigation of document structure via tree explorer.</td></tr>
 <tr><td><b>Security Hardened</b></td><td>API gateway proxy, JWT hidden from browser, server-side auth guards, atomic rate limiting, security headers.</td></tr>
 </table>
@@ -91,10 +96,11 @@ graph TB
 
     subgraph Backend["Backend — FastAPI"]
         APIRouter["API Router"]
-        ChatRoute["Chat Stream (SSE)"]
+        ChatRoute["Chat Stream (WebSocket)"]
         UploadRoute["Upload Endpoint"]
         AuthRoute["Auth & RBAC"]
         MemoryRoute["User Memory CRUD"]
+        AdminRoute["Provider Management"]
     end
 
     subgraph Workers["Celery Workers"]
@@ -110,9 +116,9 @@ graph TB
     end
 
     subgraph AI["AI & Embedding"]
-        Embedding["Vietnamese_Embedding_v2<br/>1024-dim · GPU fp16 / CPU ONNX"]
-        Google["Google AI<br/>gemma-4-26b"]
-        vLLM["vLLM<br/>planned on-premise"]
+        Embedding["Vietnamese_Embedding_v2<br/>1024-dim · GPU fp16"]
+        Reranker["Vietnamese_Reranker (optional)<br/>cross-encoder"]
+        AIProxy["CLIProxyAPI (Go Proxy)<br/>port 8317"]
     end
 
     Browser --> Traefik
@@ -124,6 +130,7 @@ graph TB
     APIRouter --> UploadRoute
     APIRouter --> AuthRoute
     APIRouter --> MemoryRoute
+    APIRouter --> AdminRoute
 
     UploadRoute -->|"enqueue task"| Redis
     Redis --> UploadWorker
@@ -136,13 +143,14 @@ graph TB
 
     ChatRoute -->|"rate limit"| Redis
     ChatRoute -->|"query cache"| Redis
-    ChatRoute -->|"doc ID cache"| PG
     ChatRoute -->|"vector search"| Qdrant
     ChatRoute -->|"section details"| PG
-    ChatRoute --> Google
-    ChatRoute -.->|"planned alternative"| vLLM
+    ChatRoute --> AIProxy
     ChatRoute -->|"user memories"| PG
     ChatRoute --> Embedding
+    ChatRoute -.-> Reranker
+
+    AdminRoute --> AIProxy
 
     CleanupWorker -->|"hard delete"| Qdrant
     CleanupWorker -->|"hard delete"| RustFS
@@ -159,7 +167,7 @@ sequenceDiagram
     participant Worker as upload-pipeline
     participant DB as PostgreSQL
     participant Q as Qdrant
-    participant AI as Google AI
+    participant Proxy as CLIProxyAPI
 
     rect rgb(240, 248, 255)
         Note over User,DB: Ingestion Flow (async)
@@ -168,24 +176,24 @@ sequenceDiagram
         API->>DB: INSERT (status=pending)
         API-->>User: 202 { task_id }
         API->>Worker: enqueue via Redis
-        Worker->>Worker: Docling parse (Smart OCR)
+        Worker->>Worker: Docling parse (EasyOCR)
+        Worker->>Worker: LlamaIndex SentenceSplitter + Embed
         Worker->>DB: Store sections
-        Worker->>Worker: Embed batches (Vietnamese_Embedding_v2)
         Worker->>Q: Upsert chunks (with section_id)
         Worker->>DB: status=ready
     end
 
     rect rgb(255, 248, 240)
-        Note over User,AI: Chat Flow (real-time)
-        User->>Web: Ask question
-        Web->>API: POST /chat/stream (SSE via proxy)
-        API->>API: Query cache check (Redis)
-        API->>API: Embed query if miss
-        API->>Q: Single search (top 50-80)
-        API->>API: 2-stage re-rank (sections → chunks)
-        API->>API: Load user memories
-        API->>AI: Stream with context + memories
-        AI-->>User: SSE chunks + citations
+        Note over User,Proxy: Chat Flow (real-time, WebSocket)
+        User->>Web: Open WebSocket /ws/chat/stream
+        Web->>API: WebSocket upgrade
+        API->>API: Query refinement
+        API->>API: Cache check (3-layer)
+        API->>API: Embed query (AI-Engine)
+        API->>Q: Hybrid search (dense + BM25 RRF)
+        API->>API: Section grouping + neighbor expansion
+        API->>Proxy: Stream via LlamaIndex OpenAI LLM
+        Proxy-->>User: WebSocket chunks + citations
     end
 ```
 
@@ -194,10 +202,13 @@ sequenceDiagram
 | Decision | Why |
 |----------|-----|
 | **Hybrid search (dense + BM25)** | Dense (embedding) + sparse (BM25) via RRF fusion — leverages both semantic similarity and keyword matching for Vietnamese |
-| **TTL-cached document IDs** (60s) | Avoids PostgreSQL subquery on every chat; invalidated on upload/delete |
-| **Redis-cached query embeddings** (1h) | Repeated questions skip embedding entirely — 0ms, 0 model cost |
+| **LlamaIndex for ingestion** | SentenceSplitter + integrated embedding via IngestionPipeline — mature chunking with semantic boundaries |
+| **CLIProxyAPI as AI proxy** | Lightweight Go binary, OpenAI-compatible, supports 40+ providers with format translation and fallback |
+| **WebSocket over SSE** | Full bidirectional streaming, no reconnection overhead, better mobile support |
+| **3-Layer Cache** | LLM Response + Semantic + Query Embedding — reduced from 5 layers (removed RagResultCache), simpler and faster |
+| **Query Refinement** | Automatic query rewriting improves retrieval on follow-ups and ambiguous Vietnamese phrasing |
+| **Separate AI-Engine** | Isolates GPU inference (embedding + reranker) from API server; enables independent scaling |
 | **API gateway proxy** | Browser never sees Bearer token; auth via HttpOnly session cookie |
-| **Rule-based refiner** | 0GB VRAM, ~1ms per node — no AI needed for OCR cleanup during ingestion |
 
 ---
 
@@ -230,9 +241,10 @@ graph LR
     subgraph AI["AI & ML"]
         direction TB
         A1["Vietnamese_Embedding_v2"]
-        A2["Google Gemini"]
-        A3["EasyOCR"]
-        A4["Docling"]
+        A2["Vietnamese_Reranker (opt)"]
+        A3["CLIProxyAPI (Go Proxy)"]
+        A4["EasyOCR (Vietnamese)"]
+        A5["Docling"]
     end
 
     Frontend ~~~ Backend ~~~ Data ~~~ AI
@@ -241,16 +253,20 @@ graph LR
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | **Frontend** | Next.js 16 + shadcn/ui v4 + next-auth v5 | UI, SSR auth, API gateway proxy |
-| **Backend** | FastAPI + Celery + SQLAlchemy | REST API, async tasks, ORM |
+| **Backend** | FastAPI + Celery + SQLAlchemy | REST API, async tasks, ORM, WebSocket |
 | **Database** | PostgreSQL 18 | Documents, sections, users, memories, audit |
-| **Cache / Queue** | Redis 8 | Celery broker, query embedding cache, rate limiting |
+| **Cache / Queue** | Redis 8 | Celery broker, semantic cache, query embedding cache, rate limiting |
 | **Vector Search** | Qdrant v1.17 (int8 quantization, HNSW) | Chunk vectors with section_id metadata |
-| **Embedding** | AITeamVN/Vietnamese_Embedding_v2 (1024-dim) | GPU fp16 / CPU ONNX fallback |
-| **AI** | Google Gemini (gemma-4) | Conversational response generation; vLLM is planned, not enabled in current code |
-| **OCR** | EasyOCR (vi + en) | Scanned document text extraction |
-| **Parsing** | Docling (Method D) | PDF/DOCX structured extraction |
+| **AI Proxy** | CLIProxyAPI (Go, port 8317) | OpenAI-compatible proxy for 40+ providers |
+| **AI Service** | Dedicated AI-Engine container | GPU-accelerated embedding + reranker inference |
+| **Embedding** | AITeamVN/Vietnamese_Embedding_v2 (1024-dim) | GPU fp16, hardware auto-detect (3-tier) |
+| **Reranker** | AITeamVN/Vietnamese_Reranker | Optional cross-encoder (disabled by default) |
+| **LLM Integration** | LlamaIndex OpenAI (via CLIProxyAPI) | Provider-agnostic chat with thinking mode support |
+| **OCR** | EasyOCR on GPU | Vietnamese + English document text extraction |
+| **Parsing** | Docling (Method D) | PDF/DOCX structured extraction with hierarchy |
+| **Chunking** | LlamaIndex SentenceSplitter | Semantic-aware text splitting (~1536 tokens) |
 | **Storage** | RustFS (S3-compatible) | Original file storage |
-| **Reverse Proxy** | Traefik v3.7 | All traffic routing, SSE, security headers, auto-discovery |
+| **Reverse Proxy** | Traefik v3.7 | All traffic routing, WebSocket, security headers, auto-discovery |
 
 ---
 
@@ -258,47 +274,45 @@ graph LR
 
 ```mermaid
 flowchart LR
-    A["User Query"] --> B["Rate Limit Check<br/>(Redis Lua)"]
-    B --> C{"Query Cache<br/>(Redis MD5)"}
-    C -->|HIT| E["Cached Vector<br/>(0ms)"]
-    C -->|MISS| D["Embed Query<br/>(Vietnamese_Embedding_v2)"]
-    D --> E
-    E --> F["Doc ID Cache<br/>(TTL 60s)"]
-    F --> G["Dense Search<br/>(Vietnamese_Embedding_v2)"]
-    F --> H["BM25 Search<br/>(VietnameseBM25Encoder<br/>Underthesea tokenization)"]
-    G --> I["RRF Fusion<br/>(k=60)"]
-    H --> I
-    I --> J["Stage 1: Section Grouping<br/>(score >= 0.30)"]
-    J --> K["Dedup by section_id"]
-    K --> L["Neighbor Expansion<br/>(+/- 3 nodes by order)"]
-    L --> M{"Rerank?<br/>(RETRIEVAL_RERANK_ENABLED)"}
-    M -->|ON| N["Cross-Encoder<br/>(Vietnamese_Reranker)"]
-    M -->|OFF| O["Context Assembly<br/>+ User Memories"]
-    N --> O
-    O --> P["AI Streaming<br/>(SSE + Citations)"]
+    A["User Query"] --> B["Query Refinement<br/>(Follow-up handling)"]
+    B --> C{"3-Layer Cache<br/>Response · Semantic · Embedding"}
+    C -->|HIT| D["Cached Response"]
+    C -->|MISS| E["Embed Query<br/>(AI-Engine /embed)"]
+    E --> F["Dense Search<br/>(Vietnamese_Embedding_v2)"]
+    E --> G["BM25 Search<br/>(VietnameseBM25Encoder<br/>Underthesea tokenization)"]
+    F --> H["RRF Fusion<br/>(k=60)"]
+    G --> H
+    H --> I["Stage 1: Section Grouping<br/>(score >= 0.30)"]
+    I --> J["Dedup by section_id"]
+    J --> K["Neighbor Expansion<br/>(+/- 1 nodes by order)"]
+    K --> L{"Rerank?<br/>(RETRIEVAL_RERANK_ENABLED)"}
+    L -->|ON| M["Cross-Encoder<br/>(Vietnamese_Reranker)"]
+    L -->|OFF| N["Context Assembly<br/>+ User Memories<br/>+ KG Entities"]
+    M --> N
+    N --> O["AI Streaming<br/>(WebSocket + Citations)"]
 
     style C fill:#fff3cd,stroke:#856404
-    style G fill:#d1ecf1,stroke:#0c5460
-    style H fill:#f8d7da,stroke:#721c24
+    style E fill:#d1ecf1,stroke:#0c5460
+    style G fill:#f8d7da,stroke:#721c24
+    style H fill:#d4edda,stroke:#155724
     style I fill:#d4edda,stroke:#155724
-    style J fill:#d4edda,stroke:#155724
-    style L fill:#d1ecf1,stroke:#0c5460
-    style M fill:#e2e3fe,stroke:#383a40
+    style K fill:#d1ecf1,stroke:#0c5460
+    style L fill:#e2e3fe,stroke:#383a40
 ```
 
 | Stage | What Happens | Threshold / Notes |
 |-------|-------------|-------------------|
-| **Cache check** | MD5-keyed Redis lookup for query vector | TTL = 1 hour |
-| **Doc scope** | TTL-cached active document IDs from PostgreSQL | TTL = 60s |
-| **Dense search** | Single Qdrant query with Vietnamese_Embedding_v2 | top_k = 50-80 |
+| **Query Refinement** | Rewrite query for better retrieval (handles follow-ups, Vietnamese phrasing) | Enabled by default |
+| **Cache check** | 3 layers: LLM response → semantic vector → query embedding | TTL configurable |
+| **Dense search** | Single Qdrant query via AI-Engine | top_k = 50-80 |
 | **BM25 search** | Underthesea tokenization, VietnameseBM25Encoder | top_k = 50-80 |
 | **RRF fusion** | Reciprocal Rank Fusion combining dense + BM25 | k = 60 |
-| **Stage 1** | Group results by `section_id`, pick top 3 sections | score >= 0.30 |
+| **Stage 1** | Group results by `section_id`, pick top sections | score >= 0.30 |
 | **Dedup** | Remove duplicate chunks from same section | — |
-| **Neighbor expansion** | Fetch +/- 3 adjacent nodes by `order_index` per section | section context completeness |
+| **Neighbor expansion** | Fetch +/- 1 adjacent nodes by `order_index` per section | section context completeness |
 | **Rerank** | Cross-encoder scores (optional, off by default) | `RETRIEVAL_RERANK_ENABLED=false` |
-| **Context build** | Load section details, merge user memories, build prompt | DB-less assembly from cache |
-| **Streaming** | AI response via SSE with grouped citations | — |
+| **Context build** | Load section details, merge memories + KG entities, build prompt | DB-less assembly from cache |
+| **Streaming** | AI response via WebSocket with grouped citations | Full-duplex |
 
 ---
 
@@ -354,12 +368,14 @@ flowchart TB
 ```bash
 # 1. Configure environment
 cp .env.example .env
-# Edit .env: set GOOGLE_API_KEY, JWT_SECRET, DATABASE_URL, S3_SECRET_KEY
+# Edit .env: set JWT_SECRET, DATABASE_URL, S3_SECRET_KEY, MANAGEMENT_PASSWORD
 
 # 2. Build & start all services
 DOCKER_BUILDKIT=1 docker compose up --build
 
-# 3. Wait for healthy (~5-10 min first build)
+# 3. Wait for healthy (~5-10 min first build, models download at runtime)
+#    - ai-engine: downloads embedding + reranker models (~2GB)
+#    - workers: downloads EasyOCR models on first upload
 
 # 4. Access the app
 open http://localhost
@@ -387,7 +403,7 @@ Password: abc123
 
 ```bash
 docker compose down
-docker volume rm chatbot-rag_pgdata chatbot-rag_qdrantdata chatbot-rag_redisdata
+docker volume rm chatbot-rag_pgdata chatbot-rag_qdrantdata chatbot-rag_redisdata chatbot-rag_hf-cache chatbot-rag_cliproxy-config
 docker compose up --build
 ```
 
@@ -424,7 +440,7 @@ All endpoints are prefixed with `/api/v1`. Authentication uses JWT Bearer token.
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/chat/stream` | POST | member | Chat with SSE streaming |
+| `/ws/chat/stream` | WebSocket | JWT | Chat with WebSocket streaming |
 | `/chat/sessions` | POST | member | Create chat session |
 | `/chat/sessions` | GET | member | List chat sessions |
 | `/chat/messages` | GET | member | Get messages in session |
@@ -453,6 +469,16 @@ All endpoints are prefixed with `/api/v1`. Authentication uses JWT Bearer token.
 |----------|--------|------|-------------|
 | `/analytics/stats` | GET | member | Usage statistics |
 
+### Admin — Provider Management
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/admin/providers` | GET | admin | List providers |
+| `/admin/providers` | POST | admin | Add provider |
+| `/admin/providers/{name}/toggle` | PATCH | admin | Toggle provider on/off |
+| `/admin/providers/{name}` | DELETE | admin | Remove provider |
+| `/admin/models` | GET | admin | List available models |
+
 ### System
 
 | Endpoint | Method | Auth | Description |
@@ -469,11 +495,33 @@ All settings are configured via environment variables (see `app/core/config.py`)
 ### AI & Embedding
 
 ```bash
-AI_PROVIDER=google                                    # current code supports google only
-GOOGLE_API_KEY=...                                    # Required for Google AI
-GOOGLE_MODEL=gemma-4-26b-a4b-it                       # Gemini model
+CLIPROXY_URL=http://ai-proxy:8317                    # CLIProxyAPI internal URL
+CLIPROXY_API_KEY=sk-proxy-default                    # CLIProxyAPI API key
+MANAGEMENT_PASSWORD=change-me                         # CLIProxyAPI management password
+CLIPROXY_DEFAULT_MODEL=                               # Default model for chat
 EMBEDDING_HF_MODEL=AITeamVN/Vietnamese_Embedding_v2   # 1024-dim Vietnamese embedding
+AI_ENGINE_URL=http://ai-engine:8000                    # AI-Engine internal URL
 ```
+
+### Ingestion
+
+```bash
+INGESTION_EMBEDDING_CHUNK_SIZE=32       # Nodes per embedding batch
+INGESTION_EMBED_PARALLELISM=4           # Max concurrent embed batches
+INGESTION_PARSING_TIMEOUT=3600          # Max OCR/docling parse time (seconds)
+INGESTION_OCR_LANGUAGES=vi,en           # EasyOCR languages
+INGESTION_MIN_QUALITY_SCORE=0.3         # Minimum parse quality (0-1)
+```
+
+### Chat & Thinking
+
+```bash
+AI_TEMPERATURE=0.3                      # Generation temperature
+AI_MAX_OUTPUT_TOKENS=8192               # Max output tokens
+AI_MAX_HISTORY_MESSAGES=20              # Multi-turn context window
+```
+
+Thinking mode can be toggled per chat via the Brain button in the chat input area. When enabled, CLIPoxyAPI passes `reasoning_effort: "high"` to the LLM for deeper reasoning (supported by most OpenAI-compatible models).
 
 ### Retrieval Thresholds
 
@@ -482,6 +530,23 @@ RETRIEVAL_SECTION_MIN_SCORE=0.30    # Stage 1 — section grouping
 RETRIEVAL_MIN_SCORE=0.35            # Stage 2 — chunk ranking
 RETRIEVAL_SECTION_TOP_K=3           # Top sections to retrieve
 RETRIEVAL_CHUNK_TOP_K=5             # Top chunks per section
+RETRIEVAL_RERANK_ENABLED=false      # Enable cross-encoder reranker
+RETRIEVAL_QUERY_REFINEMENT_ENABLED=true  # Enable query refinement
+```
+
+### Feature Flags
+
+```bash
+RAGAS_EVALUATION_ENABLED=false      # Enable RAGAS evaluation
+KG_ENABLED=false                    # Enable Knowledge Graph
+RETRIEVAL_QUERY_REFINEMENT_ENABLED=true  # Enable query refinement
+```
+
+### Cache
+
+```bash
+CACHE_SEMANTIC_ENABLED=true         # Redis vector semantic cache
+CACHE_LLM_RESPONSE_ENABLED=true     # LLM response cache
 ```
 
 ### Production Safety (enforced when `APP_ENV=production`)
@@ -491,17 +556,6 @@ ALLOWED_HOSTS=your-host.com          # Must be explicit — no wildcard
 CORS_ORIGINS=https://your-host.com   # Must be explicit — no localhost
 S3_SECURE=true                       # Must be true
 RATE_LIMIT_RELAXED_MODE=false        # Must be false
-```
-
----
-
-## Planned Local LLM (vLLM)
-
-vLLM is a planned on-premise provider path. The current code only enables the Google adapter, so do not set `AI_PROVIDER=vllm` until a vLLM adapter is implemented.
-
-```bash
-# future target only
-AI_PROVIDER=vllm
 ```
 
 ---

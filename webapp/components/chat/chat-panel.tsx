@@ -14,9 +14,9 @@ import { ChevronUp, MessageSquare, History, Plus, Loader2 } from "lucide-react";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessage } from "@/components/chat/chat-message";
 import { toast } from "sonner";
-import { API_BASE, analyticsApi, chatApi } from "@/lib/api-client";
+import { analyticsApi, chatApi } from "@/lib/api-client";
 import type { ChatMessage as ChatMessageType } from "@/types/chat";
-import type { ChatSession, Citation, ChatStreamEvent, ChatStreamDone, AnalyticsStats } from "@/types/api";
+import type { ChatSession, Citation, ChatStreamDone, AnalyticsStats } from "@/types/api";
 
 const PAGE_SIZE = 20;
 
@@ -65,6 +65,7 @@ export function ChatPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollHeightRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const [thinkingMode, setThinkingMode] = useState(false);
   const [lastStats, setLastStats] = useState<{
     total_ms: number;
     ttft_ms: number | null;
@@ -183,7 +184,7 @@ export function ChatPanel({
   }, [sessionId, messages.length, loadingMore]);
 
   const handleSend = useCallback(
-    async (query: string) => {
+    async (query: string, thinking?: boolean) => {
       if (!session || streaming) return;
 
       const userMsg: ChatMessageType = {
@@ -200,138 +201,65 @@ export function ChatPanel({
       setStreaming(true);
       setLastStats(null);
 
-      // Abort previous stream if still running
       abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
+      let fullText = "";
+      const citations: Citation[] = [];
 
       try {
-        // If no active session, create one first
         let sid = sessionId;
         let isNewSession = false;
-        let sessionCreatedLocally = false;
         if (!sid) {
           const newSession = await chatApi.createSession();
           sid = newSession.session_id;
           isNewSession = true;
-          sessionCreatedLocally = true;
-          // Bind the newly created session immediately so browser close/reopen
-          // before stream completion can still restore this conversation.
           onSessionCreated?.(sid);
         }
 
-        const res = await fetch(`${API_BASE}/chat/stream`, {
-          method: "POST",
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream",
-          },
-          body: JSON.stringify({
-            query,
-            session_id: sid,
-          }),
-        });
+        const ws = chatApi.chatStream(query, sid, session?.userId || "anonymous", thinking ?? thinkingMode);
 
-        if (!res.ok) {
-          let detail = `HTTP ${res.status}`;
+        ws.onmessage = (event) => {
           try {
-            const errBody = await res.json();
-            if (errBody.detail) detail = errBody.detail;
-          } catch { /* ignore parse error */ }
-          throw new Error(detail);
-        }
-
-        const reader = res.body?.getReader();
-        if (!reader) throw new Error("No response body");
-
-        const decoder = new TextDecoder();
-        let fullText = "";
-        let citations: Citation[] = [];
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const jsonStr = line.slice(6).trim();
-            if (!jsonStr) continue;
-
-            try {
-              const event: ChatStreamEvent = JSON.parse(jsonStr);
-
-              if (event.done) {
-                if ("error" in event && event.error) {
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantId
-                        ? { ...m, content: event.error! }
-                        : m,
-                    ),
-                  );
-                } else {
-                  if ("session_id" in event && event.session_id) {
-                    if (!sessionId && !sessionCreatedLocally) {
-                      onSessionCreated?.(event.session_id);
-                    }
-                    if (isNewSession) {
-                      onSessionUpdate?.(event.session_id, {
-                        title: query.slice(0, 80) + (query.length > 80 ? "..." : ""),
-                      });
-                    }
-                  }
-                  if ("citations" in event && event.citations) {
-                    citations = event.citations;
-                  }
-                  if ("stats" in event && event.stats) {
-                    setLastStats(event.stats);
-                  }
-                  // Update with real message_id from DB, content, and citations
-                  const doneEvent = event as ChatStreamDone;
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantId
-                        ? {
-                            ...m,
-                            id: doneEvent.message_id || m.id,
-                            content: fullText,
-                            citations,
-                          }
-                        : m,
-                    ),
-                  );
-                }
-              } else {
-                fullText += event.chunk;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantId
-                      ? { ...m, content: fullText }
-                      : m,
-                  ),
-                );
-              }
-            } catch {
-              // Skip malformed JSON
+            const data = JSON.parse(event.data);
+            if (data.error) {
+              ws.close();
+              setMessages((prev) =>
+                prev.map((m) => m.id === assistantId ? { ...m, content: data.error } : m)
+              );
+              return;
             }
-          }
-        }
+            if (data.done) {
+              ws.close();
+              if (data.session_id && isNewSession) {
+                onSessionUpdate?.(data.session_id, { title: query.slice(0, 80) + (query.length > 80 ? "..." : "") });
+              }
+              if (data.citations) {
+                data.citations.forEach((c: Citation) => {
+                  if (!citations.find((ec) => ec.document_id === c.document_id)) citations.push(c);
+                });
+              }
+              if (data.stats) setLastStats(data.stats);
+              const doneEvent = data as ChatStreamDone;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId ? { ...m, id: doneEvent.message_id || m.id, content: fullText, citations } : m
+                ),
+              );
+            } else {
+              fullText += data.chunk || "";
+              setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: fullText } : m));
+            }
+          } catch { /* skip */ }
+        };
+
+        ws.onerror = () => toast.error("Lỗi kết nối WebSocket. Vui lòng thử lại.");
+        ws.onclose = () => { setStreaming(false); onRefreshSessions(); };
+
+        abortRef.current = { signal: {} as AbortSignal, abort: () => ws.close() };
       } catch {
         toast.error("Lỗi kết nối. Vui lòng thử lại.");
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...m, content: "Lỗi khi gửi tin nhắn. Vui lòng thử lại." }
-              : m,
-          ),
+          prev.map((m) => m.id === assistantId ? { ...m, content: "Lỗi khi gửi tin nhắn. Vui lòng thử lại." } : m)
         );
-      } finally {
         setStreaming(false);
         onRefreshSessions();
       }
@@ -376,12 +304,14 @@ export function ChatPanel({
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 </div>
-              ) : sessions.length === 0 ? (
+              ) : sessions.filter((s) => s.message_count > 0).length === 0 ? (
                 <div className="px-4 py-3 text-center text-sm text-muted-foreground">
                   Chưa có cuộc chat nào
                 </div>
               ) : (
-                sessions.map((s) => (
+                sessions
+                  .filter((s) => s.message_count > 0)
+                  .map((s) => (
                   <DropdownMenuItem
                     key={s.session_id}
                     onClick={() => handleSelectSession(s.session_id)}
@@ -489,7 +419,14 @@ export function ChatPanel({
       )}
 
       {/* Input */}
-      <ChatInput onSend={handleSend} onStop={handleStop} disabled={streaming || restoring} streaming={streaming} />
+      <ChatInput
+        onSend={handleSend}
+        onStop={handleStop}
+        disabled={streaming || restoring}
+        streaming={streaming}
+        thinkingMode={thinkingMode}
+        onThinkingToggle={() => setThinkingMode((prev) => !prev)}
+      />
     </div>
   );
 }

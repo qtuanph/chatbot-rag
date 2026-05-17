@@ -6,7 +6,7 @@ Reliability settings (most important):
     If the worker crashes mid-task, the broker re-queues it automatically.
   - task_reject_on_worker_lost=True: Explicit requeue on unexpected worker death.
   - worker_prefetch_multiplier=1: Each worker holds exactly 1 task at a time.
-    Docling + PaddleOCR tasks are heavy; hoarding multiple tasks wastes memory
+    Docling + EasyOCR tasks are heavy; hoarding multiple tasks wastes memory
     and causes unfair load distribution.
 
 Memory safety:
@@ -60,7 +60,7 @@ celery_app.conf.update(
     worker_disable_rate_limits=True,  # Rate limit at API level, not Celery
     # ── Memory safety ─────────────────────────────────────────────────────────
     worker_max_memory_per_child=settings.celery_worker_max_memory_kb,
-    # ── Time limits (Docling + PaddleOCR can be slow on large PDFs) ────────────
+    # ── Time limits (Docling + EasyOCR can be slow on large PDFs) ────────────
     task_time_limit=settings.celery_task_time_limit,
     task_soft_time_limit=settings.celery_task_soft_time_limit,
     # ── Broker ────────────────────────────────────────────────────────────────
@@ -90,15 +90,15 @@ celery_app.conf.update(
     # ── Beat schedule (periodic tasks) ────────────────────────────────────────
     beat_schedule={
         "cleanup-old-chat-sessions": {
-            "task": "app.modules.documents.cleanup_tasks.cleanup_old_chat_sessions_task",
+            "task": "app.workers.cleanup_tasks.cleanup_old_chat_sessions_task",
             "schedule": settings.chat_session_ttl_days * 86400.0,
         },
         "cleanup-orphaned-vectors": {
-            "task": "app.modules.system.tasks.cleanup_orphaned_vectors_task",
+            "task": "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task",
             "schedule": settings.chat_session_ttl_days * 86400.0,
         },
         "process-audit-stream": {
-            "task": "app.modules.analytics.audit_worker.process_audit_stream",
+            "task": "app.workers.audit_worker.process_audit_stream",
             "schedule": settings.audit_stream_process_interval,
             "args": (settings.audit_stream_batch_size,),
         },

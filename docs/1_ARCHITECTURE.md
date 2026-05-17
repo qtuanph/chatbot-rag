@@ -20,8 +20,8 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | Queue/Cache | Redis 8.x (Celery, Streams, Semantic Cache, Rate Limiting) |
 | Embedding | AITeamVN/Vietnamese_Embedding_v2 (Remote via AI-Engine) |
 | Reranker | AITeamVN/Vietnamese_Reranker (Remote via AI-Engine) |
-| AI Provider | Google AI Gemma (singleton via lru_cache) |
-| Ingestion | Docling + PaddleOCR + **LibreOffice (DOCX→PDF)** + Contextualizer (Global Vision) + DuplicateDetector (Bloom) |
+| AI Provider | CLIProxyAPI (OpenAI-compatible proxy via `eceasy/cli-proxy-api:latest`, Go binary) |
+| Ingestion | Docling + EasyOCR + **LibreOffice (DOCX→PDF)** + **LlamaIndex SentenceSplitter** + DuplicateDetector (Bloom) |
 | BM25 Manager | BM25Manager (class-level Singleton with 120s TTL) |
 | Reverse proxy | Traefik v3.7 on port 80 (auto-discovery via Docker labels, SSE, NextAuth, API, Rate Limited) |
 
@@ -83,11 +83,14 @@ graph TD
     API --> ChatSvc[Chat Module → Repository]
     API --> AnalyticSvc[Analytics Module → Repository]
     API --> SystemSvc[System Module → Health/Maintenance]
-    
+
     ChatSvc --> Retriever[Retrieval Service]
+    ChatSvc --> WebSocketSvc[WebSocket Handler]
     Retriever --> AI_Engine[AI-Engine Service → GPU]
     AI_Engine -->|Vectors| Qdrant
-    
+
+    WebSocketSvc <-->|Real-time Streaming| Client
+
     DocSvc --> Upload[Upload → Redis queue]
     Upload --> Worker[workers · celery]
     Worker --> Parser[DoclingParser]
@@ -95,6 +98,17 @@ graph TD
     Worker --> DB[(PostgreSQL)]
     Redis --> Cleanup[System Module → workers]
 ```
+
+## Updated Tech Stack (2026-05-15)
+
+| Component | Technology | Notes |
+|-----------|-----------|-------|
+| **Chunking** | `SentenceSplitter` (LlamaIndex) | Semantic-aware text splitting |
+| **Query Refinement** | Enabled | AI-powered query optimization |
+| **Streaming** | **WebSocket** | Real-time bidirectional (replaces SSE) |
+| **Cache** | 3 layers | LLM Response + Semantic + Query Embedding |
+| **Evaluation** | RAGAS | Optional quality metrics |
+| **Knowledge Graph** | Lightweight | Optional KG enhancement |
 
 ## Controller-Service-Repository Architecture
 
@@ -126,6 +140,7 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | `chat` | Conversation & RAG | History, Retrieval logic, Memories |
 | `analytics` | Monitoring & Audit | Token tracking, Audit stream processing |
 | `system` | Orchestration | Health checks, Maintenance tasks, Global state |
+| `admin` | Provider Management | CLIProxyAPI provider CRUD, model listing |
 | `inference` | AI Server | Standalone AI-Engine (FastAPI + Models) |
 
 ## Runtime Data Flow
@@ -134,11 +149,11 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 |-------|------|--------|
 | Upload | Browser → /api/bep/ → proxy → API → RustFS | File persisted, document row pending |
 | Queue | API → Redis → Worker | Async task, task_id returned (202) |
-| Parse | Worker → Docling Method D + PaddleOCR (force_full_page_ocr=True) → sections + chunks | Items with page spans, heading levels |
+| Parse | Worker → Docling Method D + EasyOCR (force_full_page_ocr=True) → sections + chunks | Items with page spans, heading levels |
 | Store | SectionRepository → PostgreSQL → Embed → Qdrant | document_sections rows + vectors |
 | Retrieve | SemanticCache (similarity match) → exact cache → hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → Neighbor Expansion (Soi sáng) → full section context assembly |
 | Memory | UserMemoryService (redis_client shared pool) → Redis cache → inject systemInstruction | Personalized prompt |
-| Stream | ChatService → AI provider adapter → Immediate Yield (no buffering) → strip_reasoning() → SSE → Browser | Grounded answer with citations |
+| Stream | ChatService → CLIProxyBridge (LlamaIndex OpenAI) → Immediate Yield (no buffering) → WebSocket → Browser | Grounded answer with citations |
 | Persist | Post-stream → `ChatService.save_assistant_message()` → MessagePack binary storage in Redis | Fast persistence |
 | Audit | safe_record_audit → Redis Stream (XADD) → AuditStreamWorker → PostgreSQL | Decoupled logging |
 | Extract | Post-response → Celery extract_memories_task → user_memories | Durable memory extraction |
@@ -199,28 +214,39 @@ Flow: UserMemoryService receives `redis.Redis` + `MemoryRepository` through DI i
 
 Frontend: Settings page `/settings` with full CRUD. Content limit: 1000 chars per memory.
 
-## AI Thinking Control
+## AI Provider Architecture
 
-Gemma 4 outputs chain-of-thought by default. 4 suppression layers:
+CLIProxyAPI (`eceasy/cli-proxy-api:latest`) — lightweight Go binary acting as OpenAI-compatible proxy:
 
-| Layer | Mechanism | Location |
-|-------|-----------|----------|
-| API-level | `thinkingConfig: {thinkingLevel: "MINIMAL"}` | google.py generationConfig |
-| Part filter | Skip `"thought": true` parts | google.py `_extract_text()` |
-| Stream filter | `_ThoughtFilter` strips `<\|channel\|>thought...` tags | google.py |
-| Post-process | `strip_reasoning()` + `strip_thought_blocks()` | google.py → chat.py |
+```
+FastAPI ChatService → LlamaIndex OpenAI LLM (api_base=ai-proxy:8317/v1)
+                                     ↓
+                          CLIProxyAPI Go proxy
+                                     ↓
+                    ┌────────┬────────┬────────┬────────┐
+                    NVIDIA   OpenAI    Groq    Gemini (via API)
+                     NIM     (GPT)    (free)    key/oauth
+```
 
-**Only `MINIMAL` and `HIGH` accepted.** `thinkingBudget:0` causes 400. `includeThoughts:false` silently ignored.
+| Feature | Implementation |
+|---------|---------------|
+| Proxy image | `eceasy/cli-proxy-api:latest` (Go, ~15MB) |
+| Interface | Full OpenAI-compatible `/v1/chat/completions` + `/v1/models` |
+| Streaming | SSE (Server-Sent Events) via `stream: true` |
+| Format translation | Auto-convert between OpenAI ↔ Claude ↔ Gemini formats |
+| Provider mgmt | Management API `/v0/management/*` + local YAML config |
+| Hot reload | Automatically watches config file + auth-dir for changes |
+| Round-robin | Built-in strategy (round-robin or fill-first) |
+| Fallback | Auto-switch on quota exceeded, retry on 429/5xx |
 
 ## Multi-Turn Conversation
 
-- Last N messages as Gemini `contents` array (assistant→model role mapping, configurable via `AI_MAX_HISTORY_MESSAGES`, default 20)
+- Last N messages as OpenAI `messages` array (configurable via `AI_MAX_HISTORY_MESSAGES`, default 20)
 - RAG context embedded into current user message
-- User messages are saved synchronously during `ChatService.prepare_chat()`. Assistant messages are saved synchronously by `ChatService.save_assistant_message()` before the final SSE `done:true` event. Redis remains the hot cache with configurable TTL (`CHAT_HISTORY_REDIS_TTL`, default 24h).
+- User messages are saved synchronously during `ChatService.prepare_chat()`. Assistant messages are saved synchronously by `ChatService.save_assistant_message()` before the final WebSocket `done:true` event. Redis remains the hot cache with configurable TTL (`CHAT_HISTORY_REDIS_TTL`, default 24h).
 - `ChatStore.hydrate_from_db()` reloads from DB on TTL expiry (checks Redis first via `history_exists()`)
 - Redis `append_message()` uses pipeline for atomic RPUSH + EXPIRE
 - Auto-title from first user message (80 chars)
-- `strip_thought_blocks()` cleans previous assistant messages before multi-turn send
 
 ## Chat Session Lifecycle
 

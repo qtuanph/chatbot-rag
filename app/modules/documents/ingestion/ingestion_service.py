@@ -1,6 +1,6 @@
 """
-Ingestion Pipeline: Orchestrates document parsing, hierarchy validation, enrichment, and vector indexing.
-Uses a Step-based Pipeline pattern for maintainability and granular status reporting.
+Ingestion Pipeline: Parse → Validate → Store Sections → Embed & Index.
+Uses Docling for OCR parsing and LlamaIndex IngestionPipeline for split + embed.
 """
 
 from __future__ import annotations
@@ -12,11 +12,13 @@ import time
 from typing import TYPE_CHECKING, Callable, Any
 from dataclasses import dataclass, field
 
+from llama_index.core.schema import Document as LlamaDocument
+
 from app.adapters.base import IngestedNode, ParsingMetadata
 from app.adapters.parsers.docling import DoclingParser
 from app.adapters.parsers.docx_converter import is_docx, convert_docx_to_pdf
 from app.modules.documents.validators import HierarchyValidator, ValidationReport
-from app.modules.documents.utils import rule_based_refiner
+from app.modules.documents.ingestion.llama_pipeline import LlamaIngestionPipeline
 from app.core.config import settings
 from app.modules.documents.repositories import SectionRepository
 from app.core.hardware import hardware
@@ -30,8 +32,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class IngestionResult:
-    """Result of ingestion pipeline."""
-
     success: bool
     document_id: str
     node_count: int
@@ -47,8 +47,6 @@ class IngestionResult:
 
 @dataclass
 class PipelineContext:
-    """Shared state between pipeline steps."""
-
     filename: str
     content: bytes
     document_id: str
@@ -67,10 +65,7 @@ ProgressCallback = Callable[[str, int, str], Any]
 
 
 class IngestionService:
-    """
-    Main ingestion orchestration using Pipeline Pattern.
-    Each major operation is a 'Step' for better maintainability and status tracking.
-    """
+    """Ingestion orchestration using DoclingParser + LlamaIndex IngestionPipeline."""
 
     def __init__(
         self,
@@ -87,6 +82,7 @@ class IngestionService:
         self.db_session = db_session
         self.section_repo = section_repo
         self.validator = HierarchyValidator()
+        self.llama_pipeline = LlamaIngestionPipeline()
 
     async def ingest(
         self,
@@ -96,7 +92,6 @@ class IngestionService:
         document_id: str,
         progress_callback: ProgressCallback | None = None,
     ) -> IngestionResult:
-        """Main entry point for ingestion."""
         ctx = PipelineContext(filename, content, document_id, user_id)
 
         async def report(stage: str, percent: int, message: str = "") -> None:
@@ -110,24 +105,12 @@ class IngestionService:
                     logger.warning("[%s] Progress callback error: %s", document_id, cb_exc)
 
         try:
-            # ── Step 1: Parse & Refine ──
             await self._parse_step(ctx, report)
-
-            # ── Step 2: Validate ──
             await self._validate_step(ctx, report)
-
-            # ── Step 3: Store Sections ──
             await self._store_sections_step(ctx, report)
-
-            # ── Step 4: Contextualize ──
-            await self._enrich_step(ctx, report)
-
-            # ── Step 5: Embed & Index ──
             await self._vector_index_step(ctx, report)
 
             duration_ms = (time.time() - ctx.start_time) * 1000
-
-            # Success logic (re-used threshold from original code)
             n_nodes = len(ctx.nodes)
             error_threshold = max(1, int(n_nodes * 0.5 / settings.ingestion_embedding_chunk_size)) if n_nodes > 0 else 1
             has_critical_failure = len(ctx.errors) > error_threshold
@@ -168,39 +151,52 @@ class IngestionService:
                 duration_ms=(time.time() - ctx.start_time) * 1000,
             )
 
-    # ── Pipeline Steps ──────────────────────────────────────────────────
-
     async def _parse_step(self, ctx: PipelineContext, report: ProgressCallback) -> None:
-        """Parse document and refine text."""
+        """Parse document with Docling + EasyOCR."""
         await report("parsing", 5, f"Parsing {ctx.filename} using Docling...")
 
-        # ── DOCX → PDF conversion for accurate OCR ──
-        # DOCX files contain Word's internal numbering/styles that confuse Docling.
-        # Converting to PDF "flattens" the structure → clean text for OCR.
         filename_to_parse = ctx.filename
         content_to_parse = ctx.content
 
         if is_docx(ctx.filename):
-            await report("parsing", 7, f"Converting DOCX to PDF for accurate OCR...")
+            await report("parsing", 7, "Converting DOCX to PDF for accurate OCR...")
             try:
                 pdf_content, pdf_filename = convert_docx_to_pdf(ctx.content, ctx.filename)
                 content_to_parse = pdf_content
                 filename_to_parse = pdf_filename
-                logger.info("Converted %s → %s (%d bytes)", ctx.filename, pdf_filename, len(pdf_content))
             except Exception as docx_err:
                 logger.warning("DOCX→PDF conversion failed, falling back to direct parse: %s", docx_err)
                 ctx.warnings.append(f"DOCX→PDF conversion failed: {docx_err} — using direct DOCX parse")
 
         nodes, metadata = await self.parser.parse(filename_to_parse, content_to_parse, document_id=ctx.document_id)
 
-        await report("parsing", 25, "Cleaning and refining extracted text...")
-        ctx.nodes = await asyncio.to_thread(rule_based_refiner.refine_nodes, nodes)
+        # Convert IngestedNodes to LlamaIndex Documents for IngestionPipeline
+        llama_docs = []
+        for n in nodes:
+            llama_docs.append(
+                LlamaDocument(
+                    text=n.text,
+                    metadata={
+                        "node_id": n.node_id,
+                        "document_id": n.document_id,
+                        "page_number": n.page_number,
+                        "section_title": n.section_title,
+                        "parent_id": n.parent_id,
+                        "order": n.order,
+                        **n.metadata,
+                    },
+                )
+            )
+
+        # Run LlamaIndex IngestionPipeline (SentenceSplitter + Embed)
+        llama_nodes = await self.llama_pipeline.arun(llama_docs)
+
+        # Convert back to IngestedNode format for downstream compatibility
+        ctx.nodes = self.llama_pipeline.convert_ingested_nodes(llama_nodes, ctx.document_id, metadata.source_format)
+        logger.info("[%s] LlamaIndex pipeline produced %d nodes", ctx.document_id, len(ctx.nodes))
 
         sections_data = getattr(metadata, "sections_data", None) or []
-        if sections_data:
-            sections_data = await asyncio.to_thread(rule_based_refiner.refine_sections, sections_data)
-            metadata.sections_data = sections_data
-
+        metadata.sections_data = sections_data
         ctx.parse_metadata = metadata
 
     async def _validate_step(self, ctx: PipelineContext, report: ProgressCallback) -> None:
@@ -226,7 +222,6 @@ class IngestionService:
         section_ids = await repo.store_sections(ctx.document_id, sections_data)
         ctx.section_count = len(section_ids)
 
-        # Enrich nodes with section context (moved from monolithic ingest)
         section_map = {s["section_id"]: s for s in sections_data}
         for node in ctx.nodes:
             sec_id = node.metadata.get("section_id")
@@ -236,17 +231,15 @@ class IngestionService:
                 node.metadata["breadcrumb"] = sec.get("breadcrumb", [])
                 node.metadata["level"] = sec.get("level", 0)
 
-    async def _enrich_step(self, ctx: PipelineContext, report: ProgressCallback) -> None:
-        """Contextual enrichment for chunks."""
-        await report("parsing", 39, "Enriching chunks with document-level context...")
-        from app.modules.documents.utils.contextualizer import Contextualizer
-
-        contextualizer = Contextualizer()
-        ctx.nodes = await asyncio.to_thread(contextualizer.contextualize, ctx.filename, ctx.nodes)
-
     async def _vector_index_step(self, ctx: PipelineContext, report: ProgressCallback) -> None:
-        """Embedding and Vector storage indexing."""
+        """Embedding and Vector storage indexing (BM25 + Qdrant)."""
         if not self.embedding_service or not ctx.nodes:
+            logger.warning(
+                "[%s] _vector_index_step SKIPPED: embedding=%s, nodes=%d",
+                ctx.document_id,
+                bool(self.embedding_service),
+                len(ctx.nodes),
+            )
             return
 
         chunk_size = settings.ingestion_embedding_chunk_size
