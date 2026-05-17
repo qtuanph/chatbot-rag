@@ -23,7 +23,7 @@ Self-hosted. No cloud lock-in. Complete control over your data.
 
 ## Quick Links
 
-📦 **[Latest Release: v0.2.0](https://github.com/qtuanph/chatbot-rag/releases/tag/v0.2.0)** · 🚀 [Getting Started](#getting-started) · 📖 [Architecture](#architecture) · 📡 [API Reference](#api-reference) · 📂 [Full Changelog](https://github.com/qtuanph/chatbot-rag/releases)
+📦 **[Latest Release: v0.3.0](https://github.com/qtuanph/chatbot-rag/releases/tag/v0.3.0)** · 🚀 [Getting Started](#getting-started) · 📖 [Architecture](#architecture) · 📡 [API Reference](#api-reference) · 📂 [Full Changelog](https://github.com/qtuanph/chatbot-rag/releases)
 
 ---
 
