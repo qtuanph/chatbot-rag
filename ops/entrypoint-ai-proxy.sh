@@ -28,4 +28,21 @@ openai-compatibility: []
 YAML
 fi
 
+# Background keepalive ping loop to prevent CLIProxyAPI from shutting down due to inactivity.
+# Sends a lightweight management check every 5 seconds to keep the keepalive endpoint fresh.
+(
+  sleep 3
+  while true; do
+    if which curl >/dev/null 2>&1; then
+      curl -s -H "Authorization: Bearer ${CLIPROXY_API_KEY}" http://localhost:8317/v0/management/openai-compatibility >/dev/null 2>&1 || true
+    elif which wget >/dev/null 2>&1; then
+      wget -q --header="Authorization: Bearer ${CLIPROXY_API_KEY}" --spider http://localhost:8317/v0/management/openai-compatibility >/dev/null 2>&1 || true
+    else
+      (echo > /dev/tcp/127.0.0.1/8317) >/dev/null 2>&1 || true
+    fi
+    sleep 5
+  done
+) &
+
 exec /CLIProxyAPI/CLIProxyAPI --config "$CONFIG_PATH" --password "${MANAGEMENT_PASSWORD}"
+
