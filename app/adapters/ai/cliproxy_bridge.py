@@ -114,7 +114,10 @@ class CLIProxyBridge:
             logger.error("CLIProxyAPI stream failed: %s", e, exc_info=True)
 
             # No AI provider configured yet — admin needs to set up via dashboard
-            if any(kw in err_str for kw in ("no client", "no provider", "no available", "0 clients", "no model", "no backend")):
+            if any(
+                kw in err_str
+                for kw in ("no client", "no provider", "no available", "0 clients", "no model", "no backend")
+            ):
                 yield (
                     "⚠️ **Hệ thống chưa sẵn sàng.**\n\n"
                     "Các nhân viên hỗ trợ AI hiện chưa được kết nối. "
