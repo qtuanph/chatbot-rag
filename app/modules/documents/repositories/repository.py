@@ -246,6 +246,19 @@ class DocumentRepository(BaseRepository[Document]):
         rows = result.all()
         return {str(doc_id): title for doc_id, title in rows}
 
+    async def get_counts(self) -> dict[str, int]:
+        """Get active and total document counts."""
+        total_stmt = select(func.count(self.model.id)).where(self.model.deleted_at.is_(None))
+        active_stmt = select(func.count(self.model.id)).where(
+            self.model.deleted_at.is_(None), self.model.status == "ready"
+        )
+        total_result = await self.session.execute(total_stmt)
+        active_result = await self.session.execute(active_stmt)
+        return {
+            "total_docs": total_result.scalar() or 0,
+            "active_docs": active_result.scalar() or 0,
+        }
+
     async def mark_as_deleted(self, document_id: str) -> bool:
         """Mark a document as deleted (soft-delete) before hard-delete begins."""
         try:

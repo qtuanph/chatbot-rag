@@ -17,10 +17,23 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, Search, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { ArrowLeft, Search, ChevronDown, ChevronRight, Loader2, AlertCircle } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { documentsApi, treeApi } from "@/lib/api-client";
 import type { DocumentDetail, TreeNode } from "@/types/api";
+
+function simplifyMimeType(mime: string) {
+  if (!mime) return "Unknown";
+  const m = mime.toLowerCase();
+  if (m.includes("word") || m.includes("officedocument.wordprocessingml")) return "DOCX";
+  if (m.includes("pdf")) return "PDF";
+  if (m.includes("excel") || m.includes("officedocument.spreadsheetml")) return "XLSX";
+  if (m.includes("powerpoint") || m.includes("officedocument.presentationml")) return "PPTX";
+  if (m.includes("text/plain")) return "TXT";
+  if (m.includes("text/markdown")) return "MD";
+  return mime.split("/").pop()?.toUpperCase() || mime;
+}
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -62,6 +75,9 @@ export default function DocumentDetailPage() {
         }
         setTotalNodes(treeData.total_nodes);
         setHasMore(offset + PAGE_SIZE < treeData.total_nodes);
+      } catch (error) {
+        console.error("Fetch page error:", error);
+        toast.error("Không thể tải dữ liệu tài liệu. Vui lòng thử lại.");
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -115,7 +131,12 @@ export default function DocumentDetailPage() {
           setTotalNodes(searchNodes.length);
           setHasMore(false);
         })
-        .catch(() => {});
+        .catch((err) => {
+          console.error("Search error:", err);
+          if (!cancelled) {
+            toast.error("Lỗi khi tìm kiếm nội dung.");
+          }
+        });
     }, 300);
 
     return () => {
@@ -154,7 +175,7 @@ export default function DocumentDetailPage() {
           <div className="min-w-0">
             <h1 className="text-xl font-bold truncate">{doc.file_name}</h1>
             <p className="text-sm text-muted-foreground truncate">
-              v{doc.version} · {formatSize(doc.file_size)} · {doc.file_type}
+              v{doc.version} · {formatSize(doc.file_size)} · {simplifyMimeType(doc.file_type)}
             </p>
           </div>
         </div>

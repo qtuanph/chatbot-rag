@@ -19,4 +19,4 @@ async def health_data(
     _auth: AuthContext = Depends(require_admin), service: HealthService = Depends(get_health_service)
 ):
     """Service configuration overview — admin only."""
-    return service.get_health_data()
+    return await service.get_health_data()

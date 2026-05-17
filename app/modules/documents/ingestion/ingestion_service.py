@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from app.adapters.base import IngestedNode, ParsingMetadata
 from app.adapters.parsers.docling import DoclingParser
+from app.adapters.parsers.docx_converter import is_docx, convert_docx_to_pdf
 from app.modules.documents.validators import HierarchyValidator, ValidationReport
 from app.modules.documents.utils import rule_based_refiner
 from app.core.config import settings
@@ -172,7 +173,25 @@ class IngestionService:
     async def _parse_step(self, ctx: PipelineContext, report: ProgressCallback) -> None:
         """Parse document and refine text."""
         await report("parsing", 5, f"Parsing {ctx.filename} using Docling...")
-        nodes, metadata = await self.parser.parse(ctx.filename, ctx.content, document_id=ctx.document_id)
+
+        # ── DOCX → PDF conversion for accurate OCR ──
+        # DOCX files contain Word's internal numbering/styles that confuse Docling.
+        # Converting to PDF "flattens" the structure → clean text for OCR.
+        filename_to_parse = ctx.filename
+        content_to_parse = ctx.content
+
+        if is_docx(ctx.filename):
+            await report("parsing", 7, f"Converting DOCX to PDF for accurate OCR...")
+            try:
+                pdf_content, pdf_filename = convert_docx_to_pdf(ctx.content, ctx.filename)
+                content_to_parse = pdf_content
+                filename_to_parse = pdf_filename
+                logger.info("Converted %s → %s (%d bytes)", ctx.filename, pdf_filename, len(pdf_content))
+            except Exception as docx_err:
+                logger.warning("DOCX→PDF conversion failed, falling back to direct parse: %s", docx_err)
+                ctx.warnings.append(f"DOCX→PDF conversion failed: {docx_err} — using direct DOCX parse")
+
+        nodes, metadata = await self.parser.parse(filename_to_parse, content_to_parse, document_id=ctx.document_id)
 
         await report("parsing", 25, "Cleaning and refining extracted text...")
         ctx.nodes = await asyncio.to_thread(rule_based_refiner.refine_nodes, nodes)

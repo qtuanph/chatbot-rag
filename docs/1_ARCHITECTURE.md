@@ -21,7 +21,7 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | Embedding | AITeamVN/Vietnamese_Embedding_v2 (Remote via AI-Engine) |
 | Reranker | AITeamVN/Vietnamese_Reranker (Remote via AI-Engine) |
 | AI Provider | Google AI Gemma (singleton via lru_cache) |
-| Ingestion | Docling + PaddleOCR + Contextualizer (Global Vision) + DuplicateDetector (Bloom) |
+| Ingestion | Docling + PaddleOCR + **LibreOffice (DOCX→PDF)** + Contextualizer (Global Vision) + DuplicateDetector (Bloom) |
 | BM25 Manager | BM25Manager (class-level Singleton with 120s TTL) |
 | Reverse proxy | Traefik v3.7 on port 80 (auto-discovery via Docker labels, SSE, NextAuth, API, Rate Limited) |
 

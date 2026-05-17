@@ -7,13 +7,18 @@ from datetime import UTC, datetime
 from app.core.config import settings
 
 
-class HealthService:
-    """Passive health check — reports which services are configured, no active probing."""
+from app.modules.documents.repositories import DocumentRepository
 
-    @staticmethod
-    def get_health_data() -> dict:
-        """Return service configuration status (no active health probing)."""
-        return {
+
+class HealthService:
+    """Passive health check — reports which services are configured and basic stats."""
+
+    def __init__(self, doc_repo: DocumentRepository | None = None) -> None:
+        self.doc_repo = doc_repo
+
+    async def get_health_data(self) -> dict:
+        """Return service configuration status and basic document stats."""
+        data = {
             "status": "up",
             "services": {
                 "database": {"configured": bool(settings.database_url)},
@@ -29,3 +34,9 @@ class HealthService:
             },
             "timestamp": datetime.now(UTC).isoformat(),
         }
+
+        if self.doc_repo:
+            counts = await self.doc_repo.get_counts()
+            data.update(counts)
+
+        return data

@@ -6,12 +6,12 @@ services:
       context: .
       args:
         - BUILDKIT_INLINE_CACHE=1
+    env_file:
+      - .env
     secrets:
       - hf_token
     volumes:
       - hf-cache:/home/qtuanph/.cache/huggingface
-    env_file:
-      - .env
     entrypoint: ["/bin/bash", "/app/ops/entrypoint-api.sh"]
     # No published port — all traffic goes through Traefik on port 80
     # Internal access via Docker network: api:8000
@@ -24,41 +24,38 @@ services:
         condition: service_healthy
       ai-engine:
         condition: service_healthy
+      ai-proxy:
+        condition: service_started
       rustfs:
         condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 30s
     restart: unless-stopped
     networks:
       - internal
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.api.rule=PathPrefix(`/api`) && !PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.api.rule=PathPrefix(`/api/v1`) && !PathPrefix(`/api/v1/auth`)"
       - "traefik.http.routers.api.entrypoints=web"
-      - "traefik.http.routers.api.middlewares=api-ratelimit"
-      - "traefik.http.services.api.loadbalancer.server.port=8000"
+      - "traefik.http.routers.api.middlewares=api-ratelimit@docker"
       - "traefik.http.middlewares.api-ratelimit.ratelimit.average=100"
       - "traefik.http.middlewares.api-ratelimit.ratelimit.burst=50"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
 
   workers:
     image: chatbot-rag-app:latest
     # Shares the same image as api — no separate build needed
     env_file:
       - .env
+    secrets:
+      - hf_token
     volumes:
       - hf-cache:/home/qtuanph/.cache/huggingface
     entrypoint: ["/bin/bash", "/app/ops/entrypoint-worker.sh"]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu, utility, compute]
     depends_on:
       db:
         condition: service_healthy
@@ -78,9 +75,9 @@ services:
     image: chatbot-rag-app:latest
     env_file:
       - .env
-    entrypoint: ["/bin/bash", "/app/ops/entrypoint-ai-engine.sh"]
     secrets:
       - hf_token
+    entrypoint: ["/bin/bash", "/app/ops/entrypoint-ai-engine.sh"]
     deploy:
       resources:
         reservations:
@@ -90,13 +87,29 @@ services:
               capabilities: [gpu, utility, compute]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 2s
-      timeout: 5s
+      interval: 10s
+      timeout: 30s
       retries: 60
-      start_period: 5s
+      start_period: 300s
     volumes:
       - hf-cache:/home/qtuanph/.cache/huggingface
-      - rapidocr-cache:/home/qtuanph/.rapidocr
+    restart: unless-stopped
+    networks:
+      - internal
+
+  ai-proxy:
+    image: eceasy/cli-proxy-api:latest
+    container_name: chatbot-rag-ai-proxy
+    env_file:
+      - .env
+    environment:
+      MANAGEMENT_PASSWORD: ${MANAGEMENT_PASSWORD:-123456}
+    entrypoint: ["/bin/sh", "/ops/entrypoint-ai-proxy.sh"]
+    ports:
+      - "127.0.0.1:8317:8317"
+    volumes:
+      - ./ops/entrypoint-ai-proxy.sh:/ops/entrypoint-ai-proxy.sh:ro
+      - cliproxy-data:/CLIProxyAPI
     restart: unless-stopped
     networks:
       - internal
@@ -141,7 +154,7 @@ services:
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD-SHELL", "if [ -z \"$REDIS_PASSWORD\" ]; then redis-cli ping; else redis-cli -a \"$REDIS_PASSWORD\" ping; fi"]
       interval: 3s
       timeout: 3s
       retries: 5
@@ -206,10 +219,15 @@ services:
       - "traefik.http.routers.webapp.rule=Host(`localhost`)"
       - "traefik.http.routers.webapp.entrypoints=web"
       - "traefik.http.routers.webapp.priority=1"
-      - "traefik.http.services.webapp.loadbalancer.server.port=3000"
+      - "traefik.http.routers.webapp.service=webapp-svc"
+      - "traefik.http.services.webapp-svc.loadbalancer.server.port=3000"
+      - "traefik.http.routers.api-bep.rule=PathPrefix(`/api/bep`)"
+      - "traefik.http.routers.api-bep.entrypoints=web"
+      - "traefik.http.routers.api-bep.service=api-bep-svc"
+      - "traefik.http.services.api-bep-svc.loadbalancer.server.port=3000"
 
   traefik:
-    image: traefik:v3.7
+    image: traefik:v3.7.1
     command:
       - "--api.insecure=true"
       - "--ping=true"
@@ -217,6 +235,7 @@ services:
       - "--providers.docker.exposedByDefault=false"
       - "--providers.docker.network=chatbot-rag_internal"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.encodedCharacters.allowEncodedSlash=true"
       - "--log.level=INFO"
     ports:
       - "80:80"
@@ -238,12 +257,15 @@ volumes:
   rustfsdata:
   qdrantdata:
   hf-cache:
-  rapidocr-cache:
+  cliproxy-data:
 
 networks:
   internal:
     driver: bridge
 
+# HF_TOKEN is read from the environment (set via .env).
+# The secret is mounted at /run/secrets/hf_token inside containers.
+# Entrypoints read it with: export HF_TOKEN=$(cat /run/secrets/hf_token | tr -d '\r\n')
 secrets:
   hf_token:
-    file: ./hf_token.txt
+    environment: HF_TOKEN

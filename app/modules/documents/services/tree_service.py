@@ -14,28 +14,20 @@ class TreeService:
 
     async def get_document_tree(self, document_id: str, offset: int = 0, limit: int = 100) -> dict[str, Any]:
         """
-        Fetch flat sections and transform them into a hierarchical tree structure matching TreeResponse.
+        Fetch sections and return them in a flat list for the table view, paginated.
         """
         # 1. Fetch document for metadata
         doc = await self.doc_repo.get_full_document(document_id)
         if not doc:
             raise ValueError(f"Document {document_id} not found")
 
-        # 2. Fetch all sections
-        sections = await self.section_repo.get_sections_by_document(document_id)
-        if not sections:
-            return {
-                "document_id": document_id,
-                "document_title": doc["title"],
-                "total_nodes": 0,
-                "max_depth": 0,
-                "nodes": [],
-            }
+        # 2. Fetch paginated sections
+        sections, total = await self.section_repo.get_sections_by_document_paginated(
+            document_id, offset=offset, limit=limit
+        )
 
-        # 3. Build the tree with mapping to Frontend TreeNode format
-        lookup = {}
-        max_depth = 0
-
+        # 3. Map to Frontend TreeNode format
+        nodes = []
         for s in sections:
             node = {
                 "node_id": s["section_id"],
@@ -43,38 +35,19 @@ class TreeService:
                 "level": s["level"],
                 "breadcrumb": " > ".join(s.get("breadcrumb", [])),
                 "parent_id": s.get("parent_section_id"),
-                "child_count": 0,  # Calculated later if needed, or use a placeholder
+                "child_count": 0,
                 "text_length": len(s.get("content") or ""),
                 "page_number": s.get("page_range") or 1,
                 "page_range": s.get("page_range"),
-                "children": [],
             }
-            lookup[s["section_id"]] = node
-            max_depth = max(max_depth, s["level"])
-
-        tree = []
-        for node_id, node in lookup.items():
-            parent_id = node["parent_id"]
-            if not parent_id:
-                tree.append(node)
-            else:
-                parent = lookup.get(parent_id)
-                if parent:
-                    parent["children"].append(node)
-                    parent["child_count"] += 1
-                else:
-                    tree.append(node)
-
-        # 4. Apply pagination to root nodes
-        end = offset + limit
-        paginated_nodes = tree[offset:end]
+            nodes.append(node)
 
         return {
             "document_id": document_id,
             "document_title": doc["title"],
-            "total_nodes": len(sections),
-            "max_depth": max_depth,
-            "nodes": paginated_nodes,
+            "total_nodes": total,
+            "max_depth": 0,  # Depth info not needed for flat list
+            "nodes": nodes,
         }
 
     async def get_node_details(self, document_id: str, node_id: str) -> dict[str, Any]:

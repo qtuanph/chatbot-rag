@@ -1,24 +1,16 @@
 #!/bin/bash
 # Entrypoint for API service (FastAPI + uvicorn)
-# Runtime lazy load: model download happens here, not in Docker build.
-# HF_HOME volume ensures cache persists across restarts.
+# Model download handled exclusively by ai-engine service into shared hf-cache volume.
 
 set -e
 
 HF_HOME="${HF_HOME:-/home/qtuanph/.cache/huggingface}"
 mkdir -p "$HF_HOME"
 
-echo "Checking HuggingFace cache..."
-
-# Lazy load embedding model (only downloads if not cached)
-EMBEDDING_MODEL_DIR="$HF_HOME/models--AITeamVN--Vietnamese_Embedding_v2"
-if [ ! -d "$EMBEDDING_MODEL_DIR" ]; then
-    echo "First start: downloading embedding model (this may take a few minutes)..."
-    hf download AITeamVN/Vietnamese_Embedding_v2 \
-        --local-dir "$EMBEDDING_MODEL_DIR"
-    echo "Embedding model ready"
-else
-    echo "Embedding model found in cache: $EMBEDDING_MODEL_DIR"
+# Load HF_TOKEN from Docker secret (preferred) or fall back to env var
+if [ -f "/run/secrets/hf_token" ]; then
+    export HF_TOKEN=$(cat /run/secrets/hf_token | tr -d '\r\n')
+    echo "HF_TOKEN loaded from Docker secret"
 fi
 
 echo "Detecting hardware for API service..."

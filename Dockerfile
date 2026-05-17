@@ -47,6 +47,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 libglib2.0-0 libgl1 libsm6 libxext6 libxrender1 poppler-utils curl \
+    libreoffice-writer-nogui \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Non-root user + dirs ──

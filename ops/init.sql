@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS documents (
     file_name VARCHAR(500) NOT NULL,
     file_path VARCHAR(1000) NOT NULL,
     sha256 VARCHAR(64) NOT NULL,
-    file_type VARCHAR(50) NOT NULL,
+    file_type VARCHAR(255) NOT NULL,
     file_size BIGINT NOT NULL,
     version INTEGER DEFAULT 1 NOT NULL,
     status VARCHAR(50) DEFAULT 'pending' NOT NULL,

@@ -43,6 +43,18 @@ import { toast } from "sonner";
 import { UploadDialog } from "@/components/admin/upload-dialog";
 import type { DocumentSummary } from "@/types/api";
 
+function simplifyMimeType(mime: string) {
+  if (!mime) return "—";
+  const m = mime.toLowerCase();
+  if (m.includes("word") || m.includes("officedocument.wordprocessingml")) return "DOCX";
+  if (m.includes("pdf")) return "PDF";
+  if (m.includes("excel") || m.includes("officedocument.spreadsheetml")) return "XLSX";
+  if (m.includes("powerpoint") || m.includes("officedocument.presentationml")) return "PPTX";
+  if (m.includes("text/plain")) return "TXT";
+  if (m.includes("text/markdown")) return "MD";
+  return mime.split("/").pop()?.toUpperCase() || mime;
+}
+
 function statusVariant(status: string) {
   switch (status) {
     case "ready":
@@ -307,7 +319,7 @@ export function DocumentTable() {
                       {doc.file_name}
                     </TableCell>
                     <TableCell className="text-muted-foreground hidden sm:table-cell">
-                      {doc.file_type?.split("/").pop()?.toUpperCase() || "—"}
+                      {simplifyMimeType(doc.file_type)}
                     </TableCell>
                     <TableCell className="hidden md:table-cell">{formatSize(doc.file_size)}</TableCell>
                     <TableCell>

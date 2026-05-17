@@ -245,10 +245,10 @@ async def get_document_service(
     )
 
 
-async def get_health_service() -> HealthService:
+async def get_health_service(doc_repo: DocumentRepository = Depends(get_doc_repo)) -> HealthService:
     from app.modules.system.service import HealthService
 
-    return HealthService()
+    return HealthService(doc_repo=doc_repo)
 
 
 async def get_cleanup_service(
