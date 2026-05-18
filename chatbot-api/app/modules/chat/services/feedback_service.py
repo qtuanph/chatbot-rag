@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+from typing import Any
+
+from app.modules.chat.repositories.feedback_repository import FeedbackRepository
+from app.modules.chat.utils.query_normalizer import normalize_query, ALL_DEFAULT_STOPWORDS
+from app.modules.settings.runtime_manager import RuntimeProviderManager
+
+
+class FeedbackService:
+    def __init__(self, repo: FeedbackRepository, semantic_cache: Any = None, redis_client: Any = None) -> None:
+        self.repo = repo
+        self.semantic_cache = semantic_cache
+        self.redis_client = redis_client
+
+    async def submit_feedback(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str | None,
+        feedback_type: str,
+        query_text: str,
+        assistant_answer: str,
+        citations: list[dict[str, Any]],
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        runtime = RuntimeProviderManager.get_instance()
+        embedding_cfg = runtime.get_embedding_config() or {}
+        reranker_cfg = runtime.get_reranker_config() or {}
+
+        document_ids = []
+        section_ids = []
+        for citation in citations:
+            document_id = str(citation.get("document_id") or "").strip()
+            section_id = str(citation.get("section_id") or "").strip()
+            if document_id and document_id not in document_ids:
+                document_ids.append(document_id)
+            if section_id and section_id not in section_ids:
+                section_ids.append(section_id)
+
+        payload = {
+            "tenant_id": tenant_id,
+            "user_id": user_id,
+            "feedback_type": feedback_type,
+            "query_text": query_text.strip(),
+            "assistant_answer": assistant_answer.strip(),
+            "llm_model": runtime.get_llm_model() or "chatbot-rag",
+            "embedding_model": str(embedding_cfg.get("model") or ""),
+            "reranker_model": str(reranker_cfg.get("model") or ""),
+            "document_ids": document_ids,
+            "section_ids": section_ids,
+            "citations": citations,
+            "metadata": metadata or {},
+        }
+        if feedback_type == "dislike":
+            if self.semantic_cache:
+                normalized_query = normalize_query(query_text, stopwords=ALL_DEFAULT_STOPWORDS)
+                await self.semantic_cache.delete(tenant_id, normalized_query)
+            if self.redis_client:
+                from app.modules.chat.cache.exact_cache import exact_cache_delete
+
+                await exact_cache_delete(self.redis_client, tenant_id, query_text)
+        elif feedback_type == "like" and self.semantic_cache:
+            normalized_query = normalize_query(query_text, stopwords=ALL_DEFAULT_STOPWORDS)
+            await self.semantic_cache.extend_ttl(tenant_id, normalized_query, 86400 * 7)
+
+        return await self.repo.create_feedback(payload)
