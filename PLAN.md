@@ -1,133 +1,76 @@
-# PLAN: CLIProxyAPI + LlamaIndex Architecture Overhaul
+# PLAN: Replace CLIProxyAPI → 9Router
 
 ## Tổng quan
 
-Thay thế Google Gemini (AIProvider) bằng **CLIProxyAPI** — proxy AI model
-với OpenAI-compatible endpoint. Tích hợp **LlamaIndex core** cho ingestion
-pipeline và LLM abstraction. Giữ nguyên custom OCR (Docling), embedding
-(AITeamVN), reranker (AITeamVN), và 5-stage retrieval.
+Thay thế CLIProxyAPI (Go proxy, port 8317) bằng **9Router** (Next.js 16 AI router, port 2908).
+Provider management chuyển từ FastAPI admin CRUD sang **9Router Dashboard** tại `http://localhost:2908`.
 
 ## Kiến trúc mới
 
 ```
 Browser (Next.js webapp)
-  └── /api/bep/* → Next.js Route Handler → FastAPI
+  └── /api/bep/* → FastAPI Backend
         │
-  FastAPI Backend
-    ├── ChatService → LlamaIndex OpenAI LLM → CLIProxyAPI (ai-proxy:8317/v1)
-    ├── IngestionService → LlamaIndex IngestionPipeline + SentenceSplitter
-    ├── 5-stage retrieval (GIỮ: hybrid → dedup → rerank → expand → context)
-    └── Admin module → quản lý providers qua CLIProxyAPI Management API
-        │
-  CLIProxyAPI (ai-proxy container)
-    ├── /v1/chat/completions (OpenAI-compatible)
-    ├── Format translation (OpenAI ↔ Gemini ↔ Claude)
-    └── Provider routing (NVIDIA NIM, Groq, OpenAI, Gemini...)
+  FastAPI ChatService → LlamaIndex OpenAI LLM (api_base=ai-proxy:2908/v1)
+                                      ↓
+                           9Router (Next.js 16 — Docker)
+                         port 2908 (API + Dashboard)
+                                      ↓
+                     Kiro · Claude · Gemini · OpenCode Free
+                     (config qua Dashboard)
 ```
 
 ## Container thay đổi
 
 | Service | Trạng thái | Details |
 |---------|-----------|---------|
-| **ai-proxy** | **MỚI** | CLIProxyAPI (eceasy/cli-proxy-api:latest), port 8317 |
-| api | SỬA | Thêm dependency ai-proxy + env vars |
-| workers | KHÔNG ĐỔI | Celery workers, vẫn dùng ai-engine cho embedding |
-| ai-engine | KHÔNG ĐỔI | Serve AITeamVN embedding + reranker |
-| webapp | SỬA | Thêm admin/providers pages |
+| **ai-proxy** | **THAY** | `decolua/9router:latest` thay `eceasy/cli-proxy-api:latest`, port 8317→2908 |
+| api | SỬA | dependency healthcheck `service_started` → `service_healthy` |
+| **ai-proxy healthcheck** | **MỚI** | wget tới `/api/health` trên port 2908 |
 
-## File thay đổi
+## File changed
 
-### MỚI (10 files)
+| Thể loại | File | Hành động |
+|----------|------|-----------|
+| Docker | docker-compose.yml | Sửa ai-proxy service + volume |
+| Docker | ops/entrypoint-ai-proxy.sh | **XOÁ** — không cần |
+| Config | .env | CLIPROXY_* → AI_PROXY_* |
+| Config | app/core/config.py | Sửa settings + get_settings() |
+| Adapter | app/adapters/ai/cliproxy_bridge.py | **RENAME** → proxy_bridge.py |
+| Adapter | app/adapters/ai/__init__.py | Sửa import |
+| Admin | app/modules/admin/router.py | Đơn giản hoá (chỉ còn /admin/models) |
+| Admin | app/modules/admin/schemas.py | Xoá provider schemas |
+| Admin | app/modules/admin/services/model_provider_service.py | **XOÁ** |
+| Admin | app/modules/admin/services/__init__.py | **XOÁ** |
+| Chat | app/modules/chat/services/service.py | Import sửa |
+| Chat | app/modules/chat/tasks/memory_tasks.py | Import sửa |
+| Chat | app/modules/chat/services/user_memory_service.py | Import sửa |
+| Chat | app/modules/chat/services/query_refiner.py | Import sửa |
+| Chat | app/modules/chat/retrieval/expansion_service.py | Import sửa |
+| Analytics | app/modules/analytics/ragas_evaluator.py | Import sửa |
+| Analytics | app/modules/analytics/service.py | Sửa model name |
+| System | app/modules/system/service.py | Sửa provider label |
+| Docs | README.md | ~10 mục |
+| Docs | AGENTS.md | ~3 mục |
+| Docs | PLAN.md | **GHI ĐÈ** |
+| Docs | docs/1_ARCHITECTURE.md | ~5 mục |
+| Docs | docs/3_API_CONTRACTS.md | ~3 mục |
+| Docs | docs/4_DEPLOYMENT.md | ~3 mục |
+| Docs | docs/0_QUICK_REFERENCE.json | ~3 mục |
 
-| File | Purpose |
-|------|---------|
-| `ops/entrypoint-ai-proxy.sh` | Entrypoint cho ai-proxy container |
-| `app/adapters/ai/cliproxy_bridge.py` | Wrap OpenAI LLM → CLIProxyAPI |
-| `app/adapters/embeddings/llama_bridge.py` | Wrap AITeamVN → BaseEmbedding |
-| `app/adapters/reranker/llama_bridge.py` | Wrap AITeamVN → BaseNodePostprocessor |
-| `app/modules/documents/ingestion/llama_pipeline.py` | IngestionPipeline wrapper |
-| `app/modules/admin/__init__.py` | Admin module init |
-| `app/modules/admin/router.py` | Admin REST API |
-| `app/modules/admin/schemas.py` | Admin Pydantic schemas |
-| `app/modules/admin/services/__init__.py` | Admin services init |
-| `app/modules/admin/services/model_provider_service.py` | Provider management via CLIProxyAPI Mgmt API |
+## Env vars mới
 
-### SỬA (8 files)
+```env
+AI_PROXY_URL=http://ai-proxy:2908
+AI_PROXY_DEFAULT_MODEL=
+AI_PROXY_JWT_SECRET=...
+AI_PROXY_INITIAL_PASSWORD=123456
+```
 
-| File | Changes |
-|------|---------|
-| `docker-compose.yml` | Thêm ai-proxy service + volumes |
-| `app/core/config.py` | Thêm CLIPROXY settings, bỏ google settings |
-| `.env` | Thêm CLIPROXY vars, bỏ GOOGLE vars |
-| `app/main.py` | Register admin router |
-| `app/modules/documents/ingestion/ingestion_service.py` | Dùng LlamaIndex IngestionPipeline |
-| `app/modules/chat/services/service.py` | Dùng OpenAI LLM (→ CLIProxyAPI) |
-| `app/api/routes/websocket.py` | Fix imports |
-| `requirements.txt` | Thêm llama-index-* packages |
+## Key notes
 
-### BỎ (5 files)
-
-| File | Reason |
-|------|--------|
-| `app/adapters/ai/base.py` | AIProvider ABC → LlamaIndex BaseLLM |
-| `app/adapters/ai/google.py` | GoogleAIProvider → CLIProxyAPI |
-| `app/adapters/ai/__init__.py` | build_ai_provider() → CLIProxyBridge |
-| `app/modules/documents/utils/text_splitter.py` | SentenceSplitter |
-| `app/modules/documents/utils/contextualizer.py` | Không cần |
-
-## Execution Plan (8 Phases)
-
-### Phase 0: ✅ CLIProxyAPI Test (done)
-- Pull image: `eceasy/cli-proxy-api:latest`
-- Test `/v1/chat/completions` + Management API
-
-### Phase 1: Docker + Config
-- Add ai-proxy service
-- Tạo entrypoint-ai-proxy.sh
-- Update config.py + .env
-
-### Phase 2: Dependencies
-- Thêm llama-index-* vào requirements.txt
-
-### Phase 3: Adapter Wrappers
-- cliproxy_bridge.py (OpenAI LLM → CLIProxyAPI)
-- llama_bridge.py (embedding → BaseEmbedding)
-- llama_bridge.py (reranker → BaseNodePostprocessor)
-
-### Phase 4: Ingestion Pipeline
-- llama_pipeline.py (IngestionPipeline wrapper)
-- SỬA ingestion_service.py
-
-### Phase 5: Chat Engine
-- SỬA chat service.py (dùng OpenAI LLM)
-- SỬA websocket.py (fix imports)
-
-### Phase 6: Admin Module
-- router.py + schemas.py + model_provider_service.py
-
-### Phase 7: Cleanup
-- Xoá base.py, google.py, __init__.py (ai)
-- Xoá text_splitter.py, contextualizer.py
-- Update tất cả imports
-
-### Phase 8: Docs + Lint
-- Update docs/1_ARCHITECTURE.md, docs/3_API_CONTRACTS.md
-- Chạy black + flake8
-
-## Key Design Decisions
-
-1. **CLIProxyAPI > 9Router**: CLIProxyAPI là Go binary nhẹ (~15MB),
-   9Router là Next.js (Node). User chọn CLIProxyAPI.
-
-2. **LlamaIndex cho ingestion, custom cho retrieval**: SentenceSplitter
-   thay text_splitter.py. 5-stage retrieval giữ nguyên.
-
-3. **OpenAI LLM của LlamaIndex**: Trỏ api_base → CLIProxyAPI.
-   Dùng `llama-index-llms-openai`.
-
-4. **AITeamVN models**: Wrap thành BaseEmbedding và BaseNodePostprocessor.
-
-5. **Provider management**: FastAPI gọi CLIProxyAPI Management API
-   (PUT /v0/management/config.yaml) để bật/tắt providers.
-
-6. **Mỗi lần 1 provider**: Admin UI toggle → FastAPI disable all, enable 1.
+1. **9Router không cần API key** — `REQUIRE_API_KEY: "false"`, không gửi Bearer header
+2. **Provider config** — quản lý qua Dashboard port 2908, không qua FastAPI
+3. **Model naming** — 9Router dùng format `prefix/model` (vd: `kr/claude-sonnet-4.5`)
+4. **Volume** — `9router-data:/app/data` lưu SQLite database của 9Router
+5. **Dashboard + API chung 1 port** — 2908 cho cả UI và `/v1/*` endpoints

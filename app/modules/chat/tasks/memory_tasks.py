@@ -25,7 +25,7 @@ def extract_memories_task(user_id: str, user_message: str, assistant_response: s
     async def _run_extraction():
         from app.modules.chat.services import UserMemoryService
         from app.modules.chat.repositories import MemoryRepository
-        from app.adapters.ai.cliproxy_bridge import CLIProxyBridge
+        from app.adapters.ai.proxy_bridge import AIProxyBridge
 
         # Create async Redis client inside the async context
         async_redis = get_redis_client()
@@ -33,7 +33,7 @@ def extract_memories_task(user_id: str, user_message: str, assistant_response: s
         async with AsyncSessionLocal() as session:
             memory_repo = MemoryRepository(session)
             service = UserMemoryService(redis_client=async_redis, memory_repo=memory_repo)
-            ai_provider = CLIProxyBridge()
+            ai_provider = AIProxyBridge()
 
             logger.info("Extracting memories for user %s from chat turn", user_id)
             await service.extract_memories_from_turn(

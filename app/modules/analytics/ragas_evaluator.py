@@ -137,6 +137,6 @@ class RagasEvaluator:
             return 0.5
 
     def _get_default_provider(self):
-        from app.adapters.ai.cliproxy_bridge import CLIProxyBridge
+        from app.adapters.ai.proxy_bridge import AIProxyBridge
 
-        return CLIProxyBridge()
+        return AIProxyBridge()

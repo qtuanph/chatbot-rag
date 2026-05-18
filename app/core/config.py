@@ -23,10 +23,9 @@ class Settings(BaseSettings):
     # Celery worker: which task modules to load ("all" | "upload" | "cleanup")
     celery_include: str = "all"
 
-    cliproxy_url: str = "http://ai-proxy:8317"
-    cliproxy_api_key: str = "sk-proxy-default"
-    cliproxy_management_password: str = ""
-    cliproxy_default_model: str = ""
+    ai_proxy_url: str = "http://ai-proxy:2908"
+    ai_proxy_api_key: str = ""
+    ai_proxy_default_model: str = ""
     ai_input_cost_per_1m: float = 0.0
     ai_output_cost_per_1m: float = 0.0
 
@@ -302,8 +301,8 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     s = Settings()
-    if not s.cliproxy_api_key:
-        logger.warning("CLIPROXY_API_KEY is not set — AI features will not work")
+    if not s.ai_proxy_api_key:
+        logger.debug("AI_PROXY_API_KEY is not set — requests to 9Router will be unauthenticated")
     if s.rate_limit_relaxed_mode and s.app_env != "development":
         logger.warning(
             "RATE_LIMIT_RELAXED_MODE is enabled in %s environment — rate limits are relaxed. "

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile, status, Query
 from typing import TYPE_CHECKING
@@ -54,8 +56,6 @@ async def upload_document(
     except ValueError as e:
         raise http_errors.bad_request(str(e)) from None
 
-    import hashlib
-
     sha256_hash = hashlib.sha256()
     total_size = 0
 
@@ -75,8 +75,6 @@ async def upload_document(
 
     sha256 = sha256_hash.hexdigest()
     await file.seek(0)
-
-    from uuid import uuid4
 
     document_id = str(uuid4())
 

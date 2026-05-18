@@ -30,6 +30,11 @@ class ObjectStorage(ABC):
         """Return True if the object exists in storage, False otherwise."""
         raise NotImplementedError
 
+    @abstractmethod
+    def delete_prefix(self, prefix: str) -> None:
+        """Delete all objects with the given prefix (folder)."""
+        raise NotImplementedError
+
 
 class S3ObjectStorage(ObjectStorage):
     def __init__(self) -> None:
@@ -106,6 +111,16 @@ class S3ObjectStorage(ObjectStorage):
             if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
                 return False
             raise
+
+    def delete_prefix(self, prefix: str) -> None:
+        """Delete all objects with the given prefix."""
+        response = self.client.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
+        if "Contents" not in response:
+            return
+        objects = [{"Key": obj["Key"]} for obj in response["Contents"]]
+        for i in range(0, len(objects), 1000):
+            batch = objects[i : i + 1000]
+            self.client.delete_objects(Bucket=self.bucket, Delete={"Objects": batch, "Quiet": True})
 
     def _sanitize_filename(self, filename: str) -> str:
         return Path(filename).name

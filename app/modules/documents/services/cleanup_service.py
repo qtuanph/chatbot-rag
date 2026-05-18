@@ -40,10 +40,6 @@ class CleanupService:
         )
 
         record = await self.registry.get_by_document_id(document_id)
-        object_uri = record.object_uri if record else None
-        if not object_uri:
-            doc = await self.doc_repo.get_full_document(document_id)
-            object_uri = doc.get("file_path") if doc else None
 
         # ── Execution (Strict 6-step order: registry → vectors → sections → file → DB row → purge) ──
         # 1. Registry mark (Redis)
@@ -55,9 +51,11 @@ class CleanupService:
         # 3. Sections (PostgreSQL)
         await self.section_repo.delete_sections(document_id)
 
-        # 4. Physical file (S3/RustFS)
-        if object_uri:
-            await asyncio.to_thread(storage.delete_object, object_uri)
+        # 4. Delete entire document folder from S3 (original file + OCR md + any future artifacts)
+        try:
+            await asyncio.to_thread(storage.delete_prefix, f"{document_id}/")
+        except Exception as e:
+            logger.warning("Failed to delete document folder from S3: %s", e)
 
         # 5. Document DB row (PostgreSQL)
         db_deleted = await self.doc_repo.hard_delete(document_id)

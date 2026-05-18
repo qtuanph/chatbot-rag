@@ -20,7 +20,7 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | Queue/Cache | Redis 8.x (Celery, Streams, Semantic Cache, Rate Limiting) |
 | Embedding | AITeamVN/Vietnamese_Embedding_v2 (Remote via AI-Engine) |
 | Reranker | AITeamVN/Vietnamese_Reranker (Remote via AI-Engine) |
-| AI Provider | CLIProxyAPI (OpenAI-compatible proxy via `eceasy/cli-proxy-api:latest`, Go binary) |
+| AI Provider | 9Router (OpenAI-compatible AI router via `decolua/9router:latest`, Next.js 16, port 2908) |
 | Ingestion | Docling + EasyOCR + **LibreOffice (DOCX→PDF)** + **LlamaIndex SentenceSplitter** + DuplicateDetector (Bloom) |
 | BM25 Manager | BM25Manager (class-level Singleton with 120s TTL) |
 | Reverse proxy | Traefik v3.7 on port 80 (auto-discovery via Docker labels, SSE, NextAuth, API, Rate Limited) |
@@ -140,7 +140,7 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | `chat` | Conversation & RAG | History, Retrieval logic, Memories |
 | `analytics` | Monitoring & Audit | Token tracking, Audit stream processing |
 | `system` | Orchestration | Health checks, Maintenance tasks, Global state |
-| `admin` | Provider Management | CLIProxyAPI provider CRUD, model listing |
+| `admin` | Provider Management | 9Router model listing |
 | `inference` | AI Server | Standalone AI-Engine (FastAPI + Models) |
 
 ## Runtime Data Flow
@@ -153,7 +153,7 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | Store | SectionRepository → PostgreSQL → Embed → Qdrant | document_sections rows + vectors |
 | Retrieve | SemanticCache (similarity match) → exact cache → hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → Neighbor Expansion (Soi sáng) → full section context assembly |
 | Memory | UserMemoryService (redis_client shared pool) → Redis cache → inject systemInstruction | Personalized prompt |
-| Stream | ChatService → CLIProxyBridge (LlamaIndex OpenAI) → Immediate Yield (no buffering) → WebSocket → Browser | Grounded answer with citations |
+| Stream | ChatService → AIProxyBridge (LlamaIndex OpenAI) → Immediate Yield (no buffering) → WebSocket → Browser | Grounded answer with citations |
 | Persist | Post-stream → `ChatService.save_assistant_message()` → MessagePack binary storage in Redis | Fast persistence |
 | Audit | safe_record_audit → Redis Stream (XADD) → AuditStreamWorker → PostgreSQL | Decoupled logging |
 | Extract | Post-response → Celery extract_memories_task → user_memories | Durable memory extraction |
@@ -216,27 +216,27 @@ Frontend: Settings page `/settings` with full CRUD. Content limit: 1000 chars pe
 
 ## AI Provider Architecture
 
-CLIProxyAPI (`eceasy/cli-proxy-api:latest`) — lightweight Go binary acting as OpenAI-compatible proxy:
+9Router (`decolua/9router:latest`) — Next.js 16 AI router acting as OpenAI-compatible proxy:
 
 ```
-FastAPI ChatService → LlamaIndex OpenAI LLM (api_base=ai-proxy:8317/v1)
+FastAPI ChatService → LlamaIndex OpenAI LLM (api_base=ai-proxy:2908/v1)
                                      ↓
-                          CLIProxyAPI Go proxy
+                          9Router (Next.js 16)
                                      ↓
                     ┌────────┬────────┬────────┬────────┐
-                    NVIDIA   OpenAI    Groq    Gemini (via API)
-                     NIM     (GPT)    (free)    key/oauth
+                     Kiro    Claude   Gemini  OpenCode
+                     AI      (kr)     (gcp)     Free
 ```
 
 | Feature | Implementation |
 |---------|---------------|
-| Proxy image | `eceasy/cli-proxy-api:latest` (Go, ~15MB) |
+| Proxy image | `decolua/9router:latest` (Next.js 16, Node 22, ~300MB) |
 | Interface | Full OpenAI-compatible `/v1/chat/completions` + `/v1/models` |
-| Streaming | SSE (Server-Sent Events) via `stream: true` |
+| Streaming | SSE via `stream: true` |
 | Format translation | Auto-convert between OpenAI ↔ Claude ↔ Gemini formats |
-| Provider mgmt | Management API `/v0/management/*` + local YAML config |
-| Hot reload | Automatically watches config file + auth-dir for changes |
-| Round-robin | Built-in strategy (round-robin or fill-first) |
+| Provider mgmt | Dashboard UI at port 2908 (SQLite database) |
+| RTK Token Saver | 20-40% token reduction via prompt compression |
+| 3-tier fallback | Subscription → Cheap → Free provider tiers |
 | Fallback | Auto-switch on quota exceeded, retry on 429/5xx |
 
 ## Multi-Turn Conversation

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
+import httpx
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from app.core.config import settings
 from app.api.deps import AuthContext, get_chat_service, get_rate_limiter
 from app.modules.chat.services import ChatService
 from app.utils.rate_limiter import RateLimiter
@@ -36,10 +37,25 @@ async def chat_stream_websocket(
                 await websocket.send_json({"error": "Query cannot be empty", "done": True})
                 continue
 
-            # Check if any AI provider is configured
-            from app.modules.admin.services.model_provider_service import has_enabled_providers
-
-            if not await asyncio.to_thread(has_enabled_providers):
+            # Quick check if 9Router has any models configured
+            try:
+                headers = {}
+                if settings.ai_proxy_api_key:
+                    headers["Authorization"] = f"Bearer {settings.ai_proxy_api_key}"
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    mr = await client.get(
+                        f"{settings.ai_proxy_url.rstrip('/')}/v1/models",
+                        headers=headers,
+                    )
+                    if mr.status_code != 200 or not mr.json().get("data"):
+                        await websocket.send_json(
+                            {
+                                "error": "Chưa kết nối AI provider. Vào Admin → Kết nối để thêm provider.",
+                                "done": True,
+                            }
+                        )
+                        continue
+            except Exception:
                 await websocket.send_json(
                     {
                         "error": "Chưa kết nối AI provider. Vào Admin → Kết nối để thêm provider.",

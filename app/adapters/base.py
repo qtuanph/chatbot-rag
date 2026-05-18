@@ -36,6 +36,7 @@ class ParsingMetadata:
     node_count: int = 0  # Number of nodes extracted
     total_text_chars: int = 0  # Total character count in extracted text
     sections_data: list[dict[str, Any]] = None  # Section records for PostgreSQL (RAG v2)
+    raw_md_content: str = ""  # Full raw markdown output from OCR for S3 persistence
 
     def __post_init__(self):
         if self.warnings is None:

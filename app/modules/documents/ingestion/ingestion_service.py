@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from llama_index.core.schema import Document as LlamaDocument
 
 from app.adapters.base import IngestedNode, ParsingMetadata
-from app.adapters.parsers.docling import DoclingParser
+from app.adapters.parsers.llamaparse_adapter import LlamaParseParser
 from app.adapters.parsers.docx_converter import is_docx, convert_docx_to_pdf
 from app.modules.documents.validators import HierarchyValidator, ValidationReport
 from app.modules.documents.ingestion.llama_pipeline import LlamaIngestionPipeline
@@ -76,7 +76,7 @@ class IngestionService:
         section_repo: SectionRepository | None = None,
     ):
         self.redis = redis_client
-        self.parser = DoclingParser()
+        self.parser = LlamaParseParser()
         self.embedding_service = embedding_service
         self.vector_store = vector_store
         self.db_session = db_session
@@ -169,6 +169,19 @@ class IngestionService:
                 ctx.warnings.append(f"DOCX→PDF conversion failed: {docx_err} — using direct DOCX parse")
 
         nodes, metadata = await self.parser.parse(filename_to_parse, content_to_parse, document_id=ctx.document_id)
+
+        # Save raw markdown to S3 for future re-chunking / agentic RAG
+        if getattr(metadata, "raw_md_content", None):
+            try:
+                from app.adapters.storage import build_storage
+
+                storage = build_storage()
+                md_bytes = metadata.raw_md_content.encode("utf-8")
+                await asyncio.to_thread(storage.save_bytes, ctx.document_id, "ocr_output.md", md_bytes)
+                logger.info("[%s] Saved OCR markdown to S3", ctx.document_id)
+            except Exception as md_err:
+                logger.warning("[%s] Failed to save OCR markdown to S3: %s", ctx.document_id, md_err)
+                ctx.warnings.append(f"Failed to persist OCR markdown: {md_err}")
 
         # Convert IngestedNodes to LlamaIndex Documents for IngestionPipeline
         llama_docs = []

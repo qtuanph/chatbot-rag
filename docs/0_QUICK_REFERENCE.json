@@ -72,10 +72,8 @@
   ],
   "critical_env": {
     "ai": {
-      "CLIPROXY_URL": "http://ai-proxy:8317",
-      "CLIPROXY_API_KEY": "sk-proxy-default",
-      "CLIPROXY_MANAGEMENT_PASSWORD": "set for remote provider management",
-      "CLIPROXY_DEFAULT_MODEL": "model name in CLIProxyAPI (can be empty for multi-model)",
+      "AI_PROXY_URL": "http://ai-proxy:2908",
+      "AI_PROXY_DEFAULT_MODEL": "model name in 9Router prefix/model format (can be empty)",
       "AI_ENGINE_URL": "http://ai-engine:8000",
       "EMBEDDING_HF_MODEL": "AITeamVN/Vietnamese_Embedding_v2",
       "RETRIEVAL_RERANK_MODEL": "AITeamVN/Vietnamese_Reranker",
@@ -152,10 +150,6 @@
       { "method": "PATCH", "path": "/memories/{id}", "auth": "member" },
       { "method": "DELETE", "path": "/memories/{id}", "auth": "member" },
       { "method": "GET", "path": "/analytics/stats", "auth": "jwt" },
-      { "method": "GET", "path": "/admin/providers", "auth": "admin" },
-      { "method": "POST", "path": "/admin/providers", "auth": "admin" },
-      { "method": "PATCH", "path": "/admin/providers/{name}/toggle", "auth": "admin" },
-      { "method": "DELETE", "path": "/admin/providers/{name}", "auth": "admin" },
       { "method": "GET", "path": "/admin/models", "auth": "admin" }
     ]
   },
@@ -193,7 +187,7 @@
         "documents/services/cleanup_service.py": "CleanupService — hard delete orchestration",
         "documents/ingestion/ingestion_service.py": "IngestionService — accepts optional section_repo via constructor",
         "documents/ingestion/recovery_service.py": "RecoveryService — repository-based recovery logic",
-        "admin/services/model_provider_service.py": "ModelProviderService — CLIProxyAPI provider CRUD via Management API",
+        "admin/router.py": "AdminRouter — 9Router model listing",
         "analytics/service.py": "AnalyticsService — stats aggregation",
         "system/service.py": "SystemService — health & maintenance"
       }

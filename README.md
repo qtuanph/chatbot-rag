@@ -66,7 +66,7 @@ Vietnamese enterprises need AI-powered document Q&A that:
 <tr><td><b>Real-time Chat</b></td><td>WebSocket streaming with conversational Vietnamese AI. Citations grouped by document with merged page ranges.</td></tr>
 <tr><td><b>Query Refinement</b></td><td>Automatic query rewriting for better retrieval — enabled by default. Handles follow-ups and Vietnamese phrasing.</td></tr>
 <tr><td><b>User Memory</b></td><td>ChatGPT-like persistent memory per user — preferences, corrections, facts injected into AI context automatically.</td></tr>
-<tr><td><b>Multi-Provider AI</b></td><td>CLIProxyAPI (Go proxy) connects any OpenAI-compatible provider: NVIDIA NIM, OpenAI, Groq, Anthropic, DeepSeek, and more.</td></tr>
+<tr><td><b>Multi-Provider AI</b></td><td>9Router (Next.js AI router) connects any OpenAI-compatible provider: Kiro, OpenCode Free, Claude, Gemini, and more via dashboard UI.</td></tr>
 <tr><td><b>3-Layer Cache</b></td><td>LLM Response Cache + Semantic Cache (Redis vector) + Query Embedding Cache — reduced from 5 layers, faster hit rate.</td></tr>
 <tr><td><b>RAGAS Evaluation</b></td><td>Optional LLM-as-judge evaluation: faithfulness, answer relevancy, context precision, context recall.</td></tr>
 <tr><td><b>Knowledge Graph</b></td><td>Optional entity extraction and relationship mapping from ingested documents.</td></tr>
@@ -118,7 +118,7 @@ graph TB
     subgraph AI["AI & Embedding"]
         Embedding["Vietnamese_Embedding_v2<br/>1024-dim · GPU fp16"]
         Reranker["Vietnamese_Reranker (optional)<br/>cross-encoder"]
-        AIProxy["CLIProxyAPI (Go Proxy)<br/>port 8317"]
+        AIProxy["9Router (AI Router)<br/>port 2908"]
     end
 
     Browser --> Traefik
@@ -167,7 +167,7 @@ sequenceDiagram
     participant Worker as upload-pipeline
     participant DB as PostgreSQL
     participant Q as Qdrant
-    participant Proxy as CLIProxyAPI
+    participant Proxy as 9Router
 
     rect rgb(240, 248, 255)
         Note over User,DB: Ingestion Flow (async)
@@ -203,7 +203,7 @@ sequenceDiagram
 |----------|-----|
 | **Hybrid search (dense + BM25)** | Dense (embedding) + sparse (BM25) via RRF fusion — leverages both semantic similarity and keyword matching for Vietnamese |
 | **LlamaIndex for ingestion** | SentenceSplitter + integrated embedding via IngestionPipeline — mature chunking with semantic boundaries |
-| **CLIProxyAPI as AI proxy** | Lightweight Go binary, OpenAI-compatible, supports 40+ providers with format translation and fallback |
+| **9Router as AI router** | Next.js 16 AI router with RTK Token Saver, 3-tier fallback (Subscription→Cheap→Free), free providers (Kiro, OpenCode), format translation, usage dashboard |
 | **WebSocket over SSE** | Full bidirectional streaming, no reconnection overhead, better mobile support |
 | **3-Layer Cache** | LLM Response + Semantic + Query Embedding — reduced from 5 layers (removed RagResultCache), simpler and faster |
 | **Query Refinement** | Automatic query rewriting improves retrieval on follow-ups and ambiguous Vietnamese phrasing |
@@ -242,7 +242,7 @@ graph LR
         direction TB
         A1["Vietnamese_Embedding_v2"]
         A2["Vietnamese_Reranker (opt)"]
-        A3["CLIProxyAPI (Go Proxy)"]
+        A3["9Router (AI Router)"]
         A4["EasyOCR (Vietnamese)"]
         A5["Docling"]
     end
@@ -257,11 +257,11 @@ graph LR
 | **Database** | PostgreSQL 18 | Documents, sections, users, memories, audit |
 | **Cache / Queue** | Redis 8 | Celery broker, semantic cache, query embedding cache, rate limiting |
 | **Vector Search** | Qdrant v1.17 (int8 quantization, HNSW) | Chunk vectors with section_id metadata |
-| **AI Proxy** | CLIProxyAPI (Go, port 8317) | OpenAI-compatible proxy for 40+ providers |
+| **AI Proxy** | 9Router (Next.js 16, port 2908) | OpenAI-compatible AI router with free/paid provider support |
 | **AI Service** | Dedicated AI-Engine container | GPU-accelerated embedding + reranker inference |
 | **Embedding** | AITeamVN/Vietnamese_Embedding_v2 (1024-dim) | GPU fp16, hardware auto-detect (3-tier) |
 | **Reranker** | AITeamVN/Vietnamese_Reranker | Optional cross-encoder (disabled by default) |
-| **LLM Integration** | LlamaIndex OpenAI (via CLIProxyAPI) | Provider-agnostic chat with thinking mode support |
+| **LLM Integration** | LlamaIndex OpenAI (via 9Router) | Provider-agnostic chat with thinking mode support |
 | **OCR** | EasyOCR on GPU | Vietnamese + English document text extraction |
 | **Parsing** | Docling (Method D) | PDF/DOCX structured extraction with hierarchy |
 | **Chunking** | LlamaIndex SentenceSplitter | Semantic-aware text splitting (~1536 tokens) |
@@ -403,7 +403,7 @@ Password: abc123
 
 ```bash
 docker compose down
-docker volume rm chatbot-rag_pgdata chatbot-rag_qdrantdata chatbot-rag_redisdata chatbot-rag_hf-cache chatbot-rag_cliproxy-config
+docker volume rm chatbot-rag_pgdata chatbot-rag_qdrantdata chatbot-rag_redisdata chatbot-rag_hf-cache chatbot-rag_9router-data
 docker compose up --build
 ```
 
@@ -469,15 +469,11 @@ All endpoints are prefixed with `/api/v1`. Authentication uses JWT Bearer token.
 |----------|--------|------|-------------|
 | `/analytics/stats` | GET | member | Usage statistics |
 
-### Admin — Provider Management
+### Admin — Model Listing
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `/admin/providers` | GET | admin | List providers |
-| `/admin/providers` | POST | admin | Add provider |
-| `/admin/providers/{name}/toggle` | PATCH | admin | Toggle provider on/off |
-| `/admin/providers/{name}` | DELETE | admin | Remove provider |
-| `/admin/models` | GET | admin | List available models |
+| `/admin/models` | GET | admin | List available models from 9Router |
 
 ### System
 
@@ -495,12 +491,12 @@ All settings are configured via environment variables (see `app/core/config.py`)
 ### AI & Embedding
 
 ```bash
-CLIPROXY_URL=http://ai-proxy:8317                    # CLIProxyAPI internal URL
-CLIPROXY_API_KEY=sk-proxy-default                    # CLIProxyAPI API key
-MANAGEMENT_PASSWORD=change-me                         # CLIProxyAPI management password
-CLIPROXY_DEFAULT_MODEL=                               # Default model for chat
-EMBEDDING_HF_MODEL=AITeamVN/Vietnamese_Embedding_v2   # 1024-dim Vietnamese embedding
-AI_ENGINE_URL=http://ai-engine:8000                    # AI-Engine internal URL
+AI_PROXY_URL=http://ai-proxy:2908                      # 9Router internal URL
+AI_PROXY_DEFAULT_MODEL=                                 # Default model for chat
+AI_PROXY_JWT_SECRET=your-secret                         # 9Router dashboard JWT secret
+AI_PROXY_INITIAL_PASSWORD=123456                        # 9Router dashboard login password
+EMBEDDING_HF_MODEL=AITeamVN/Vietnamese_Embedding_v2    # 1024-dim Vietnamese embedding
+AI_ENGINE_URL=http://ai-engine:8000                     # AI-Engine internal URL
 ```
 
 ### Ingestion

@@ -113,6 +113,14 @@
       "root_cause": "entrypoint-worker.sh captured hardware concurrency via `$(python -c '... print(concurrency autoscale)' 2>/dev/null)`. The amdsmi library (AMD ROCm GPU detection) prints warning lines like `/opt/rocm/lib/libamd_smi.so: Unable to...` to STDOUT (not stderr), bypassing the 2>/dev/null redirect. These lines were prepended to the actual integer output, making CONCURRENCY an invalid multi-line string passed to `celery worker -c`.",
       "resolution": "Added `| tail -n 1` after each Python hardware-detect call to capture only the last printed line (the actual integer). Added regex validation (`^[1-9][0-9]*$`) on CONCURRENCY and AUTOSCALE_MAX with safe fallback values (2/4). Same pattern already existed in entrypoint-api.sh for WORKERS.",
       "lesson_learned": "Never trust subprocess stdout to be clean when third-party C libraries (GPU drivers, BLAS, etc.) are imported. Always pipe through `tail -n 1` and validate with regex before using as a numeric argument."
+    },
+    {
+      "issue_id": 14,
+      "title": "LlamaParse API 'agentic' Tier Rejection",
+      "symptom": "Ingestion task fails with error code 400: MISSING_VERSION_FOR_TIER when 'tier' is set to 'agentic'.",
+      "root_cause": "The LlamaCloud API key or plan used does not support the 'agentic' tier, or the API endpoint lacks the necessary version metadata for it.",
+      "resolution": "Removed `tier=\"agentic\"` from the LlamaParse initialization in `llamaparse_adapter.py`, falling back to the default parsing tier.",
+      "lesson_learned": "Always verify cloud API tier access levels before hardcoding premium/advanced flags in production ingestion pipelines."
     }
   ]
 }

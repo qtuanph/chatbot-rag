@@ -47,7 +47,7 @@ class DoclingParser(BaseParser):
         ocr_options = EasyOcrOptions(lang=settings.ingestion_ocr_languages)
         pipeline = PdfPipelineOptions(
             do_ocr=True,
-            force_full_page_ocr=True,
+            force_full_page_ocr=False,  # DO NOT force OCR on digital text!
             ocr_options=ocr_options,
             do_table_structure=True,
             device=device,
@@ -404,11 +404,13 @@ class DoclingParser(BaseParser):
                     try:
                         # Use docling's native markdown export for tables if available,
                         # else fallback to our manual converter
-                        table_md = (
-                            item.export_to_markdown()
-                            if hasattr(item, "export_to_markdown")
-                            else self._table_item_to_markdown(item)
-                        )
+                        if hasattr(item, "export_to_markdown"):
+                            try:
+                                table_md = item.export_to_markdown(doc=document)
+                            except TypeError:
+                                table_md = item.export_to_markdown()
+                        else:
+                            table_md = self._table_item_to_markdown(item)
                     except Exception:
                         table_md = self._table_item_to_markdown(item)
 

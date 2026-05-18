@@ -160,7 +160,7 @@ Chat features:
 - Auto-title: first user message truncated to 80 chars
 - Multi-turn: last 20 messages as OpenAI messages array
 - Memory injection: active memories → systemInstruction
-- Memory extraction: Celery extract_memories_task (queue=default) post-response via CLIProxyBridge singleton → user_memories — durable, survives API restart
+- Memory extraction: Celery extract_memories_task (queue=default) post-response via AIProxyBridge → user_memories — durable, survives API restart
 - Token tracking: response usage from LlamaIndex OpenAI → persisted synchronously before final WebSocket completion to ChatMessage + frontend stats bar
 - Cost estimation: Configurable pricing via `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0 for free tier)
 - Input validation: nh3 HTML sanitization for query input
@@ -194,17 +194,13 @@ Memory types: `preference` | `correction` | `instruction` | `fact`. Max 1000 cha
 
 Tree ordering: `document_sections.order_index` is canonical sort key. `page_number` is display hint (may be range string like "1-3").
 
-### Admin — Provider Management
+### Admin — Model Listing
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| GET | `/admin/providers` | Admin | List all providers with status (enabled/disabled) |
-| POST | `/admin/providers` | Admin | Add provider: `{name, base_url, api_key, models, alias?}` |
-| PATCH | `/admin/providers/{name}/toggle` | Admin | Toggle provider on/off (disables all others if enabling) |
-| DELETE | `/admin/providers/{name}` | Admin | Remove provider |
-| GET | `/admin/models` | Admin | List available models across all enabled providers |
+| GET | `/admin/models` | Admin | List available models from 9Router's connected providers |
 
-Rate limit: 20/min per admin. Delegates to CLIProxyAPI Management API (`/v0/management/openai-compatibility`).
+Rate limit: 20/min per admin. Proxies to 9Router `/v1/models`. Provider management done via 9Router Dashboard at port 2908.
 
 ### Analytics
 
@@ -217,9 +213,9 @@ Response:
 {
   "total_messages": 150, "total_sessions": 12, "total_tokens_in": 50000,
   "total_tokens_out": 120000, "total_tokens": 170000, "avg_latency_ms": 2500,
-  "estimated_cost_usd": 0.0, "model_used": "model-from-cliproxy-config",
+  "estimated_cost_usd": 0.0, "model_used": "model-from-ai-proxy-config",
   "daily": [{"date": "2026-04-28", "messages": 10, "tokens_in": 3000, "tokens_out": 8000, "avg_latency_ms": 2200, "cost_usd": 0.0}],
-  "pricing": {"input_per_1m": 0.0, "output_per_1m": 0.0, "model": "from-CLIPROXY_DEFAULT_MODEL", "note": "Free tier"}
+  "pricing": {"input_per_1m": 0.0, "output_per_1m": 0.0, "model": "from-AI_PROXY_DEFAULT_MODEL", "note": "Free tier"}
 }
 ```
 
@@ -244,7 +240,7 @@ Rate limit: 60/min per user. Throttle key: `throttle:analytics:{user_id}`.
 
 | Area | Current | Planned |
 |------|---------|---------|
-| AI_PROVIDER | CLIProxyAPI (OpenAI-compatible) | vllm (not implemented) |
+| AI_PROVIDER | 9Router (OpenAI-compatible) | vllm (not implemented) |
 | Application endpoints | Unchanged | Unchanged |
 | Auth model | Unchanged | Unchanged |
 | Retrieval pipeline | Unchanged | Unchanged |

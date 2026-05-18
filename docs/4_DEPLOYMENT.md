@@ -12,7 +12,7 @@ Docker Compose with these services:
 | api | FastAPI backend | Internal via Traefik |
 | webapp | Next.js 16 frontend | Internal via Traefik |
 | workers | Celery multi worker — node-ingestion (solo, GPU) + node-default (prefork, CPU, beat) | Internal |
-| ai-proxy | CLIProxyAPI (Go, OpenAI-compatible proxy) — port 8317 | Internal (api→ai-proxy) |
+| ai-proxy | 9Router (Next.js 16, OpenAI-compatible AI router) — port 2908 | Internal (api→ai-proxy, Dashboard at localhost:2908) |
 | db | PostgreSQL 18 | Internal |
 | redis | Broker/result/cache | Internal |
 | rustfs | Object storage | Internal |
@@ -42,10 +42,10 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | QDRANT_COLLECTION | Vector collection name |
 | EMBEDDING_MODEL | Embedding model selection (default `sentence-transformer`) |
 | EMBEDDING_VECTOR_SIZE | Qdrant dimension (default 1024) |
-| CLIPROXY_URL | CLIProxyAPI endpoint (default `http://ai-proxy:8317`) |
-| CLIPROXY_API_KEY | CLIProxyAPI API key (default `sk-proxy-default`) |
-| CLIPROXY_MANAGEMENT_PASSWORD | CLIProxyAPI Management API password for provider admin |
-| CLIPROXY_DEFAULT_MODEL | Default model name for chat (CLIProxyAPI model name, optional) |
+| AI_PROXY_URL | 9Router endpoint (default `http://ai-proxy:2908`) |
+| AI_PROXY_DEFAULT_MODEL | Default model name for chat (9Router `prefix/model`, optional) |
+| AI_PROXY_JWT_SECRET | 9Router Dashboard JWT signing secret |
+| AI_PROXY_INITIAL_PASSWORD | 9Router Dashboard initial login password (default 123456) |
 | AI_ENGINE_URL | AI-Engine endpoint (default `http://ai-engine:8000`) |
 | EMBEDDING_HF_MODEL | HuggingFace embedding model (default `AITeamVN/Vietnamese_Embedding_v2`) |
 | RETRIEVAL_RERANK_MODEL | Reranker model (default `AITeamVN/Vietnamese_Reranker`) |
@@ -149,7 +149,7 @@ Healthcheck cadence varies by service: 3s for infrastructure (DB, Redis, Qdrant)
 
 PostgreSQL: pool auto-calculated as `max(10, uvicorn_workers * 5)`. SQLAlchemy engine in `app/db/session.py` reads from `app/core/hardware.py`.
 
-AI provider: `CLIProxyBridge` wraps LlamaIndex `OpenAI` LLM — connection pooling managed by `httpx` via LlamaIndex internals.
+AI provider: `AIProxyBridge` wraps LlamaIndex `OpenAI` LLM — connection pooling managed by `httpx` via LlamaIndex internals.
 
 ## Resource Limits
 

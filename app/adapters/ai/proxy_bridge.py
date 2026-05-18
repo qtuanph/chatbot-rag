@@ -1,4 +1,4 @@
-"""CLIProxyAI bridge — wraps OpenAI LLM pointing to CLIProxyAPI."""
+"""AI Proxy bridge — wraps OpenAI LLM pointing to 9Router."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-class CLIProxyBridge:
-    """Wrapper around LlamaIndex OpenAI LLM, pointing to CLIProxyAPI.
+class AIProxyBridge:
+    """Wrapper around LlamaIndex OpenAI LLM, pointing to 9Router.
 
     Provides chat() and chat_stream() methods compatible with existing ChatService.
     """
@@ -28,9 +28,9 @@ class CLIProxyBridge:
         max_tokens: int | None = None,
         thinking_mode: bool = False,
     ):
-        self.api_base = (api_base or settings.cliproxy_url).rstrip("/")
-        self.api_key = api_key or settings.cliproxy_api_key
-        self.model = model or settings.cliproxy_default_model or ""
+        self.api_base = (api_base or settings.ai_proxy_url).rstrip("/")
+        self.api_key = api_key or settings.ai_proxy_api_key
+        self.model = model or settings.ai_proxy_default_model or ""
         self.thinking_mode = thinking_mode
         temperature = temperature if temperature is not None else settings.ai_temperature
         max_tokens = max_tokens if max_tokens is not None else settings.ai_max_output_tokens
@@ -47,6 +47,8 @@ class CLIProxyBridge:
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        if not self.api_key:
+            kwargs["api_key"] = "sk-no-auth-required"
         if self.thinking_mode:
             kwargs["reasoning_effort"] = "high"
         return LlamaOpenAI(**kwargs)
@@ -66,7 +68,7 @@ class CLIProxyBridge:
         }
 
     async def chat_stream(self, messages: list[dict[str, Any]], **kwargs: Any) -> AsyncGenerator[str, None]:
-        """Stream chat response chunks from CLIProxyAPI via OpenAI SDK."""
+        """Stream chat response chunks from 9Router via OpenAI SDK."""
         system_text = _SYSTEM_INSTRUCTION
         if mems := kwargs.get("user_memories"):
             system_text += f"\n\n## CÁ NHÂN HÓA\n{mems}\nƯu tiên áp dụng các ghi nhớ này."
@@ -111,7 +113,7 @@ class CLIProxyBridge:
                     }
         except Exception as e:
             err_str = str(e).lower()
-            logger.error("CLIProxyAPI stream failed: %s", e, exc_info=True)
+            logger.error("AI Proxy stream failed: %s", e, exc_info=True)
 
             # No AI provider configured yet — admin needs to set up via dashboard
             if any(

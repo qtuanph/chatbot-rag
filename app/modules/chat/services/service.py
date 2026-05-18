@@ -11,7 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.adapters.ai.cliproxy_bridge import CLIProxyBridge
+from app.adapters.ai.proxy_bridge import AIProxyBridge
 from app.core.config import settings
 from app.modules.chat.repositories.repository import ChatRepository
 from app.modules.chat.utils import ChatStore, compute_cost, normalize_query
@@ -91,7 +91,7 @@ class ChatService:
         from app.core.config import settings
         from app.utils.cache import LLMResponseCache
 
-        provider = CLIProxyBridge(thinking_mode=thinking_mode)
+        provider = AIProxyBridge(thinking_mode=thinking_mode)
         session_id = prepared_chat["session_id"]
         history = prepared_chat["history"]
         citations = prepared_chat["citations"]

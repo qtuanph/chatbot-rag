@@ -23,7 +23,7 @@ services:
       ai-engine:
         condition: service_healthy
       ai-proxy:
-        condition: service_started
+        condition: service_healthy
       rustfs:
         condition: service_started
     healthcheck:
@@ -103,18 +103,31 @@ services:
       - internal
 
   ai-proxy:
-    image: eceasy/cli-proxy-api:latest
+    image: decolua/9router:latest
     container_name: chatbot-rag-ai-proxy
     env_file:
       - .env
     environment:
-      MANAGEMENT_PASSWORD: ${MANAGEMENT_PASSWORD:-123456}
-    entrypoint: [ "/bin/sh", "/ops/entrypoint-ai-proxy.sh" ]
+      PORT: 2908
+      HOSTNAME: 0.0.0.0
+      DATA_DIR: /app/data
+      JWT_SECRET: ${AI_PROXY_JWT_SECRET}
+      INITIAL_PASSWORD: ${AI_PROXY_INITIAL_PASSWORD:-123456}
+      NODE_ENV: production
+      BASE_URL: http://localhost:2908
+      NEXT_PUBLIC_BASE_URL: http://localhost:2908
+      REQUIRE_API_KEY: "false"
+      AUTH_COOKIE_SECURE: "false"
     ports:
-      - "127.0.0.1:8317:8317"
+      - "127.0.0.1:2908:2908"
     volumes:
-      - ./ops/entrypoint-ai-proxy.sh:/ops/entrypoint-ai-proxy.sh:ro
-      - cliproxy-data:/CLIProxyAPI
+      - 9router-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2908/api/health > /dev/null 2>&1 || wget -qO- http://127.0.0.1:2908/ > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
     networks:
       - internal
@@ -262,7 +275,7 @@ volumes:
   rustfsdata:
   qdrantdata:
   hf-cache:
-  cliproxy-data:
+  9router-data:
 
 networks:
   internal:

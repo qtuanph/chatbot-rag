@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from app.adapters.ai.cliproxy_bridge import CLIProxyBridge
+from app.adapters.ai.proxy_bridge import AIProxyBridge
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ async def expand_query(query: str, n_variants: int | None = None) -> list[str]:
         f"Câu hỏi: {query}"
     )
 
-    provider = CLIProxyBridge()
+    provider = AIProxyBridge()
     try:
         response = await provider.chat(
             messages=[{"role": "user", "content": prompt}],

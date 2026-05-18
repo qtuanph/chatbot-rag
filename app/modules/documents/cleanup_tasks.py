@@ -12,9 +12,12 @@ from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.modules.chat.repositories import ChatRepository
-from app.modules.documents.repositories import DocumentRepository
-from app.core.redis import get_sync_redis_client
+from app.core.redis import get_sync_redis_client, get_worker_redis
 from app.modules.documents.utils.document_registry import DocumentRegistry
+from app.adapters.storage import build_storage
+from app.adapters.vector_stores.qdrant import QdrantVectorStore
+from app.modules.documents.services import CleanupService
+from app.modules.documents.repositories import DocumentRepository, SectionRepository
 from app.utils.audit import safe_record_audit
 
 logger = logging.getLogger(__name__)
@@ -63,19 +66,11 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
     # 2. Initialize Sync Resources
     sync_redis = get_sync_redis_client()
     registry = DocumentRegistry(sync_redis)
-    from app.adapters.storage import build_storage
 
     storage = build_storage()
 
     async def _delete_workflow():
         # Inner Async context for Qdrant/DB
-        from app.adapters.vector_stores.qdrant import QdrantVectorStore
-        from app.modules.documents.services import CleanupService
-        from app.modules.documents.repositories import DocumentRepository, SectionRepository
-
-        # We need an ASYNC registry for the service (using its own loop-safe pool)
-        from app.core.redis import get_worker_redis
-
         async with get_worker_redis() as local_async_redis:
             async_registry = DocumentRegistry(local_async_redis)
 

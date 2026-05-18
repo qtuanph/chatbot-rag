@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import List
 
-from app.adapters.ai.cliproxy_bridge import CLIProxyBridge
+from app.adapters.ai.proxy_bridge import AIProxyBridge
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ async def refine_query(query: str, history: List[dict] | None = None) -> str:
     prompt += f"\nCâu hỏi của người dùng: {query}\n\nCâu truy vấn tối ưu hóa:"
 
     try:
-        provider = CLIProxyBridge()
+        provider = AIProxyBridge()
         response = await provider.chat(messages=[{"role": "user", "content": prompt}])
         refined = response.get("answer", "").strip() if isinstance(response, dict) else ""
 

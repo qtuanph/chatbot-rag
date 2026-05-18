@@ -11,9 +11,10 @@ from app.adapters.embeddings import build_embedding_service
 from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.adapters.storage import build_storage
 from app.modules.documents.ingestion.ingestion_service import IngestionService
-from app.core.redis import get_sync_redis_client
+from app.core.redis import get_sync_redis_client, get_redis_client
 from app.modules.documents.utils.document_registry import DocumentRegistry
 from app.utils.audit import safe_record_audit
+from app.modules.system.tasks import rebuild_bm25_index_task
 import asyncio
 import logging
 
@@ -88,8 +89,6 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 section_repo = SectionRepository(session)
 
                 # Create an isolated async redis client for the pipeline (Loop-safe)
-                from app.core.redis import get_redis_client
-
                 async_redis = get_redis_client()
 
                 pipeline = IngestionService(
@@ -174,8 +173,6 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
         )
 
         # Trigger maintenance
-        from app.modules.system.tasks import rebuild_bm25_index_task
-
         rebuild_bm25_index_task.delay()
 
         return {"status": "success", "document_id": document_id}
