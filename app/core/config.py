@@ -188,6 +188,12 @@ class Settings(BaseSettings):
     ai_http_max_connections: int = 50  # httpx connection pool size
     ai_http_keepalive_connections: int = 10  # httpx keepalive pool size
 
+    # Context compaction (auto-compact long conversations)
+    ai_context_window: int = 200_000  # Total context window of the model in use (tokens)
+    ai_compact_threshold_ratio: float = 0.70  # Trigger compaction at this % of context window
+    ai_compact_reserve_tokens: int = 20_000  # Reserve tokens for response after compaction
+    ai_compact_keep_recent: int = 5  # Number of recent user-assistant turns to keep verbatim
+
     # Celery tuning — configurable for server-grade hardware
     celery_task_time_limit: int = 3600  # 1 hour hard kill for massive PDFs (500+ pages)
     celery_task_soft_time_limit: int = 3300  # 55 min → SoftTimeLimitExceeded

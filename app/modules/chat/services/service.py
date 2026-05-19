@@ -161,6 +161,11 @@ class ChatService:
             except Exception as e:
                 logger.warning("[LLM-CACHE] Cache check failed: %s", e)
 
+        # Context compaction: if history exceeds token threshold, summarize older messages
+        from app.modules.chat.services.context_compactor import compact_history as _compact_history
+
+        history = await _compact_history(history)
+
         async for chunk in provider.chat_stream(
             [{"role": i["role"], "content": i["content"]} for i in history],
             context=prepared_chat["assistant_seed"].get("context") or [],
