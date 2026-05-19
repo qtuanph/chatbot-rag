@@ -4,11 +4,11 @@ import httpx
 import asyncio
 
 from app.adapters.base import BaseParser, IngestedNode, ParsedNodeType, ParsingMetadata
+from app.core.config import settings
 from app.core.file_formats import extract_file_format
 
 logger = logging.getLogger(__name__)
 
-LLAMA_CLOUD_API_KEY = "llx-REDACTED"
 LLAMA_CLOUD_API_BASE = "https://api.cloud.llamaindex.ai/api/parsing"
 
 
@@ -33,7 +33,7 @@ class LlamaParseParser(BaseParser):
         async with httpx.AsyncClient(timeout=120.0) as client:
             # 1. Upload the file
             headers = {
-                "Authorization": f"Bearer {LLAMA_CLOUD_API_KEY}",
+                "Authorization": f"Bearer {settings.llama_cloud_api_key}",
                 "Accept": "application/json",
             }
             files = {"file": (filename, content, "application/pdf")}
@@ -95,11 +95,22 @@ class LlamaParseParser(BaseParser):
         self, markdown_text: str, document_id: str, source_format: str
     ) -> tuple[list[IngestedNode], list[dict], bool]:
         """Parse markdown into sections and split into chunks."""
-        from app.core.config import settings
+        nodes, sections_data = self.parse_from_markdown(markdown_text, document_id, source_format)
+        return nodes, sections_data, True
+
+    @staticmethod
+    def parse_from_markdown(
+        markdown_text: str, document_id: str, source_format: str = "markdown"
+    ) -> tuple[list[IngestedNode], list[dict]]:
+        """Parse markdown text into IngestedNodes and sections without calling LlamaParse API.
+
+        Reuses the same local parsing logic (MarkdownNodeParser + SentenceSplitter)
+        that runs after the LlamaParse API returns markdown.
+        """
+        import uuid
         from llama_index.core.node_parser import MarkdownNodeParser, SentenceSplitter
         from llama_index.core import Document
         from llama_index.core.schema import TextNode
-        import uuid
 
         chunk_size_tokens = settings.retrieval_chunk_size
         chunk_overlap_tokens = settings.retrieval_chunk_overlap
@@ -108,8 +119,7 @@ class LlamaParseParser(BaseParser):
         md_parser = MarkdownNodeParser()
         base_nodes = md_parser.get_nodes_from_documents([llama_doc])
 
-        # Merge consecutive nodes with identical header_path (e.g., repeated page headers)
-        merged_nodes: list[tuple[str, str, list[str]]] = []  # (text, title, header_path)
+        merged_nodes: list[tuple[str, str, list[str]]] = []
         for node in base_nodes:
             hp = node.metadata.get("Header_Path") or node.metadata.get("header_path")
             if isinstance(hp, str):
@@ -191,7 +201,7 @@ class LlamaParseParser(BaseParser):
                 )
                 global_order += 1
 
-        return nodes, sections_data, True
+        return nodes, sections_data
 
     def _refine_nodes(self, nodes: list[IngestedNode]) -> list[IngestedNode]:
         for node in nodes:

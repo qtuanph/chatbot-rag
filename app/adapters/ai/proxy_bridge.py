@@ -1,12 +1,12 @@
-"""AI Proxy bridge — wraps OpenAI LLM pointing to 9Router."""
+"""AI Proxy bridge — calls 9Router directly via HTTP (no LlamaIndex)."""
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, AsyncGenerator
 
-from llama_index.llms.openai import OpenAI as LlamaOpenAI
-from llama_index.core.llms import ChatMessage, MessageRole
+import httpx
 
 from app.core.config import settings
 
@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 class AIProxyBridge:
-    """Wrapper around LlamaIndex OpenAI LLM, pointing to 9Router.
+    """Calls 9Router's OpenAI-compatible /v1/chat/completions endpoint directly.
 
-    Provides chat() and chat_stream() methods compatible with existing ChatService.
+    No LlamaIndex dependency — works with any model name 9Router knows.
     """
 
     def __init__(
@@ -32,33 +32,15 @@ class AIProxyBridge:
         self.api_key = api_key or settings.ai_proxy_api_key
         self.model = model or settings.ai_proxy_default_model or ""
         self.thinking_mode = thinking_mode
-        temperature = temperature if temperature is not None else settings.ai_temperature
-        max_tokens = max_tokens if max_tokens is not None else settings.ai_max_output_tokens
-
-        self._llm = self._build_llm(temperature, max_tokens)
-
+        self.temperature = temperature if temperature is not None else settings.ai_temperature
+        self.max_tokens = max_tokens if max_tokens is not None else settings.ai_max_output_tokens
         self.last_usage: dict[str, Any] = {}
-
-    def _build_llm(self, temperature: float, max_tokens: int) -> LlamaOpenAI:
-        kwargs: dict[str, Any] = dict(
-            model=self.model,
-            api_key=self.api_key,
-            api_base=f"{self.api_base}/v1",
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-        if not self.api_key:
-            kwargs["api_key"] = "sk-no-auth-required"
-        if self.thinking_mode:
-            kwargs["reasoning_effort"] = "high"
-        return LlamaOpenAI(**kwargs)
 
     @property
     def model_name(self) -> str:
         return self.model or "unknown"
 
     async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> dict[str, Any]:
-        """Non-streaming chat — returns full response."""
         full = ""
         async for chunk in self.chat_stream(messages, **kwargs):
             full += chunk
@@ -68,7 +50,7 @@ class AIProxyBridge:
         }
 
     async def chat_stream(self, messages: list[dict[str, Any]], **kwargs: Any) -> AsyncGenerator[str, None]:
-        """Stream chat response chunks from 9Router via OpenAI SDK."""
+        """Stream chat chunks via direct HTTP call to 9Router."""
         system_text = _SYSTEM_INSTRUCTION
         if mems := kwargs.get("user_memories"):
             system_text += f"\n\n## CÁ NHÂN HÓA\n{mems}\nƯu tiên áp dụng các ghi nhớ này."
@@ -88,34 +70,67 @@ class AIProxyBridge:
 
         user_query = f"{full_context}\nCâu hỏi: {query}" if full_context else query
 
-        lm_messages = [ChatMessage(role=MessageRole.SYSTEM, content=system_text)]
+        lm_messages = [{"role": "system", "content": system_text}]
         for msg in messages[:-1]:
-            role = MessageRole.ASSISTANT if msg["role"] == "assistant" else MessageRole.USER
             if msg.get("content"):
-                lm_messages.append(ChatMessage(role=role, content=msg["content"]))
+                lm_messages.append({"role": msg["role"], "content": msg["content"]})
+        lm_messages.append({"role": "user", "content": user_query})
 
-        lm_messages.append(ChatMessage(role=MessageRole.USER, content=user_query))
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        body = {
+            "model": self.model,
+            "messages": lm_messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stream": True,
+        }
+        if self.thinking_mode:
+            body["reasoning_effort"] = "high"
+
+        url = f"{self.api_base}/v1/chat/completions"
 
         try:
-            resp = await self._llm.astream_chat(lm_messages)
-            async for chunk in resp:
-                if chunk.delta:
-                    yield chunk.delta
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream("POST", url, json=body, headers=headers) as resp:
+                    if resp.status_code != 200:
+                        err_body = await resp.aread()
+                        raise RuntimeError(f"9Router returned {resp.status_code}: {err_body.decode(errors='replace')}")
 
-            # Capture usage from the last response
-            if hasattr(resp, "_last_response") and resp._last_response:
-                usage = resp._last_response.usage
-                if usage:
-                    self.last_usage = {
-                        "prompt_tokens": usage.prompt_tokens or 0,
-                        "completion_tokens": usage.completion_tokens or 0,
-                        "total_tokens": (usage.prompt_tokens or 0) + (usage.completion_tokens or 0),
-                    }
+                    usage_info = {}
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        payload = line[6:].strip()
+                        if payload == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(payload)
+                        except json.JSONDecodeError:
+                            continue
+
+                        choices = chunk.get("choices") or []
+                        for c in choices:
+                            delta = c.get("delta") or {}
+                            if content := delta.get("content"):
+                                yield content
+
+                        if usage := chunk.get("usage"):
+                            usage_info = usage
+
+                    if usage_info:
+                        self.last_usage = {
+                            "prompt_tokens": usage_info.get("prompt_tokens", 0),
+                            "completion_tokens": usage_info.get("completion_tokens", 0),
+                            "total_tokens": usage_info.get("total_tokens", 0),
+                        }
+
         except Exception as e:
             err_str = str(e).lower()
             logger.error("AI Proxy stream failed: %s", e, exc_info=True)
 
-            # No AI provider configured yet — admin needs to set up via dashboard
             if any(
                 kw in err_str
                 for kw in ("no client", "no provider", "no available", "0 clients", "no model", "no backend")
@@ -125,14 +140,12 @@ class AIProxyBridge:
                     "Các nhân viên hỗ trợ AI hiện chưa được kết nối. "
                     "Vui lòng liên hệ Admin để cấu hình nhà cung cấp AI."
                 )
-            # Rate limited by the AI provider
             elif any(kw in err_str for kw in ("rate limit", "rate_limit", "429", "too many requests", "quota")):
                 yield (
                     "⏳ **Nhân viên hỗ trợ đang bận.**\n\n"
                     "Hệ thống đang xử lý nhiều yêu cầu cùng lúc. "
                     "Vui lòng thử lại sau ít phút."
                 )
-            # Connection/timeout to proxy
             elif any(kw in err_str for kw in ("connection", "timeout", "connect error", "unreachable")):
                 yield (
                     "🔌 **Không thể kết nối đến nhân viên hỗ trợ.**\n\n"
@@ -145,7 +158,6 @@ class AIProxyBridge:
                 )
 
     async def refine_text(self, text: str, current_header: str | None = None, **kwargs: Any) -> tuple[str, str | None]:
-        """Refine text — default returns unchanged, no AI cost for refinement."""
         return text, current_header
 
 

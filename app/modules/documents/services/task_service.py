@@ -91,3 +91,36 @@ class TaskService:
         )
 
         return task_id
+
+    async def enqueue_rechunk(self, document_id: str, user_id: str) -> str:
+        """Enqueue a rechunk task that re-indexes from saved OCR markdown."""
+        task_id = str(uuid4())
+        await self.registry.put(
+            DocumentRecord(
+                document_id=document_id,
+                task_id=task_id,
+                object_uri="",
+                filename="",
+                status="queued",
+            )
+        )
+
+        await asyncio.to_thread(
+            celery_app.send_task,
+            "app.workers.upload_tasks.rechunk_document_task",
+            kwargs={
+                "task_id": task_id,
+                "document_id": document_id,
+                "user_id": user_id,
+            },
+            task_id=task_id,
+        )
+
+        await asyncio.to_thread(
+            celery_app.backend.store_result,
+            task_id,
+            {"stage": "queued", "progress": {"step": "queued", "percent": 0}, "document_id": document_id},
+            state="QUEUED",
+        )
+
+        return task_id

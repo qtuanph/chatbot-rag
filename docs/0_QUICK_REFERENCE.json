@@ -25,6 +25,7 @@
     "cpu_offloading": "Strict asyncio.to_thread usage for OCR, Tokenization, and Embedding to prevent loop blocking",
     "bm25_singleton": "TTL-cached vocabulary in RAM (120s) to handle high concurrency without Redis bottlenecks"
   },
+  "rechunk_rule": "POST /documents/{id}/rechunk auto-detects: if ocr_output.md exists in S3 → rechunk from OCR (free); if not → fallback to retry (re-upload to LlamaParse). Frontend shows single RefreshCw button for both ready/failed statuses — no separate retry button needed.",
   "core_invariants": [
     {
       "name": "async_ingestion",
@@ -136,6 +137,7 @@
       { "method": "GET", "path": "/documents/{id}", "auth": "admin" },
       { "method": "DELETE", "path": "/documents/{id}", "auth": "admin" },
       { "method": "POST", "path": "/documents/{id}/retry", "auth": "admin" },
+      { "method": "POST", "path": "/documents/{id}/rechunk", "auth": "admin" },
       { "method": "WebSocket", "path": "/ws/chat/stream", "auth": "member" },
       { "method": "POST", "path": "/chat/messages/{id}/feedback", "auth": "member" },
       { "method": "POST", "path": "/chat/sessions", "auth": "member" },
@@ -245,6 +247,7 @@
     "celery_tasks": {
       "ingestion_queue": [
         "parse_document_task — document parsing/indexing (upload_tasks.py)",
+        "rechunk_document_task — re-chunk from saved OCR markdown, no LlamaParse API (upload_tasks.py)",
         "rebuild_bm25_index_task — BM25 vocab rebuild from Qdrant after upload/delete (maintenance_tasks.py)"
       ],
       "cleanup_queue": [

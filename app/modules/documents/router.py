@@ -24,6 +24,7 @@ from app.core import http_errors
 from app.modules.documents.schemas import (
     DocumentDeleteResponse,
     DocumentDetailResponse,
+    DocumentRechunkResponse,
     DocumentListResponse,
     DocumentRetryResponse,
     DocumentSummaryResponse,
@@ -222,6 +223,30 @@ async def retry_document(
             user_agent=request.headers.get("user-agent"),
         )
         return DocumentRetryResponse(**result)
+    except ValueError as e:
+        msg = str(e)
+        if "not found" in msg:
+            raise http_errors.not_found(msg) from None
+        raise http_errors.bad_request(msg) from None
+    except RuntimeError as e:
+        raise http_errors.service_unavailable(str(e)) from None
+
+
+@router.post("/documents/{document_id}/rechunk", response_model=DocumentRechunkResponse)
+async def rechunk_document(
+    request: Request,
+    document_id: str,
+    auth: AuthContext = Depends(require_admin),
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentRechunkResponse:
+    try:
+        result = await service.rechunk_document(
+            document_id=document_id,
+            user_id=auth.user_id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+        return DocumentRechunkResponse(**result)
     except ValueError as e:
         msg = str(e)
         if "not found" in msg:

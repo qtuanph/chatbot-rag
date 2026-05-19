@@ -118,6 +118,7 @@ export function DocumentTable() {
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [rechunkingId, setRechunkingId] = useState<string | null>(null);
 
   // Progress dialog state
   const [viewDoc, setViewDoc] = useState<DocumentSummary | null>(null);
@@ -265,6 +266,24 @@ export function DocumentTable() {
     [session, fetchDocs, handleCloseView],
   );
 
+  const handleRechunk = useCallback(
+    async (id: string) => {
+      if (!session) return;
+      setRechunkingId(id);
+      try {
+        await documentsApi.rechunk(id);
+        toast.success("Đã xếp hàng chia lại node tài liệu");
+        handleCloseView();
+        fetchDocs();
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.detail : "Không thể chia lại node. Vui lòng thử lại.");
+      } finally {
+        setRechunkingId(null);
+      }
+    },
+    [session, fetchDocs, handleCloseView],
+  );
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -377,23 +396,23 @@ export function DocumentTable() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex gap-1 justify-end">
-                        {doc.status === "failed" && (
+                        {(doc.status === "ready" || doc.status === "failed") && (
                           <Tooltip>
                             <TooltipTrigger
                               render={
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  disabled={retryingId === doc.document_id}
+                                  disabled={rechunkingId === doc.document_id}
                                 />
                               }
-                              onClick={() => handleRetry(doc.document_id)}
+                              onClick={() => handleRechunk(doc.document_id)}
                             >
                               <RefreshCw
-                                className={`h-4 w-4 ${retryingId === doc.document_id ? "animate-spin" : ""}`}
+                                className={`h-4 w-4 ${rechunkingId === doc.document_id ? "animate-spin" : ""}`}
                               />
                             </TooltipTrigger>
-                            <TooltipContent>Xử lý lại</TooltipContent>
+                            <TooltipContent>{doc.status === "ready" ? "Chia lại node từ OCR đã lưu" : "Xử lý lại (ưu tiên OCR, nếu không có thì tải lên LlamaParse)"}</TooltipContent>
                           </Tooltip>
                         )}
                         <Tooltip>
@@ -524,17 +543,17 @@ export function DocumentTable() {
             </div>
 
             <DialogFooter>
-              {viewStatus === "failed" && viewDoc && (
+              {(viewStatus === "ready" || viewStatus === "failed") && viewDoc && (
                 <Button
                   variant="outline"
-                  onClick={() => handleRetry(viewDoc.document_id)}
-                  disabled={retryingId === viewDoc.document_id}
+                  onClick={() => handleRechunk(viewDoc.document_id)}
+                  disabled={rechunkingId === viewDoc.document_id}
                   className="gap-2"
                 >
                   <RefreshCw
-                    className={`h-4 w-4 ${retryingId === viewDoc.document_id ? "animate-spin" : ""}`}
+                    className={`h-4 w-4 ${rechunkingId === viewDoc.document_id ? "animate-spin" : ""}`}
                   />
-                  Xử lý lại
+                  {viewStatus === "ready" ? "Chia lại node" : "Xử lý lại"}
                 </Button>
               )}
               {viewStatus === "ready" && viewDoc && (

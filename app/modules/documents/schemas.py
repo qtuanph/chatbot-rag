@@ -57,6 +57,12 @@ class DocumentRetryResponse(BaseModel):
     status: str
 
 
+class DocumentRechunkResponse(BaseModel):
+    task_id: str
+    document_id: str
+    status: str
+
+
 class DocumentDetailResponse(BaseModel):
     document_id: str
     title: str

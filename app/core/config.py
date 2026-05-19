@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     # Query Normalization (improves cache hit rate)
     query_normalize_enabled: bool = True
 
+    llama_cloud_api_key: str = ""
     ingestion_engine: str = "docling"
     ingestion_min_non_empty_nodes: int = 1
     ingestion_min_total_text_chars: int = 80
@@ -183,7 +184,7 @@ class Settings(BaseSettings):
     ai_http_timeout_refine: float = 30.0
     ai_http_keepalive_expiry: float = 30.0
     # Multi-turn context window
-    ai_stream_timeout: float = 300.0  # HTTP timeout for AI streaming (seconds)
+    ai_stream_timeout: float = 1800.0  # HTTP timeout for AI streaming (seconds)
     ai_http_max_connections: int = 50  # httpx connection pool size
     ai_http_keepalive_connections: int = 10  # httpx keepalive pool size
 

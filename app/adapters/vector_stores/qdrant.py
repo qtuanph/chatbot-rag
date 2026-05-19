@@ -313,41 +313,62 @@ class QdrantVectorStore(BaseVectorStore):
                     )
                 )
 
-            # 4. Execute Unified Query with RRF Fusion and Native Grouping
+            # 4. Execute Unified Query with RRF Fusion and optional Native Grouping
             client = await self._get_client()
             from app.core.hardware import hardware
 
-            # Qdrant 1.17+ Grouping + Fusion is extremely powerful for RAG
-            response = await client.query_points_groups(
-                collection_name=self.collection_name,
-                prefetch=prefetch_list,
-                query=FusionQuery(fusion=Fusion.RRF),
-                group_by="metadata.section_id",
-                group_size=3,  # Max 3 chunks per section to ensure diversity
-                limit=top_k,  # Return top_k unique sections
-                with_payload=True,
-                with_vectors=False,
-                search_params=SearchParams(
-                    hnsw_ef=hardware.qdrant_hnsw_ef,
-                    quantization=(
-                        QuantizationSearchParams(
-                            ignore=False,
-                            rescore=True,  # Rescore to maintain accuracy after INT8 compression
-                        )
-                        if hardware.qdrant_quantization
-                        else None
-                    ),
+            search_params = SearchParams(
+                hnsw_ef=hardware.qdrant_hnsw_ef,
+                quantization=(
+                    QuantizationSearchParams(
+                        ignore=False,
+                        rescore=True,
+                    )
+                    if hardware.qdrant_quantization
+                    else None
                 ),
             )
 
-            # Flatten groups into a single list for the RAG pipeline
-            results = []
-            for group in response.groups:
-                # Add the best hit from each group to results
-                if group.hits:
-                    results.extend(group.hits)
+            # Try grouping first (requires metadata.section_id in payload)
+            # Fallback to flat search if grouping returns no results
+            try:
+                response = await client.query_points_groups(
+                    collection_name=self.collection_name,
+                    prefetch=prefetch_list,
+                    query=FusionQuery(fusion=Fusion.RRF),
+                    group_by="metadata.section_id",
+                    group_size=3,
+                    limit=top_k,
+                    with_payload=True,
+                    with_vectors=False,
+                    search_params=search_params,
+                )
+                has_groups = len(response.groups) > 0 and any(g.hits for g in response.groups)
+            except Exception:
+                has_groups = False
 
-            # Map to domain models
+            if has_groups:
+                results = []
+                for group in response.groups:
+                    if group.hits:
+                        results.extend(group.hits)
+            else:
+                logger.warning(
+                    "Grouped search returned no results (no section_id in payload). Falling back to flat search."
+                )
+                response = await client.query_points(
+                    collection_name=self.collection_name,
+                    prefetch=prefetch_list,
+                    query=FusionQuery(fusion=Fusion.RRF),
+                    limit=top_k,
+                    with_payload=True,
+                    with_vectors=False,
+                    search_params=search_params,
+                )
+                results = (
+                    response.points if hasattr(response, "points") else (response if isinstance(response, list) else [])
+                )
+
             return [
                 RetrievedDocument(
                     node_id=str(p.payload.get("node_id", p.id)),

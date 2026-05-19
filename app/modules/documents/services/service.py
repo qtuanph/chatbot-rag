@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from app.adapters.storage import build_storage
 from app.core.celery_app import celery_app
+from app.core.config import settings
 from app.modules.documents.repositories import DocumentRepository, SectionRepository
 from app.modules.documents.services.task_service import TaskService
 from app.modules.documents.services.tree_service import TreeService
@@ -252,6 +253,41 @@ class DocumentService:
 
         safe_record_audit(
             action="document.retry",
+            actor_user_id=user_id,
+            subject_type="document",
+            subject_id=document_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details={"task_id": new_task_id},
+            redis_client_override=self.registry.client,
+        )
+
+        return {"task_id": new_task_id, "document_id": document_id, "status": "queued"}
+
+    async def rechunk_document(
+        self, *, document_id: str, user_id: str, ip_address: str | None = None, user_agent: str | None = None
+    ) -> dict:
+        doc = await self.doc_repo.get_full_document(document_id)
+        if doc is None:
+            raise ValueError("Document not found")
+
+        ocr_uri = f"s3://{settings.s3_bucket}/{document_id}/ocr_output.md"
+        try:
+            storage = build_storage()
+            md_exists = await asyncio.to_thread(storage.file_exists, ocr_uri)
+        except Exception:
+            md_exists = False
+
+        if not md_exists:
+            logger.warning("[%s] No OCR markdown found, falling back to retry (re-upload to LlamaParse)", document_id)
+            return await self.retry_document(
+                document_id=document_id, user_id=user_id, ip_address=ip_address, user_agent=user_agent
+            )
+
+        new_task_id = await self.task_service.enqueue_rechunk(document_id=document_id, user_id=user_id)
+
+        safe_record_audit(
+            action="document.rechunk",
             actor_user_id=user_id,
             subject_type="document",
             subject_id=document_id,

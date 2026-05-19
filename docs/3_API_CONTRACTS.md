@@ -143,7 +143,8 @@ Validation: username 3-64 chars (normalized lowercase + trim), password 8-256 ch
 | GET | `/documents` | Admin | List documents (excludes soft-deleted) |
 | GET | `/documents/{document_id}` | Admin | Document detail |
 | DELETE | `/documents/{document_id}` | Admin | Trigger hard-delete worker |
-| POST | `/documents/{document_id}/retry` | Admin | Re-process failed document → task_id |
+| POST | `/documents/{document_id}/retry` | Admin | Re-process failed document → task_id (re-uploads to LlamaParse API) |
+| POST | `/documents/{document_id}/rechunk` | Admin | Re-chunk from saved OCR markdown — no LlamaParse API call. Works on any status. → `{task_id, document_id, status}` |
 
 ### Chat
 

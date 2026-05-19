@@ -192,6 +192,11 @@ export const documentsApi = {
       method: "POST",
     }),
 
+  rechunk: (id: string): Promise<{ task_id: string; document_id: string; status: string }> =>
+    apiFetch<{ task_id: string; document_id: string; status: string }>(`/documents/${id}/rechunk`, {
+      method: "POST",
+    }),
+
   getStatus: (taskId: string): Promise<TaskStatus> =>
     apiFetch<TaskStatus>(`/status/${taskId}`),
 };

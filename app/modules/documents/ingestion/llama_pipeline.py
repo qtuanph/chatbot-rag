@@ -36,8 +36,7 @@ class LlamaIngestionPipeline:
                 SentenceSplitter(
                     chunk_size=chunk_size,
                     chunk_overlap=chunk_overlap,
-                    include_metadata=False,  # Metadata không tính vào chunk_size budget
-                    # Production pattern: metadata lưu riêng trong DB, không ảnh hưởng split
+                    include_metadata=True,
                 ),
             ],
         )
