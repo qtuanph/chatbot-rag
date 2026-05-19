@@ -86,6 +86,9 @@ class UserMemoryService:
             )
 
             result = await ai_provider.chat([{"role": "user", "content": extraction_prompt}], context=[], citations=[])
+            from app.modules.chat.retrieval.usage_tracker import track_usage
+
+            track_usage(ai_provider, endpoint="memory_extraction", user_id=user_id)
             text = result.get("answer", "")
             if not text:
                 return

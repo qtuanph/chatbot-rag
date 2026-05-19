@@ -1,7 +1,7 @@
 {
   "document": {
     "id": "0_QUICK_REFERENCE",
-    "version": "2026-05-19",
+    "version": "2026-05-20",
     "purpose": "Rules and patterns cheat sheet for AI/agent preflight. Read first, then task-specific docs.",
     "doc_guide": {
       "1_ARCHITECTURE.md": "System design, data model, storage, invariants, delete/version policy, AI control",
@@ -26,7 +26,30 @@
     "bm25_singleton": "TTL-cached vocabulary in RAM (120s) to handle high concurrency without Redis bottlenecks"
   },
   "rechunk_rule": "POST /documents/{id}/rechunk auto-detects: if ocr_output.md exists in S3 → rechunk from OCR (free); if not → fallback to retry (re-upload to LlamaParse). Frontend shows single RefreshCw button for both ready/failed statuses — no separate retry button needed.",
-  "context_compaction": {
+  "markdown_cleaner": "app/adapters/parsers/markdown_cleaner.py — preprocesses OCR markdown before heading parsing. Removes: standalone page numbers (pure digit lines), TOC dot-leaders (..... patterns), header/footer artifacts (SSE., JSC. etc), and collapses duplicate blank lines. Applied in both LlamaParse API flow and rechunk flow.",
+  "single_chunking": "MarkdownNodeParser sections are NOT pre-split. Each heading section becomes ONE IngestedNode. The single SentenceSplitter in LlamaIngestionPipeline (chunk_size=1200 chars, overlap=300, include_metadata=True) handles all chunking. No double-splitting.",
+  "text_md_skip_ocr": "Files with .md and .txt extensions (source_format='markdown' or 'text') skip LlamaParse API entirely. content bytes decoded to UTF-8 → MarkdownCleaner → parse_from_markdown() directly. MIME type text/markdown is allowed in config.",
+  "hyde": {
+  "purpose": "Hypothetical Document Embeddings for short-query enrichment",
+  "mechanism": "Auxiliary model generates hypothetical answer → embed → add vector to query ensemble",
+  "trigger": "Short query (<100 chars), expansion variants ≤ 2, timeout 1.5s",
+  "benefit": "+20-40% precision for short/ambiguous queries",
+  "code": "app/modules/chat/retrieval/hyde_service.py, integrated in retrieval_service.py",
+  "cost": "1 additional 9Router auxiliary call (~200-500ms latency) + 1 embed call"
+},
+"confidence_scoring": {
+  "purpose": "Retrieval quality assessment via score distribution",
+  "high": "max_score ≥ 0.7 AND avg_score ≥ 0.5",
+  "medium": "max_score ≥ 0.4",
+  "low": "max_score < 0.4",
+  "code": "app/modules/chat/retrieval/confidence_scorer.py, integrated in retrieval_service.py"
+},
+"multi_model_routing": {
+  "models": ["AI_PROXY_DEFAULT_MODEL (main QA)", "AI_AUXILIARY_MODEL (auxiliary tasks)"],
+  "auxiliary_tasks": ["HyDE generation", "Query expansion", "Query refinement", "Context compaction", "Failure detection"],
+  "fallback": "If AI_AUXILIARY_MODEL is empty, uses AI_PROXY_DEFAULT_MODEL"
+},
+"context_compaction": {
     "trigger": "Auto when estimated history tokens > AI_CONTEXT_WINDOW × AI_COMPACT_THRESHOLD_RATIO (default 200K × 0.70 = 140K)",
     "mechanism": "Old messages summarized via 9Router, recent N turns kept verbatim (default 5). Fallback: drop oldest messages if API fails.",
     "config": ["AI_CONTEXT_WINDOW=200000", "AI_COMPACT_THRESHOLD_RATIO=0.70", "AI_COMPACT_RESERVE_TOKENS=20000", "AI_COMPACT_KEEP_RECENT=5"],
@@ -40,7 +63,7 @@
     },
     {
       "name": "five_stage_retrieval",
-      "rule": "Hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → Rerank (AI-Engine, top 5) → Neighbor Expansion (Soi sáng) → full section context assembly + citations. 3-layer cache: LLM Response (4h) → Semantic (24h) → Query Embedding (4h). Retrieve at chunk level, present expanded section context to LLM. Doc IDs TTL-cached 60s."
+      "rule": "Query refinement (2s timeout) → Multi-query expansion (3s timeout, enabled) → HyDE (1.5s, short queries <100 chars) → Hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.25) → Rerank (cross-encoder, enabled) → Neighbor Expansion (Soi sáng, window=1) → Confidence scoring → full section context assembly + citations. 3-layer cache: LLM Response (4h) → Semantic (24h) → Query Embedding (4h). Retrieve at chunk level, present expanded section context to LLM. Doc IDs TTL-cached 60s."
     },
     {
       "name": "hard_delete_order",
@@ -65,10 +88,11 @@
   ],
   "data_location_map": [
     { "data": "sections", "storage": "PostgreSQL 18.3", "table": "document_sections", "notes": "Canonical order source (order_index). Accessed via AsyncSession." },
-    { "data": "chunks", "storage": "Qdrant 1.17.1", "notes": "~400 token chunks with section_id metadata. Named dense + sparse-bm25 vectors. AsyncQdrantClient." },
+    { "data": "chunks", "storage": "Qdrant 1.17.1", "notes": "~1200 char chunks via single SentenceSplitter pass. section_id metadata links to PostgreSQL document_sections. Named dense + sparse-bm25 vectors. AsyncQdrantClient." },
     { "data": "bm25_vocab", "storage": "Redis + RAM", "notes": "Singleton BM25Manager with 120s TTL. Vocabulary loaded from Redis and cached in-memory." },
     { "data": "documents", "storage": "PostgreSQL 18.3", "table": "documents", "notes": "status: pending→parsing→embedding→ready/failed. Async DB access." },
     { "data": "chat_messages", "storage": "PostgreSQL + Redis 8.x", "notes": "DB persisted; Redis hot cache uses MessagePack binary serialization for speed/RAM." },
+    { "data": "ai_model_usage", "storage": "PostgreSQL 18.3", "notes": "Every AI call logged: model_name, prompt_tokens, completion_tokens, endpoint, cost_usd, user_id" },
     { "data": "chat_sessions", "storage": "PostgreSQL 18.3", "table": "chat_sessions", "notes": "Hard-deleted after 30 days by Celery Beat. Sidebar ordered by updated_at DESC." },
     { "data": "uploaded_files", "storage": "RustFS", "notes": "S3-compatible; operations wrapped in asyncio.to_thread." },
     { "data": "semantic_cache", "storage": "Redis 8.x (HNSW)", "notes": "Redis Vector Search (RediSearch) for rapid intent matching." },
@@ -82,6 +106,7 @@
     "ai": {
       "AI_PROXY_URL": "http://ai-proxy:2908",
       "AI_PROXY_DEFAULT_MODEL": "model name in 9Router prefix/model format (can be empty)",
+      "AI_AUXILIARY_MODEL": "lightweight model combo for auxiliary tasks (HyDE, expansion, refinement, compaction)",
       "AI_ENGINE_URL": "http://ai-engine:8000",
       "EMBEDDING_HF_MODEL": "AITeamVN/Vietnamese_Embedding_v2",
       "RETRIEVAL_RERANK_MODEL": "AITeamVN/Vietnamese_Reranker",
@@ -89,7 +114,7 @@
       "AI_OUTPUT_COST_PER_1M": "0.0"
     },
     "retrieval": {
-      "RETRIEVAL_SECTION_MIN_SCORE": 0.3,
+      "RETRIEVAL_SECTION_MIN_SCORE": 0.25,
       "RETRIEVAL_MIN_SCORE": 0.35,
       "RETRIEVAL_SECTION_TOP_K": 3,
       "RETRIEVAL_CHUNK_TOP_K": 5,
@@ -97,8 +122,14 @@
       "RETRIEVAL_RERANK_MODEL": "AITeamVN/Vietnamese_Reranker",
       "RETRIEVAL_BM25_K1": 1.5,
       "RETRIEVAL_BM25_B": 0.75,
-      "RETRIEVAL_QUERY_EXPANSION_ENABLED": false,
-      "RETRIEVAL_QUERY_EXPANSION_VARIANTS": 3
+      "RETRIEVAL_QUERY_EXPANSION_ENABLED": true,
+      "RETRIEVAL_QUERY_EXPANSION_VARIANTS": 3,
+      "RETRIEVAL_QUERY_REFINEMENT_TIMEOUT": 2.0,
+      "RETRIEVAL_QUERY_EXPANSION_TIMEOUT": 3.0,
+      "RETRIEVAL_HYDE_TIMEOUT": 1.5,
+      "RETRIEVAL_EXPANSION_SCROLL_LIMIT": 100,
+      "RETRIEVAL_CONFIDENCE_THRESHOLD_HIGH": 0.7,
+      "RETRIEVAL_CONFIDENCE_THRESHOLD_LOW": 0.4
     },
     "production_safety": {
       "ALLOWED_HOSTS": "must be explicit",
@@ -119,6 +150,7 @@
       "AI_TEMPERATURE": "0.3",
       "AI_MAX_OUTPUT_TOKENS": "8192",
       "AI_MAX_HISTORY_MESSAGES": "20",
+      "AI_PROXY_TIMEOUT": "120.0",
       "AI_STREAM_TIMEOUT": "300.0 (seconds)",
       "AI_HTTP_MAX_CONNECTIONS": "50",
       "CHAT_SESSION_TTL_DAYS": "30",
@@ -126,6 +158,15 @@
       "RATE_LIMIT_GLOBAL_RPM": "5000 (production middleware)",
       "RATE_LIMIT_RELAXED_MODE": "true (dev)",
       "RATE_LIMIT_RELAXED_FLOOR": "10000"
+    },
+    "ingestion": {
+      "INGESTION_MIN_SECTION_CHARS": "200",
+      "INGESTION_CHUNK_TOKEN_TO_CHAR_MULTIPLIER": "3",
+      "LLAMA_CLOUD_API_BASE": "https://api.cloud.llamaindex.ai/api/parsing",
+      "LLAMA_CLOUD_TIMEOUT": "120.0"
+    },
+    "qdrant": {
+      "QDRANT_GROUP_SIZE": "3"
     }
   },
   "api_summary": {
@@ -164,6 +205,8 @@
   },
   "anti_patterns": [
     "flat chunking without hierarchy",
+    "double SentenceSplitter — MarkdownNodeParser sections feed into ONE SentenceSplitter pass only",
+    "calling LlamaParse API for .md/.txt files — decode + parse_from_markdown() directly",
     "direct provider SDK calls in routes",
     "raw numeric HTTP status codes",
     "direct raise HTTPException in API layer (use http_errors helpers)",

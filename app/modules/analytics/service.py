@@ -46,7 +46,7 @@ class AnalyticsService:
             "total_tokens": total_tokens_in + total_tokens_out,
             "avg_latency_ms": totals["avg_latency_ms"],
             "estimated_cost_usd": round(estimated_cost, 6),
-            "model_used": settings.ai_proxy_default_model or "unknown",
+            "model_used": "multiple (tracked in ai_model_usage)",
             "daily": daily_stats,
             "pricing": {
                 "input_per_1m": settings.ai_input_cost_per_1m,

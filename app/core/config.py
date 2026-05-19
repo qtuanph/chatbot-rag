@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     ai_proxy_url: str = "http://ai-proxy:2908"
     ai_proxy_api_key: str = ""
     ai_proxy_default_model: str = ""
+    ai_auxiliary_model: str = ""  # Lightweight model for HyDE, expansion, refinement, compaction, confidence
     ai_input_cost_per_1m: float = 0.0
     ai_output_cost_per_1m: float = 0.0
 
@@ -42,11 +43,15 @@ class Settings(BaseSettings):
     query_normalize_enabled: bool = True
 
     llama_cloud_api_key: str = ""
+    llama_cloud_api_base: str = "https://api.cloud.llamaindex.ai/api/parsing"
+    llama_cloud_timeout: float = 120.0
     ingestion_engine: str = "docling"
     ingestion_min_non_empty_nodes: int = 1
     ingestion_min_total_text_chars: int = 80
     # Embedding pipeline tuning — 0 means auto-detect from hardware profile
     ingestion_min_quality_score: float = 0.5
+    ingestion_min_section_chars: int = 200  # Min chars to keep a markdown section (merge smaller ones)
+    ingestion_chunk_token_to_char_multiplier: int = 3  # Token→char conversion for SentenceSplitter
     ingestion_parsing_timeout: int = 3600  # Default 1 hour for large OCR tasks
     ingestion_ocr_languages: Any = ["vi", "en"]
 
@@ -77,7 +82,12 @@ class Settings(BaseSettings):
     retrieval_chunk_top_k: int = 5  # Stage 2: top chunks per section
     retrieval_chunk_size: int = 400  # Target chunk size in tokens
     retrieval_chunk_overlap: int = 100  # Overlap between chunks in tokens (~25%)
-    retrieval_section_min_score: float = 0.30  # Lower threshold for sections (coarser search)
+    retrieval_section_min_score: float = 0.25  # Lower threshold for inclusive retrieval
+
+    # Confidence scoring for retrieval results
+    retrieval_confidence_threshold_high: float = 0.7  # Max score >= this → high confidence
+    retrieval_confidence_avg_high: float = 0.5  # Avg score >= this → contributes to high confidence
+    retrieval_confidence_threshold_low: float = 0.4  # Max score < this → low confidence
 
     # Hybrid search (Dense + BM25) — always on, no toggle
     retrieval_bm25_k1: float = 1.5  # BM25 term frequency saturation
@@ -88,8 +98,8 @@ class Settings(BaseSettings):
     # Context Expansion (Soi sáng)
     retrieval_context_expansion_window: int = 1  # Number of neighboring nodes to fetch (before & after)
 
-    # Cross-encoder reranker — off by default (full section context makes LLM self-rank effectively)
-    retrieval_rerank_enabled: bool = False
+    # Cross-encoder reranker — improves ranking precision
+    retrieval_rerank_enabled: bool = True
     retrieval_rerank_top_k: int = 5  # Final number of chunks after reranking
     retrieval_rerank_model: str = "AITeamVN/Vietnamese_Reranker"  # Vietnamese cross-encoder
 
@@ -97,9 +107,15 @@ class Settings(BaseSettings):
     retrieval_query_refinement_enabled: bool = True  # Refine query before retrieval
     retrieval_query_refinement_ttl: int = 600  # 10 min cache for refined queries
 
-    # Multi-query expansion
-    retrieval_query_expansion_enabled: bool = False  # Default OFF — opt-in
+    # Multi-query expansion — generates query variants for broader retrieval
+    retrieval_query_expansion_enabled: bool = True
     retrieval_query_expansion_variants: int = 3  # Number of query variants to generate
+
+    # Timeouts for retrieval auxiliary services
+    retrieval_query_refinement_timeout: float = 2.0
+    retrieval_query_expansion_timeout: float = 3.0
+    retrieval_hyde_timeout: float = 1.5
+    retrieval_expansion_scroll_limit: int = 100  # Max nodes fetched per doc during neighbor expansion
 
     # RAGAS Evaluation
     ragas_evaluation_enabled: bool = False  # Enable RAGAS metrics after each response
@@ -139,7 +155,8 @@ class Settings(BaseSettings):
         "application/pdf,"
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document,"
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,"
-        "text/plain,application/vnd.ms-excel,application/msword"
+        "text/plain,text/markdown,"
+        "application/vnd.ms-excel,application/msword"
     )
     max_filename_length: int = 255
 
@@ -171,6 +188,7 @@ class Settings(BaseSettings):
     qdrant_api_key: str | None = None
     qdrant_collection: str = "documents_vectors"
     qdrant_timeout: int = 30  # Seconds
+    qdrant_group_size: int = 3  # Chunks per group in section-grouped retrieval
 
     # Chat history auto-delete
     chat_session_ttl_days: int = 30  # Sessions older than 30 days are auto-deleted
@@ -187,6 +205,7 @@ class Settings(BaseSettings):
     ai_stream_timeout: float = 1800.0  # HTTP timeout for AI streaming (seconds)
     ai_http_max_connections: int = 50  # httpx connection pool size
     ai_http_keepalive_connections: int = 10  # httpx keepalive pool size
+    ai_proxy_timeout: float = 120.0  # HTTP timeout for 9Router proxy stream calls
 
     # Context compaction (auto-compact long conversations)
     ai_context_window: int = 200_000  # Total context window of the model in use (tokens)

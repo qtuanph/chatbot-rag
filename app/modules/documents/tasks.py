@@ -85,14 +85,13 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 status_message="[1/4] Đang khởi tạo môi trường nạp liệu...",
             )
 
+            # Create an isolated async redis client for the pipeline (Loop-safe)
+            async_redis = get_redis_client()
             try:
                 content = await asyncio.to_thread(storage.download_bytes, file_path)
                 embedding_service = build_embedding_service()
                 vector_store = _build_vector_store(embedding_service)
                 section_repo = SectionRepository(session)
-
-                # Create an isolated async redis client for the pipeline (Loop-safe)
-                async_redis = get_redis_client()
 
                 pipeline = IngestionService(
                     redis_client=async_redis,
@@ -145,8 +144,6 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 else:
                     raise ValueError(f"Ingestion failed: {', '.join(ingestion_result.errors)}")
 
-                # Cleanup async resources
-                await async_redis.aclose()
                 return ingestion_result
 
             except Exception as e:
@@ -157,6 +154,8 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                     status_message=f"Lỗi: {str(e)}",
                 )
                 raise e
+            finally:
+                await async_redis.aclose()
 
     # 3. Execute Async Pipeline
     try:
@@ -227,6 +226,7 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
 
             await _rechunk_progress("rechunking", 5, "[1/4] Đang đọc OCR markdown từ S3...")
 
+            async_redis = get_redis_client()
             try:
                 md_bytes = await asyncio.to_thread(storage.download_bytes, ocr_uri)
                 markdown_text = md_bytes.decode("utf-8")
@@ -295,7 +295,6 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
 
                 from app.modules.documents.utils import get_async_bm25_encoder
 
-                async_redis = get_redis_client()
                 bm25_encoder = await get_async_bm25_encoder(async_redis)
                 t1 = time.time()
                 logger.info("[%s] BM25 encoder ready in %.1fs", document_id, t1 - t0)
@@ -361,7 +360,6 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                     progress_percent=100,
                 )
 
-                await async_redis.aclose()
                 return {"node_count": len(ctx_nodes), "section_count": len(sections_data), "qdrant_count": qdrant_count}
 
             except Exception as e:
@@ -377,6 +375,8 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                 except Exception:
                     pass
                 raise e
+            finally:
+                await async_redis.aclose()
 
     try:
         result = asyncio.run(_run_async())

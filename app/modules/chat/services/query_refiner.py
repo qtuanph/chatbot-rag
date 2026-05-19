@@ -6,6 +6,7 @@ import logging
 from typing import List
 
 from app.adapters.ai.proxy_bridge import AIProxyBridge
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +54,11 @@ async def refine_query(query: str, history: List[dict] | None = None) -> str:
     prompt += f"\nCâu hỏi của người dùng: {query}\n\nCâu truy vấn tối ưu hóa:"
 
     try:
-        provider = AIProxyBridge()
+        provider = AIProxyBridge(model=settings.ai_auxiliary_model or settings.ai_proxy_default_model)
         response = await provider.chat(messages=[{"role": "user", "content": prompt}])
+        from app.modules.chat.retrieval.usage_tracker import track_usage
+
+        track_usage(provider, endpoint="query_refinement")
         refined = response.get("answer", "").strip() if isinstance(response, dict) else ""
 
         if refined and len(refined) >= 3:

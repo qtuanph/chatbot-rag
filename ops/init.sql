@@ -329,26 +329,26 @@ CREATE INDEX IF NOT EXISTS ix_user_memories_user_active ON user_memories(user_id
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE user_memories TO app_rw;
 
--- ============= MATERIALIZED VIEW: Daily Analytics =============
--- Pre-aggregated daily stats for fast dashboard queries.
--- Refreshed by Celery Beat every 5 minutes via refresh_mv_daily_stats task.
-CREATE MATERIALIZED VIEW IF NOT EXISTS mv_daily_stats AS
-SELECT
-    cm.created_at::date AS day,
-    cs.user_id,
-    COUNT(*) AS message_count,
-    COUNT(*) FILTER (WHERE cm.role = 'assistant') AS assistant_message_count,
-    COALESCE(SUM(cm.tokens_in) FILTER (WHERE cm.role = 'assistant'), 0) AS total_tokens_in,
-    COALESCE(SUM(cm.tokens_out) FILTER (WHERE cm.role = 'assistant'), 0) AS total_tokens_out,
-    COALESCE(AVG(cm.latency_ms) FILTER (WHERE cm.role = 'assistant' AND cm.latency_ms IS NOT NULL), 0) AS avg_latency_ms,
-    COUNT(DISTINCT cs.id) AS session_count
-FROM chat_messages cm
-JOIN chat_sessions cs ON cm.session_id = cs.id
-WHERE cs.deleted_at IS NULL
-GROUP BY cm.created_at::date, cs.user_id
-WITH DATA;
+-- ============= AI Model Usage Quota Tracking =============
+CREATE TABLE IF NOT EXISTS ai_model_usage (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    model_name VARCHAR(255) NOT NULL,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+    endpoint VARCHAR(100) NOT NULL,
+    user_id UUID,
+    session_id UUID,
+    message_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_daily_stats_day_user ON mv_daily_stats(day, user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_model_usage_created_at ON ai_model_usage(created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_model_usage_endpoint ON ai_model_usage(endpoint);
+CREATE INDEX IF NOT EXISTS idx_ai_model_usage_user_id ON ai_model_usage(user_id);
+
+GRANT ALL ON ai_model_usage TO app_rw;
 
 -- ============= FUNCTION: Auto-create monthly partitions for chat_messages =============
 CREATE OR REPLACE FUNCTION create_monthly_partitions()

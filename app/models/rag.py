@@ -34,3 +34,4 @@ class RagSection:
 class RagContext:
     nodes: list[RagNode]
     sections: list[RagSection] | None = None
+    confidence: dict | None = None  # From RetrievalConfidence.score()

@@ -337,7 +337,7 @@ class QdrantVectorStore(BaseVectorStore):
                     prefetch=prefetch_list,
                     query=FusionQuery(fusion=Fusion.RRF),
                     group_by="metadata.section_id",
-                    group_size=3,
+                    group_size=settings.qdrant_group_size,
                     limit=top_k,
                     with_payload=True,
                     with_vectors=False,

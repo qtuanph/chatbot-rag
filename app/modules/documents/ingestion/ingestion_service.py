@@ -1,6 +1,6 @@
 """
 Ingestion Pipeline: Parse → Validate → Store Sections → Embed & Index.
-Uses Docling for OCR parsing and LlamaIndex IngestionPipeline for split + embed.
+Uses LlamaParse (cloud OCR) for complex files, local MarkdownNodeParser for .md/.txt.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ ProgressCallback = Callable[[str, int, str], Any]
 
 
 class IngestionService:
-    """Ingestion orchestration using DoclingParser + LlamaIndex IngestionPipeline."""
+    """Ingestion orchestration using LlamaParseParser + LlamaIndex IngestionPipeline."""
 
     def __init__(
         self,
@@ -153,7 +153,7 @@ class IngestionService:
 
     async def _parse_step(self, ctx: PipelineContext, report: ProgressCallback) -> None:
         """Parse document with Docling + EasyOCR."""
-        await report("parsing", 5, f"Parsing {ctx.filename} using Docling...")
+        await report("parsing", 5, f"Parsing {ctx.filename}...")
 
         filename_to_parse = ctx.filename
         content_to_parse = ctx.content

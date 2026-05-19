@@ -93,7 +93,7 @@ class AIProxyBridge:
         url = f"{self.api_base}/v1/chat/completions"
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=settings.ai_proxy_timeout) as client:
                 async with client.stream("POST", url, json=body, headers=headers) as resp:
                     if resp.status_code != 200:
                         err_body = await resp.aread()

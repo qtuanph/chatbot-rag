@@ -1,6 +1,6 @@
 {
   "document": "Known Issues & Post-Mortems",
-  "version": "2026-05-16",
+  "version": "2026-05-20",
   "schema": {
     "issue_id": "integer",
     "title": "string",
@@ -121,6 +121,14 @@
       "root_cause": "The LlamaCloud API key or plan used does not support the 'agentic' tier, or the API endpoint lacks the necessary version metadata for it.",
       "resolution": "Removed `tier=\"agentic\"` from the LlamaParse initialization in `llamaparse_adapter.py`, falling back to the default parsing tier.",
       "lesson_learned": "Always verify cloud API tier access levels before hardcoding premium/advanced flags in production ingestion pipelines."
+    },
+    {
+      "issue_id": 15,
+      "title": "Double SentenceSplitter — Section Chunking Applied Twice",
+      "symptom": "Chunks too small (~400 chars), broken context boundaries. OCR header/footer noise creating false section splits.",
+      "root_cause": "parse_from_markdown() applied SentenceSplitter (400 tokens, no metadata), then LlamaIngestionPipeline applied another SentenceSplitter (1200 chars, with metadata) on top. Result: double-split context fragmentation.",
+      "resolution": "Removed SentenceSplitter from parse_from_markdown(). Each heading section now returns as ONE node. LlamaIngestionPipeline is the single chunking pass (1200 chars, overlap=300, include_metadata=True).",
+      "lesson_learned": "Chunking should happen exactly once. When piping data through multiple processing stages, verify each stage's transformations don't overlap."
     }
   ]
 }

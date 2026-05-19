@@ -127,6 +127,9 @@ class RagasEvaluator:
         try:
             provider = self.ai_provider or self._get_default_provider()
             response = await provider.chat(messages=[{"role": "user", "content": prompt}])
+            from app.modules.chat.retrieval.usage_tracker import track_usage
+
+            track_usage(provider, endpoint="ragas_eval")
             text = response.get("answer", "") if isinstance(response, dict) else str(response)
             import re
 

@@ -87,7 +87,7 @@ class IngestedNode:
 class BaseParser(ABC):
     """
     Abstract base class for document parsers.
-    Implementations: DoclingParser, ClassicParser, etc.
+    Implementations: LlamaParseParser, etc.
     """
 
     @abstractmethod

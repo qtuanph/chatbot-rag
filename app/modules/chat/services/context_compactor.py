@@ -8,8 +8,7 @@ from __future__ import annotations
 
 import logging
 
-import httpx
-
+from app.adapters.ai.proxy_bridge import AIProxyBridge
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -109,30 +108,13 @@ async def compact_history(history: list[dict]) -> list[dict]:
 async def _summarize(history_old: list[dict]) -> str:
     messages = _build_summarize_messages(history_old)
 
-    headers = {"Content-Type": "application/json"}
-    api_key = settings.ai_proxy_api_key
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    url = f"{settings.ai_proxy_url.rstrip('/')}/v1/chat/completions"
-    body = {
-        "model": settings.ai_proxy_default_model or "",
-        "messages": messages,
-        "temperature": 0.3,
-        "max_tokens": 1024,
-        "stream": False,
-    }
-
+    provider = AIProxyBridge(model=settings.ai_auxiliary_model or settings.ai_proxy_default_model)
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, json=body, headers=headers)
-            if resp.status_code != 200:
-                logger.error("Summarization API error %d: %s", resp.status_code, resp.text[:200])
-                return ""
+        response = await provider.chat(messages=messages)
+        from app.modules.chat.retrieval.usage_tracker import track_usage
 
-            data = resp.json()
-            content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
-            return content.strip()
+        track_usage(provider, endpoint="context_compaction")
+        return (response.get("answer") or "").strip()
     except Exception as e:
         logger.error("Summarization call failed: %s", e, exc_info=True)
         return ""

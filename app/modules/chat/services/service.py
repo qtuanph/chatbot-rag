@@ -31,7 +31,7 @@ class ChatService:
 
     async def prepare_chat(self, *, user_id: str, query: str, session_id: str | None = None) -> dict:
         """Prepare full chat context: validate → session → retrieval → answer seed."""
-        from app.modules.chat.utils import validate_query, deduplicate_citations
+        from app.modules.chat.utils import validate_query, deduplicate_citations, is_greeting
 
         validate_query(query)
         scope_id = f"user:{user_id}"
@@ -49,13 +49,26 @@ class ChatService:
             history = await history_task
             user_memories = None
 
+        # Pure greeting detection — skip retrieval, respond naturally
+        if is_greeting(query):
+            logger.info("Greeting detected, skipping RAG retrieval: query=%s", query[:50])
+            return {
+                "session_id": resolved_session_id,
+                "scope_id": scope_id,
+                "history": history,
+                "assistant_seed": None,
+                "citations": [],
+                "user_memories": user_memories,
+                "is_greeting": True,
+            }
+
         # Query refinement
         refined_query = query
         if settings.retrieval_query_refinement_enabled:
             from app.modules.chat.services.query_refiner import refine_query
 
             try:
-                refined_query = await asyncio.wait_for(refine_query(query, history), timeout=2.0)
+                refined_query = await asyncio.wait_for(refine_query(query, history), timeout=settings.retrieval_query_refinement_timeout)
             except Exception:
                 logger.warning("Query refinement timed out, using original query.")
 
@@ -65,7 +78,7 @@ class ChatService:
             from app.modules.chat.retrieval.expansion_service import expand_query
 
             try:
-                queries = await asyncio.wait_for(expand_query(refined_query), timeout=3.0)
+                queries = await asyncio.wait_for(expand_query(refined_query), timeout=settings.retrieval_query_expansion_timeout)
             except asyncio.TimeoutError:
                 logger.warning("Query expansion timed out, using original query.")
 
@@ -91,11 +104,32 @@ class ChatService:
         """Generate SSE events for chat."""
         from app.core.config import settings
         from app.utils.cache import LLMResponseCache
+        from app.modules.chat.retrieval.usage_tracker import track_usage
 
         provider = AIProxyBridge(thinking_mode=thinking_mode)
         session_id = prepared_chat["session_id"]
         history = prepared_chat["history"]
         citations = prepared_chat["citations"]
+
+        # Pure greeting — respond naturally without calling the LLM
+        if prepared_chat.get("is_greeting"):
+            greeting = self._random_greeting()
+            yield f"data: {json.dumps({'chunk': greeting, 'done': False})}\n\n"
+            message_id = await asyncio.shield(
+                self.save_assistant_message(
+                    session_id=session_id,
+                    user_id=user_id,
+                    role="assistant",
+                    content=greeting,
+                    citations=[],
+                    tokens_in=0,
+                    tokens_out=0,
+                    latency_ms=0,
+                    model_used="greeting",
+                )
+            )
+            yield f"data: {json.dumps({'chunk': '', 'done': True, 'session_id': session_id, 'message_id': message_id, 'citations': [], 'stats': {'total_ms': 0, 'ttft_ms': 0, 'chars': len(greeting), 'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0, 'estimated_cost_usd': 0, 'model': 'greeting'}})}\n\n"
+            return
 
         full_answer = ""
         start_time = _time.monotonic()
@@ -222,6 +256,9 @@ class ChatService:
                 )
             )
             self.enqueue_memory_extraction(user_id=user_id, user_message=query, assistant_response=clean_answer)
+
+            # Track AI model usage for quota/stats
+            track_usage(provider, endpoint="chat", user_id=user_id, session_id=session_id, message_id=message_id)
 
             # Run RAGAS evaluation async (best-effort)
             if settings.ragas_evaluation_enabled:
@@ -398,6 +435,20 @@ class ChatService:
             raise ValueError("Message not found")
         logger.info("Feedback recorded: user=%s message=%s feedback=%d", user_id[:8], message_id[:8], feedback)
         return updated
+
+    @staticmethod
+    def _random_greeting() -> str:
+        """Return a random greeting response for social messages."""
+        import random
+
+        greetings = [
+            "Chào bạn! Tôi có thể giúp gì cho bạn hôm nay?",
+            "Xin chào! Rất vui được gặp bạn. Bạn cần tôi hỗ trợ gì không?",
+            "Chào bạn! Hãy cho tôi biết bạn đang cần tìm hiểu về vấn đề gì nhé.",
+            "Xin chào! Tôi là trợ lý AI, sẵn sàng giải đáp thắc mắc của bạn.",
+            "Chào bạn! Rất vui được trò chuyện cùng bạn. Bạn muốn hỏi gì về tài liệu?",
+        ]
+        return random.choice(greetings)
 
     @staticmethod
     def enqueue_memory_extraction(*, user_id: str, user_message: str, assistant_response: str) -> None:

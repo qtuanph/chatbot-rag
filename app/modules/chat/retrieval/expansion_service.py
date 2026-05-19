@@ -33,13 +33,17 @@ async def expand_query(query: str, n_variants: int | None = None) -> list[str]:
     n = n_variants or settings.retrieval_query_expansion_variants
 
     prompt = (
-        f"Viết lại câu hỏi sau thành {n} cách khác nhau, "
-        f"giữ nguyên ý nghĩa nhưng dùng từ vựng khác. "
-        f"Mỗi câu viết trên 1 dòng, không đánh số, không giải thích.\n\n"
+        f"Bạn là chuyên gia mở rộng truy vấn cho hệ thống RAG tiếng Việt.\n"
+        f"Tạo {n} câu truy vấn khác nhau từ câu gốc.\n\n"
+        f"Yêu cầu:\n"
+        f"- Mỗi câu dùng từ vựng KHÁC nhau\n"
+        f"- Đa dạng: 1 câu cụ thể, 1 câu tổng quát hơn, 1 câu dùng từ đồng nghĩa\n"
+        f"- Giữ nguyên intent gốc\n"
+        f"- Output mỗi câu 1 dòng, không giải thích\n\n"
         f"Câu hỏi: {query}"
     )
 
-    provider = AIProxyBridge()
+    provider = AIProxyBridge(model=settings.ai_auxiliary_model or settings.ai_proxy_default_model)
     try:
         response = await provider.chat(
             messages=[{"role": "user", "content": prompt}],
@@ -49,6 +53,10 @@ async def expand_query(query: str, n_variants: int | None = None) -> list[str]:
     except Exception as e:
         logger.warning("Query expansion AI call failed: %s", e)
         return [query]
+
+    from app.modules.chat.retrieval.usage_tracker import track_usage
+
+    track_usage(provider, endpoint="query_expansion")
 
     answer_text = response.get("answer", "") if isinstance(response, dict) else ""
     if not answer_text:

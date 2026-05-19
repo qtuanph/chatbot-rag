@@ -3,6 +3,7 @@ from app.modules.chat.utils.chat_utils import (
     compute_cost,
     deduplicate_citations,
     build_user_friendly_error,
+    is_greeting,  # noqa: F401 — re-exported for ChatService
 )
 from app.modules.chat.utils.chat_store import ChatStore
 from app.modules.chat.utils.query_normalizer import (

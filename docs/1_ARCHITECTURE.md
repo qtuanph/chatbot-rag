@@ -21,7 +21,7 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | Embedding | AITeamVN/Vietnamese_Embedding_v2 (Remote via AI-Engine) |
 | Reranker | AITeamVN/Vietnamese_Reranker (Remote via AI-Engine) |
 | AI Provider | 9Router (OpenAI-compatible AI router via `decolua/9router:latest`, Next.js 16, port 2908) |
-| Ingestion | Docling + EasyOCR + **LibreOffice (DOCX→PDF)** + **LlamaIndex SentenceSplitter** + DuplicateDetector (Bloom) |
+| Ingestion | **LlamaParse (cloud OCR)** + **LibreOffice (DOCX→PDF)** + **LlamaIndex SentenceSplitter** + DuplicateDetector (Bloom). Note: `DoclingParser` (legacy) kept as file but unused. |
 | BM25 Manager | BM25Manager (class-level Singleton with 120s TTL) |
 | Reverse proxy | Traefik v3.7 on port 80 (auto-discovery via Docker labels, SSE, NextAuth, API, Rate Limited) |
 
@@ -43,7 +43,8 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | `documents` | File metadata, status lifecycle, version, ingestion state |
 | `document_sections` | Hierarchical tree: parent_section_id, order_index, page_range, breadcrumb |
 | `chat_sessions` | Per-user conversation sessions (CASCADE delete with messages) |
-| `chat_messages` | Message history with citations, token counts (tokens_in, tokens_out, latency_ms, model_used, estimated_cost_usd) |
+| `chat_messages` | Message history with citations, per-message token counts (tokens_in, tokens_out, latency_ms, model_used) |
+| `ai_model_usage` | Every AI model call (chat + auxiliary) logged with prompt_tokens, completion_tokens, total_tokens, cost_usd, endpoint, user_id |
 | `user_memories` | Persistent per-user facts/preferences/corrections |
 | `security_audit` | Audit trail for sensitive actions |
 | `data_sources` | SQL connector registry (Phase 2) |
@@ -93,22 +94,26 @@ graph TD
 
     DocSvc --> Upload[Upload → Redis queue]
     Upload --> Worker[workers · celery]
-    Worker --> Parser[DoclingParser]
+    Worker --> Parser[LlamaParseParser]
     Parser --> AI_Engine
     Worker --> DB[(PostgreSQL)]
     Redis --> Cleanup[System Module → workers]
 ```
 
-## Updated Tech Stack (2026-05-15)
+## Updated Tech Stack (2026-05-20)
 
 | Component | Technology | Notes |
 |-----------|-----------|-------|
-| **Chunking** | `SentenceSplitter` (LlamaIndex) | Semantic-aware text splitting |
-| **Query Refinement** | Enabled | AI-powered query optimization |
+| **Chunking** | `SentenceSplitter` (LlamaIndex) | Semantic-aware text splitting, char multiplier from `INGESTION_CHUNK_TOKEN_TO_CHAR_MULTIPLIER` |
+| **Query Refinement** | Enabled | AI-powered query optimization, timeout from `RETRIEVAL_QUERY_REFINEMENT_TIMEOUT` |
+| **Multi-Query Expansion** | Enabled | Generates query variants for broader retrieval, `RETRIEVAL_QUERY_EXPANSION_ENABLED=true` |
+| **HyDE** | Enabled | Hypothetical document embeddings for short queries (<100 chars), gated by expansion_enabled |
+| **Context Compaction** | Auto | Triggers at 70% of context window, reserves 20K tokens for response |
 | **Streaming** | **WebSocket** | Real-time bidirectional (replaces SSE) |
 | **Cache** | 3 layers | LLM Response + Semantic + Query Embedding |
-| **Evaluation** | RAGAS | Optional quality metrics |
-| **Knowledge Graph** | Lightweight | Optional KG enhancement |
+| **AI Usage Tracking** | All endpoints | Every AI call logged to `ai_model_usage` via `track_usage()` |
+| **Evaluation** | RAGAS | Optional quality metrics (disabled by default) |
+| **Knowledge Graph** | Lightweight | Optional KG enhancement (disabled by default) |
 
 ## Controller-Service-Repository Architecture
 
@@ -136,7 +141,7 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | Module | Purpose | Content |
 |--------|---------|---------|
 | `auth` | Identity & Access | Auth/User logic, JWT, Roles |
-| `documents` | Ingestion & Storage | Docling, Sections, Chunks, Tree management |
+| `documents` | Ingestion & Storage | LlamaParse (cloud OCR), Sections, Chunks, Tree management |
 | `chat` | Conversation & RAG | History, Retrieval logic, Memories |
 | `analytics` | Monitoring & Audit | Token tracking, Audit stream processing |
 | `system` | Orchestration | Health checks, Maintenance tasks, Global state |
@@ -149,7 +154,7 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 |-------|------|--------|
 | Upload | Browser → /api/bep/ → proxy → API → RustFS | File persisted, document row pending |
 | Queue | API → Redis → Worker | Async task, task_id returned (202) |
-| Parse | Worker → Docling Method D + EasyOCR (force_full_page_ocr=True) → sections + chunks | Items with page spans, heading levels |
+| Parse | Worker → LlamaParseParser (cloud OCR for PDF/DOCX, local MarkdownNodeParser for .md/.txt) → sections + chunks | Items with page spans, heading levels |
 | Store | SectionRepository → PostgreSQL → Embed → Qdrant | document_sections rows + vectors |
 | Retrieve | SemanticCache (similarity match) → exact cache → hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → Neighbor Expansion (Soi sáng) → full section context assembly |
 | Memory | UserMemoryService (redis_client shared pool) → Redis cache → inject systemInstruction | Personalized prompt |
@@ -266,10 +271,25 @@ FastAPI ChatService → LlamaIndex OpenAI LLM (api_base=ai-proxy:2908/v1)
 | Aspect | Detail |
 |--------|--------|
 | Endpoint | `GET /analytics/stats` — admin sees system-wide, member sees own sessions |
+| Endpoint | `GET /analytics/messages` — last 20 messages with per-message token/cost/latency |
 | Pricing | Configurable via `AI_INPUT_COST_PER_1M` / `AI_OUTPUT_COST_PER_1M` (default 0.0 for free tier) |
-| Aggregation | Tokens stored per ChatMessage → aggregated by SQL query → endpoint |
-| Frontend | Admin: `/admin/analytics` (KPI cards, daily chart, cost comparison). Member: welcome screen stats |
+| Aggregation | `ai_model_usage` table tracks ALL AI calls; `chat_messages.tokens_in/tokens_out` for per-message display only |
+| Frontend | Admin: `/admin/analytics` (KPI cards, daily chart, per-message table, cost comparison) |
 | Rate limit | `throttle:analytics:{user_id}`, 60/min |
+
+### AI Usage Tracking
+
+Every call to 9Router is logged via `track_usage()` in `app/modules/chat/retrieval/usage_tracker.py`:
+
+| Endpoint | Trigger |
+|----------|---------|
+| `chat` | Main QA response |
+| `query_refinement` | Query refinement |
+| `query_expansion` | Multi-query expansion |
+| `hyde` | HyDE generation |
+| `context_compaction` | Context compaction |
+| `memory_extraction` | Memory extraction |
+| `ragas_eval` | RAGAS evaluation (when enabled) |
 
 ## Hardware Auto-Detection
 

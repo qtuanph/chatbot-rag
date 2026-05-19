@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Upload, X, CheckCircle, AlertCircle } from "lucide-react";
+import { Upload, X, CheckCircle, AlertCircle, FileText } from "lucide-react";
 import { documentsApi, ApiError } from "@/lib/api-client";
 import { toast } from "sonner";
 
@@ -187,6 +187,12 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
                 <p className="text-xs text-muted-foreground mt-1">
                   PDF, DOCX, XLSX, TXT, MD — chọn nhiều file để tải song song
                 </p>
+                <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-left text-xs text-amber-800">
+                  <FileText className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                  <span>
+                    <strong className="font-semibold">Nên dùng file .MD</strong> — không cần OCR, giữ nguyên cấu trúc heading, tốc độ xử lý nhanh hơn và độ chính xác cao hơn so với PDF/DOCX.
+                  </span>
+                </div>
               </label>
               <input
                 id="file-upload"

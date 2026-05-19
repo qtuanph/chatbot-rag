@@ -1,12 +1,15 @@
-"""Admin REST API — model listing from 9Router."""
+"""Admin REST API — model listing and usage stats."""
 
 from __future__ import annotations
 
 import httpx
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.session import get_async_session
+from app.modules.chat.repositories.usage_repository import UsageRepository
 
 logger = logging.getLogger(__name__)
 
@@ -28,3 +31,15 @@ async def list_models():
     except Exception as e:
         logger.error("list_models error: %s", e)
         return {"models": []}
+
+
+@router.get("/usage/daily")
+async def get_daily_usage(
+    days: int = Query(30, ge=1, le=365),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Daily token usage breakdown for quota tracking."""
+    repo = UsageRepository(session)
+    daily = await repo.get_daily_stats(days=days)
+    breakdown = await repo.get_endpoint_breakdown(days=days)
+    return {"daily": daily, "endpoint_breakdown": breakdown, "days": days}

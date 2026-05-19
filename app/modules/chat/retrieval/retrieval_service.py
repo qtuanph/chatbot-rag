@@ -130,6 +130,25 @@ class RetrievalService:
 
         query_vectors = await asyncio.gather(*[_get_embedding(q) for q in queries])
 
+        # HyDE: generate hypothetical document and embed it for short-query enrichment
+        hyde_vector = None
+        if settings.retrieval_query_expansion_enabled and len(queries) <= 2 and len(original_query) < 100:
+            try:
+                from app.modules.chat.retrieval.hyde_service import hyde_generate
+
+                hyde_text = await asyncio.wait_for(hyde_generate(original_query), timeout=1.5)
+                if hyde_text:
+                    hyde_vector = await _get_embedding(hyde_text)
+                    if hyde_vector is not None:
+                        logger.info("[RAG-HyDE] Added HyDE vector for: '%s'", original_query[:60])
+            except asyncio.TimeoutError:
+                logger.debug("[RAG-HyDE] Generation timed out, skipping.")
+            except Exception as e:
+                logger.debug("[RAG-HyDE] Failed: %s", e)
+
+        if hyde_vector is not None:
+            query_vectors.append(hyde_vector)
+
         # Semantic Match Cache
         if isinstance(query, str) and query_vectors:
             sem_cached = await self.semantic_cache.get(query_vectors[0])
@@ -206,6 +225,17 @@ class RetrievalService:
         if settings.retrieval_context_expansion_window > 0 and deduped_results:
             deduped_results = await self._expand_neighbor_nodes(vs, deduped_results[:limit])
 
+        # ── Confidence Scoring ────────────────────────────────────────────────
+        from app.modules.chat.retrieval.confidence_scorer import RetrievalConfidence
+
+        confidence = RetrievalConfidence.score(deduped_results[:limit])
+        logger.info(
+            "[RAG-CONFIDENCE] %s (max=%.3f, avg=%.3f)",
+            confidence["status"],
+            confidence["max_score"],
+            confidence["avg_score"],
+        )
+
         rag_sections: list[RagSection] = []
         seen_sec_ids: set[str] = set()
 
@@ -262,7 +292,7 @@ class RetrievalService:
             }
             await self.semantic_cache.set(original_query, query_vectors[0], result_dict)
 
-        return RagContext(nodes=nodes, sections=rag_sections if rag_sections else None)
+        return RagContext(nodes=nodes, sections=rag_sections if rag_sections else None, confidence=confidence)
 
     async def _get_kg_context(self, query: str) -> list[str]:
         """Get context from Knowledge Graph for query enhancement."""
@@ -311,7 +341,7 @@ class RetrievalService:
 
                 points, _ = await vs.scroll(
                     query_filter={"must": [{"key": "document_id", "match": {"value": doc_id}}]},  # Simple filter
-                    limit=100,  # Assuming a section doesn't have >100 nodes in the window
+                    limit=settings.retrieval_expansion_scroll_limit,  # Max nodes per doc in neighbor window
                     with_payload=True,
                 )
 

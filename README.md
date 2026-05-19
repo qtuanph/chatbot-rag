@@ -58,16 +58,16 @@ Vietnamese enterprises need AI-powered document Q&A that:
 
 <table>
 <tr><td width="180"><b>Hierarchical Indexing</b></td><td>Docs → Sections (H1–H6) → Chunks (~1536 tokens). Preserves document structure for accurate context retrieval.</td></tr>
-<tr><td><b>5-Stage Retrieval</b></td><td>Hybrid dense + BM25 (RRF fusion) → in-memory section grouping (≥0.30) → dedup → <b>neighbor expansion</b> (±1 nodes) → full section context to LLM. Optional cross-encoder reranker.</td></tr>
+<tr><td><b>5-Stage Retrieval</b></td><td>Query refinement → Multi-query expansion (enabled) → Hybrid dense + BM25 (RRF fusion) → in-memory section grouping (≥0.25) → dedup → <b>neighbor expansion</b> (±1 nodes) → full section context to LLM. Cross-encoder reranker enabled by default.</td></tr>
 <tr><td><b>Vietnamese-Optimized</b></td><td><code>AITeamVN/Vietnamese_Embedding_v2</code> — BGE-M3 fine-tuned on Vietnamese data, +16% Accuracy@1 vs base model.</td></tr>
 <tr><td><b>AI-Engine Service</b></td><td>Dedicated GPU service for embedding + reranker inference. Hardware auto-detect: 3-tier VRAM scaling.</td></tr>
-<tr><td><b>Smart OCR</b></td><td>Docling + EasyOCR on GPU/CUDA. DOCX → PDF conversion for accurate layout extraction.</td></tr>
+<tr><td><b>Smart OCR</b></td><td>LlamaParse cloud OCR for PDF/DOCX. Local MarkdownNodeParser for .md/.txt (no API call). DOCX → PDF conversion for accurate layout extraction.</td></tr>
 <tr><td><b>Async Ingestion</b></td><td>Upload returns instantly with <code>task_id</code>. Parsing/indexing runs in background via Celery with live progress tracking.</td></tr>
 <tr><td><b>Real-time Chat</b></td><td>WebSocket streaming with conversational Vietnamese AI. Citations grouped by document with merged page ranges.</td></tr>
 <tr><td><b>Context Compaction</b></td><td>Auto-summarize old conversation history at 70% context window (~140K tokens). Keeps recent 5 turns verbatim, summarizes older messages via 9Router. Fallback: drop oldest if API fails.</td></tr>
 <tr><td><b>Query Refinement</b></td><td>Automatic query rewriting for better retrieval — enabled by default. Handles follow-ups and Vietnamese phrasing.</td></tr>
 <tr><td><b>User Memory</b></td><td>ChatGPT-like persistent memory per user — preferences, corrections, facts injected into AI context automatically.</td></tr>
-<tr><td><b>Multi-Provider AI</b></td><td>9Router (Next.js AI router) connects any OpenAI-compatible provider: Kiro, OpenCode Free, Claude, Gemini, and more via dashboard UI.</td></tr>
+<tr><td><b>Multi-Provider AI</b></td><td>9Router (Next.js AI router) connects any OpenAI-compatible provider: Kiro, OpenCode Free, Claude, Gemini, DeepSeek, and more via dashboard UI. All AI calls tracked in <code>ai_model_usage</code> table.</td></tr>
 <tr><td><b>3-Layer Cache</b></td><td>LLM Response Cache + Semantic Cache (Redis vector) + Query Embedding Cache — reduced from 5 layers, faster hit rate.</td></tr>
 <tr><td><b>RAGAS Evaluation</b></td><td>Optional LLM-as-judge evaluation: faithfulness, answer relevancy, context precision, context recall.</td></tr>
 <tr><td><b>Knowledge Graph</b></td><td>Optional entity extraction and relationship mapping from ingested documents.</td></tr>
@@ -177,7 +177,7 @@ sequenceDiagram
         API->>DB: INSERT (status=pending)
         API-->>User: 202 { task_id }
         API->>Worker: enqueue via Redis
-        Worker->>Worker: Docling parse (EasyOCR)
+        Worker->>Worker: LlamaParse parse (PDF/DOCX) or MarkdownNodeParser (.md/.txt)
         Worker->>Worker: LlamaIndex SentenceSplitter + Embed
         Worker->>DB: Store sections
         Worker->>Q: Upsert chunks (with section_id)
@@ -247,8 +247,8 @@ graph LR
         A1["Vietnamese_Embedding_v2"]
         A2["Vietnamese_Reranker (opt)"]
         A3["9Router (AI Router)"]
-        A4["EasyOCR (Vietnamese)"]
-        A5["Docling"]
+        A4["9Router (AI Router)"]
+        A5["LlamaParse (cloud OCR)"]
     end
 
     Frontend ~~~ Backend ~~~ Data ~~~ AI
@@ -266,8 +266,8 @@ graph LR
 | **Embedding** | AITeamVN/Vietnamese_Embedding_v2 (1024-dim) | GPU fp16, hardware auto-detect (3-tier) |
 | **Reranker** | AITeamVN/Vietnamese_Reranker | Optional cross-encoder (disabled by default) |
 | **LLM Integration** | 9Router OpenAPI-compatible (direct HTTP) | Provider-agnostic chat with thinking mode, context compaction |
-| **OCR** | EasyOCR on GPU | Vietnamese + English document text extraction |
-| **Parsing** | Docling (Method D) | PDF/DOCX structured extraction with hierarchy |
+| **OCR** | LlamaParse cloud (PDF/DOCX) | Vietnamese + English document text extraction |
+| **Parsing** | LlamaParseParser (local MarkdownNodeParser for .md/.txt) | PDF/DOCX structured extraction with hierarchy |
 | **Chunking** | LlamaIndex SentenceSplitter | Semantic-aware text splitting (~1536 tokens) |
 | **Storage** | RustFS (S3-compatible) | Original file storage |
 | **Reverse Proxy** | Traefik v3.7 | All traffic routing, WebSocket, security headers, auto-discovery |
@@ -278,21 +278,21 @@ graph LR
 
 ```mermaid
 flowchart LR
-    A["User Query"] --> B["Query Refinement<br/>(Follow-up handling)"]
-    B --> C{"3-Layer Cache<br/>Response · Semantic · Embedding"}
+    A["User Query"] --> B["Query Refinement<br/>(2s timeout, always on)"]
+    B --> B2{"Multi-Query Expansion<br/>(3s timeout, enabled)"}
+    B2 --> C["3-Layer Cache<br/>Response · Semantic · Embedding"]
     C -->|HIT| D["Cached Response"]
-    C -->|MISS| E["Embed Query<br/>(AI-Engine /embed)"]
-    E --> F["Dense Search<br/>(Vietnamese_Embedding_v2)"]
-    E --> G["BM25 Search<br/>(VietnameseBM25Encoder<br/>Underthesea tokenization)"]
-    F --> H["RRF Fusion<br/>(k=60)"]
-    G --> H
-    H --> I["Stage 1: Section Grouping<br/>(score >= 0.30)"]
-    I --> J["Dedup by section_id"]
-    J --> K["Neighbor Expansion<br/>(+/- 1 nodes by order)"]
-    K --> L{"Rerank?<br/>(RETRIEVAL_RERANK_ENABLED)"}
-    L -->|ON| M["Cross-Encoder<br/>(Vietnamese_Reranker)"]
-    L -->|OFF| N["Context Assembly<br/>+ User Memories<br/>+ KG Entities"]
-    M --> N
+    C -->|MISS| E["HyDE (1.5s, short queries <100 chars)<br/>gated by expansion_enabled"]
+    E --> F["Embed Query<br/>(AI-Engine /embed)"]
+    F --> G["Dense Search<br/>(Vietnamese_Embedding_v2)"]
+    F --> H["BM25 Search<br/>(VietnameseBM25Encoder<br/>Underthesea tokenization)"]
+    G --> I["RRF Fusion<br/>(k=60)"]
+    H --> I
+    I --> J["Stage 1: Section Grouping<br/>(score >= 0.25)"]
+    J --> K["Dedup by section_id"]
+    K --> L["Neighbor Expansion<br/>(+/- 1 nodes by order)"]
+    L --> M["Cross-Encoder<br/>(Vietnamese_Reranker, enabled)"]
+    M --> N["Context Assembly<br/>+ User Memories"]
     N --> O["AI Streaming<br/>(WebSocket + Citations)"]
 
     style C fill:#fff3cd,stroke:#856404
@@ -507,11 +507,16 @@ AI_ENGINE_URL=http://ai-engine:8000                     # AI-Engine internal URL
 ### Ingestion
 
 ```bash
-INGESTION_EMBEDDING_CHUNK_SIZE=32       # Nodes per embedding batch
-INGESTION_EMBED_PARALLELISM=4           # Max concurrent embed batches
-INGESTION_PARSING_TIMEOUT=3600          # Max OCR/docling parse time (seconds)
-INGESTION_OCR_LANGUAGES=vi,en           # EasyOCR languages
-INGESTION_MIN_QUALITY_SCORE=0.3         # Minimum parse quality (0-1)
+LLAMA_CLOUD_API_KEY=your-key                      # LlamaParse cloud OCR
+LLAMA_CLOUD_API_BASE=https://api.cloud.llamaindex.ai/api/parsing
+LLAMA_CLOUD_TIMEOUT=120.0                         # Timeout for LlamaParse API calls
+INGESTION_MIN_SECTION_CHARS=200                   # Min chars to keep a markdown section
+INGESTION_CHUNK_TOKEN_TO_CHAR_MULTIPLIER=3         # Token→char multiplier for SentenceSplitter
+INGESTION_EMBEDDING_CHUNK_SIZE=32                 # Nodes per embedding batch
+INGESTION_EMBED_PARALLELISM=4                     # Max concurrent embed batches
+INGESTION_PARSING_TIMEOUT=3600                    # Max OCR/parsing time (seconds)
+INGESTION_OCR_LANGUAGES=vi,en                      # OCR languages
+INGESTION_MIN_QUALITY_SCORE=0.3                   # Minimum parse quality (0-1)
 ```
 
 ### Chat & Thinking
@@ -519,6 +524,7 @@ INGESTION_MIN_QUALITY_SCORE=0.3         # Minimum parse quality (0-1)
 ```bash
 AI_TEMPERATURE=0.3                      # Generation temperature
 AI_MAX_OUTPUT_TOKENS=8192               # Max output tokens
+AI_PROXY_TIMEOUT=120.0                  # HTTP timeout for 9Router proxy calls
 ```
 
 ### Context Compaction (Auto-Compact)
@@ -535,12 +541,19 @@ Thinking mode can be toggled per chat via the Brain button in the chat input are
 ### Retrieval Thresholds
 
 ```bash
-RETRIEVAL_SECTION_MIN_SCORE=0.30    # Stage 1 — section grouping
+RETRIEVAL_SECTION_MIN_SCORE=0.25    # Stage 1 — section grouping
 RETRIEVAL_MIN_SCORE=0.35            # Stage 2 — chunk ranking
 RETRIEVAL_SECTION_TOP_K=3           # Top sections to retrieve
 RETRIEVAL_CHUNK_TOP_K=5             # Top chunks per section
-RETRIEVAL_RERANK_ENABLED=false      # Enable cross-encoder reranker
+RETRIEVAL_RERANK_ENABLED=true      # Enable cross-encoder reranker
 RETRIEVAL_QUERY_REFINEMENT_ENABLED=true  # Enable query refinement
+RETRIEVAL_QUERY_EXPANSION_ENABLED=true   # Enable multi-query expansion
+RETRIEVAL_QUERY_REFINEMENT_TIMEOUT=2.0    # Query refinement timeout (seconds)
+RETRIEVAL_QUERY_EXPANSION_TIMEOUT=3.0     # Query expansion timeout (seconds)
+RETRIEVAL_HYDE_TIMEOUT=1.5                 # HyDE generation timeout (seconds)
+RETRIEVAL_EXPANSION_SCROLL_LIMIT=100      # Max nodes fetched per doc during neighbor expansion
+RETRIEVAL_CONTEXT_EXPANSION_WINDOW=1     # Neighbor expansion window (Soi sáng)
+QDRANT_GROUP_SIZE=3                        # Chunks per group in section-grouped retrieval
 ```
 
 ### Feature Flags
@@ -548,7 +561,6 @@ RETRIEVAL_QUERY_REFINEMENT_ENABLED=true  # Enable query refinement
 ```bash
 RAGAS_EVALUATION_ENABLED=false      # Enable RAGAS evaluation
 KG_ENABLED=false                    # Enable Knowledge Graph
-RETRIEVAL_QUERY_REFINEMENT_ENABLED=true  # Enable query refinement
 ```
 
 ### Cache

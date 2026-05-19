@@ -28,8 +28,9 @@ class LlamaIngestionPipeline:
     """
 
     def __init__(self):
-        chunk_size = settings.retrieval_chunk_size * 3  # chars approximation
-        chunk_overlap = settings.retrieval_chunk_overlap * 3
+        multiplier = settings.ingestion_chunk_token_to_char_multiplier
+        chunk_size = settings.retrieval_chunk_size * multiplier  # chars approximation
+        chunk_overlap = settings.retrieval_chunk_overlap * multiplier
 
         self.pipeline = IngestionPipeline(
             transformations=[

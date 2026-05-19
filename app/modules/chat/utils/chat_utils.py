@@ -1,9 +1,35 @@
 """Utility functions for ChatService."""
 
 from __future__ import annotations
+import re
 from typing import Any
 import nh3
 from app.core.config import settings
+
+# Vietnamese + English greeting/social patterns
+_GREETING_PATTERNS: list[re.Pattern] = [
+    re.compile(r"^(chào|hello|hi|hey|hola|chao)\b", re.IGNORECASE),
+    re.compile(r"^(cảm ơn|cám ơn|thank|thanks|thank you|thanks you)\b", re.IGNORECASE),
+    re.compile(r"^(tạm biệt|bye|goodbye|tam biet|tạm biệt nhé)\b", re.IGNORECASE),
+    re.compile(r"^(bạn (có )?khỏe không|how are you|bạn thế nào)\b", re.IGNORECASE),
+    re.compile(r"^(vâng|dạ|ừ|ừm|ok|okay|yeah|yes|vâng ạ|dạ vâng)\b", re.IGNORECASE),
+    re.compile(r"^(good morning|good afternoon|good evening|good night)\b", re.IGNORECASE),
+    re.compile(r"^(buổi sáng|buổi trưa|buổi chiều|buổi tối)\b", re.IGNORECASE),
+    re.compile(r"^(chúc|wish)\b", re.IGNORECASE),
+    re.compile(r"^rất vui được gặp (bạn|anh|chị|em)\b", re.IGNORECASE),
+    re.compile(r"^(nice to meet|pleased to meet|howdy)\b", re.IGNORECASE),
+]
+
+
+def is_greeting(query: str) -> bool:
+    """Detect if query is purely a greeting/social message (no actual question content)."""
+    cleaned = query.strip().rstrip(".!?")
+    if not cleaned or len(cleaned) > 120:
+        return False
+    for pattern in _GREETING_PATTERNS:
+        if pattern.match(cleaned):
+            return True
+    return False
 
 
 def validate_query(query: str) -> None:

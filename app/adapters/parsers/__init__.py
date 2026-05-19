@@ -1,5 +1,5 @@
-"""Document parsers: Docling (primary)."""
+"""Document parsers: LlamaParse (cloud OCR) + local markdown parser."""
 
-from app.adapters.parsers.docling import DoclingParser
+from app.adapters.parsers.llamaparse_adapter import LlamaParseParser
 
-__all__ = ["DoclingParser"]
+__all__ = ["LlamaParseParser"]
