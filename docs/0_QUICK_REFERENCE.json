@@ -1,7 +1,7 @@
 {
   "document": {
     "id": "0_QUICK_REFERENCE",
-    "version": "2026-05-16",
+    "version": "2026-05-19",
     "purpose": "Rules and patterns cheat sheet for AI/agent preflight. Read first, then task-specific docs.",
     "doc_guide": {
       "1_ARCHITECTURE.md": "System design, data model, storage, invariants, delete/version policy, AI control",
@@ -26,6 +26,13 @@
     "bm25_singleton": "TTL-cached vocabulary in RAM (120s) to handle high concurrency without Redis bottlenecks"
   },
   "rechunk_rule": "POST /documents/{id}/rechunk auto-detects: if ocr_output.md exists in S3 → rechunk from OCR (free); if not → fallback to retry (re-upload to LlamaParse). Frontend shows single RefreshCw button for both ready/failed statuses — no separate retry button needed.",
+  "context_compaction": {
+    "trigger": "Auto when estimated history tokens > AI_CONTEXT_WINDOW × AI_COMPACT_THRESHOLD_RATIO (default 200K × 0.70 = 140K)",
+    "mechanism": "Old messages summarized via 9Router, recent N turns kept verbatim (default 5). Fallback: drop oldest messages if API fails.",
+    "config": ["AI_CONTEXT_WINDOW=200000", "AI_COMPACT_THRESHOLD_RATIO=0.70", "AI_COMPACT_RESERVE_TOKENS=20000", "AI_COMPACT_KEEP_RECENT=5"],
+    "code": "app/modules/chat/services/context_compactor.py, integrated in ChatService.stream_chat_events()",
+    "cost": "1 additional 9Router call per compaction event (~1-3s latency, ~500-1024 output tokens)"
+  },
   "core_invariants": [
     {
       "name": "async_ingestion",

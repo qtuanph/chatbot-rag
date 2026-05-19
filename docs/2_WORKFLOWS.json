@@ -23,7 +23,8 @@
         "SemanticCache (Redis Vector) for similarity > 98% (dist < 0.08)",
         "LLM Response Cache bypasses LLM API entirely (4h TTL)",
         "Query Embedding Cache skips embedding on repeat queries (4h TTL)",
-        "Sliding Window rate limiting: 30 req/min per user"
+        "Sliding Window rate limiting: 30 req/min per user",
+        "Context Compaction: auto-summarize old messages at 70% context window (default 140K tokens), keeps 5 recent turns verbatim"
       ]
     },
     {

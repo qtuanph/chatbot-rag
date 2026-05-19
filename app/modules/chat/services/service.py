@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.adapters.ai.proxy_bridge import AIProxyBridge
 from app.core.config import settings
 from app.modules.chat.repositories.repository import ChatRepository
+from app.modules.chat.services.context_compactor import compact_history
 from app.modules.chat.utils import ChatStore, compute_cost, normalize_query
 from app.modules.chat.retrieval import build_answer
 
@@ -162,9 +163,7 @@ class ChatService:
                 logger.warning("[LLM-CACHE] Cache check failed: %s", e)
 
         # Context compaction: if history exceeds token threshold, summarize older messages
-        from app.modules.chat.services.context_compactor import compact_history as _compact_history
-
-        history = await _compact_history(history)
+        history = await compact_history(history)
 
         async for chunk in provider.chat_stream(
             [{"role": i["role"], "content": i["content"]} for i in history],

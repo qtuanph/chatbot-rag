@@ -76,17 +76,13 @@ def _build_summarize_messages(history_old: list[dict]) -> list[dict]:
     ]
 
 
-def _effective_max_tokens() -> int:
-    return settings.ai_context_window - settings.ai_compact_reserve_tokens
-
-
 async def compact_history(history: list[dict]) -> list[dict]:
     if not should_compact(history):
         return history
 
     history_old, history_recent = split_history(history)
 
-    if not history_old:
+    if not history_old or not history_recent:
         return history
 
     logger.info(

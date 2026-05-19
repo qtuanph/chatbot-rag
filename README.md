@@ -23,7 +23,7 @@ Self-hosted. No cloud lock-in. Complete control over your data.
 
 ## Quick Links
 
-📦 **[Latest Release: v0.3.0](https://github.com/qtuanph/chatbot-rag/releases/tag/v0.3.0)** · 🚀 [Getting Started](#getting-started) · 📖 [Architecture](#architecture) · 📡 [API Reference](#api-reference) · 📂 [Full Changelog](https://github.com/qtuanph/chatbot-rag/releases)
+📦 **[Latest Release: v0.5.0](https://github.com/qtuanph/chatbot-rag/releases/tag/v0.5.0)** · 🚀 [Getting Started](#getting-started) · 📖 [Architecture](#architecture) · 📡 [API Reference](#api-reference) · 📂 [Full Changelog](https://github.com/qtuanph/chatbot-rag/releases)
 
 ---
 
@@ -64,6 +64,7 @@ Vietnamese enterprises need AI-powered document Q&A that:
 <tr><td><b>Smart OCR</b></td><td>Docling + EasyOCR on GPU/CUDA. DOCX → PDF conversion for accurate layout extraction.</td></tr>
 <tr><td><b>Async Ingestion</b></td><td>Upload returns instantly with <code>task_id</code>. Parsing/indexing runs in background via Celery with live progress tracking.</td></tr>
 <tr><td><b>Real-time Chat</b></td><td>WebSocket streaming with conversational Vietnamese AI. Citations grouped by document with merged page ranges.</td></tr>
+<tr><td><b>Context Compaction</b></td><td>Auto-summarize old conversation history at 70% context window (~140K tokens). Keeps recent 5 turns verbatim, summarizes older messages via 9Router. Fallback: drop oldest if API fails.</td></tr>
 <tr><td><b>Query Refinement</b></td><td>Automatic query rewriting for better retrieval — enabled by default. Handles follow-ups and Vietnamese phrasing.</td></tr>
 <tr><td><b>User Memory</b></td><td>ChatGPT-like persistent memory per user — preferences, corrections, facts injected into AI context automatically.</td></tr>
 <tr><td><b>Multi-Provider AI</b></td><td>9Router (Next.js AI router) connects any OpenAI-compatible provider: Kiro, OpenCode Free, Claude, Gemini, and more via dashboard UI.</td></tr>
@@ -192,7 +193,10 @@ sequenceDiagram
         API->>API: Embed query (AI-Engine)
         API->>Q: Hybrid search (dense + BM25 RRF)
         API->>API: Section grouping + neighbor expansion
-        API->>Proxy: Stream via LlamaIndex OpenAI LLM
+        alt History tokens > threshold
+            API->>Proxy: Summarize old messages (auto-compact)
+        end
+        API->>Proxy: Stream via 9Router
         Proxy-->>User: WebSocket chunks + citations
     end
 ```
@@ -204,7 +208,7 @@ sequenceDiagram
 | **Hybrid search (dense + BM25)** | Dense (embedding) + sparse (BM25) via RRF fusion — leverages both semantic similarity and keyword matching for Vietnamese |
 | **LlamaIndex for ingestion** | SentenceSplitter + integrated embedding via IngestionPipeline — mature chunking with semantic boundaries |
 | **9Router as AI router** | Next.js 16 AI router with RTK Token Saver, 3-tier fallback (Subscription→Cheap→Free), free providers (Kiro, OpenCode), format translation, usage dashboard |
-| **WebSocket over SSE** | Full bidirectional streaming, no reconnection overhead, better mobile support |
+| **Context Compaction** | Auto-triggered at 70% context window: old messages summarized via 9Router, recent 5 turns kept verbatim with fallback dropping oldest |
 | **3-Layer Cache** | LLM Response + Semantic + Query Embedding — reduced from 5 layers (removed RagResultCache), simpler and faster |
 | **Query Refinement** | Automatic query rewriting improves retrieval on follow-ups and ambiguous Vietnamese phrasing |
 | **Separate AI-Engine** | Isolates GPU inference (embedding + reranker) from API server; enables independent scaling |
@@ -261,7 +265,7 @@ graph LR
 | **AI Service** | Dedicated AI-Engine container | GPU-accelerated embedding + reranker inference |
 | **Embedding** | AITeamVN/Vietnamese_Embedding_v2 (1024-dim) | GPU fp16, hardware auto-detect (3-tier) |
 | **Reranker** | AITeamVN/Vietnamese_Reranker | Optional cross-encoder (disabled by default) |
-| **LLM Integration** | LlamaIndex OpenAI (via 9Router) | Provider-agnostic chat with thinking mode support |
+| **LLM Integration** | 9Router OpenAPI-compatible (direct HTTP) | Provider-agnostic chat with thinking mode, context compaction |
 | **OCR** | EasyOCR on GPU | Vietnamese + English document text extraction |
 | **Parsing** | Docling (Method D) | PDF/DOCX structured extraction with hierarchy |
 | **Chunking** | LlamaIndex SentenceSplitter | Semantic-aware text splitting (~1536 tokens) |
@@ -434,7 +438,8 @@ All endpoints are prefixed with `/api/v1`. Authentication uses JWT Bearer token.
 | `/documents` | GET | member | List documents |
 | `/documents/{document_id}` | GET | member | Document details |
 | `/documents/{document_id}` | DELETE | admin | Hard-delete document |
-| `/documents/{document_id}/retry` | POST | admin | Retry failed ingestion |
+| `/documents/{document_id}/retry` | POST | admin | Retry failed ingestion (re-upload to LlamaParse) |
+| `/documents/{document_id}/rechunk` | POST | admin | Re-index from saved OCR (free) or fallback to retry if no OCR |
 
 ### Chat
 
@@ -514,10 +519,18 @@ INGESTION_MIN_QUALITY_SCORE=0.3         # Minimum parse quality (0-1)
 ```bash
 AI_TEMPERATURE=0.3                      # Generation temperature
 AI_MAX_OUTPUT_TOKENS=8192               # Max output tokens
-AI_MAX_HISTORY_MESSAGES=20              # Multi-turn context window
 ```
 
-Thinking mode can be toggled per chat via the Brain button in the chat input area. When enabled, CLIPoxyAPI passes `reasoning_effort: "high"` to the LLM for deeper reasoning (supported by most OpenAI-compatible models).
+### Context Compaction (Auto-Compact)
+
+```bash
+AI_CONTEXT_WINDOW=200000                # Model context window (tokens)
+AI_COMPACT_THRESHOLD_RATIO=0.70         # Trigger at 70% of window
+AI_COMPACT_RESERVE_TOKENS=20000         # Reserve tokens for response
+AI_COMPACT_KEEP_RECENT=5                # Recent turns kept verbatim
+```
+
+Thinking mode can be toggled per chat via the Brain button in the chat input area. When enabled, AIProxyBridge passes `reasoning_effort: "high"` to the LLM for deeper reasoning (supported by most OpenAI-compatible models).
 
 ### Retrieval Thresholds
 
@@ -562,12 +575,13 @@ Read `AGENTS.md` first, then the JSON quick reference and topic docs.
 
 | Topic | File | Time |
 |-------|------|------|
-| Rules & patterns | `docs/0_QUICK_REFERENCE.json` | 5 min |
+| Rules & patterns | `docs/0_QUICK_REFERENCE.json` (v2026-05-19) | 5 min |
 | Architecture & data model | `docs/1_ARCHITECTURE.md` | 10 min |
 | Core workflows | `docs/2_WORKFLOWS.json` (children: 2.1-2.5) | 10 min |
-| API contracts & security | `docs/3_API_CONTRACTS.md` | 10 min |
+| API contracts & security | `docs/3_API_CONTRACTS.md` (incl. rechunk) | 10 min |
 | Deployment & observability | `docs/4_DEPLOYMENT.md` | 5 min |
 | Ingestion & retrieval | `docs/2.1_WORKFLOWS_INGESTION.md` | 10 min |
+| Chat workflow | `docs/2.2_WORKFLOWS_CHAT.md` (incl. compaction) | 5 min |
 | Naming conventions | `docs/5_NAMING_CONVENTIONS.md` | 3 min |
 | Known issues | `docs/6_KNOWN_ISSUES.json` | 2 min |
 
