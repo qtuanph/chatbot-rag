@@ -33,13 +33,13 @@ class AnalyticsRepository:
     async def get_totals(self, is_admin: bool, user_id: str) -> dict:
         """Get overall token/message/latency totals."""
         base_stmt = self._base_select(is_admin, user_id)
-        # Wrap the base stmt to perform aggregations
+        subq = base_stmt.subquery()
         stmt = select(
-            func.count(ChatMessage.id).label("messages"),
-            func.coalesce(func.sum(ChatMessage.tokens_in), 0).label("tokens_in"),
-            func.coalesce(func.sum(ChatMessage.tokens_out), 0).label("tokens_out"),
-            func.coalesce(func.avg(ChatMessage.latency_ms), 0).label("avg_latency_ms"),
-        ).select_from(base_stmt.subquery())
+            func.count(subq.c.id).label("messages"),
+            func.coalesce(func.sum(subq.c.tokens_in), 0).label("tokens_in"),
+            func.coalesce(func.sum(subq.c.tokens_out), 0).label("tokens_out"),
+            func.coalesce(func.avg(subq.c.latency_ms), 0).label("avg_latency_ms"),
+        )
 
         result = await self.session.execute(stmt)
         row = result.one()
