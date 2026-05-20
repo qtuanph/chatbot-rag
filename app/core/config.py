@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     retrieval_rerank_enabled: bool = True
     retrieval_rerank_top_k: int = 30  # Final number of chunks after reranking (industry: 30-50)
     retrieval_rerank_min_score: float = (
-        0.30  # Filter noise after reranking (sigmoid-normalized [0,1]; 0.3 = 30% confidence)
+        0.10  # Filter noise after reranking (sigmoid-normalized [0,1]; 0.1 filters obvious noise, keeps moderate matches)
     )
     retrieval_rerank_model: str = "AITeamVN/Vietnamese_Reranker"  # Vietnamese cross-encoder
 
