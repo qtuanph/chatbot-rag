@@ -31,7 +31,6 @@ class RetrievalConfidence:
             and avg_score >= settings.retrieval_confidence_avg_high
         ):
             return {"confidence": "high", "max_score": max_score, "avg_score": avg_score, "status": "correct"}
-        elif max_score >= settings.retrieval_confidence_threshold_low:
+        if max_score >= settings.retrieval_confidence_threshold_low:
             return {"confidence": "medium", "max_score": max_score, "avg_score": avg_score, "status": "ambiguous"}
-        else:
-            return {"confidence": "low", "max_score": max_score, "avg_score": avg_score, "status": "incorrect"}
+        return {"confidence": "low", "max_score": max_score, "avg_score": avg_score, "status": "incorrect"}

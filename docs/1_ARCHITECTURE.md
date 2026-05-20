@@ -14,7 +14,7 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | Backend | FastAPI 100% async (Strict await enforcement) |
 | Workers | workers — Celery (node-ingestion: solo + node-default: prefork, Beat) |
 | AI-Engine | ai-engine — Standalone FastAPI server for Embedding/Reranking (GPU) |
-| Database | PostgreSQL 18.3 (AsyncSessionLocal, Metadata/Auth/Audit) |
+| Database | PostgreSQL 18.4 (AsyncSessionLocal, Metadata/Auth/Audit) |
 | Vectors | Qdrant 1.17.1 (AsyncQdrantClient, Sparse+Dense Hybrid) |
 | Object storage | RustFS (S3-compatible, isolated via asyncio.to_thread) |
 | Queue/Cache | Redis 8.x (Celery, Streams, Semantic Cache, Rate Limiting) |
@@ -107,7 +107,7 @@ graph TD
 | **Chunking** | `SentenceSplitter` (LlamaIndex) | Semantic-aware text splitting, char multiplier from `INGESTION_CHUNK_TOKEN_TO_CHAR_MULTIPLIER` |
 | **Query Refinement** | Enabled | AI-powered query optimization, timeout from `RETRIEVAL_QUERY_REFINEMENT_TIMEOUT` |
 | **Multi-Query Expansion** | Enabled | Generates query variants for broader retrieval, `RETRIEVAL_QUERY_EXPANSION_ENABLED=true` |
-| **HyDE** | Enabled | Hypothetical document embeddings for short queries (<100 chars), gated by expansion_enabled |
+| **HyDE** | Enabled | Hypothetical document embeddings for short queries (<5 words), gated by expansion_enabled. Conservative prompt to reduce hallucination. |
 | **Context Compaction** | Auto | Triggers at 70% of context window, reserves 20K tokens for response |
 | **Streaming** | **WebSocket** | Real-time bidirectional (replaces SSE) |
 | **Cache** | 3 layers | LLM Response + Semantic + Query Embedding |

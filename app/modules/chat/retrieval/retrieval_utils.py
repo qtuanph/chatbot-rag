@@ -5,7 +5,7 @@ from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from app.models.rag import RagContext
+    from app.models.rag import RagContext, RagNode
 
 
 def build_answer(query: str, context: RagContext) -> dict:
@@ -21,7 +21,11 @@ def build_answer(query: str, context: RagContext) -> dict:
         }
 
     section_map = {sec.section_id: sec for sec in (context.sections or [])}
-    sorted_nodes = sorted(context.nodes, key=lambda n: n.score, reverse=True)
+    node_content_by_section: dict[str, list[RagNode]] = {}
+    for node in context.nodes:
+        if node.section_id:
+            node_content_by_section.setdefault(node.section_id, []).append(node)
+    sorted_nodes = sorted(context.nodes, key=lambda n: (n.document_id, n.section_id or "", n.score), reverse=True)
 
     context_blocks = []
     citations = []
@@ -36,7 +40,12 @@ def build_answer(query: str, context: RagContext) -> dict:
             citation_idx += 1
             breadcrumb = " > ".join(sec.breadcrumb) if sec.breadcrumb else sec.title
             page = f" (trang {node.page_range})" if node.page_range else ""
-            context_blocks.append(f"**{breadcrumb}** — {node.document_title}{page}\n{sec.content}")
+            # Use full section content from the persisted section data (covers all chunks)
+            sec_nodes = node_content_by_section.get(sec.section_id, [])
+            full_sec_text = sec.content or "\n\n".join(
+                n.full_text for n in sorted(sec_nodes, key=lambda x: x.score, reverse=True)
+            )
+            context_blocks.append(f"**{breadcrumb}** — {node.document_title}{page}\n{full_sec_text}")
             citations.append(
                 {
                     "document_id": node.document_id,

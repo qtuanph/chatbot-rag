@@ -264,7 +264,7 @@ graph LR
 | **AI Proxy** | 9Router (Next.js 16, port 2908) | OpenAI-compatible AI router with free/paid provider support |
 | **AI Service** | Dedicated AI-Engine container | GPU-accelerated embedding + reranker inference |
 | **Embedding** | AITeamVN/Vietnamese_Embedding_v2 (1024-dim) | GPU fp16, hardware auto-detect (3-tier) |
-| **Reranker** | AITeamVN/Vietnamese_Reranker | Optional cross-encoder (disabled by default) |
+| **Reranker** | AITeamVN/Vietnamese_Reranker | Cross-encoder reranker (enabled by default, top_k=30) |
 | **LLM Integration** | 9Router OpenAPI-compatible (direct HTTP) | Provider-agnostic chat with thinking mode, context compaction |
 | **OCR** | LlamaParse cloud (PDF/DOCX) | Vietnamese + English document text extraction |
 | **Parsing** | LlamaParseParser (local MarkdownNodeParser for .md/.txt) | PDF/DOCX structured extraction with hierarchy |
@@ -282,7 +282,7 @@ flowchart LR
     B --> B2{"Multi-Query Expansion<br/>(3s timeout, enabled)"}
     B2 --> C["3-Layer Cache<br/>Response · Semantic · Embedding"]
     C -->|HIT| D["Cached Response"]
-    C -->|MISS| E["HyDE (1.5s, short queries <100 chars)<br/>gated by expansion_enabled"]
+    C -->|MISS| E["HyDE (1.5s, short queries <5 words)<br/>gated by expansion_enabled"]
     E --> F["Embed Query<br/>(AI-Engine /embed)"]
     F --> G["Dense Search<br/>(Vietnamese_Embedding_v2)"]
     F --> H["BM25 Search<br/>(VietnameseBM25Encoder<br/>Underthesea tokenization)"]
@@ -311,10 +311,10 @@ flowchart LR
 | **Dense search** | Single Qdrant query via AI-Engine | top_k = 50-80 |
 | **BM25 search** | Underthesea tokenization, VietnameseBM25Encoder | top_k = 50-80 |
 | **RRF fusion** | Reciprocal Rank Fusion combining dense + BM25 | k = 60 |
-| **Stage 1** | Group results by `section_id`, pick top sections | score >= 0.30 |
+| **Stage 1** | Group results by `section_id`, pick top sections | score >= 0.25 |
 | **Dedup** | Remove duplicate chunks from same section | — |
 | **Neighbor expansion** | Fetch +/- 1 adjacent nodes by `order_index` per section | section context completeness |
-| **Rerank** | Cross-encoder scores (optional, off by default) | `RETRIEVAL_RERANK_ENABLED=false` |
+| **Rerank** | Cross-encoder scores (enabled by default, top_k=30) | `RETRIEVAL_RERANK_ENABLED=true` |
 | **Context build** | Load section details, merge memories + KG entities, build prompt | DB-less assembly from cache |
 | **Streaming** | AI response via WebSocket with grouped citations | Full-duplex |
 
@@ -587,7 +587,7 @@ Read `AGENTS.md` first, then the JSON quick reference and topic docs.
 
 | Topic | File | Time |
 |-------|------|------|
-| Rules & patterns | `docs/0_QUICK_REFERENCE.json` (v2026-05-19) | 5 min |
+| Rules & patterns | `docs/0_QUICK_REFERENCE.json` (v2026-05-20) | 5 min |
 | Architecture & data model | `docs/1_ARCHITECTURE.md` | 10 min |
 | Core workflows | `docs/2_WORKFLOWS.json` (children: 2.1-2.5) | 10 min |
 | API contracts & security | `docs/3_API_CONTRACTS.md` (incl. rechunk) | 10 min |

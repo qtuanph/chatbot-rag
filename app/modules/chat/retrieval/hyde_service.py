@@ -10,11 +10,9 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _HYDE_PROMPT = (
-    "Bạn là chuyên gia tạo câu trả lời mẫu cho hệ thống RAG.\n"
-    "Dựa trên kiến thức chuyên môn của bạn, hãy viết một đoạn văn ngắn (3-5 câu) "
-    "trả lời câu hỏi dưới đây một cách chi tiết, chính xác, bằng tiếng Việt.\n"
-    "Đây là câu trả lời GIẢ ĐỊNH — không cần trích dẫn nguồn, "
-    "nhưng hãy viết như thể đó là tài liệu tham khảo thực tế.\n\n"
+    "Hãy viết một đoạn văn ngắn (3-5 câu) trả lời câu hỏi dưới đây.\n"
+    "Viết bằng tiếng Việt, sử dụng từ vựng chuyên ngành phù hợp.\n"
+    "Không cần kiểm tra tính chính xác — bản nháp là đủ.\n\n"
     "Câu hỏi: {query}"
 )
 

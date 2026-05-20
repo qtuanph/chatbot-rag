@@ -20,9 +20,12 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 async def list_models():
     """List available models from 9Router's connected providers."""
     proxy_base = settings.ai_proxy_url.rstrip("/")
+    headers = {}
+    if settings.ai_proxy_api_key:
+        headers["Authorization"] = f"Bearer {settings.ai_proxy_api_key}"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{proxy_base}/v1/models")
+        async with httpx.AsyncClient(timeout=settings.ai_proxy_timeout) as client:
+            resp = await client.get(f"{proxy_base}/v1/models", headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
                 models = [{"id": m["id"], "provider": m.get("provider", "")} for m in data.get("data", [])]

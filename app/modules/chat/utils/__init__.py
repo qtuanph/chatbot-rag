@@ -2,7 +2,6 @@ from app.modules.chat.utils.chat_utils import (
     validate_query,
     compute_cost,
     deduplicate_citations,
-    build_user_friendly_error,
     is_greeting,  # noqa: F401 — re-exported for ChatService
 )
 from app.modules.chat.utils.chat_store import ChatStore
@@ -16,7 +15,6 @@ __all__ = [
     "validate_query",
     "compute_cost",
     "deduplicate_citations",
-    "build_user_friendly_error",
     "ChatStore",
     "normalize_query",
     "remove_stopwords_from_query",

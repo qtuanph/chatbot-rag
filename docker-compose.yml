@@ -133,7 +133,7 @@ services:
       - internal
 
   db:
-    image: postgres:18.3-trixie
+    image: postgres:18.4-trixie  # 2026-05-14: 11 CVEs (CVE-2026-6637 code execution, SQL injection)
     command:
       - postgres
       - -c

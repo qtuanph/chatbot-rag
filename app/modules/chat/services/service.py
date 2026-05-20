@@ -68,7 +68,9 @@ class ChatService:
             from app.modules.chat.services.query_refiner import refine_query
 
             try:
-                refined_query = await asyncio.wait_for(refine_query(query, history), timeout=settings.retrieval_query_refinement_timeout)
+                refined_query = await asyncio.wait_for(
+                    refine_query(query, history), timeout=settings.retrieval_query_refinement_timeout
+                )
             except Exception:
                 logger.warning("Query refinement timed out, using original query.")
 
@@ -78,7 +80,9 @@ class ChatService:
             from app.modules.chat.retrieval.expansion_service import expand_query
 
             try:
-                queries = await asyncio.wait_for(expand_query(refined_query), timeout=settings.retrieval_query_expansion_timeout)
+                queries = await asyncio.wait_for(
+                    expand_query(refined_query), timeout=settings.retrieval_query_expansion_timeout
+                )
             except asyncio.TimeoutError:
                 logger.warning("Query expansion timed out, using original query.")
 
@@ -199,9 +203,18 @@ class ChatService:
         # Context compaction: if history exceeds token threshold, summarize older messages
         history = await compact_history(history)
 
+        # Use full section content from build_answer.answer (not chunk-text from .context)
+        seed = prepared_chat["assistant_seed"] or {}
+        raw = seed.get("answer", "")
+        if raw and "Tài liệu tham khảo:\n" in raw:
+            formatted_context = raw[raw.index("Tài liệu tham khảo:\n") :]
+        else:
+            formatted_context = ""
+
         async for chunk in provider.chat_stream(
             [{"role": i["role"], "content": i["content"]} for i in history],
-            context=prepared_chat["assistant_seed"].get("context") or [],
+            context=seed.get("context") or [],
+            formatted_context=formatted_context,
             citations=citations,
             user_memories=prepared_chat["user_memories"],
         ):

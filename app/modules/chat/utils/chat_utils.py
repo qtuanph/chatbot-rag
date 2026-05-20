@@ -8,7 +8,7 @@ from app.core.config import settings
 
 # Vietnamese + English greeting/social patterns
 _GREETING_PATTERNS: list[re.Pattern] = [
-    re.compile(r"^(chào|hello|hi|hey|hola|chao)\b", re.IGNORECASE),
+    re.compile(r"^(chào|hello|hi|hey|hola|chao|xin chào|chào bạn|chào anh|chào chị)\b", re.IGNORECASE),
     re.compile(r"^(cảm ơn|cám ơn|thank|thanks|thank you|thanks you)\b", re.IGNORECASE),
     re.compile(r"^(tạm biệt|bye|goodbye|tam biet|tạm biệt nhé)\b", re.IGNORECASE),
     re.compile(r"^(bạn (có )?khỏe không|how are you|bạn thế nào)\b", re.IGNORECASE),
@@ -99,18 +99,3 @@ def deduplicate_citations(citations: list[dict[str, Any]]) -> list[dict[str, Any
             }
         )
     return result
-
-
-def build_user_friendly_error(error: Exception) -> str:
-    """Convert technical errors to user-friendly Vietnamese messages."""
-    error_str = str(error).lower()
-    if "timeout" in error_str or "timed out" in error_str:
-        return "AI Model phản hồi quá chậm. Vui lòng thử câu hỏi ngắn hơn hoặc thử lại sau."
-    elif "rate limit" in error_str or "429" in error_str:
-        return "Đã đạt giới hạn request. Vui lòng chờ một chút rồi thử lại."
-    elif "safety" in error_str or "blocked" in error_str:
-        return "Nội dung không được phép. Vui lòng thử câu hỏi khác."
-    elif "connection" in error_str:
-        return "Lỗi kết nối với AI Model. Vui lòng kiểm tra mạng và thử lại."
-    else:
-        return "Lỗi không xác định. Vui lòng thử lại sau."

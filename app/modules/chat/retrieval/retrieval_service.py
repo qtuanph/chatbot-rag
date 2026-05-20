@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import time
 from functools import lru_cache
@@ -132,7 +133,7 @@ class RetrievalService:
 
         # HyDE: generate hypothetical document and embed it for short-query enrichment
         hyde_vector = None
-        if settings.retrieval_query_expansion_enabled and len(queries) <= 2 and len(original_query) < 100:
+        if settings.retrieval_query_expansion_enabled and len(queries) <= 2 and len(original_query.split()) < 5:
             try:
                 from app.modules.chat.retrieval.hyde_service import hyde_generate
 
@@ -169,7 +170,7 @@ class RetrievalService:
                 *[asyncio.to_thread(bm25_encoder.encode_sparse_vector, q) for q in queries]
             )
 
-        fetch_k = settings.retrieval_chunk_top_k * 3
+        fetch_k = settings.retrieval_chunk_top_k * settings.retrieval_fetch_multiplier
         all_results = await vs.retrieve(
             query_vectors=query_vectors,
             top_k=fetch_k,
@@ -212,6 +213,18 @@ class RetrievalService:
                 reranked_docs = await reranker.rerank(
                     query=primary_query, documents=rerank_candidates, text_attr="text"
                 )
+
+                # Filter reranked results by minimum score (NVIDIA: 0.3-0.5 threshold)
+                min_rerank_score = settings.retrieval_rerank_min_score
+                if min_rerank_score > 0:
+                    before = len(reranked_docs)
+                    reranked_docs = [d for d in reranked_docs if d.score >= min_rerank_score]
+                    logger.info(
+                        "[PERF-RAG] Rerank score filter: %d → %d (threshold=%.2f)",
+                        before,
+                        len(reranked_docs),
+                        min_rerank_score,
+                    )
 
                 # Merge reranked results back into the main list
                 # (Reranked list is sorted, items not reranked stay at the bottom)
@@ -284,8 +297,6 @@ class RetrievalService:
 
         # Cache result
         if isinstance(query, str) and nodes:
-            import dataclasses
-
             result_dict = {
                 "nodes": [dataclasses.asdict(n) for n in nodes],
                 "sections": [dataclasses.asdict(s) for s in rag_sections] if rag_sections else None,
@@ -300,7 +311,7 @@ class RetrievalService:
             from app.modules.documents.kg import get_knowledge_graph
 
             kg = get_knowledge_graph()
-            results = await kg.query(query, top_k=3)
+            results = await kg.query(query, top_k=settings.kg_top_k)
             return [r.get("entity", "") for r in results if r.get("entity")]
         except Exception as e:
             logger.warning("[KG] Failed to get context: %s", e)

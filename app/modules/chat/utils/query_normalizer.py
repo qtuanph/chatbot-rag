@@ -114,7 +114,6 @@ def get_stopwords_for_language(language: str = "vi") -> set[str]:
     """Get stopwords for specific language."""
     if language == "vi":
         return DEFAULT_VIETNAMESE_STOPWORDS
-    elif language == "en":
+    if language == "en":
         return DEFAULT_ERP_STOPWORDS
-    else:
-        return ALL_DEFAULT_STOPWORDS
+    return ALL_DEFAULT_STOPWORDS

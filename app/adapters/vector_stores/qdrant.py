@@ -18,8 +18,8 @@ from qdrant_client.models import (
     Modifier,
     PointStruct,
     Prefetch,
-    FusionQuery,
-    Fusion,
+    RrfQuery,
+    Rrf,
     RecommendQuery,
     Filter,
     FieldCondition,
@@ -335,7 +335,7 @@ class QdrantVectorStore(BaseVectorStore):
                 response = await client.query_points_groups(
                     collection_name=self.collection_name,
                     prefetch=prefetch_list,
-                    query=FusionQuery(fusion=Fusion.RRF),
+                    query=RrfQuery(rrf=Rrf(k=60)),
                     group_by="metadata.section_id",
                     group_size=settings.qdrant_group_size,
                     limit=top_k,
@@ -359,7 +359,7 @@ class QdrantVectorStore(BaseVectorStore):
                 response = await client.query_points(
                     collection_name=self.collection_name,
                     prefetch=prefetch_list,
-                    query=FusionQuery(fusion=Fusion.RRF),
+                    query=RrfQuery(rrf=Rrf(k=60)),
                     limit=top_k,
                     with_payload=True,
                     with_vectors=False,

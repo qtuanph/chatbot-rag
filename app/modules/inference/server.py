@@ -72,7 +72,7 @@ class InferenceEngine:
             from sentence_transformers import SentenceTransformer
 
             model_name = settings.embedding_hf_model
-            logger.info(f"Loading embedding model: {model_name} on {self.device}...")
+            logger.info("Loading embedding model: %s on %s...", model_name, self.device)
 
             if self.device == "cuda":
                 self.embedding_model = SentenceTransformer(model_name, device="cuda")
@@ -82,14 +82,14 @@ class InferenceEngine:
 
             logger.info("Embedding model loaded successfully.")
         except Exception as e:
-            logger.error(f"Failed to load embedding model: {e}")
+            logger.error("Failed to load embedding model: %s", e)
 
         # Load Reranker Model
         try:
             from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
             model_name = settings.retrieval_rerank_model
-            logger.info(f"Loading reranker model: {model_name} on {self.device}...")
+            logger.info("Loading reranker model: %s on %s...", model_name, self.device)
 
             self.reranker_tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
             self.reranker_model = AutoModelForSequenceClassification.from_pretrained(model_name, trust_remote_code=True)
@@ -98,7 +98,7 @@ class InferenceEngine:
 
             logger.info("Reranker model loaded successfully.")
         except Exception as e:
-            logger.error(f"Failed to load reranker model: {e}")
+            logger.error("Failed to load reranker model: %s", e)
 
     def get_embedding_dimension(self) -> int:
         if self.embedding_model:
@@ -173,7 +173,9 @@ async def rerank(request: RerankRequest):
             max_length=2304,  # Match reranker.py
         ).to(engine.device)
 
-        scores = engine.reranker_model(**inputs, return_dict=True).logits.view(-1).float()
+        import torch.nn.functional as F
+
+        scores = F.sigmoid(engine.reranker_model(**inputs, return_dict=True).logits.view(-1).float())
         scores_list = scores.tolist()
 
     # Create results with original indices
@@ -195,7 +197,7 @@ if __name__ == "__main__":
     # Dynamically determine workers based on hardware profile and GPU presence
     # Worker selection: Fully autonomous via hardware profile (no manual overrides)
     workers = hardware.uvicorn_workers
-    logger.info(f"PRODUCTION MODE: Starting AI-Engine with {workers} workers (hardware auto-detect).")
+    logger.info("PRODUCTION MODE: Starting AI-Engine with %d workers (hardware auto-detect).", workers)
 
     uvicorn.run(
         "app.modules.inference.server:app",

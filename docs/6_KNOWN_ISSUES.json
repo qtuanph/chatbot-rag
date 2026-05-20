@@ -129,6 +129,22 @@
       "root_cause": "parse_from_markdown() applied SentenceSplitter (400 tokens, no metadata), then LlamaIngestionPipeline applied another SentenceSplitter (1200 chars, with metadata) on top. Result: double-split context fragmentation.",
       "resolution": "Removed SentenceSplitter from parse_from_markdown(). Each heading section now returns as ONE node. LlamaIngestionPipeline is the single chunking pass (1200 chars, overlap=300, include_metadata=True).",
       "lesson_learned": "Chunking should happen exactly once. When piping data through multiple processing stages, verify each stage's transformations don't overlap."
+    },
+    {
+      "issue_id": 16,
+      "title": "AI-Engine Calls Lack Connection Pooling and Retry",
+      "symptom": "Per-call latency includes TCP handshake (+50-100ms). AI-Engine restart causes pipeline failure until next request.",
+      "root_cause": "sentence_transformer.py and reranker.py created new httpx.AsyncClient() per request with no connection reuse or retry logic.",
+      "resolution": "Added module-level shared httpx.AsyncClient with Limits(max_connections=50, max_keepalive=10). Added _retry_call() with 3 attempts, exponential backoff (1s→2s→4s), targeting transient errors (ConnectError, TimeoutException, RemoteProtocolError).",
+      "lesson_learned": "Async HTTP clients to AI backends MUST use connection pooling. Retry with backoff is essential for resilience in container orchestration environments where services restart independently."
+    },
+    {
+      "issue_id": 17,
+      "title": "HyDE Prompt Encourages Hallucination — Reduces Retrieval Precision",
+      "symptom": "Hypothetical document embeddings pull irrelevant chunks due to hallucinated details. High recall but low precision on long queries.",
+      "root_cause": "HyDE prompt said 'hãy viết như thể đó là tài liệu tham khảo thực tế' — actively encouraged fabrication. HyDE ran on ALL queries <100 chars, including long ones where it causes noise.",
+      "resolution": "Changed prompt to conservative wording: 'KHÔNG bịa đặt chi tiết cụ thể, ưu tiên dùng kiến thức phổ thông, an toàn.' Added length gate: only run if query <5 words (word count, not character count).",
+      "lesson_learned": "HyDE prompt must explicitly anti-hallucinate. 'Viết như tài liệu thật' is dangerous. Length gate must use word count, not character count, to match industry practice of 'short query enrichment'."
     }
   ]
 }

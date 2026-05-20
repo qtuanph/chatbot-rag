@@ -32,8 +32,8 @@
   "hyde": {
   "purpose": "Hypothetical Document Embeddings for short-query enrichment",
   "mechanism": "Auxiliary model generates hypothetical answer → embed → add vector to query ensemble",
-  "trigger": "Short query (<100 chars), expansion variants ≤ 2, timeout 1.5s",
-  "benefit": "+20-40% precision for short/ambiguous queries",
+  "trigger": "Short query (<5 words), expansion variants ≤ 2, timeout 1.5s",
+  "benefit": "+10-20% precision for short/ambiguous queries; noise reduction on longer queries",
   "code": "app/modules/chat/retrieval/hyde_service.py, integrated in retrieval_service.py",
   "cost": "1 additional 9Router auxiliary call (~200-500ms latency) + 1 embed call"
 },
@@ -63,7 +63,7 @@
     },
     {
       "name": "five_stage_retrieval",
-      "rule": "Query refinement (2s timeout) → Multi-query expansion (3s timeout, enabled) → HyDE (1.5s, short queries <100 chars) → Hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.25) → Rerank (cross-encoder, enabled) → Neighbor Expansion (Soi sáng, window=1) → Confidence scoring → full section context assembly + citations. 3-layer cache: LLM Response (4h) → Semantic (24h) → Query Embedding (4h). Retrieve at chunk level, present expanded section context to LLM. Doc IDs TTL-cached 60s."
+      "rule": "Query refinement (2s timeout) → Multi-query expansion (3s timeout, enabled) → HyDE (1.5s, short queries <5 words) → Hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.25) → Rerank (cross-encoder, enabled, top_k=30) → Neighbor Expansion (Soi sáng, window=1) → Confidence scoring → full section context assembly + citations. 3-layer cache: LLM Response (4h) → Semantic (24h) → Query Embedding (4h). Retrieve at chunk level, present expanded section context to LLM. Doc IDs TTL-cached 60s."
     },
     {
       "name": "hard_delete_order",
@@ -87,7 +87,7 @@
     }
   ],
   "data_location_map": [
-    { "data": "sections", "storage": "PostgreSQL 18.3", "table": "document_sections", "notes": "Canonical order source (order_index). Accessed via AsyncSession." },
+    { "data": "sections", "storage": "PostgreSQL 18.4", "table": "document_sections", "notes": "Canonical order source (order_index). Accessed via AsyncSession." },
     { "data": "chunks", "storage": "Qdrant 1.17.1", "notes": "~1200 char chunks via single SentenceSplitter pass. section_id metadata links to PostgreSQL document_sections. Named dense + sparse-bm25 vectors. AsyncQdrantClient." },
     { "data": "bm25_vocab", "storage": "Redis + RAM", "notes": "Singleton BM25Manager with 120s TTL. Vocabulary loaded from Redis and cached in-memory." },
     { "data": "documents", "storage": "PostgreSQL 18.3", "table": "documents", "notes": "status: pending→parsing→embedding→ready/failed. Async DB access." },
@@ -115,10 +115,10 @@
     },
     "retrieval": {
       "RETRIEVAL_SECTION_MIN_SCORE": 0.25,
-      "RETRIEVAL_MIN_SCORE": 0.35,
-      "RETRIEVAL_SECTION_TOP_K": 3,
-      "RETRIEVAL_CHUNK_TOP_K": 5,
-      "RETRIEVAL_RERANK_TOP_K": 5,
+      "RETRIEVAL_MIN_SCORE": 0.0,
+      "RETRIEVAL_SECTION_TOP_K": 15,
+      "RETRIEVAL_CHUNK_TOP_K": 15,
+      "RETRIEVAL_RERANK_TOP_K": 30,
       "RETRIEVAL_RERANK_MODEL": "AITeamVN/Vietnamese_Reranker",
       "RETRIEVAL_BM25_K1": 1.5,
       "RETRIEVAL_BM25_B": 0.75,

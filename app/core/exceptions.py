@@ -44,12 +44,6 @@ class VectorStoreException(IngestionException):
     pass
 
 
-class VectorStoreConnectionException(VectorStoreException):
-    """Raised when unable to connect to vector store (e.g., Qdrant)."""
-
-    pass
-
-
 class VectorStoreOperationException(VectorStoreException):
     """Raised when vector store insert/retrieve/delete operations fail."""
 
@@ -64,17 +58,5 @@ class StorageException(ChatbotRAGException):
 
 class DocumentStoreException(StorageException):
     """Raised when document metadata store operations fail."""
-
-    pass
-
-
-class RetrievalException(ChatbotRAGException):
-    """Raised when retrieval pipeline fails (reranker, BM25 encoding, query expansion)."""
-
-    pass
-
-
-class ChatException(ChatbotRAGException):
-    """Base exception for chat-related errors."""
 
     pass

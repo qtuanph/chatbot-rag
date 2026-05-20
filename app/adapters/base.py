@@ -114,16 +114,6 @@ class BaseParser(ABC):
         pass
 
 
-@dataclass
-class EmbeddingResult:
-    """Result of embedding operation."""
-
-    text: str
-    embedding: list[float]
-    dimension: int
-    model: str
-
-
 class BaseEmbedding(ABC):
     """
     Abstract base class for text embedding implementations.

@@ -56,10 +56,13 @@ class AIProxyBridge:
             system_text += f"\n\n## CÁ NHÂN HÓA\n{mems}\nƯu tiên áp dụng các ghi nhớ này."
 
         context = kwargs.get("context") or []
+        formatted_context = kwargs.get("formatted_context") or ""
         query = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
 
         full_context = ""
-        if context:
+        if formatted_context:
+            full_context = formatted_context
+        elif context:
             blocks = "\n\n".join(
                 f"**{c.get('document_title', 'Tài liệu')} — {c.get('heading', 'Nội dung')}**"
                 f"{' (trang ' + str(c.get('page_range', '')) + ')' if c.get('page_range') else ''}\n"

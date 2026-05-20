@@ -75,14 +75,15 @@ class Settings(BaseSettings):
     ingestion_embed_parallelism: int = 0  # 0 = use hardware.embed_parallelism
 
     # Retrieval quality
-    retrieval_min_score: float = 0.35  # Drop chunks below this cosine similarity
+    retrieval_min_score: float = 0.0  # RRF scores max at ~0.033 — pre-filter disabled; reranker is the quality gate
 
     # 2-stage retrieval settings
-    retrieval_section_top_k: int = 3  # Stage 1: top sections to retrieve
-    retrieval_chunk_top_k: int = 5  # Stage 2: top chunks per section
-    retrieval_chunk_size: int = 400  # Target chunk size in tokens
-    retrieval_chunk_overlap: int = 100  # Overlap between chunks in tokens (~25%)
+    retrieval_section_top_k: int = 15  # Stage 1: top sections to retrieve (industry: 15-20)
+    retrieval_chunk_top_k: int = 15  # Stage 2: initial candidate pool (NVIDIA VDB_TOP_K=100)
+    retrieval_chunk_size: int = 500  # Target chunk size in tokens (industry: 512-600)
+    retrieval_chunk_overlap: int = 75  # Overlap between chunks in tokens (~15%)
     retrieval_section_min_score: float = 0.25  # Lower threshold for inclusive retrieval
+    retrieval_fetch_multiplier: int = 3  # fetch_k = chunk_top_k * multiplier for candidate pool
 
     # Confidence scoring for retrieval results
     retrieval_confidence_threshold_high: float = 0.7  # Max score >= this → high confidence
@@ -100,7 +101,10 @@ class Settings(BaseSettings):
 
     # Cross-encoder reranker — improves ranking precision
     retrieval_rerank_enabled: bool = True
-    retrieval_rerank_top_k: int = 5  # Final number of chunks after reranking
+    retrieval_rerank_top_k: int = 30  # Final number of chunks after reranking (industry: 30-50)
+    retrieval_rerank_min_score: float = (
+        0.30  # Filter noise after reranking (sigmoid-normalized [0,1]; 0.3 = 30% confidence)
+    )
     retrieval_rerank_model: str = "AITeamVN/Vietnamese_Reranker"  # Vietnamese cross-encoder
 
     # Query refinement
@@ -109,7 +113,7 @@ class Settings(BaseSettings):
 
     # Multi-query expansion — generates query variants for broader retrieval
     retrieval_query_expansion_enabled: bool = True
-    retrieval_query_expansion_variants: int = 3  # Number of query variants to generate
+    retrieval_query_expansion_variants: int = 2  # Fewer variants = less noise, better intent preservation
 
     # Timeouts for retrieval auxiliary services
     retrieval_query_refinement_timeout: float = 2.0
@@ -122,6 +126,7 @@ class Settings(BaseSettings):
 
     # Knowledge Graph
     kg_enabled: bool = False  # Enable Knowledge Graph for query enhancement
+    kg_top_k: int = 3  # Number of KG entities to retrieve for query enhancement
 
     database_url: str = "replace-me"
     redis_password: str = ""  # Set via REDIS_PASSWORD env var
