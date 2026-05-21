@@ -12,16 +12,15 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 |-----------|-----------|
 | Frontend | Next.js 16 + shadcn/ui v4 + next-auth v5 (JWT) |
 | Backend | FastAPI 100% async (Strict await enforcement) |
-| Workers | workers — Celery (node-ingestion: solo + node-default: prefork, Beat) |
-| AI-Engine | ai-engine — Standalone FastAPI server for Embedding/Reranking (GPU) |
+| Workers | Celery (node-ingestion: solo + node-default: prefork, Beat) |
+| AI Embedding | TEI container — `Qwen/Qwen3-Embedding-0.6B` (1024-dim, 32k ctx, GPU) |
+| AI Reranker | TEI container — `Alibaba-NLP/gte-multilingual-reranker-base` (GPU) |
 | Database | PostgreSQL 18.4 (AsyncSessionLocal, Metadata/Auth/Audit) |
-| Vectors | Qdrant 1.17.1 (AsyncQdrantClient, Sparse+Dense Hybrid) |
+| Vectors | Qdrant (AsyncQdrantClient, Sparse+Dense Hybrid) |
 | Object storage | RustFS (S3-compatible, isolated via asyncio.to_thread) |
 | Queue/Cache | Redis 8.x (Celery, Streams, Semantic Cache, Rate Limiting) |
-| Embedding | AITeamVN/Vietnamese_Embedding_v2 (Remote via AI-Engine) |
-| Reranker | AITeamVN/Vietnamese_Reranker (Remote via AI-Engine) |
-| AI Provider | 9Router (OpenAI-compatible AI router via `decolua/9router:latest`, Next.js 16, port 2908) |
-| Ingestion | **LlamaParse (cloud OCR)** + **LibreOffice (DOCX→PDF)** + **LlamaIndex SentenceSplitter** + DuplicateDetector (Bloom). Note: `DoclingParser` (legacy) kept as file but unused. |
+| AI Provider | 9Router (`decolua/9router:latest`, OpenAI-compatible, port 2908) |
+| Ingestion | LlamaParse (cloud OCR) + LibreOffice (DOCX→PDF) + LlamaIndex SentenceSplitter + DuplicateDetector (Bloom) |
 | BM25 Manager | BM25Manager (class-level Singleton with 120s TTL) |
 | Reverse proxy | Traefik v3.7 on port 80 (auto-discovery via Docker labels, SSE, NextAuth, API, Rate Limited) |
 
@@ -86,30 +85,31 @@ graph TD
     API --> SystemSvc[System Module → Health/Maintenance]
 
     ChatSvc --> Retriever[Retrieval Service]
-    ChatSvc --> WebSocketSvc[WebSocket Handler]
-    Retriever --> AI_Engine[AI-Engine Service → GPU]
-    AI_Engine -->|Vectors| Qdrant
+    Retriever --> AIEmbed[ai-embedding TEI → Qwen3-Embedding-0.6B]
+    Retriever --> AIRerank[ai-reranker TEI → gte-multilingual-reranker-base]
+    AIEmbed -->|Vectors| Qdrant
+    AIRerank -->|Scores| Qdrant
 
-    WebSocketSvc <-->|Real-time Streaming| Client
+    WebApp <-->|SSE Streaming| Client
 
     DocSvc --> Upload[Upload → Redis queue]
     Upload --> Worker[workers · celery]
     Worker --> Parser[LlamaParseParser]
-    Parser --> AI_Engine
+    Worker --> AIEmbed
     Worker --> DB[(PostgreSQL)]
     Redis --> Cleanup[System Module → workers]
 ```
 
-## Updated Tech Stack (2026-05-20)
+## Architecture Invariants (2026-05-20)
 
-| Component | Technology | Notes |
-|-----------|-----------|-------|
+| Component | Status | Notes |
+|-----------|--------|-------|
 | **Chunking** | `SentenceSplitter` (LlamaIndex) | Semantic-aware text splitting, char multiplier from `INGESTION_CHUNK_TOKEN_TO_CHAR_MULTIPLIER` |
 | **Query Refinement** | Enabled | AI-powered query optimization, timeout from `RETRIEVAL_QUERY_REFINEMENT_TIMEOUT` |
-| **Multi-Query Expansion** | Enabled | Generates query variants for broader retrieval, `RETRIEVAL_QUERY_EXPANSION_ENABLED=true` |
-| **HyDE** | Enabled | Hypothetical document embeddings for short queries (<5 words), gated by expansion_enabled. Conservative prompt to reduce hallucination. |
-| **Context Compaction** | Auto | Triggers at 70% of context window, reserves 20K tokens for response |
-| **Streaming** | **WebSocket** | Real-time bidirectional (replaces SSE) |
+| **Multi-Query Expansion** | Enabled | Generates query variants for broader retrieval |
+| **HyDE** | Removed | Previously hypothetical document embeddings for short queries. Removed to reduce latency. |
+| **Context Compaction** | Removed | History limited to `AI_MAX_HISTORY_MESSAGES` (default 10) in proxy_bridge |
+| **Streaming** | **SSE (Server-Sent Events)** | Real-time unidirectional stream via `POST /chat/stream` |
 | **Cache** | 3 layers | LLM Response + Semantic + Query Embedding |
 | **AI Usage Tracking** | All endpoints | Every AI call logged to `ai_model_usage` via `track_usage()` |
 | **Evaluation** | RAGAS | Optional quality metrics (disabled by default) |
@@ -146,7 +146,6 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | `analytics` | Monitoring & Audit | Token tracking, Audit stream processing |
 | `system` | Orchestration | Health checks, Maintenance tasks, Global state |
 | `admin` | Provider Management | 9Router model listing |
-| `inference` | AI Server | Standalone AI-Engine (FastAPI + Models) |
 
 ## Runtime Data Flow
 
@@ -158,7 +157,7 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | Store | SectionRepository → PostgreSQL → Embed → Qdrant | document_sections rows + vectors |
 | Retrieve | SemanticCache (similarity match) → exact cache → hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → Neighbor Expansion (Soi sáng) → full section context assembly |
 | Memory | UserMemoryService (redis_client shared pool) → Redis cache → inject systemInstruction | Personalized prompt |
-| Stream | ChatService → AIProxyBridge (LlamaIndex OpenAI) → Immediate Yield (no buffering) → WebSocket → Browser | Grounded answer with citations |
+| Stream | ChatService → AIProxyBridge (LlamaIndex OpenAI) → Immediate Yield (no buffering) → SSE → Browser | Grounded answer with citations |
 | Persist | Post-stream → `ChatService.save_assistant_message()` → MessagePack binary storage in Redis | Fast persistence |
 | Audit | safe_record_audit → Redis Stream (XADD) → AuditStreamWorker → PostgreSQL | Decoupled logging |
 | Extract | Post-response → Celery extract_memories_task → user_memories | Durable memory extraction |
@@ -246,9 +245,9 @@ FastAPI ChatService → LlamaIndex OpenAI LLM (api_base=ai-proxy:2908/v1)
 
 ## Multi-Turn Conversation
 
-- Last N messages as OpenAI `messages` array (configurable via `AI_MAX_HISTORY_MESSAGES`, default 20)
+- Last N messages as OpenAI `messages` array (configurable via `AI_MAX_HISTORY_MESSAGES`, default 10)
 - RAG context embedded into current user message
-- User messages are saved synchronously during `ChatService.prepare_chat()`. Assistant messages are saved synchronously by `ChatService.save_assistant_message()` before the final WebSocket `done:true` event. Redis remains the hot cache with configurable TTL (`CHAT_HISTORY_REDIS_TTL`, default 24h).
+- User messages are saved synchronously during `ChatService.prepare_chat()`. Assistant messages are saved synchronously by `ChatService.save_assistant_message()` before the final SSE `done:true` event. Redis remains the hot cache with configurable TTL (`CHAT_HISTORY_REDIS_TTL`, default 24h).
 - `ChatStore.hydrate_from_db()` reloads from DB on TTL expiry (checks Redis first via `history_exists()`)
 - Redis `append_message()` uses pipeline for atomic RPUSH + EXPIRE
 - Auto-title from first user message (80 chars)
@@ -258,7 +257,7 @@ FastAPI ChatService → LlamaIndex OpenAI LLM (api_base=ai-proxy:2908/v1)
 | Policy | Detail |
 |--------|--------|
 | Default view | Empty "Chat mới" on page load (no auto-restore) |
-| History | Sidebar ordered by `updated_at DESC` |
+| History | Sidebar order by `updated_at DESC` |
 | New session | `POST /chat/sessions` creates empty session |
 | Switch | Click in sidebar → ChatPanel loads messages via `sessionId` prop |
 | Auto-title | First user query truncated to 80 chars |
@@ -286,8 +285,6 @@ Every call to 9Router is logged via `track_usage()` in `app/modules/chat/retriev
 | `chat` | Main QA response |
 | `query_refinement` | Query refinement |
 | `query_expansion` | Multi-query expansion |
-| `hyde` | HyDE generation |
-| `context_compaction` | Context compaction |
 | `memory_extraction` | Memory extraction |
 | `ragas_eval` | RAGAS evaluation (when enabled) |
 

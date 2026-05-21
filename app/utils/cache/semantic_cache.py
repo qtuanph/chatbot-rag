@@ -42,12 +42,12 @@ class SemanticCache(BaseRedisCache):
     def distance_threshold(self) -> float:
         return settings.retrieval_semantic_cache_threshold
 
-    def __init__(self, vector_dim: int = 1024, client: Any | None = None) -> None:
+    def __init__(self, vector_dim: int | None = None, client: Any | None = None) -> None:
         if client is None:
             raise ValueError("redis_client is required for SemanticCache")
         super().__init__(client)
         self._r = client
-        self.vector_dim = vector_dim
+        self.vector_dim = vector_dim or settings.embedding_vector_size
         self._is_async = hasattr(self._r, "pipeline") and callable(getattr(self._r, "pipeline", None))
 
     def _build_key(self, key: str) -> str:

@@ -57,8 +57,8 @@ async function proxyHandler(
   // Forward body for non-GET/HEAD requests
   let retryBody: Blob | null = null;
   if (request.method !== "GET" && request.method !== "HEAD") {
-    if (isUploadRequest) {
-      // Use direct stream for large uploads to save RAM. No retry possible.
+    if (isSSERequest || isUploadRequest) {
+      // For SSE and uploads, pass body stream directly to avoid blocking
       init.body = request.body;
     } else {
       // Clone body for small requests to allow retry

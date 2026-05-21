@@ -66,6 +66,7 @@ export function ChatPanel({
   const scrollHeightRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const [thinkingMode, setThinkingMode] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
   const [lastStats, setLastStats] = useState<{
     total_ms: number;
     ttft_ms: number | null;
@@ -215,51 +216,76 @@ export function ChatPanel({
           onSessionCreated?.(sid);
         }
 
-        const ws = chatApi.chatStream(query, sid, session?.userId || "anonymous", thinking ?? thinkingMode);
+        const { controller, fetchStream } = chatApi.chatStream(query, sid, thinking ?? thinkingMode);
+        abortRef.current = controller;
 
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.error) {
-              ws.close();
-              setMessages((prev) =>
-                prev.map((m) => m.id === assistantId ? { ...m, content: data.error } : m)
-              );
-              return;
-            }
-            if (data.done) {
-              ws.close();
-              if (data.session_id && isNewSession) {
-                onSessionUpdate?.(data.session_id, { title: query.slice(0, 80) + (query.length > 80 ? "..." : "") });
+        const response = await fetchStream;
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error("No response body");
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith("data: ")) continue;
+
+            try {
+              const data = JSON.parse(trimmed.slice(6));
+              if (data.error) {
+                setMessages((prev) =>
+                  prev.map((m) => m.id === assistantId ? { ...m, content: data.error } : m)
+                );
+                reader.cancel();
+                return;
               }
-              if (data.citations) {
-                data.citations.forEach((c: Citation) => {
-                  if (!citations.find((ec) => ec.document_id === c.document_id)) citations.push(c);
-                });
+              if (data.thinking !== undefined) {
+                // Thinking status update during retrieval
+                setIsThinking(data.thinking);
+                continue;
               }
-              if (data.stats) setLastStats(data.stats);
-              const doneEvent = data as ChatStreamDone;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId ? { ...m, id: doneEvent.message_id || m.id, content: fullText, citations } : m
-                ),
-              );
-            } else {
-              fullText += data.chunk || "";
-              setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: fullText } : m));
-            }
-          } catch { /* skip */ }
-        };
-
-        ws.onerror = () => toast.error("Lỗi kết nối WebSocket. Vui lòng thử lại.");
-        ws.onclose = () => { setStreaming(false); onRefreshSessions(); };
-
-        abortRef.current = { signal: {} as AbortSignal, abort: () => ws.close() };
-      } catch {
+              if (data.done) {
+                if (data.session_id && isNewSession) {
+                  onSessionUpdate?.(data.session_id, { title: query.slice(0, 80) + (query.length > 80 ? "..." : "") });
+                }
+                if (data.citations) {
+                  data.citations.forEach((c: Citation) => {
+                    if (!citations.find((ec) => ec.document_id === c.document_id)) citations.push(c);
+                  });
+                }
+                if (data.stats) setLastStats(data.stats);
+                const doneEvent = data as ChatStreamDone;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, id: doneEvent.message_id || m.id, content: fullText, citations } : m
+                  ),
+                );
+              } else {
+                fullText += data.chunk || "";
+                setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: fullText } : m));
+              }
+            } catch { /* skip malformed SSE events */ }
+          }
+        }
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
         toast.error("Lỗi kết nối. Vui lòng thử lại.");
         setMessages((prev) =>
           prev.map((m) => m.id === assistantId ? { ...m, content: "Lỗi khi gửi tin nhắn. Vui lòng thử lại." } : m)
         );
+      } finally {
         setStreaming(false);
         onRefreshSessions();
       }
@@ -383,6 +409,7 @@ export function ChatPanel({
                 key={msg.id}
                 message={msg}
                 isStreaming={streaming && index === messages.length - 1 && msg.role === "assistant"}
+                isThinking={isThinking && index === messages.length - 1 && msg.role === "assistant"}
               />
             ))}
           </div>

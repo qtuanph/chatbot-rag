@@ -2,315 +2,82 @@
   "document": {
     "id": "0_QUICK_REFERENCE",
     "version": "2026-05-20",
-    "purpose": "Rules and patterns cheat sheet for AI/agent preflight. Read first, then task-specific docs.",
+    "purpose": "Quick rules & patterns cheat sheet. For full details, READ the referenced docs — DO NOT guess.",
+    "read_order": [
+      "AGENTS.md — Guardrails, CSR rules, code quality",
+      "docs/1_ARCHITECTURE.md — System design, data model, invariants",
+      "docs/2_WORKFLOWS.json — Workflow index (children 2.1-2.5)",
+      "docs/3_API_CONTRACTS.md — Route reference, security",
+      "docs/4_DEPLOYMENT.md — Docker topology, env vars, health",
+      "docs/7_CURRENT_SETTINGS.json — All current defaults and config"
+    ],
     "doc_guide": {
-      "1_ARCHITECTURE.md": "System design, data model, storage, invariants, delete/version policy, AI control",
-      "2_WORKFLOWS.json": "Workflow index (children: 2.1-2.5)",
-      "2.1_WORKFLOWS_INGESTION.md": "Document ingestion + 5-stage retrieval pipeline",
-      "2.2_WORKFLOWS_CHAT.md": "Chat retrieval generation, cache layers, Soi sáng",
-      "2.3_WORKFLOWS_DELETE.md": "Hard delete workflow",
-      "2.4_WORKFLOWS_AUDIT.md": "Audit logging",
-      "2.5_WORKFLOWS_ANALYTICS.md": "Analytics data flow",
-      "3_API_CONTRACTS.md": "Full route reference, security, rate limits, error handling",
-      "4_DEPLOYMENT.md": "Docker topology, Traefik v3.7.1, env vars, health probes, backup",
-      "5_NAMING_CONVENTIONS.md": "Variable, function, class, file naming standards",
-      "6_KNOWN_ISSUES.json": "Bug tracking, post-mortems"
+      "1_ARCHITECTURE.md": "Tech stack, data model, CSR, delete policy, AI provider",
+      "2.1_WORKFLOWS_INGESTION.md": "Document ingestion pipeline + re-chunk",
+      "2.2_WORKFLOWS_CHAT.md": "Chat retrieval, cache layers, neighbor expansion",
+      "2.3_WORKFLOWS_DELETE.md": "6-step hard delete",
+      "2.4_WORKFLOWS_AUDIT.md": "Decoupled audit logging",
+      "2.5_WORKFLOWS_ANALYTICS.md": "Token tracking, analytics",
+      "3_API_CONTRACTS.md": "Full route reference",
+      "4_DEPLOYMENT.md": "Docker, Traefik, health, Celery config",
+      "5_NAMING_CONVENTIONS.md": "Naming standards",
+      "6_KNOWN_ISSUES.json": "Bug post-mortems",
+      "7_CURRENT_SETTINGS.json": "All defaults, env vars, runtime params"
     }
   },
-  "v0.1_performance_features": {
-    "semantic_cache": "Similarity match > 98% (dist < 0.08) via Redis Vector Search (Async), 24h TTL",
-    "binary_history": "MessagePack serialization for sub-millisecond chat hydration (Redis RPUSH + pipeline atomic)",
-    "decoupled_audit": "XADD stream logging (<1ms) with background AuditStreamWorker",
-    "bloom_duplicate": "BF.EXISTS check for O(1) document upload skipping (Redis 8.x)",
-    "cpu_offloading": "Strict asyncio.to_thread usage for OCR, Tokenization, and Embedding to prevent loop blocking",
-    "bm25_singleton": "TTL-cached vocabulary in RAM (120s) to handle high concurrency without Redis bottlenecks"
+  "must_know": {
+    "hard_delete_order": "registry.delete() → vectors → sections → file → DB row → purge. Sections BEFORE DB row.",
+    "retrieval": "Hybrid (dense+BM25 RRF) → section grouping (≥0.25) → dedup → rerank (TEI) → neighbor expansion → full section to LLM. See 2.2_WORKFLOWS_CHAT.md",
+    "api_gateway": "Browser → /api/bep/ → Next.js Route Handler → getToken() → Bearer → backend. Token NEVER exposed to browser.",
+    "provider_boundary": "Routes NEVER call AI provider SDK directly. ChatService owns orchestration. See 1_ARCHITECTURE.md",
+    "teI_inference": "Embedding: ai-embedding (gte-multilingual-base, 768-dim, port 7997). Reranker: ai-reranker (gte-multilingual-reranker-base, port 7998). Both TEI containers.",
+    "async_rules": "All I/O = async def + await. CPU-bound = asyncio.to_thread(). Celery → asyncio.run() at entry only.",
+    "csr_layers": "Route (HTTP) → Service (logic, raises ValueError/RuntimeError) → Repository (SQL, returns dicts). See 1_ARCHITECTURE.md"
   },
-  "rechunk_rule": "POST /documents/{id}/rechunk auto-detects: if ocr_output.md exists in S3 → rechunk from OCR (free); if not → fallback to retry (re-upload to LlamaParse). Frontend shows single RefreshCw button for both ready/failed statuses — no separate retry button needed.",
-  "markdown_cleaner": "app/adapters/parsers/markdown_cleaner.py — preprocesses OCR markdown before heading parsing. Removes: standalone page numbers (pure digit lines), TOC dot-leaders (..... patterns), header/footer artifacts (SSE., JSC. etc), and collapses duplicate blank lines. Applied in both LlamaParse API flow and rechunk flow.",
-  "single_chunking": "MarkdownNodeParser sections are NOT pre-split. Each heading section becomes ONE IngestedNode. The single SentenceSplitter in LlamaIngestionPipeline (chunk_size=1200 chars, overlap=300, include_metadata=True) handles all chunking. No double-splitting.",
-  "text_md_skip_ocr": "Files with .md and .txt extensions (source_format='markdown' or 'text') skip LlamaParse API entirely. content bytes decoded to UTF-8 → MarkdownCleaner → parse_from_markdown() directly. MIME type text/markdown is allowed in config.",
-  "hyde": {
-  "purpose": "Hypothetical Document Embeddings for short-query enrichment",
-  "mechanism": "Auxiliary model generates hypothetical answer → embed → add vector to query ensemble",
-  "trigger": "Short query (<5 words), expansion variants ≤ 2, timeout 1.5s",
-  "benefit": "+10-20% precision for short/ambiguous queries; noise reduction on longer queries",
-  "code": "app/modules/chat/retrieval/hyde_service.py, integrated in retrieval_service.py",
-  "cost": "1 additional 9Router auxiliary call (~200-500ms latency) + 1 embed call"
-},
-"confidence_scoring": {
-  "purpose": "Retrieval quality assessment via score distribution",
-  "high": "max_score ≥ 0.7 AND avg_score ≥ 0.5",
-  "medium": "max_score ≥ 0.4",
-  "low": "max_score < 0.4",
-  "code": "app/modules/chat/retrieval/confidence_scorer.py, integrated in retrieval_service.py"
-},
-"multi_model_routing": {
-  "models": ["AI_PROXY_DEFAULT_MODEL (main QA)", "AI_AUXILIARY_MODEL (auxiliary tasks)"],
-  "auxiliary_tasks": ["HyDE generation", "Query expansion", "Query refinement", "Context compaction", "Failure detection"],
-  "fallback": "If AI_AUXILIARY_MODEL is empty, uses AI_PROXY_DEFAULT_MODEL"
-},
-"context_compaction": {
-    "trigger": "Auto when estimated history tokens > AI_CONTEXT_WINDOW × AI_COMPACT_THRESHOLD_RATIO (default 200K × 0.70 = 140K)",
-    "mechanism": "Old messages summarized via 9Router, recent N turns kept verbatim (default 5). Fallback: drop oldest messages if API fails.",
-    "config": ["AI_CONTEXT_WINDOW=200000", "AI_COMPACT_THRESHOLD_RATIO=0.70", "AI_COMPACT_RESERVE_TOKENS=20000", "AI_COMPACT_KEEP_RECENT=5"],
-    "code": "app/modules/chat/services/context_compactor.py, integrated in ChatService.stream_chat_events()",
-    "cost": "1 additional 9Router call per compaction event (~1-3s latency, ~500-1024 output tokens)"
+  "models": {
+    "default_model": "chatbot-rag",
+    "auxiliary_model": "auxiliary",
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B (1024-dim, 32k ctx, TEI)",
+    "reranker_model": "Alibaba-NLP/gte-multilingual-reranker-base (TEI)"
   },
-  "core_invariants": [
-    {
-      "name": "async_ingestion",
-      "rule": "Upload returns task_id immediately. Parsing/indexing runs asynchronously via Celery workers."
-    },
-    {
-      "name": "five_stage_retrieval",
-      "rule": "Query refinement (2s timeout) → Multi-query expansion (3s timeout, enabled) → HyDE (1.5s, short queries <5 words) → Hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.25) → Rerank (cross-encoder, enabled, top_k=30) → Neighbor Expansion (Soi sáng, window=1) → Confidence scoring → full section context assembly + citations. 3-layer cache: LLM Response (4h) → Semantic (24h) → Query Embedding (4h). Retrieve at chunk level, present expanded section context to LLM. Doc IDs TTL-cached 60s."
-    },
-    {
-      "name": "hard_delete_order",
-      "rule": "6 steps: registry → vectors → sections → file → DB row → purge. Sections before DB row (referential integrity)."
-    },
-    {
-      "name": "api_gateway_proxy",
-      "rule": "Browser never sees Bearer token. All calls via /api/bep/ → Next.js Route Handler → getToken() → backend."
-    },
-    {
-      "name": "id_first_boundaries",
-      "rule": "Cross-layer and worker payloads pass stable IDs/URIs only. Rehydrate rich state inside the owning layer."
-    },
-    {
-      "name": "provider_boundary",
-      "rule": "Routes never call provider factories, adapters, or SDKs. ChatService owns AI orchestration; routes own the HTTP response shell."
-    },
-    {
-      "name": "v0.1_speed_layer",
-      "rule": "Semantic Cache (Redis) → MessagePack History → Hybrid Search → Audit Stream → BM25 Singleton. All high-frequency IO is non-blocking or cached."
-    }
-  ],
-  "data_location_map": [
-    { "data": "sections", "storage": "PostgreSQL 18.4", "table": "document_sections", "notes": "Canonical order source (order_index). Accessed via AsyncSession." },
-    { "data": "chunks", "storage": "Qdrant 1.17.1", "notes": "~1200 char chunks via single SentenceSplitter pass. section_id metadata links to PostgreSQL document_sections. Named dense + sparse-bm25 vectors. AsyncQdrantClient." },
-    { "data": "bm25_vocab", "storage": "Redis + RAM", "notes": "Singleton BM25Manager with 120s TTL. Vocabulary loaded from Redis and cached in-memory." },
-    { "data": "documents", "storage": "PostgreSQL 18.3", "table": "documents", "notes": "status: pending→parsing→embedding→ready/failed. Async DB access." },
-    { "data": "chat_messages", "storage": "PostgreSQL + Redis 8.x", "notes": "DB persisted; Redis hot cache uses MessagePack binary serialization for speed/RAM." },
-    { "data": "ai_model_usage", "storage": "PostgreSQL 18.3", "notes": "Every AI call logged: model_name, prompt_tokens, completion_tokens, endpoint, cost_usd, user_id" },
-    { "data": "chat_sessions", "storage": "PostgreSQL 18.3", "table": "chat_sessions", "notes": "Hard-deleted after 30 days by Celery Beat. Sidebar ordered by updated_at DESC." },
-    { "data": "uploaded_files", "storage": "RustFS", "notes": "S3-compatible; operations wrapped in asyncio.to_thread." },
-    { "data": "semantic_cache", "storage": "Redis 8.x (HNSW)", "notes": "Redis Vector Search (RediSearch) for rapid intent matching." },
-    { "data": "audit_stream", "storage": "Redis Stream", "key": "audit:stream", "notes": "Asynchronous event buffer via XADD." },
-    { "data": "duplicate_bloom", "storage": "Redis 8.x Bloom", "key": "bf:document:sha256", "notes": "O(1) SHA256 existence check." },
-    { "data": "query_embedding_cache", "storage": "Redis 8.x", "notes": "MD5 keyed; TTL 4 hours" },
-    { "data": "user_memories", "storage": "PostgreSQL + Redis 8.x", "table": "user_memories", "notes": "Redis cache 5min TTL; injected into AI systemInstruction" },
-    { "data": "user_sessions", "storage": "JWT (PyJWT) + Redis 8.x blacklist", "notes": "Token revocation on logout. Role cached in JWT payload." }
-  ],
-  "critical_env": {
-    "ai": {
-      "AI_PROXY_URL": "http://ai-proxy:2908",
-      "AI_PROXY_DEFAULT_MODEL": "model name in 9Router prefix/model format (can be empty)",
-      "AI_AUXILIARY_MODEL": "lightweight model combo for auxiliary tasks (HyDE, expansion, refinement, compaction)",
-      "AI_ENGINE_URL": "http://ai-engine:8000",
-      "EMBEDDING_HF_MODEL": "AITeamVN/Vietnamese_Embedding_v2",
-      "RETRIEVAL_RERANK_MODEL": "AITeamVN/Vietnamese_Reranker",
-      "AI_INPUT_COST_PER_1M": "0.0",
-      "AI_OUTPUT_COST_PER_1M": "0.0"
-    },
-    "retrieval": {
-      "RETRIEVAL_SECTION_MIN_SCORE": 0.25,
-      "RETRIEVAL_MIN_SCORE": 0.0,
-      "RETRIEVAL_SECTION_TOP_K": 15,
-      "RETRIEVAL_CHUNK_TOP_K": 15,
-      "RETRIEVAL_RERANK_TOP_K": 30,
-      "RETRIEVAL_RERANK_MODEL": "AITeamVN/Vietnamese_Reranker",
-      "RETRIEVAL_BM25_K1": 1.5,
-      "RETRIEVAL_BM25_B": 0.75,
-      "RETRIEVAL_QUERY_EXPANSION_ENABLED": true,
-      "RETRIEVAL_QUERY_EXPANSION_VARIANTS": 3,
-      "RETRIEVAL_QUERY_REFINEMENT_TIMEOUT": 2.0,
-      "RETRIEVAL_QUERY_EXPANSION_TIMEOUT": 3.0,
-      "RETRIEVAL_HYDE_TIMEOUT": 1.5,
-      "RETRIEVAL_EXPANSION_SCROLL_LIMIT": 100,
-      "RETRIEVAL_CONFIDENCE_THRESHOLD_HIGH": 0.7,
-      "RETRIEVAL_CONFIDENCE_THRESHOLD_LOW": 0.4
-    },
-    "production_safety": {
-      "ALLOWED_HOSTS": "must be explicit",
-      "CORS_ORIGINS": "must be explicit",
-      "NEXT_PUBLIC_API_URL": "/api/bep (browser proxy path)",
-      "API_INTERNAL_URL": "http://api:8000/api/v1 (server-side)"
-    },
-    "celery": {
-"CELERY_TASK_TIME_LIMIT": "3600 (1 hour hard kill)",
-"CELERY_TASK_SOFT_TIME_LIMIT": "3300 (55 min soft)",
-      "CELERY_WORKER_MAX_MEMORY_KB": "1500000 (1.5GB)",
-      "CELERY_VISIBILITY_TIMEOUT": "7200 (2h)",
-      "CELERY_MAX_TASKS_PER_CHILD": "50",
-      "CELERY_RETRY_BACKOFF": "30 (upload), auto ÷3 for delete",
-      "CELERY_MAX_RETRIES": "3"
-    },
-    "ai_generation": {
-      "AI_TEMPERATURE": "0.3",
-      "AI_MAX_OUTPUT_TOKENS": "8192",
-      "AI_MAX_HISTORY_MESSAGES": "20",
-      "AI_PROXY_TIMEOUT": "120.0",
-      "AI_STREAM_TIMEOUT": "300.0 (seconds)",
-      "AI_HTTP_MAX_CONNECTIONS": "50",
-      "CHAT_SESSION_TTL_DAYS": "30",
-      "MEMORY_CACHE_TTL": "300 (5min)",
-      "RATE_LIMIT_GLOBAL_RPM": "5000 (production middleware)",
-      "RATE_LIMIT_RELAXED_MODE": "true (dev)",
-      "RATE_LIMIT_RELAXED_FLOOR": "10000"
-    },
-    "ingestion": {
-      "INGESTION_MIN_SECTION_CHARS": "200",
-      "INGESTION_CHUNK_TOKEN_TO_CHAR_MULTIPLIER": "3",
-      "LLAMA_CLOUD_API_BASE": "https://api.cloud.llamaindex.ai/api/parsing",
-      "LLAMA_CLOUD_TIMEOUT": "120.0"
-    },
-    "qdrant": {
-      "QDRANT_GROUP_SIZE": "3"
-    }
-  },
-  "api_summary": {
-    "base": "/api/v1",
-    "routes": [
-      { "method": "POST", "path": "/auth/login", "auth": "public" },
-      { "method": "POST", "path": "/auth/logout", "auth": "jwt" },
-      { "method": "GET", "path": "/auth/me", "auth": "jwt" },
-      { "method": "POST", "path": "/auth/users", "auth": "admin" },
-      { "method": "GET", "path": "/auth/users", "auth": "admin" },
-      { "method": "GET", "path": "/auth/roles", "auth": "admin" },
-      { "method": "DELETE", "path": "/auth/users/{username}", "auth": "admin" },
-      { "method": "POST", "path": "/upload", "auth": "admin", "returns": "task_id" },
-      { "method": "GET", "path": "/status/{task_id}", "auth": "admin" },
-      { "method": "GET", "path": "/documents", "auth": "admin" },
-      { "method": "GET", "path": "/documents/{id}", "auth": "admin" },
-      { "method": "DELETE", "path": "/documents/{id}", "auth": "admin" },
-      { "method": "POST", "path": "/documents/{id}/retry", "auth": "admin" },
-      { "method": "POST", "path": "/documents/{id}/rechunk", "auth": "admin" },
-      { "method": "WebSocket", "path": "/ws/chat/stream", "auth": "member" },
-      { "method": "POST", "path": "/chat/messages/{id}/feedback", "auth": "member" },
-      { "method": "POST", "path": "/chat/sessions", "auth": "member" },
-      { "method": "GET", "path": "/chat/sessions", "auth": "member" },
-      { "method": "GET", "path": "/chat/messages", "auth": "member", "params": "session_id" },
-      { "method": "GET", "path": "/tree/{id}", "auth": "member" },
-      { "method": "GET", "path": "/tree/{id}/search", "auth": "member", "params": "query" },
-      { "method": "GET", "path": "/health", "auth": "public" },
-      { "method": "GET", "path": "/health/data", "auth": "admin" },
-      { "method": "GET", "path": "/memories", "auth": "member" },
-      { "method": "POST", "path": "/memories", "auth": "member" },
-      { "method": "PATCH", "path": "/memories/{id}", "auth": "member" },
-      { "method": "DELETE", "path": "/memories/{id}", "auth": "member" },
-      { "method": "GET", "path": "/analytics/stats", "auth": "jwt" },
-      { "method": "GET", "path": "/admin/models", "auth": "admin" }
-    ]
+  "key_rules": {
+    "rechunk": "POST /documents/{id}/rechunk — if ocr_output.md in S3 → free rechunk; else → retry LlamaParse. Single RefreshCw button.",
+    "single_chunking": "SentenceSplitter in LlamaIngestionPipeline only. No double-splitting.",
+    "text_md_skip": ".md/.txt files skip LlamaParse → parse_from_markdown() directly.",
+    "confidence": "high: max≥0.7 AND avg≥0.5 | medium: max≥0.4 | low: max<0.4",
+    "history_limit": "AI_MAX_HISTORY_MESSAGES=10 (messages sent to LLM per turn)"
   },
   "anti_patterns": [
     "flat chunking without hierarchy",
-    "double SentenceSplitter — MarkdownNodeParser sections feed into ONE SentenceSplitter pass only",
-    "calling LlamaParse API for .md/.txt files — decode + parse_from_markdown() directly",
+    "double SentenceSplitter",
+    "calling LlamaParse API for .md/.txt files",
     "direct provider SDK calls in routes",
-    "raw numeric HTTP status codes",
-    "direct raise HTTPException in API layer (use http_errors helpers)",
-    "SessionLocal or SQLAlchemy Session in route files (use Repository via Service)",
-    "business logic in route handlers (belongs in Service layer)",
+    "SessionLocal in route files (use Repository via Service)",
+    "business logic in route handlers",
     "hallucinated answers without retrieval grounding"
   ],
-  "architecture_layers": {
-    "pattern": "Controller-Service-Repository (CSR) - 100% Async",
-    "description": "Strict 3-layer separation. Routes = HTTP only. Services = business logic. Repositories = data access. All layers strictly await I/O.",
-    "controller": {
-      "location": "app/modules/{domain}/router.py (+ app/api/routes/websocket.py)",
-      "responsibility": "HTTP parsing, auth deps, response formatting, status codes. NO business logic, NO AsyncSessionLocal inside routes (use deps)."
-    },
-    "canonical_dict_keys": {
-      "artifact_metadata": "Use 'artifact_metadata' in all dictionaries, schemas, and pipeline outputs representing arbitrary extra JSON metadata (replaces legacy 'extra_metadata', 'metadata')."
-    },
-    "service": {
-      "location": "app/modules/{domain}/services/ or app/modules/{domain}/service.py",
-      "files": {
-        "auth/service.py": "AuthService — login, logout, user CRUD",
-        "chat/services/service.py": "ChatService — prepare_chat, CLIProxyBridge stream orchestration, session mgmt, message persistence, memory extraction dispatch",
-        "chat/services/memory_service.py": "MemoryService — CRUD for user memories",
-        "chat/services/user_memory_service.py": "UserMemoryService — Redis + MemoryRepository via DI",
-        "chat/retrieval/retrieval_service.py": "RetrievalService — 5-stage retrieval (hybrid → group → rerank → expand → context)",
-        "chat/retrieval/expansion_service.py": "ExpansionService — multi-query domain logic for RAG",
-        "documents/services/service.py": "DocumentService — upload, status, delete, retry",
-        "documents/services/tree_service.py": "TreeService — document tree exploration",
-        "documents/services/task_service.py": "TaskService — task orchestration",
-        "documents/services/cleanup_service.py": "CleanupService — hard delete orchestration",
-        "documents/ingestion/ingestion_service.py": "IngestionService — accepts optional section_repo via constructor",
-        "documents/ingestion/recovery_service.py": "RecoveryService — repository-based recovery logic",
-        "admin/router.py": "AdminRouter — 9Router model listing",
-        "analytics/service.py": "AnalyticsService — stats aggregation",
-        "system/service.py": "SystemService — health & maintenance"
-      }
-    },
-    "repository": {
-      "location": "app/modules/{domain}/repositories/ or app/modules/{domain}/repository.py",
-      "files": {
-        "auth/repository.py": "AuthRepository — users, roles",
-        "chat/repositories/repository.py": "ChatRepository — sessions, messages",
-        "chat/repositories/memory_repository.py": "MemoryRepository — user_memories",
-        "documents/repositories/repository.py": "DocumentRepository — documents, hard_delete()",
-        "documents/repositories/section_repository.py": "SectionRepository — document_sections, get_sections_for_rag()",
-        "analytics/repository.py": "AnalyticsRepository — aggregation queries"
-      },
-      "convention": "repository.py or repositories/repository.py naming. Takes Session via constructor, returns dicts (not ORM models)"
-    },
-    "di_wiring": {
-      "location": "app/api/deps.py",
-      "pattern": "Repository factories yield from SessionLocal, Service factories take Repository via Depends()"
-    }
+  "data_location": {
+    "sections": "PostgreSQL → document_sections",
+    "chunks": "Qdrant → dense + sparse-bm25 vectors, section_id metadata",
+    "documents": "PostgreSQL → documents",
+    "chat_messages": "PostgreSQL + Redis (MessagePack hot cache)",
+    "uploaded_files": "RustFS (S3-compatible)",
+    "user_memories": "PostgreSQL + Redis (5min TTL cache)",
+    "semantic_cache": "Redis 8.x (HNSW, DB 0)",
+    "audit_stream": "Redis Stream (audit:stream)"
   },
-  "ai_code_style": {
-    "priority": [
-      "Make the smallest correct change",
-      "Preserve public APIs and route contracts",
-      "Prefer existing service layers and adapters",
-      "Keep functions small and single-purpose"
-    ],
-    "do": [
-      "Read AGENTS.md first, then 00_QUICK_REFERENCE, then task-specific docs",
-      "Update docs when behavior changes",
-      "Reuse existing types, constants, and helpers",
-      "Keep async boundaries intact",
-      "Use nh3 for HTML sanitization, PyJWT for JWT"
-    ],
-    "do_not": [
-      "Invent new architecture unless docs require it",
-      "Rewrite unrelated files during small fixes",
-      "Change endpoint names or response fields silently",
-      "Return confident answers without grounded evidence"
-    ]
+  "removed": {
+    "hyde": "Removed — latency high, hallucination noise",
+    "context_compaction": "Removed — replaced by AI_MAX_HISTORY_MESSAGES=10",
+    "ai_engine": "Removed — replaced by TEI containers (ai-embedding, ai-reranker)",
+    "sentence_transformers": "Removed — embedding via TEI HTTP",
+    "torch": "Removed — pynvml handles GPU detection",
+    "websocket_chat": "Replaced by SSE streaming"
   },
   "run_commands": {
-    "compose_up": "docker compose up --build",
+    "start": "DOCKER_BUILDKIT=1 docker compose up -d --build",
     "health": "curl http://localhost/api/v1/health",
-    "api_logs": "docker compose logs -f api",
-    "worker_logs": "docker compose logs -f workers"
-  },
-  "infrastructure": {
-    "hardware_auto_detect": "app/core/hardware.py — PROD tier: 4-8 workers, 100+ DB/Redis pool for 200+ CCU. TIGHT tier: 1 worker for low VRAM (<6GB).",
-    "async_policy": "All I/O is non-blocking. Heavy CPU (OCR, Embed, Rerank) is offloaded to threads via asyncio.to_thread.",
-    "redis_8.x_config": "maxmemory via REDIS_MAXMEMORY env var (default 512mb for dev), allkeys-lru, save 60 1000, appendonly yes",
-    "redis_db_separation": "DB 0: App cache + RediSearch (semantic cache requires db 0), DB 1: Celery result backend, DB 2: Celery broker",
-    "celery_config": "All values configurable via env vars: time limits, memory limit, visibility timeout, retry, max-tasks-per-child. Workers service uses celery multi with 2 nodes: node-ingestion (solo, GPU, ingestion queue) + node-default (prefork, CPU, cleanup+default queues, Beat scheduler). Routing configured in ops/entrypoint-worker.sh",
-    "celery_tasks": {
-      "ingestion_queue": [
-        "parse_document_task — document parsing/indexing (upload_tasks.py)",
-        "rechunk_document_task — re-chunk from saved OCR markdown, no LlamaParse API (upload_tasks.py)",
-        "rebuild_bm25_index_task — BM25 vocab rebuild from Qdrant after upload/delete (maintenance_tasks.py)"
-      ],
-      "cleanup_queue": [
-        "delete_document_task — 6-step hard delete (cleanup_tasks.py)",
-        "cleanup_old_chat_sessions_task — session TTL cleanup (cleanup_tasks.py, Beat daily)",
-        "cleanup_orphaned_vectors_task — remove Qdrant vectors without DB sections (maintenance_tasks.py, Beat daily)"
-      ],
-      "default_queue": [
-        "save_chat_message_task — compatibility wrapper; SSE path uses synchronous save before done:true (chat_tasks.py)",
-        "process_audit_stream — batch persist Redis stream to DB (audit_worker.py, Beat/Worker)",
-        "extract_memories_task — async memory extraction (memory_tasks.py)"
-      ]
-    },
-    "api_resource_limits": "4 CPUs, 6G RAM (Docker deploy limits) — increase for production"
+    "logs": "docker compose logs -f api",
+    "lint": "python -m black app --line-length=120 && python -m flake8 app --select=F,E1,E2,E4,E9,W --ignore=E203,E501,W293,W292,W391,W503,W504"
   }
 }

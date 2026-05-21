@@ -147,11 +147,14 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 return ingestion_result
 
             except Exception as e:
+                error_msg = str(e)
+                if len(error_msg) > 480:
+                    error_msg = error_msg[:480] + "..."
                 await doc_repo.update_status(
                     document_id,
                     status="failed",
                     stage="failed",
-                    status_message=f"Lỗi: {str(e)}",
+                    status_message=f"Lỗi: {error_msg}",
                 )
                 raise e
             finally:

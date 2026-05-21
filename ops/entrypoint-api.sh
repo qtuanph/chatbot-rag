@@ -1,6 +1,6 @@
 #!/bin/bash
 # Entrypoint for API service (FastAPI + uvicorn)
-# Model download handled exclusively by ai-engine service into shared hf-cache volume.
+# Model download handled exclusively by TEI containers (ai-embedding, ai-reranker) into shared hf-cache volume.
 
 set -e
 

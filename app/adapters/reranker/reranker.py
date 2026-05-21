@@ -1,6 +1,6 @@
 """
-Vietnamese Cross-Encoder Reranker — Remote Client.
-Calls the standalone AI-Engine service for precision re-ranking.
+TEI Reranker Adapter — Remote Client for Text Embeddings Inference.
+Calls the ai-reranker TEI service for cross-encoder reranking.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ def _get_client() -> httpx.AsyncClient:
             limits=limits,
         )
         logger.info(
-            "Created shared httpx client for reranker (pool=%d, keepalive=%d)",
+            "Created shared httpx client for TEI reranker (pool=%d, keepalive=%d)",
             settings.ai_http_max_connections,
             settings.ai_http_keepalive_connections,
         )
@@ -57,19 +57,21 @@ async def _retry_call(coro_factory, max_retries=3, base_delay=1.0):
 
 
 @lru_cache(maxsize=1)
-def get_reranker() -> VietnameseReranker:
+def get_reranker() -> TEIReranker:
     """Get or create the singleton reranker instance."""
-    return VietnameseReranker()
+    return TEIReranker()
 
 
-class VietnameseReranker:
+class TEIReranker:
     """
-    Remote reranker adapter that calls the AI-Engine service.
+    Remote reranker adapter that calls the TEI ai-reranker service.
+    TEI API: POST /rerank {"query": "...", "texts": [...]}
+    Response: [{"index": 0, "score": 0.95}, ...] (sorted by score desc)
     """
 
     def __init__(self):
-        self.base_url = settings.ai_engine_url.rstrip("/")
-        logger.info("Reranker client initialized (target=%s)", self.base_url)
+        self.base_url = settings.ai_reranker_url.rstrip("/")
+        logger.info("TEI Reranker client initialized (target=%s)", self.base_url)
 
     async def rerank(
         self,
@@ -78,28 +80,31 @@ class VietnameseReranker:
         text_attr: str = "full_text",
         top_k: int | None = None,
     ) -> list:
-        """Re-rank documents via AI-Engine remote call."""
+        """Re-rank documents via TEI remote call."""
         if not documents:
             raise ValueError("Cannot rerank empty document list")
 
         top_k = top_k or settings.retrieval_rerank_top_k
 
-        pairs = []
+        texts = []
         for doc in documents:
             if isinstance(doc, dict):
                 text = doc.get(text_attr) or ""
             else:
                 text = getattr(doc, text_attr, None) or ""
-            pairs.append({"query": query, "text": text})
+            texts.append(text)
 
         async def _do_rerank():
             client = _get_client()
-            response = await client.post(f"{self.base_url}/rerank", json={"pairs": pairs, "top_k": top_k})
+            response = await client.post(
+                f"{self.base_url}/rerank",
+                json={"query": query, "texts": texts, "raw_scores": False},
+            )
             response.raise_for_status()
             data = response.json()
 
             final_results = []
-            for res in data["results"]:
+            for res in data:
                 idx = res["index"]
                 score = res["score"]
                 doc = documents[idx]
@@ -110,12 +115,12 @@ class VietnameseReranker:
                     doc.score = float(score)
                 final_results.append(doc)
 
-            return final_results
+            return final_results[:top_k]
 
         try:
             return await _retry_call(_do_rerank)
         except Exception as e:
-            logger.error("AI-Engine /rerank failed after retries: %s", e)
+            logger.error("TEI /rerank failed after retries: %s", e)
             raise
 
     def unload(self) -> None:

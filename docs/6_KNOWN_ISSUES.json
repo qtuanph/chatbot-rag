@@ -140,10 +140,10 @@
     },
     {
       "issue_id": 17,
-      "title": "HyDE Prompt Encourages Hallucination — Reduces Retrieval Precision",
+      "title": "HyDE Prompt Encourages Hallucination — Removed",
       "symptom": "Hypothetical document embeddings pull irrelevant chunks due to hallucinated details. High recall but low precision on long queries.",
       "root_cause": "HyDE prompt said 'hãy viết như thể đó là tài liệu tham khảo thực tế' — actively encouraged fabrication. HyDE ran on ALL queries <100 chars, including long ones where it causes noise.",
-      "resolution": "Changed prompt to conservative wording: 'KHÔNG bịa đặt chi tiết cụ thể, ưu tiên dùng kiến thức phổ thông, an toàn.' Added length gate: only run if query <5 words (word count, not character count).",
+      "resolution": "HyDE removed entirely (hyde_service.py deleted). Latency savings: ~1.5s per query. Precision improved by eliminating hallucination noise.",
       "lesson_learned": "HyDE prompt must explicitly anti-hallucinate. 'Viết như tài liệu thật' is dangerous. Length gate must use word count, not character count, to match industry practice of 'short query enrichment'."
     }
   ]

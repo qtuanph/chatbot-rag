@@ -65,7 +65,7 @@ class QdrantVectorStore(BaseVectorStore):
             url: Qdrant server URL (e.g., http://qdrant:6333)
             api_key: Optional API key for Qdrant cloud
             collection_name: Name of Qdrant collection
-            vector_size: Dimension of vectors (1024 for Vietnamese_Embedding_v2)
+            vector_size: Dimension of vectors (768 for gte-multilingual-base)
             timeout: Request timeout in seconds
         """
         self.url = url or settings.qdrant_url

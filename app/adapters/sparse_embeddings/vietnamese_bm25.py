@@ -212,30 +212,63 @@ class VietnameseBM25Encoder:
 
     # ── Persistence (Redis) ───────────────────────────────────────
 
-    async def load_async(self) -> bool:
-        """Load vocabulary from Redis (Async)."""
-        try:
-            raw = await self._redis.get(self.REDIS_KEY)
-            if raw:
-                data = json.loads(raw)
-                self.vocab = data.get("vocab", {})
-                self._next_id = data.get("next_id", len(self.vocab))
-                return True
-        except Exception as e:
-            logger.error("Failed to load BM25 vocab from Redis (Async): %s", e)
+    async def load_async(self, max_retries: int = 3) -> bool:
+        """Load vocabulary from Redis (Async) with retry."""
+        for attempt in range(max_retries):
+            try:
+                raw = await self._redis.get(self.REDIS_KEY)
+                if raw:
+                    data = json.loads(raw)
+                    self.vocab = data.get("vocab", {})
+                    self._next_id = data.get("next_id", len(self.vocab))
+                    if self.vocab:
+                        logger.info("BM25 vocab loaded: %d terms", len(self.vocab))
+                        return True
+                    logger.warning("BM25 vocab in Redis is empty")
+                    return False
+                if attempt == 0:
+                    logger.warning("BM25 vocab key '%s' not found in Redis", self.REDIS_KEY)
+                return False
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    delay = 0.5 * (2 ** attempt)
+                    logger.warning(
+                        "BM25 vocab load failed (attempt %d/%d), retrying in %.1fs: %s",
+                        attempt + 1, max_retries, delay, e,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error("BM25 vocab load failed after %d attempts: %s", max_retries, e)
         return False
 
-    def load_sync(self) -> bool:
-        """Load vocabulary from Redis (Sync)."""
-        try:
-            raw = self._redis.get(self.REDIS_KEY)
-            if raw:
-                data = json.loads(raw)
-                self.vocab = data.get("vocab", {})
-                self._next_id = data.get("next_id", len(self.vocab))
-                return True
-        except Exception as e:
-            logger.error("Failed to load BM25 vocab from Redis (Sync): %s", e)
+    def load_sync(self, max_retries: int = 3) -> bool:
+        """Load vocabulary from Redis (Sync) with retry."""
+        import time as _time
+        for attempt in range(max_retries):
+            try:
+                raw = self._redis.get(self.REDIS_KEY)
+                if raw:
+                    data = json.loads(raw)
+                    self.vocab = data.get("vocab", {})
+                    self._next_id = data.get("next_id", len(self.vocab))
+                    if self.vocab:
+                        logger.info("BM25 vocab loaded: %d terms", len(self.vocab))
+                        return True
+                    logger.warning("BM25 vocab in Redis is empty")
+                    return False
+                if attempt == 0:
+                    logger.warning("BM25 vocab key '%s' not found in Redis", self.REDIS_KEY)
+                return False
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    delay = 0.5 * (2 ** attempt)
+                    logger.warning(
+                        "BM25 vocab load failed (attempt %d/%d), retrying in %.1fs: %s",
+                        attempt + 1, max_retries, delay, e,
+                    )
+                    _time.sleep(delay)
+                else:
+                    logger.error("BM25 vocab load failed after %d attempts: %s", max_retries, e)
         return False
 
     async def save_async(self) -> None:

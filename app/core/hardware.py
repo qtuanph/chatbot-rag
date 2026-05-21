@@ -1,6 +1,6 @@
 """
 Hardware Profile: Production-grade hardware detection and optimal configuration.
-Supports both NVIDIA (nvidia-ml-py) and AMD (amdsmi) GPUs with automatic detection.
+Supports NVIDIA GPUs with automatic detection via nvidia-ml-py (pynvml).
 Optimized for Docker/K8s high-concurrency (200+ CCU).
 """
 
@@ -9,7 +9,6 @@ import multiprocessing
 import os
 import psutil
 import pynvml
-import torch
 from dataclasses import dataclass
 from typing import Tuple
 
@@ -39,10 +38,9 @@ def _get_container_memory_limit() -> float:
 
 
 def _detect_amd_gpu_info() -> Tuple[int, float]:
-    """AMD GPU detection via amdsmi — disabled (amdsmi not in requirements).
+    """AMD GPU detection stub — disabled.
 
     amdsmi was removed because this deployment uses NVIDIA GPU (pynvml handles detection).
-    The C library libamd_smi.so is not present, causing spurious stdout warnings.
     Keeping the stub so _detect_gpu_info call chain remains unchanged.
     """
     return 0, 0.0
@@ -74,41 +72,21 @@ def _detect_nvidia_gpu_info() -> tuple[int, float]:
     return 0, 0.0
 
 
-def _detect_torch_gpu_info() -> tuple[int, float]:
-    """Fallback: Detect GPU using torch.cuda (works for both NVIDIA and AMD via ROCm)."""
-    if torch.cuda.is_available():
-        count = torch.cuda.device_count()
-        if count > 0:
-            props = torch.cuda.get_device_properties(0)
-            vram_gb = round(props.total_memory / 1024**3, 1)
-            return count, vram_gb
-    return 0, 0.0
-
-
 def _detect_gpu_info() -> tuple[int, float]:
-    """Detect GPU count and VRAM using multi-vendor approach.
+    """Detect GPU count and VRAM using NVIDIA pynvml.
 
     Priority:
     1. NVIDIA: via nvidia-ml-py (most reliable for NVIDIA)
-    2. AMD: via amdsmi (ROCm required)
-    3. Fallback: torch.cuda (works for both but limited metrics)
+    2. AMD: via amdsmi stub (returns 0, 0.0)
     """
-    # Try NVIDIA first
     gpu_count, vram = _detect_nvidia_gpu_info()
     if gpu_count > 0:
         logger.info("Detected %d NVIDIA GPU(s) with %.1f GB VRAM", gpu_count, vram)
         return gpu_count, vram
 
-    # Try AMD via amdsmi (ROCm)
     gpu_count, vram = _detect_amd_gpu_info()
     if gpu_count > 0:
         logger.info("Detected %d AMD GPU(s) with %.1f GB VRAM", gpu_count, vram)
-        return gpu_count, vram
-
-    # Fallback to torch (works for both but less detailed)
-    gpu_count, vram = _detect_torch_gpu_info()
-    if gpu_count > 0:
-        logger.info("Detected %d GPU(s) via torch.cuda (%.1f GB VRAM)", gpu_count, vram)
         return gpu_count, vram
 
     logger.info("No GPU detected, using CPU-only mode")

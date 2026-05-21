@@ -16,7 +16,6 @@ from app.modules.documents import router as documents
 from app.modules.system import router as system
 from app.modules.chat import memories_router as memories
 from app.modules.admin import router as admin
-from app.api.routes.websocket import router as websocket_router
 from app.api.middleware import (
     SecurityHeadersMiddleware,
     RequestLoggingMiddleware,
@@ -35,9 +34,8 @@ async def lifespan(application: FastAPI):
     # ── Startup ────────────────────────────────────────────────────────
     logger.info("Application started: %s [env=%s]", settings.app_name, settings.app_env)
 
-    # Pre-warm embedding model at startup to avoid cold-start on first chat request.
-    # This loads Vietnamese_Embedding_v2 into memory (GPU if available) once, so the first
-    # query embedding is fast instead of taking 60-160 seconds.
+    # Pre-warm embedding + reranker models at startup to avoid cold-start on first chat request.
+    # Models are served via TEI containers (ai-embedding, ai-reranker).
     import asyncio
     import time
 
@@ -52,9 +50,9 @@ async def lifespan(application: FastAPI):
             await embed_fn("warmup")
 
             # 2. Warm Reranker
-            from app.adapters.reranker import get_reranker
+            from app.adapters.reranker import build_reranker
 
-            reranker = get_reranker()
+            reranker = build_reranker()
             await reranker.rerank("warmup", [{"text": "warmup", "full_text": "warmup", "score": 0.0}], top_k=1)
 
             # 3. Warm Semantic Cache Index (for 200+ CCU fast lookup)
@@ -146,7 +144,6 @@ routers = [
     memories.router,
     analytics.router,
     admin,
-    websocket_router,
 ]
 
 for router in routers:

@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _MEMORY_CACHE_TTL = settings.memory_cache_ttl
+VALID_MEMORY_TYPES = {"preference", "correction", "instruction", "fact"}
+MAX_MEMORY_CONTENT = 500
 
 
 class UserMemoryService:
@@ -99,7 +101,14 @@ class UserMemoryService:
                 memories = json.loads(text[json_start:json_end])
                 for m in memories:
                     if isinstance(m, dict) and m.get("content") and m.get("type"):
-                        await self.add_memory(user_id, str(m["type"]), str(m["content"]))
+                        mem_type = str(m["type"]).strip().lower()
+                        if mem_type not in VALID_MEMORY_TYPES:
+                            logger.debug("Invalid memory_type '%s', skipping", mem_type)
+                            continue
+                        content = str(m["content"]).strip()[:MAX_MEMORY_CONTENT]
+                        if not content:
+                            continue
+                        await self.add_memory(user_id, mem_type, content)
 
         except Exception as e:
             logger.warning("Memory extraction failed: %s", e)

@@ -20,7 +20,9 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
-      ai-engine:
+      ai-embedding:
+        condition: service_healthy
+      ai-reranker:
         condition: service_healthy
       ai-proxy:
         condition: service_healthy
@@ -47,6 +49,7 @@ services:
   workers:
     image: chatbot-rag-app:latest
     # Shares the same image as api — no separate build needed
+    # CPU only - embedding done via TEI HTTP, no GPU needed
     env_file:
       - .env
     secrets:
@@ -61,43 +64,77 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
-      ai-engine:
+      ai-embedding:
+        condition: service_healthy
+      ai-reranker:
         condition: service_healthy
       rustfs:
         condition: service_started
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [ gpu, utility, compute ]
     networks:
       - internal
 
-  ai-engine:
-    image: chatbot-rag-app:latest
+  ai-embedding:
+    image: ghcr.io/huggingface/text-embeddings-inference:turing-1.9
+    container_name: chatbot-rag-ai-embedding
     env_file:
       - .env
-    secrets:
-      - hf_token
-    entrypoint: [ "/bin/bash", "/app/ops/entrypoint-ai-engine.sh" ]
+    environment:
+      - HF_HUB_ENABLE_HF_TRANSFER=1
+      - MAX_CONCURRENT_REQUESTS=64
+      - MAX_BATCH_TOKENS=32768
+      - MAX_BATCH_REQUESTS=16
+      - MAX_CLIENT_BATCH_SIZE=16
+    command: --model-id Alibaba-NLP/gte-multilingual-base --dtype float16 --auto-truncate true
+    volumes:
+      - hf-cache:/data
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: all
-              capabilities: [ gpu, utility, compute ]
+              count: 1
+              capabilities: [gpu, utility, compute]
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
       interval: 10s
-      timeout: 30s
+      timeout: 5s
       retries: 60
       start_period: 300s
+    restart: unless-stopped
+    networks:
+      - internal
+
+  ai-reranker:
+    image: ghcr.io/huggingface/text-embeddings-inference:turing-1.9
+    container_name: chatbot-rag-ai-reranker
+    env_file:
+      - .env
+    environment:
+      - HF_HUB_ENABLE_HF_TRANSFER=1
+      # Tam thoi dung NVIDIA API cho demo. Limit cuc liet de khong dot VRAM, de danh cho embedding
+      - MAX_CONCURRENT_REQUESTS=1
+      - MAX_BATCH_TOKENS=2048
+      - MAX_BATCH_REQUESTS=1
+    command: --model-id Alibaba-NLP/gte-multilingual-reranker-base --dtype float16
     volumes:
-      - hf-cache:/home/qtuanph/.cache/huggingface
+      - hf-cache:/data
+    depends_on:
+      ai-embedding:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, utility, compute]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 300s
     restart: unless-stopped
     networks:
       - internal
@@ -241,6 +278,7 @@ services:
       - "traefik.http.services.webapp-svc.loadbalancer.server.port=3000"
       - "traefik.http.routers.api-bep.rule=PathPrefix(`/api/bep`)"
       - "traefik.http.routers.api-bep.entrypoints=web"
+      - "traefik.http.routers.api-bep.priority=100"
       - "traefik.http.routers.api-bep.service=api-bep-svc"
       - "traefik.http.services.api-bep-svc.loadbalancer.server.port=3000"
 

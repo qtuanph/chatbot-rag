@@ -145,16 +145,20 @@ export const chatApi = {
       body: JSON.stringify({ feedback }),
     }),
 
-  chatStream: (query: string, sessionId: string | null, userId: string, thinkingMode: boolean = false) => {
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/ws/chat/stream`;
-    const ws = new WebSocket(wsUrl);
+  chatStream: (query: string, sessionId: string | null, thinkingMode: boolean = false) => {
+    const controller = new AbortController();
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ query, session_id: sessionId, user_id: userId, thinking_mode: thinkingMode }));
+    const fetchStream = fetch("/api/bep/chat/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, session_id: sessionId, thinking_mode: thinkingMode }),
+      signal: controller.signal,
+    });
+
+    return {
+      controller,
+      fetchStream,
     };
-
-    return ws;
   },
 };
 

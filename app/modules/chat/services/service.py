@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.adapters.ai.proxy_bridge import AIProxyBridge
 from app.core.config import settings
 from app.modules.chat.repositories.repository import ChatRepository
-from app.modules.chat.services.context_compactor import compact_history
 from app.modules.chat.utils import ChatStore, compute_cost, normalize_query
 from app.modules.chat.retrieval import build_answer
 
@@ -32,15 +31,19 @@ class ChatService:
     async def prepare_chat(self, *, user_id: str, query: str, session_id: str | None = None) -> dict:
         """Prepare full chat context: validate → session → retrieval → answer seed."""
         from app.modules.chat.utils import validate_query, deduplicate_citations, is_greeting
+        import time as _time
 
+        _t0 = _time.monotonic()
         validate_query(query)
         scope_id = f"user:{user_id}"
         resolved_session_id = await self.resolve_session(user_id=user_id, session_id=session_id)
         self.validate_session_id(resolved_session_id)
 
         await self.get_or_create_session(session_id=resolved_session_id, user_id=user_id, query=query)
+        logger.info("[PERF] Session setup: %.3fs", _time.monotonic() - _t0)
 
         # Parallel fetch for history and memories
+        _t1 = _time.monotonic()
         history_task = self.store.get_history(scope_id, resolved_session_id)
         if self._user_memory_service:
             memories_task = self._user_memory_service.format_memories_for_prompt(user_id)
@@ -48,6 +51,7 @@ class ChatService:
         else:
             history = await history_task
             user_memories = None
+        logger.info("[PERF] History + memories: %.3fs", _time.monotonic() - _t1)
 
         # Pure greeting detection — skip retrieval, respond naturally
         if is_greeting(query):
@@ -67,10 +71,12 @@ class ChatService:
         if settings.retrieval_query_refinement_enabled:
             from app.modules.chat.services.query_refiner import refine_query
 
+            _t2 = _time.monotonic()
             try:
                 refined_query = await asyncio.wait_for(
                     refine_query(query, history), timeout=settings.retrieval_query_refinement_timeout
                 )
+                logger.info("[PERF] Query refinement: %.3fs", _time.monotonic() - _t2)
             except Exception:
                 logger.warning("Query refinement timed out, using original query.")
 
@@ -79,19 +85,27 @@ class ChatService:
         if settings.retrieval_query_expansion_enabled:
             from app.modules.chat.retrieval.expansion_service import expand_query
 
+            _t3 = _time.monotonic()
             try:
                 queries = await asyncio.wait_for(
                     expand_query(refined_query), timeout=settings.retrieval_query_expansion_timeout
                 )
+                logger.info("[PERF] Query expansion: %.3fs (%d queries)", _time.monotonic() - _t3, len(queries))
             except asyncio.TimeoutError:
                 logger.warning("Query expansion timed out, using original query.")
 
         # RAG retrieval
+        _t4 = _time.monotonic()
         context = await self.retrieve_rag_context(self.repo.session, queries, resolved_session_id, 20)
+        logger.info("[PERF] RAG retrieval: %.3fs", _time.monotonic() - _t4)
 
+        _t5 = _time.monotonic()
         assistant_seed = build_answer(query, context)
+        logger.info("[PERF] Build answer: %.3fs", _time.monotonic() - _t5)
 
         citations = deduplicate_citations(assistant_seed.get("citations") or [])
+
+        logger.info("[PERF] prepare_chat TOTAL: %.3fs", _time.monotonic() - _t0)
 
         return {
             "session_id": resolved_session_id,
@@ -103,7 +117,7 @@ class ChatService:
         }
 
     async def stream_chat_events(
-        self, *, user_id: str, query: str, prepared_chat: dict, thinking_mode: bool = False
+        self, *, user_id: str, query: str, prepared_chat: dict, thinking_mode: bool = False, start_time: float | None = None
     ) -> AsyncGenerator[str, None]:
         """Generate SSE events for chat."""
         from app.core.config import settings
@@ -114,6 +128,10 @@ class ChatService:
         session_id = prepared_chat["session_id"]
         history = prepared_chat["history"]
         citations = prepared_chat["citations"]
+
+        # Use passed start_time (from router, before prepare_chat) or fallback to now
+        if start_time is None:
+            start_time = _time.monotonic()
 
         # Pure greeting — respond naturally without calling the LLM
         if prepared_chat.get("is_greeting"):
@@ -200,8 +218,7 @@ class ChatService:
             except Exception as e:
                 logger.warning("[LLM-CACHE] Cache check failed: %s", e)
 
-        # Context compaction: if history exceeds token threshold, summarize older messages
-        history = await compact_history(history)
+        # History already limited to ai_max_history_messages in proxy_bridge
 
         # Use full section content from build_answer.answer (not chunk-text from .context)
         seed = prepared_chat["assistant_seed"] or {}

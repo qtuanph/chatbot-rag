@@ -117,43 +117,34 @@ class RetrievalService:
             return RagContext(nodes=[])
 
         # ── Stage 1: Unified Multi-Intent Search ──────────────────────────────
+        _t_emb_start = time.monotonic()
         svc = self._get_embedding_service()
         vs = self._get_vector_store()
         bm25_encoder = await get_async_bm25_encoder(self.redis)
+        logger.info("[PERF] Init embed+vs+bm25: %.3fs", time.monotonic() - _t_emb_start)
 
         async def _get_embedding(q_text: str):
+            _t_emb = time.monotonic()
             v = await self.query_cache.get(q_text)
             if v is None:
                 embed_fn = getattr(svc, "embed_query", None) or svc.embed
                 v = await embed_fn(q_text)
                 await self.query_cache.set(q_text, v)
+                logger.info("[PERF] Embed query: %.3fs", time.monotonic() - _t_emb)
+            else:
+                logger.info("[PERF] Embed cache HIT")
             return v
 
+        _t_vec_start = time.monotonic()
         query_vectors = await asyncio.gather(*[_get_embedding(q) for q in queries])
-
-        # HyDE: generate hypothetical document and embed it for short-query enrichment
-        hyde_vector = None
-        if settings.retrieval_query_expansion_enabled and len(queries) <= 2 and len(original_query.split()) < 5:
-            try:
-                from app.modules.chat.retrieval.hyde_service import hyde_generate
-
-                hyde_text = await asyncio.wait_for(hyde_generate(original_query), timeout=1.5)
-                if hyde_text:
-                    hyde_vector = await _get_embedding(hyde_text)
-                    if hyde_vector is not None:
-                        logger.info("[RAG-HyDE] Added HyDE vector for: '%s'", original_query[:60])
-            except asyncio.TimeoutError:
-                logger.debug("[RAG-HyDE] Generation timed out, skipping.")
-            except Exception as e:
-                logger.debug("[RAG-HyDE] Failed: %s", e)
-
-        if hyde_vector is not None:
-            query_vectors.append(hyde_vector)
+        logger.info("[PERF] All embeddings: %.3fs", time.monotonic() - _t_vec_start)
 
         # Semantic Match Cache
         if isinstance(query, str) and query_vectors:
+            _t_sem = time.monotonic()
             sem_cached = await self.semantic_cache.get(query_vectors[0])
             if sem_cached:
+                logger.info("[PERF] Semantic cache: %.3fs (HIT)", time.monotonic() - _t_sem)
                 logger.info("[PERF-RAG] Semantic Cache Hit: %s", original_query)
                 return RagContext(
                     nodes=[RagNode(**n) for n in sem_cached.get("nodes", [])],
@@ -166,10 +157,19 @@ class RetrievalService:
 
         sparse_vectors: list[Any] = []
         if bm25_encoder.is_ready:
+            _t_bm25 = time.monotonic()
             sparse_vectors = await asyncio.gather(
                 *[asyncio.to_thread(bm25_encoder.encode_sparse_vector, q) for q in queries]
             )
+            logger.info("[PERF] BM25 encode: %.3fs", time.monotonic() - _t_bm25)
+        else:
+            logger.warning(
+                "[BM25] Sparse encoder NOT ready — retrieval is DENSE-ONLY. "
+                "This reduces accuracy for exact term matches. "
+                "Check if BM25 vocab exists in Redis (key: rag:bm25:vocab)."
+            )
 
+        _t_qdrant = time.monotonic()
         fetch_k = settings.retrieval_chunk_top_k * settings.retrieval_fetch_multiplier
         all_results = await vs.retrieve(
             query_vectors=query_vectors,
@@ -179,6 +179,7 @@ class RetrievalService:
             positive_point_ids=positive_point_ids,
             negative_point_ids=negative_point_ids,
         )
+        logger.info("[PERF] Qdrant retrieve: %.3fs", time.monotonic() - _t_qdrant)
 
         _t1 = time.monotonic()
         logger.info("[PERF-RAG] Unified Async Retrieval: %.3fs", _t1 - _t0)
@@ -187,8 +188,6 @@ class RetrievalService:
         _seen_texts: dict[str, int] = {}
         deduped_results: list[RetrievedDocument] = []
         for item in all_results:
-            if item.score < settings.retrieval_min_score:
-                continue
             # Simple prefix-based dedup
             sig = (item.text or "").strip()[:150]
             if sig not in _seen_texts:
@@ -202,10 +201,11 @@ class RetrievalService:
 
         # ── Stage 2.5: Reranking (Stage 4 in original docs) ───────────────────
         if settings.retrieval_rerank_enabled and deduped_results:
+            _t_rerank = time.monotonic()
             try:
-                from app.adapters.reranker import get_reranker
+                from app.adapters.reranker import build_reranker
 
-                reranker = get_reranker()
+                reranker = build_reranker()
                 # Re-rank the actual document objects
                 top_n = settings.retrieval_rerank_top_k
                 rerank_candidates = deduped_results[:top_n]
@@ -214,29 +214,20 @@ class RetrievalService:
                     query=primary_query, documents=rerank_candidates, text_attr="text"
                 )
 
-                # Filter reranked results by minimum score (NVIDIA: 0.3-0.5 threshold)
-                min_rerank_score = settings.retrieval_rerank_min_score
-                if min_rerank_score > 0:
-                    before = len(reranked_docs)
-                    reranked_docs = [d for d in reranked_docs if d.score >= min_rerank_score]
-                    logger.info(
-                        "[PERF-RAG] Rerank score filter: %d → %d (threshold=%.2f)",
-                        before,
-                        len(reranked_docs),
-                        min_rerank_score,
-                    )
-
                 # Merge reranked results back into the main list
                 # (Reranked list is sorted, items not reranked stay at the bottom)
                 others = deduped_results[top_n:]
                 deduped_results = reranked_docs + others
+                logger.info("[PERF] Reranking: %.3fs (%d nodes)", time.monotonic() - _t_rerank, len(rerank_candidates))
                 logger.info("[PERF-RAG] Reranking complete: %d nodes", len(rerank_candidates))
             except Exception as e:
                 logger.warning("Reranking failed: %s", e)
 
         # ── Stage 2.6: "Soi sáng" (Neighboring Node Expansion) ───────────────
         if settings.retrieval_context_expansion_window > 0 and deduped_results:
+            _t_expand = time.monotonic()
             deduped_results = await self._expand_neighbor_nodes(vs, deduped_results[:limit])
+            logger.info("[PERF] Neighbor expansion: %.3fs", time.monotonic() - _t_expand)
 
         # ── Confidence Scoring ────────────────────────────────────────────────
         from app.modules.chat.retrieval.confidence_scorer import RetrievalConfidence

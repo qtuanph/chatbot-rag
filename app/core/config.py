@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     app_port: int = 8000
     api_v1_prefix: str = "/api/v1"
     api_timeout_keep_alive: int = 75
-    ai_engine_url: str = "http://ai-engine:8000"
+    ai_embedding_url: str = "http://ai-embedding:80"
+    ai_reranker_url: str = "http://ai-reranker:80"
     log_level: str = "INFO"
 
     # Celery worker: which task modules to load ("all" | "upload" | "cleanup")
@@ -26,7 +27,7 @@ class Settings(BaseSettings):
     ai_proxy_url: str = "http://ai-proxy:2908"
     ai_proxy_api_key: str = ""
     ai_proxy_default_model: str = ""
-    ai_auxiliary_model: str = ""  # Lightweight model for HyDE, expansion, refinement, compaction, confidence
+    ai_auxiliary_model: str = ""  # Lightweight model for expansion, refinement, confidence
     ai_input_cost_per_1m: float = 0.0
     ai_output_cost_per_1m: float = 0.0
 
@@ -74,16 +75,12 @@ class Settings(BaseSettings):
     ingestion_embedding_chunk_size: int = 32  # nodes per embed+store batch
     ingestion_embed_parallelism: int = 0  # 0 = use hardware.embed_parallelism
 
-    # Retrieval quality
-    retrieval_min_score: float = 0.0  # RRF scores max at ~0.033 — pre-filter disabled; reranker is the quality gate
-
     # 2-stage retrieval settings
-    retrieval_section_top_k: int = 15  # Stage 1: top sections to retrieve (industry: 15-20)
-    retrieval_chunk_top_k: int = 15  # Stage 2: initial candidate pool (NVIDIA VDB_TOP_K=100)
+    retrieval_section_top_k: int = 10  # Top sections sent to LLM (full context for accuracy)
+    retrieval_chunk_top_k: int = 20  # Stage 2: initial candidate pool
     retrieval_chunk_size: int = 500  # Target chunk size in tokens (industry: 512-600)
     retrieval_chunk_overlap: int = 75  # Overlap between chunks in tokens (~15%)
-    retrieval_section_min_score: float = 0.25  # Lower threshold for inclusive retrieval
-    retrieval_fetch_multiplier: int = 3  # fetch_k = chunk_top_k * multiplier for candidate pool
+    retrieval_fetch_multiplier: int = 7  # fetch_k = 15 * 7 = 105
 
     # Confidence scoring for retrieval results
     retrieval_confidence_threshold_high: float = 0.7  # Max score >= this → high confidence
@@ -99,26 +96,28 @@ class Settings(BaseSettings):
     # Context Expansion (Soi sáng)
     retrieval_context_expansion_window: int = 1  # Number of neighboring nodes to fetch (before & after)
 
-    # Cross-encoder reranker — improves ranking precision
+    # Cross-encoder reranker — switchable backend
+    reranker_backend: str = "tei"  # "tei" (local) | "nvidia" (online API)
     retrieval_rerank_enabled: bool = True
-    retrieval_rerank_top_k: int = 30  # Final number of chunks after reranking (industry: 30-50)
-    retrieval_rerank_min_score: float = (
-        0.10  # Filter noise after reranking (sigmoid-normalized [0,1]; 0.1 filters obvious noise, keeps moderate matches)
-    )
-    retrieval_rerank_model: str = "AITeamVN/Vietnamese_Reranker"  # Vietnamese cross-encoder
+    retrieval_rerank_top_k: int = 30
+    retrieval_rerank_model: str = "Alibaba-NLP/gte-multilingual-reranker-base"
+    # NVIDIA API reranker (temporary for demo — change model/key here)
+    nvidia_api_key: str = ""
+    nvidia_reranker_model: str = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+    nvidia_reranker_url: str = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
+    nvidia_reranker_timeout: float = 30.0
 
-    # Query refinement
-    retrieval_query_refinement_enabled: bool = True  # Refine query before retrieval
+    # Query refinement — TẮT để tránh AI rewrite làm lệch intent gốc
+    retrieval_query_refinement_enabled: bool = False
     retrieval_query_refinement_ttl: int = 600  # 10 min cache for refined queries
 
-    # Multi-query expansion — generates query variants for broader retrieval
-    retrieval_query_expansion_enabled: bool = True
-    retrieval_query_expansion_variants: int = 2  # Fewer variants = less noise, better intent preservation
+    # Multi-query expansion — TẮT để tránh tạo variants match sai section
+    retrieval_query_expansion_enabled: bool = False
+    retrieval_query_expansion_variants: int = 2
 
     # Timeouts for retrieval auxiliary services
     retrieval_query_refinement_timeout: float = 2.0
     retrieval_query_expansion_timeout: float = 3.0
-    retrieval_hyde_timeout: float = 1.5
     retrieval_expansion_scroll_limit: int = 100  # Max nodes fetched per doc during neighbor expansion
 
     # RAGAS Evaluation
@@ -179,15 +178,11 @@ class Settings(BaseSettings):
     allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0"
     cors_origins: str = "http://localhost"  # All traffic through Traefik port 80
 
-    # Embedding — local/offline, on-premise
-    embedding_model: str = "sentence-transformer"
-    # 1024-dim, 8192 tokens, built-in Normalize layer, Vietnamese fine-tuned BGE-M3
-    embedding_hf_model: str = "AITeamVN/Vietnamese_Embedding_v2"
-    embedding_vector_size: int = 1024
-    embedding_query_prefix: str = ""
-    embedding_passage_prefix: str = ""
-    embedding_batch_size: int = 32
-    embedding_normalize: bool = True
+    # Embedding — TEI remote (Alibaba-NLP/gte-multilingual-base, 768-dim, 8192 context)
+    embedding_model: str = "tei"
+    embedding_hf_model: str = "Alibaba-NLP/gte-multilingual-base"
+    embedding_vector_size: int = 768
+    embedding_batch_size: int = 16
     vector_store: str = "qdrant"
     qdrant_url: str = "http://qdrant:6333"
     qdrant_api_key: str | None = None
@@ -212,11 +207,7 @@ class Settings(BaseSettings):
     ai_http_keepalive_connections: int = 10  # httpx keepalive pool size
     ai_proxy_timeout: float = 120.0  # HTTP timeout for 9Router proxy stream calls
 
-    # Context compaction (auto-compact long conversations)
-    ai_context_window: int = 200_000  # Total context window of the model in use (tokens)
-    ai_compact_threshold_ratio: float = 0.70  # Trigger compaction at this % of context window
-    ai_compact_reserve_tokens: int = 20_000  # Reserve tokens for response after compaction
-    ai_compact_keep_recent: int = 5  # Number of recent user-assistant turns to keep verbatim
+    # Chat history limited to ai_max_history_messages in proxy_bridge (no compaction needed)
 
     # Celery tuning — configurable for server-grade hardware
     celery_task_time_limit: int = 3600  # 1 hour hard kill for massive PDFs (500+ pages)

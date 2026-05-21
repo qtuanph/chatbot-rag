@@ -13,9 +13,10 @@ import type { ChatMessage } from "@/types/chat";
 interface ChatMessageProps {
   message: ChatMessage;
   isStreaming?: boolean;
+  isThinking?: boolean;
 }
 
-export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) {
+export function ChatMessage({ message, isStreaming = false, isThinking = false }: ChatMessageProps) {
   const [showCitations, setShowCitations] = useState(false);
   const [localFeedback, setLocalFeedback] = useState<number>(message.feedback || 0);
 
@@ -31,7 +32,8 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
   };
 
   const isUser = message.role === "user";
-  const isLoading = !isUser && isStreaming && !message.content;
+  const isLoading = !isUser && (isStreaming && !message.content) || isThinking;
+  const isStreamingContent = !isUser && isStreaming && message.content;
 
   return (
     <div className={`flex gap-3 px-4 py-3 ${isUser ? "justify-end" : ""}`}>
@@ -62,10 +64,14 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
             )}
 
             {message.content && (
-              <div className={`rounded-2xl bg-muted px-4 py-2.5 ${isStreaming ? "streaming-active" : ""}`}>
-                <MarkdownRenderer content={message.content} />
-                {isStreaming && (
-                  <span className="inline-block w-1.5 h-4 bg-foreground/70 ml-0.5 align-text-bottom [animation:cursor-blink_1s_step-end_infinite]" />
+              <div className={`rounded-2xl bg-muted px-4 py-2.5 ${isStreamingContent ? "streaming-active" : ""}`}>
+                {isStreamingContent ? (
+                  <div className="text-sm leading-relaxed whitespace-pre-wrap font-sans">
+                    {message.content}
+                    <span className="inline-block w-0.5 h-4 bg-foreground/70 ml-0.5 align-text-bottom animate-pulse" />
+                  </div>
+                ) : (
+                  <MarkdownRenderer content={message.content} />
                 )}
               </div>
             )}

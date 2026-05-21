@@ -28,7 +28,13 @@ class BM25Manager:
 
         logger.info("[PERF] Loading BM25 vocabulary into in-memory singleton...")
         encoder = VietnameseBM25Encoder(redis_client=redis_client)
-        await encoder.load_async()
+        loaded = await encoder.load_async()
+
+        if not loaded:
+            logger.warning(
+                "BM25 vocab NOT loaded — sparse search will be DISABLED. "
+                "Run document ingestion to populate vocab, or rebuild from Qdrant."
+            )
 
         cls._instance = encoder
         cls._last_load_time = current_time
@@ -43,7 +49,13 @@ class BM25Manager:
             return cls._instance
 
         encoder = VietnameseBM25Encoder(redis_client=redis_client)
-        encoder.load_sync()
+        loaded = encoder.load_sync()
+
+        if not loaded:
+            logger.warning(
+                "BM25 vocab NOT loaded (sync) — sparse search will be DISABLED. "
+                "Run document ingestion to populate vocab, or rebuild from Qdrant."
+            )
 
         cls._instance = encoder
         cls._last_load_time = current_time

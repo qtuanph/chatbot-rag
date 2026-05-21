@@ -1,6 +1,6 @@
 """
-SentenceTransformer Embedding Adapter — Remote Client.
-Calls the standalone AI-Engine service for inference.
+TEI Embedding Adapter — Remote Client for Text Embeddings Inference.
+Calls the ai-embedding TEI service for vector generation.
 """
 
 import asyncio
@@ -28,7 +28,7 @@ def _get_client() -> httpx.AsyncClient:
             limits=limits,
         )
         logger.info(
-            "Created shared httpx client (pool=%d, keepalive=%d)",
+            "Created shared httpx client for TEI embedding (pool=%d, keepalive=%d)",
             settings.ai_http_max_connections,
             settings.ai_http_keepalive_connections,
         )
@@ -55,90 +55,85 @@ async def _retry_call(coro_factory, max_retries=3, base_delay=1.0):
                 raise
 
 
-class SentenceTransformerEmbedding(BaseEmbedding):
+class TEIEmbedding(BaseEmbedding):
     """
-    Remote embedding adapter that calls the AI-Engine service.
-    Keeps the same interface but offloads computation.
+    Remote embedding adapter that calls the TEI ai-embedding service.
+    TEI handles dynamic batching, normalization, and pooling internally.
     """
 
     def __init__(
         self,
         model_name: str | None = None,
-        normalize: bool = True,
         batch_size: int = 32,
-        query_prefix: str = "",
-        passage_prefix: str = "",
     ):
         self.model_name = model_name or settings.embedding_hf_model
-        self.normalize = normalize
         self.batch_size = batch_size
-        self.query_prefix = query_prefix
-        self.passage_prefix = passage_prefix
-        self.base_url = settings.ai_engine_url.rstrip("/")
+        self.base_url = settings.ai_embedding_url.rstrip("/")
         self._dim = settings.embedding_vector_size
 
     def get_dimension(self) -> int:
         return self._dim
 
     async def embed(self, text: str, normalize: bool = True) -> List[float]:
-        """Embed a single text string via remote call."""
-        results = await self.embed_batch([text], batch_size=1, normalize=normalize)
+        """Embed a single text string via TEI remote call."""
+        results = await self.embed_batch([text], batch_size=1)
         return results[0] if results else []
 
     async def embed_batch(
         self,
         texts: list[str],
-        batch_size: int = 32,
+        batch_size: int | None = None,
         normalize: bool = True,
     ) -> List[List[float]]:
-        """Embed multiple texts via AI-Engine remote call."""
+        """Embed multiple texts via TEI remote call.
+
+        TEI API: POST /embed {"inputs": [...]}
+        Response: list of embedding vectors (already normalized by TEI)
+
+        Automatically splits texts into sub-batches to respect TEI's MAX_BATCH_REQUESTS.
+        """
         if not texts:
             return []
 
-        if self.passage_prefix:
-            texts = [self.passage_prefix + t for t in texts]
+        effective_batch = batch_size or self.batch_size
+        all_results: List[List[float]] = []
 
-        async def _do_embed():
-            client = _get_client()
-            response = await client.post(
-                f"{self.base_url}/embed",
-                json={
-                    "texts": texts,
-                    "batch_size": batch_size or self.batch_size,
-                    "normalize": normalize and self.normalize,
-                    "task_type": "passage" if self.passage_prefix else "query",
-                },
-                timeout=settings.ai_stream_timeout,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["embeddings"]
+        for i in range(0, len(texts), effective_batch):
+            chunk = texts[i : i + effective_batch]
 
-        try:
-            return await _retry_call(_do_embed)
-        except Exception as e:
-            logger.error("AI-Engine /embed failed after retries: %s", e)
-            raise
+            async def _do_embed():
+                client = _get_client()
+                response = await client.post(
+                    f"{self.base_url}/embed",
+                    json={"inputs": chunk},
+                    timeout=settings.ai_stream_timeout,
+                )
+                response.raise_for_status()
+                return response.json()
+
+            results = await _retry_call(_do_embed)
+            all_results.extend(results)
+
+        return all_results
 
     async def embed_query(self, text: str) -> List[float]:
-        """Embed a query text via remote call."""
-        prefixed = self.query_prefix + text if self.query_prefix else text
+        """Embed a query text via TEI remote call."""
 
         async def _do_embed_query():
             client = _get_client()
             response = await client.post(
                 f"{self.base_url}/embed",
-                json={"texts": [prefixed], "batch_size": 1, "normalize": self.normalize, "task_type": "query"},
+                json={"inputs": text},
                 timeout=settings.ai_http_timeout_refine,
             )
             response.raise_for_status()
             data = response.json()
-            return data["embeddings"][0]
+            return data[0]
 
         try:
             return await _retry_call(_do_embed_query)
         except Exception as e:
-            logger.error("AI-Engine /embed query failed after retries: %s", e)
+            logger.error("TEI /embed query failed after retries: %s", e)
             raise
 
     def unload(self) -> None:
