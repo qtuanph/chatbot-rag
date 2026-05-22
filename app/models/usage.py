@@ -15,10 +15,12 @@ class AiModelUsage(Base):
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     model_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    model_type: Mapped[str] = mapped_column(String(20), nullable=False, default="llm", server_default="llm")
     prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    latency_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default=text("0"))
     endpoint: Mapped[str] = mapped_column(String(100), nullable=False)
     user_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)

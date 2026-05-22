@@ -10,7 +10,8 @@ Self-hosted. No cloud lock-in. Complete control over your data.
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Qdrant](https://img.shields.io/badge/Qdrant-1.17-DC2D5E?logo=qdrant&logoColor=white)](https://qdrant.tech/)
+[![LlamaIndex](https://img.shields.io/badge/LlamaIndex-0.14-7B3FE4?logo=llamaindex&logoColor=white)](https://www.llamaindex.ai/)
+[![Qdrant](https://img.shields.io/badge/Qdrant-1.18-DC2D5E?logo=qdrant&logoColor=white)](https://qdrant.tech/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
@@ -22,14 +23,15 @@ Self-hosted. No cloud lock-in. Complete control over your data.
 
 | Feature | Description |
 |---------|-------------|
-| **Hierarchical Indexing** | Docs → Sections (H1–H6) → Chunks. Preserves document structure for accurate context retrieval. |
-| **5-Stage Retrieval** | Hybrid dense + BM25 (RRF) → section grouping → dedup → rerank → neighbor expansion → full section to LLM. |
-| **TEI Inference** | Dedicated TEI containers: `Qwen3-Embedding-0.6B` (embedding) + `gte-multilingual-reranker-base` (reranker). GPU-optimized, always-on. |
+| **Hierarchical Indexing** | Docs → Sections (H1–H6) → Chunks via LlamaIndex `IngestionPipeline`. Preserves document structure for accurate context retrieval. |
+| **LlamaIndex RAG** | `VectorStoreIndex` with hybrid search (dense + Qdrant native BM25 RRF) + switchable reranker (TEI or NVIDIA NIM). |
+| **TEI Inference** | Dedicated TEI containers: `gte-multilingual-base` (embedding, 768-dim) + `gte-multilingual-reranker-base` (reranker). GPU-optimized. |
+| **Switchable Reranker** | `RERANKER_BACKEND=tei` (local TEI) or `nvidia` (NVIDIA NIM API). Change one env var, no code changes. |
 | **Smart OCR** | LlamaParse cloud OCR for PDF/DOCX. Local parser for .md/.txt (no API call). |
 | **Async Ingestion** | Upload returns `task_id` instantly. Background parsing/indexing via Celery with live progress. |
-| **SSE Chat** | Real-time streaming with citations grouped by document. |
+| **SSE Chat** | Real-time streaming via `OpenAILike.astream_chat()` through 9Router, with citations grouped by document. |
 | **User Memory** | Persistent per-user preferences, corrections, and facts injected into AI context. |
-| **Multi-Provider AI** | 9Router connects any OpenAI-compatible provider with 3-tier fallback and usage tracking. |
+| **9Router AI Gateway** | OpenAI-compatible proxy with 3-tier fallback, RTK token saver, and usage tracking. |
 | **3-Layer Cache** | LLM Response + Semantic + Query Embedding — fast hit rates, reduced latency. |
 
 ## Quick Start
@@ -73,6 +75,10 @@ Browser → Traefik (:80) → Next.js (webapp) → FastAPI (api)
                           Celery Workers · Qdrant · PostgreSQL · Redis · RustFS
                                           ↕
                     ai-embedding (TEI) · ai-reranker (TEI) · ai-proxy (9Router)
+                                          ↕
+                                LlamaIndex Core
+                          Settings.embed_model · Settings.llm
+                          VectorStoreIndex · IngestionPipeline
 ```
 
 ### Tech Stack
@@ -81,11 +87,12 @@ Browser → Traefik (:80) → Next.js (webapp) → FastAPI (api)
 |-------|-----------|
 | Frontend | Next.js 16 + shadcn/ui v4 + next-auth v5 |
 | Backend | FastAPI + Celery + SQLAlchemy |
+| RAG Framework | **LlamaIndex** (`VectorStoreIndex`, `IngestionPipeline`, `QdrantVectorStore`, `TextEmbeddingsInference`, `OpenAILike`) |
 | Database | PostgreSQL 18 |
 | Cache / Queue | Redis 8 |
-| Vector Search | Qdrant (dense + BM25 sparse) |
-| Embedding | TEI — `Qwen/Qwen3-Embedding-0.6B` (1024-dim, 32k ctx) |
-| Reranker | TEI — `Alibaba-NLP/gte-multilingual-reranker-base` |
+| Vector Search | Qdrant (dense + native BM25 hybrid) |
+| Embedding | TEI — `Alibaba-NLP/gte-multilingual-base` (768-dim, 32k ctx) |
+| Reranker | TEI — `Alibaba-NLP/gte-multilingual-reranker-base`, or NVIDIA NIM `nvidia/llama-nemotron-rerank-vl-1b-v2` |
 | LLM Provider | 9Router (OpenAI-compatible, port 2908) |
 | OCR | LlamaParse (cloud) + local MarkdownNodeParser |
 | Reverse Proxy | Traefik v3.7 |
@@ -94,10 +101,8 @@ Browser → Traefik (:80) → Next.js (webapp) → FastAPI (api)
 
 ```
 Query → Cache Check (3 layers)
-  → MISS: Embed (TEI) → Hybrid Search (Dense + BM25 RRF)
-  → Section Grouping (≥0.25) → Dedup
-  → Rerank (TEI cross-encoder) → Neighbor Expansion (Soi sáng)
-  → Full Section Context → LLM (SSE Stream)
+  → MISS: Embed (TEI) → Hybrid Search (Dense + Native BM25 RRF)
+  → Rerank (TEI or NVIDIA) → Dedup → Full Section → LLM (SSE Stream)
 ```
 
 ## API Reference
@@ -146,12 +151,12 @@ All settings via environment variables. See `app/core/config.py` for defaults.
 |----------|---------|-------------|
 | `AI_EMBEDDING_URL` | `http://ai-embedding:80` | TEI embedding endpoint |
 | `AI_RERANKER_URL` | `http://ai-reranker:80` | TEI reranker endpoint |
+| `RERANKER_BACKEND` | `tei` | Reranker: `tei` (local) or `nvidia` (NVIDIA NIM API) |
+| `NVIDIA_API_KEY` | — | Required when `RERANKER_BACKEND=nvidia` |
 | `AI_PROXY_URL` | `http://ai-proxy:2908` | 9Router endpoint |
-| `EMBEDDING_HF_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | Embedding model |
-| `RETRIEVAL_RERANK_MODEL` | `Alibaba-NLP/gte-multilingual-reranker-base` | Reranker model |
-| `AI_MAX_HISTORY_MESSAGES` | `10` | Messages sent to LLM per turn |
-| `RETRIEVAL_SECTION_TOP_K` | `5` | Sections sent to LLM |
-| `RETRIEVAL_RERANK_TOP_K` | `30` | Candidates for reranker |
+| `EMBEDDING_HF_MODEL` | `Alibaba-NLP/gte-multilingual-base` | Embedding model |
+| `AI_MAX_HISTORY_MESSAGES` | `6` | Messages sent to LLM per turn |
+| `RETRIEVAL_RERANK_TOP_K` | `10` | Candidates for reranker |
 
 Full config reference: [`docs/7_CURRENT_SETTINGS.json`](docs/7_CURRENT_SETTINGS.json)
 

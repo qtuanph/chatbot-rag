@@ -137,6 +137,22 @@ class ChatRepository:
         await self.session.refresh(msg)
         return self._message_to_dict(msg)
 
+    async def get_previous_user_message(self, message_id: str) -> str | None:
+        """Get the user message content immediately before the given assistant message."""
+        msg = await self.session.get(ChatMessage, message_id)
+        if msg is None or msg.role != "assistant":
+            return None
+        stmt = (
+            select(ChatMessage.content)
+            .where(ChatMessage.session_id == msg.session_id)
+            .where(ChatMessage.role == "user")
+            .where(ChatMessage.created_at < msg.created_at)
+            .order_by(ChatMessage.created_at.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     # ── Private helpers ──────────────────────────────────────────────
 
     @staticmethod

@@ -1,10 +1,15 @@
 import type {
+  AIProvider,
+  AIProviderCreate,
+  AIProviderUpdate,
+  ApiKeyItem,
+  ProviderTemplate,
   LoginRequest,
   TokenResponse,
   UserInfo,
   UserItem,
-  CreateUserRequest,
   RoleItem,
+  CreateUserRequest,
   ChatSession,
   ChatMessageItem,
   DocumentListResponse,
@@ -12,13 +17,10 @@ import type {
   UploadResponse,
   TaskStatus,
   TreeResponse,
-  TreeSearchResult,
   NodeDetail,
+  TreeSearchResult,
   HealthData,
   AnalyticsStats,
-  ProviderItem,
-  ProviderCreate,
-  ModelItem,
 } from "@/types/api";
 
 // Browser: calls go through Next.js Route Handler proxy (/api/bep/...)
@@ -264,39 +266,57 @@ export const memoriesApi = {
 
 // --- Analytics ---
 export const analyticsApi = {
-  getStats: (): Promise<AnalyticsStats> =>
-    apiFetch<AnalyticsStats>("/analytics/stats"),
+  getStats: (days = 30): Promise<AnalyticsStats> =>
+    apiFetch<AnalyticsStats>(`/analytics/stats?days=${days}`),
+  clearStats: (): Promise<{ status: string; deleted_records: number }> =>
+    apiFetch<{ status: string; deleted_records: number }>("/analytics/stats", { method: "DELETE" }),
 };
 
-// --- Admin Providers ---
-// NOTE: Backend wraps responses as {providers:[...]} and {models:[...]}
-export const adminApi = {
-  listProviders: async (): Promise<ProviderItem[]> => {
-    const res = await apiFetch<{ providers: ProviderItem[] }>("/admin/providers");
-    return Array.isArray(res?.providers) ? res.providers : [];
-  },
 
-  addProvider: (data: ProviderCreate): Promise<{ status: string }> =>
-    apiFetch<{ status: string }>("/admin/providers", {
+
+// --- Settings (AI Provider Management via SQLite) ---
+export const settingsApi = {
+  listProviders: (serviceType?: string): Promise<AIProvider[]> =>
+    apiFetch<AIProvider[]>(`/settings/providers${serviceType ? `?service_type=${serviceType}` : ""}`),
+
+  getProvider: (id: number): Promise<AIProvider> =>
+    apiFetch<AIProvider>(`/settings/providers/${id}`),
+
+  createProvider: (data: AIProviderCreate): Promise<AIProvider> =>
+    apiFetch<AIProvider>("/settings/providers", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
-  toggleProvider: (name: string): Promise<{ status: string; name: string; disabled: boolean }> =>
-    apiFetch<{ status: string; name: string; disabled: boolean }>(
-      `/admin/providers/${encodeURIComponent(name)}/toggle`,
-      { method: "PATCH" }
-    ),
-
-  deleteProvider: (name: string): Promise<{ status: string }> =>
-    apiFetch<{ status: string }>(`/admin/providers/${encodeURIComponent(name)}`, {
-      method: "DELETE",
+  updateProvider: (id: number, data: AIProviderUpdate): Promise<AIProvider> =>
+    apiFetch<AIProvider>(`/settings/providers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
     }),
 
-  listModels: async (): Promise<ModelItem[]> => {
-    const res = await apiFetch<{ models: ModelItem[] }>("/admin/models");
-    return Array.isArray(res?.models) ? res.models : [];
-  },
+  deleteProvider: (id: number): Promise<{ status: string }> =>
+    apiFetch<{ status: string }>(`/settings/providers/${id}`, { method: "DELETE" }),
+
+  activateProvider: (id: number): Promise<AIProvider> =>
+    apiFetch<AIProvider>(`/settings/providers/${id}/activate`, { method: "POST" }),
+
+  testProvider: (id: number): Promise<{ success: boolean; message: string }> =>
+    apiFetch<{ success: boolean; message: string }>(`/settings/providers/${id}/test`, { method: "POST" }),
+
+  listKeys: (providerId: number): Promise<ApiKeyItem[]> =>
+    apiFetch<ApiKeyItem[]>(`/settings/providers/${providerId}/keys`),
+
+  addKey: (providerId: number, keyValue: string): Promise<ApiKeyItem> =>
+    apiFetch<ApiKeyItem>(`/settings/providers/${providerId}/keys`, {
+      method: "POST",
+      body: JSON.stringify({ key_value: keyValue }),
+    }),
+
+  deleteKey: (providerId: number, keyId: number): Promise<{ status: string }> =>
+    apiFetch<{ status: string }>(`/settings/providers/${providerId}/keys/${keyId}`, { method: "DELETE" }),
+
+  getTemplates: (): Promise<ProviderTemplate[]> =>
+    apiFetch<ProviderTemplate[]>("/settings/templates"),
 };
 
 export { ApiError };

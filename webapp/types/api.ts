@@ -219,6 +219,30 @@ export interface AnalyticsDailyStat {
   cost_usd: number;
 }
 
+export interface ModelTypeStats {
+  tokens_in: number;
+  tokens_out: number;
+  avg_latency_ms: number;
+  call_count: number;
+  cost_usd: number;
+}
+
+export interface DailyByModelType {
+  date: string;
+  llm: ModelTypeStats;
+  embedding: ModelTypeStats;
+  reranker: ModelTypeStats;
+}
+
+export interface RecentRequest {
+  model_name: string;
+  model_type: string;
+  tokens_in: number;
+  tokens_out: number;
+  latency_ms: number;
+  created_at: string;
+}
+
 export interface AnalyticsStats {
   total_messages: number;
   total_sessions: number;
@@ -229,6 +253,13 @@ export interface AnalyticsStats {
   estimated_cost_usd: number;
   model_used: string;
   daily: AnalyticsDailyStat[];
+  by_model_type: {
+    llm: ModelTypeStats;
+    embedding: ModelTypeStats;
+    reranker: ModelTypeStats;
+  };
+  daily_by_model_type: DailyByModelType[];
+  recent_requests: RecentRequest[];
   pricing: {
     input_per_1m: number;
     output_per_1m: number;
@@ -244,25 +275,56 @@ export interface HealthCheck {
   [key: string]: unknown;
 }
 
-// Provider
-export interface ProviderItem {
-  name: string;
-  base_url: string;
-  models: { name: string; alias?: string }[];
-  disabled: boolean;
-}
-
-export interface ProviderCreate {
-  name: string;
-  base_url: string;
+// Settings (AI provider management via SQLite)
+export interface AIProvider {
+  id: number;
+  service_type: "embedding" | "reranker" | "llm";
+  provider_name: string;
+  display_name: string;
+  url: string;
+  model: string;
   api_key: string;
-  models: string[];
-  alias?: string;
+  is_active: boolean;
+  is_builtin: boolean;
+  priority: number;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface ModelItem {
-  name: string;
-  provider: string;
+export interface AIProviderCreate {
+  service_type: string;
+  provider_name: string;
+  display_name: string;
+  url: string;
+  model: string;
+  api_key: string;
+  priority?: number;
+}
+
+export interface AIProviderUpdate {
+  display_name?: string;
+  url?: string;
+  model?: string;
+  api_key?: string;
+  priority?: number;
+}
+
+export interface ApiKeyItem {
+  id: number;
+  provider_id: number;
+  key_value: string;
+  is_active: boolean;
+  failure_count: number;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+export interface ProviderTemplate {
+  service_type: string;
+  provider_name: string;
+  display_name: string;
+  url: string;
+  model: string;
 }
 
 export interface HealthData {

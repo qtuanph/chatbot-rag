@@ -8,7 +8,10 @@
 set -e
 
 HF_HOME="${HF_HOME:-/home/qtuanph/.cache/huggingface}"
-mkdir -p "$HF_HOME"
+mkdir -p "$HF_HOME" /app/data
+
+# Initialize SQLite settings database with provider templates
+python -c "from app.modules.settings.database import init_db; init_db()" 2>/dev/null && echo "Settings DB ready" || echo "Settings DB init skipped (may already exist)"
 
 # Load HF_TOKEN from Docker secret (preferred) or fall back to env var
 if [ -f "/run/secrets/hf_token" ]; then

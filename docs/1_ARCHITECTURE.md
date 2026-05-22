@@ -13,15 +13,15 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | Frontend | Next.js 16 + shadcn/ui v4 + next-auth v5 (JWT) |
 | Backend | FastAPI 100% async (Strict await enforcement) |
 | Workers | Celery (node-ingestion: solo + node-default: prefork, Beat) |
-| AI Embedding | TEI container — `Qwen/Qwen3-Embedding-0.6B` (1024-dim, 32k ctx, GPU) |
-| AI Reranker | TEI container — `Alibaba-NLP/gte-multilingual-reranker-base` (GPU) |
+| AI Embedding | TEI container — `Alibaba-NLP/gte-multilingual-base` (768-dim, 32k ctx, GPU) |
+| AI Reranker | TEI container — `Alibaba-NLP/gte-multilingual-reranker-base` (GPU), or NVIDIA NIM API |
 | Database | PostgreSQL 18.4 (AsyncSessionLocal, Metadata/Auth/Audit) |
-| Vectors | Qdrant (AsyncQdrantClient, Sparse+Dense Hybrid) |
+| Vectors | Qdrant (AsyncQdrantClient, Dense + Native BM25 Hybrid) |
 | Object storage | RustFS (S3-compatible, isolated via asyncio.to_thread) |
 | Queue/Cache | Redis 8.x (Celery, Streams, Semantic Cache, Rate Limiting) |
 | AI Provider | 9Router (`decolua/9router:latest`, OpenAI-compatible, port 2908) |
 | Ingestion | LlamaParse (cloud OCR) + LibreOffice (DOCX→PDF) + LlamaIndex SentenceSplitter + DuplicateDetector (Bloom) |
-| BM25 Manager | BM25Manager (class-level Singleton with 120s TTL) |
+| RAG Framework | **LlamaIndex** — `VectorStoreIndex`, `IngestionPipeline`, `QdrantVectorStore`, `TextEmbeddingsInference`, `OpenAILike` |
 | Reverse proxy | Traefik v3.7 on port 80 (auto-discovery via Docker labels, SSE, NextAuth, API, Rate Limited) |
 
 ## Storage Split
@@ -29,7 +29,7 @@ Customer-facing document guidance chatbot. Users upload documents (guides, manua
 | Store | Responsibility |
 |-------|---------------|
 | PostgreSQL | Auth, roles, documents, **document_sections** (canonical tree order), chat sessions/messages, user_memories, audit |
-| Qdrant | Chunk vectors + payload with `section_id` metadata |
+| Qdrant | Chunk vectors + payload with `section_id` metadata (dense + native BM25 sparse) |
 | RustFS | Raw uploaded files + ingestion artifacts |
 | Redis 8.x | Celery broker (DB 2), result backend (DB 1), app cache + RediSearch semantic cache (DB 0), query embedding cache, rate limiting, chat history (MessagePack), audit stream (XADD). allkeys-lru |
 
@@ -84,36 +84,24 @@ graph TD
     API --> AnalyticSvc[Analytics Module → Repository]
     API --> SystemSvc[System Module → Health/Maintenance]
 
-    ChatSvc --> Retriever[Retrieval Service]
-    Retriever --> AIEmbed[ai-embedding TEI → Qwen3-Embedding-0.6B]
-    Retriever --> AIRerank[ai-reranker TEI → gte-multilingual-reranker-base]
-    AIEmbed -->|Vectors| Qdrant
-    AIRerank -->|Scores| Qdrant
+    ChatSvc --> LlamaIndex[LlamaIndex]
+    LlamaIndex --> Retriever[VectorStoreIndex → hybrid RRF]
+    LlamaIndex --> LLM[OpenAILike → 9Router]
+    Retriever --> AIEmbed[ai-embedding TEI → gte-multilingual-base]
+    Retriever --> AIRerank[ai-reranker TEI / NVIDIA NIM]
+    AIEmbed -->|Vectors| Qdrant[(Qdrant)]
+    Qdrant -->|Native BM25| Retriever
 
     WebApp <-->|SSE Streaming| Client
 
     DocSvc --> Upload[Upload → Redis queue]
     Upload --> Worker[workers · celery]
-    Worker --> Parser[LlamaParseParser]
-    Worker --> AIEmbed
+    Worker --> IngestionPipeline[IngestionPipeline\nMarkdownNodeParser → SentenceSplitter]
+    IngestionPipeline --> AIEmbed
+    IngestionPipeline --> Qdrant
     Worker --> DB[(PostgreSQL)]
     Redis --> Cleanup[System Module → workers]
 ```
-
-## Architecture Invariants (2026-05-20)
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| **Chunking** | `SentenceSplitter` (LlamaIndex) | Semantic-aware text splitting, char multiplier from `INGESTION_CHUNK_TOKEN_TO_CHAR_MULTIPLIER` |
-| **Query Refinement** | Enabled | AI-powered query optimization, timeout from `RETRIEVAL_QUERY_REFINEMENT_TIMEOUT` |
-| **Multi-Query Expansion** | Enabled | Generates query variants for broader retrieval |
-| **HyDE** | Removed | Previously hypothetical document embeddings for short queries. Removed to reduce latency. |
-| **Context Compaction** | Removed | History limited to `AI_MAX_HISTORY_MESSAGES` (default 10) in proxy_bridge |
-| **Streaming** | **SSE (Server-Sent Events)** | Real-time unidirectional stream via `POST /chat/stream` |
-| **Cache** | 3 layers | LLM Response + Semantic + Query Embedding |
-| **AI Usage Tracking** | All endpoints | Every AI call logged to `ai_model_usage` via `track_usage()` |
-| **Evaluation** | RAGAS | Optional quality metrics (disabled by default) |
-| **Knowledge Graph** | Lightweight | Optional KG enhancement (disabled by default) |
 
 ## Controller-Service-Repository Architecture
 
@@ -154,11 +142,13 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | Upload | Browser → /api/bep/ → proxy → API → RustFS | File persisted, document row pending |
 | Queue | API → Redis → Worker | Async task, task_id returned (202) |
 | Parse | Worker → LlamaParseParser (cloud OCR for PDF/DOCX, local MarkdownNodeParser for .md/.txt) → sections + chunks | Items with page spans, heading levels |
-| Store | SectionRepository → PostgreSQL → Embed → Qdrant | document_sections rows + vectors |
-| Retrieve | SemanticCache (similarity match) → exact cache → hybrid search (dense + BM25 RRF fusion) → section grouping (≥0.30) → Neighbor Expansion (Soi sáng) → full section context assembly |
+| Chunk | LlamaIndex IngestionPipeline: MarkdownNodeParser → SentenceSplitter → LlamaIndex nodes | Split nodes with metadata |
+| Embed & Store | QdrantVectorStore.add() — auto-embeds via Settings.embed_model (TEI), stores dense + native BM25 sparse | Vectors in Qdrant |
+| Store sections | SectionRepository → PostgreSQL | document_sections rows |
+| Retrieve | SemanticCache (similarity match) → exact cache → VectorStoreIndex hybrid search (dense + BM25 RRF) → reranker (TEI or NVIDIA) → full section context assembly | RagContext with scored nodes |
 | Memory | UserMemoryService (redis_client shared pool) → Redis cache → inject systemInstruction | Personalized prompt |
-| Stream | ChatService → AIProxyBridge (LlamaIndex OpenAI) → Immediate Yield (no buffering) → SSE → Browser | Grounded answer with citations |
-| Persist | Post-stream → `ChatService.save_assistant_message()` → MessagePack binary storage in Redis | Fast persistence |
+| Stream | ChatService → OpenAILike.astream_chat() → SSE → Browser | Grounded answer with citations |
+| Persist | Post-stream → `ChatService.save_assistant_message()` → PostgreSQL + MessagePack in Redis | Fast persistence |
 | Audit | safe_record_audit → Redis Stream (XADD) → AuditStreamWorker → PostgreSQL | Decoupled logging |
 | Extract | Post-response → Celery extract_memories_task → user_memories | Durable memory extraction |
 
@@ -168,17 +158,15 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 |------|----------|
 | API contracts | Keep upload/status/chat/document endpoints stable |
 | Async ingestion | Upload must never block on parsing |
-| Provider boundary | Route handlers never call provider factories, provider adapters, or provider SDKs directly. Chat routes delegate generation orchestration to `ChatService`; `ChatService` may use provider adapters. |
+| Provider boundary | Route handlers never call provider factories, provider adapters, or provider SDKs directly. Chat routes delegate generation orchestration to `ChatService`; `ChatService` uses `Settings.llm` (OpenAILike) for AI calls. |
 | ID-first boundaries | Cross-layer/service/worker payloads pass stable IDs and URIs. Rich objects are rehydrated inside the owning layer. |
-| Hierarchical retrieval | Retrieve at chunk level, present at section level (full section context to LLM) with Neighbor Expansion |
+| Hierarchical retrieval | Retrieve at chunk level, present at section level (full section context to LLM) |
 | Citation policy | Every grounded answer includes citations |
 | Delete policy | Hard-delete 6-step order (see below) |
 | Version policy | Latest active version preferred during retrieval |
 | Rate limiting | Atomic Lua script — no INCR+EXPIRE race |
-
-## Refactor Conformance
-
-This architecture document is now the conformance target. Code must keep the ID-first boundaries, CSR layering, provider boundary, hard-delete order, and retrieval invariants in this file. Do not introduce a separate temporary conformance document.
+| Single chunking | SentenceSplitter applied exactly once in IngestionPipeline. No double-splitting. |
+| LlamaIndex | All RAG operations use LlamaIndex primitives (VectorStoreIndex, IngestionPipeline, QdrantVectorStore). No custom retriever or embedder. |
 
 ## Delete Policy (Authoritative)
 
@@ -198,7 +186,7 @@ Hard-delete removes all traces. **Order must not change:**
 | Policy | Behavior |
 |--------|----------|
 | Same filename + new content | New row with `version = max(version) + 1` |
-| Retrieval default | Highest version per filename (subquery in retrieval_service.py) |
+| Retrieval default | Highest version per filename (subquery in document repository) |
 | Delete by version | Hard-delete only specified version |
 
 ## Access Model
@@ -220,16 +208,16 @@ Frontend: Settings page `/settings` with full CRUD. Content limit: 1000 chars pe
 
 ## AI Provider Architecture
 
-9Router (`decolua/9router:latest`) — Next.js 16 AI router acting as OpenAI-compatible proxy:
+The project uses **9Router** (`decolua/9router:latest`) — a Next.js 16 AI router acting as an OpenAI-compatible proxy. All AI calls go through `LlamaIndex Settings`:
 
 ```
-FastAPI ChatService → LlamaIndex OpenAI LLM (api_base=ai-proxy:2908/v1)
-                                     ↓
-                          9Router (Next.js 16)
-                                     ↓
-                    ┌────────┬────────┬────────┬────────┐
-                     Kiro    Claude   Gemini  OpenCode
-                     AI      (kr)     (gcp)     Free
+FastAPI ChatService → Settings.llm = OpenAILike (api_base=ai-proxy:2908/v1)
+                                      ↓
+                            9Router (Next.js 16)
+                                      ↓
+                     ┌────────┬────────┬────────┬────────┐
+                      Kiro    Claude   Gemini  OpenCode
+                      AI      (kr)     (gcp)     Free
 ```
 
 | Feature | Implementation |
@@ -243,9 +231,14 @@ FastAPI ChatService → LlamaIndex OpenAI LLM (api_base=ai-proxy:2908/v1)
 | 3-tier fallback | Subscription → Cheap → Free provider tiers |
 | Fallback | Auto-switch on quota exceeded, retry on 429/5xx |
 
+**Initialization** (`app/core/llama_index.py`):
+- `Settings.embed_model = SequentialOpenAIEmbedding(...)` wrapping TEI and serializing embed requests one at a time to avoid 429 spam during ingestion
+- `Settings.llm = OpenAILike(model, api_base=ai-proxy:2908/v1)`
+- `get_vector_store()` → singleton `QdrantVectorStore(enable_hybrid=True, enable_native_bm25=True)`
+
 ## Multi-Turn Conversation
 
-- Last N messages as OpenAI `messages` array (configurable via `AI_MAX_HISTORY_MESSAGES`, default 10)
+- Last N messages as OpenAI `messages` array (configurable via `AI_MAX_HISTORY_MESSAGES`, default 6)
 - RAG context embedded into current user message
 - User messages are saved synchronously during `ChatService.prepare_chat()`. Assistant messages are saved synchronously by `ChatService.save_assistant_message()` before the final SSE `done:true` event. Redis remains the hot cache with configurable TTL (`CHAT_HISTORY_REDIS_TTL`, default 24h).
 - `ChatStore.hydrate_from_db()` reloads from DB on TTL expiry (checks Redis first via `history_exists()`)
@@ -297,7 +290,7 @@ Every call to 9Router is logged via `track_usage()` in `app/modules/chat/retriev
 | TIGHT | VRAM < 6GB | 1 | 20+20 | 50 | 50+ |
 | PROD | VRAM ≥ 6GB | 4-8 | 100+20 | 100+ | 200+ |
 
-VRAM headroom = total VRAM − 2GB. TIGHT uses 1 worker to prevent OOM. PROD scales connection pools for high-concurrency chatbot workloads. High CCU is supported by BM25 Singleton (RAM caching) and Immediate Yield streaming.
+VRAM headroom = total VRAM − 2GB. TIGHT uses 1 worker to prevent OOM. PROD scales connection pools for high-concurrency chatbot workloads.
 
 ## Celery Configuration
 

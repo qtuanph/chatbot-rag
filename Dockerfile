@@ -51,7 +51,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 # ── Non-root user + dirs ──
 RUN useradd -m -u 1000 -s /bin/bash qtuanph && \
-    mkdir -p /home/qtuanph/.cache/huggingface /app && \
+    mkdir -p /home/qtuanph/.cache/huggingface /app/data /app && \
     chown -R qtuanph:qtuanph /home/qtuanph /app
 
 # ── Copy python packages from builder ──

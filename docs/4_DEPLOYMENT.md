@@ -13,7 +13,7 @@ Docker Compose with these services:
 | webapp | Next.js 16 frontend | Internal via Traefik |
 | workers | Celery multi worker — node-ingestion (solo, GPU) + node-default (prefork, CPU, beat) | Internal |
 | ai-proxy | 9Router (Next.js 16, OpenAI-compatible AI router) — port 2908 | Internal (api→ai-proxy, Dashboard at localhost:2908) |
-| ai-embedding | TEI container — `Qwen/Qwen3-Embedding-0.6B` (GPU, port 7997) | Internal |
+| ai-embedding | TEI container — `Alibaba-NLP/gte-multilingual-base` (GPU, port 7997) | Internal |
 | ai-reranker | TEI container — `Alibaba-NLP/gte-multilingual-reranker-base` (GPU, port 7998) | Internal |
 | db | PostgreSQL 18 | Internal |
 | redis | Broker/result/cache | Internal |
@@ -46,8 +46,8 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | AI_PROXY_INITIAL_PASSWORD | 9Router Dashboard initial login password (default 123456) |
 | AI_EMBEDDING_URL | TEI embedding endpoint (default `http://ai-embedding:80`) |
 | AI_RERANKER_URL | TEI reranker endpoint (default `http://ai-reranker:80`) |
-| EMBEDDING_HF_MODEL | HuggingFace embedding model (default `Qwen/Qwen3-Embedding-0.6B`) |
-| EMBEDDING_VECTOR_SIZE | Qdrant dimension (default 1024) |
+| EMBEDDING_HF_MODEL | HuggingFace embedding model (default `Alibaba-NLP/gte-multilingual-base`) |
+| EMBEDDING_VECTOR_SIZE | Qdrant dimension (default 768) |
 | RETRIEVAL_RERANK_MODEL | Reranker model (default `Alibaba-NLP/gte-multilingual-reranker-base`) |
 | AI_INPUT_COST_PER_1M | Input token cost per 1M tokens (default 0.0) |
 | AI_OUTPUT_COST_PER_1M | Output token cost per 1M tokens (default 0.0) |

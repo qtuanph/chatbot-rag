@@ -19,48 +19,57 @@ class Settings(BaseSettings):
     api_timeout_keep_alive: int = 75
     ai_embedding_url: str = "http://ai-embedding:80"
     ai_reranker_url: str = "http://ai-reranker:80"
+    reranker_backend: str = "tei"  # "tei" (local TEI) | "nvidia" (NVIDIA NIM API)
+    nvidia_api_key: str = ""
+    nvidia_reranker_model: str = "nvidia/llama-nemotron-rerank-vl-1b-v2"
+    nvidia_reranker_url: str = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
+    nvidia_reranker_timeout: float = 30.0
     log_level: str = "INFO"
 
-    # Celery worker: which task modules to load ("all" | "upload" | "cleanup")
     celery_include: str = "all"
 
     ai_proxy_url: str = "http://ai-proxy:2908"
     ai_proxy_api_key: str = ""
     ai_proxy_default_model: str = ""
-    ai_auxiliary_model: str = ""  # Lightweight model for expansion, refinement, confidence
     ai_input_cost_per_1m: float = 0.0
     ai_output_cost_per_1m: float = 0.0
 
-    # Semantic Cache (Redis Vector Search)
     retrieval_semantic_cache_enabled: bool = True
-    retrieval_semantic_cache_threshold: float = 0.08  # COSINE distance (1-similarity), 0.08 ≈ 0.92 similarity
+    retrieval_semantic_cache_threshold: float = 0.08
 
-    # LLM Response Cache (for 200+ CCU optimization)
     llm_cache_enabled: bool = True
-    llm_cache_ttl: int = 14400  # 4 hours
-    llm_cache_exact_first: bool = True  # Check exact before semantic
+    llm_cache_ttl: int = 14400
+    llm_cache_exact_first: bool = True
 
-    # Query Normalization (improves cache hit rate)
     query_normalize_enabled: bool = True
+    retrieval_query_refinement_enabled: bool = True
+    retrieval_query_refinement_timeout: float = 5.0
+    retrieval_query_expansion_enabled: bool = True
+    retrieval_query_expansion_timeout: float = 5.0
+    ragas_evaluation_enabled: bool = False
 
     llama_cloud_api_key: str = ""
-    llama_cloud_api_base: str = "https://api.cloud.llamaindex.ai/api/parsing"
+    llama_cloud_api_base: str = "https://api.cloud.llamaindex.ai"
     llama_cloud_timeout: float = 120.0
+
+    kg_entity_extract_limit: int = 50
+    kg_connected_entity_limit: int = 20
+
+    retrieval_chunk_size: int = 600
+    retrieval_chunk_overlap: int = 120
+
     ingestion_engine: str = "docling"
     ingestion_min_non_empty_nodes: int = 1
     ingestion_min_total_text_chars: int = 80
-    # Embedding pipeline tuning — 0 means auto-detect from hardware profile
     ingestion_min_quality_score: float = 0.5
-    ingestion_min_section_chars: int = 200  # Min chars to keep a markdown section (merge smaller ones)
-    ingestion_chunk_token_to_char_multiplier: int = 3  # Token→char conversion for SentenceSplitter
-    ingestion_parsing_timeout: int = 3600  # Default 1 hour for large OCR tasks
+    ingestion_min_section_chars: int = 200
+    ingestion_parsing_timeout: int = 3600
     ingestion_ocr_languages: Any = ["vi", "en"]
 
     @field_validator("ingestion_ocr_languages", mode="before")
     @classmethod
     def parse_ocr_languages(cls, v: Any) -> list[str]:
         if isinstance(v, str):
-            # Support both JSON list "['vi', 'en']" and comma-separated "vi,en"
             v = v.strip()
             if v.startswith("[") and v.endswith("]"):
                 try:
@@ -72,66 +81,19 @@ class Settings(BaseSettings):
             return [lang.strip() for lang in v.split(",") if lang.strip()]
         return v
 
-    ingestion_embedding_chunk_size: int = 32  # nodes per embed+store batch
-    ingestion_embed_parallelism: int = 0  # 0 = use hardware.embed_parallelism
+    ingestion_chunk_size: int = 600
+    ingestion_chunk_overlap: int = 120
 
-    # 2-stage retrieval settings
-    retrieval_section_top_k: int = 10  # Top sections sent to LLM (full context for accuracy)
-    retrieval_chunk_top_k: int = 20  # Stage 2: initial candidate pool
-    retrieval_chunk_size: int = 500  # Target chunk size in tokens (industry: 512-600)
-    retrieval_chunk_overlap: int = 75  # Overlap between chunks in tokens (~15%)
-    retrieval_fetch_multiplier: int = 7  # fetch_k = 15 * 7 = 105
-
-    # Confidence scoring for retrieval results
-    retrieval_confidence_threshold_high: float = 0.7  # Max score >= this → high confidence
-    retrieval_confidence_avg_high: float = 0.5  # Avg score >= this → contributes to high confidence
-    retrieval_confidence_threshold_low: float = 0.4  # Max score < this → low confidence
-
-    # Hybrid search (Dense + BM25) — always on, no toggle
-    retrieval_bm25_k1: float = 1.5  # BM25 term frequency saturation
-    retrieval_bm25_b: float = 0.75  # BM25 length normalization
-    bm25_singleton_ttl: float = 120.0
-    retrieval_bm25_rebuild_batch_size: int = 500
-
-    # Context Expansion (Soi sáng)
-    retrieval_context_expansion_window: int = 1  # Number of neighboring nodes to fetch (before & after)
-
-    # Cross-encoder reranker — switchable backend
-    reranker_backend: str = "tei"  # "tei" (local) | "nvidia" (online API)
-    retrieval_rerank_enabled: bool = True
-    retrieval_rerank_top_k: int = 30
-    retrieval_rerank_model: str = "Alibaba-NLP/gte-multilingual-reranker-base"
-    # NVIDIA API reranker (temporary for demo — change model/key here)
-    nvidia_api_key: str = ""
-    nvidia_reranker_model: str = "nvidia/llama-nemotron-rerank-vl-1b-v2"
-    nvidia_reranker_url: str = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
-    nvidia_reranker_timeout: float = 30.0
-
-    # Query refinement — TẮT để tránh AI rewrite làm lệch intent gốc
-    retrieval_query_refinement_enabled: bool = False
-    retrieval_query_refinement_ttl: int = 600  # 10 min cache for refined queries
-
-    # Multi-query expansion — TẮT để tránh tạo variants match sai section
-    retrieval_query_expansion_enabled: bool = False
-    retrieval_query_expansion_variants: int = 2
-
-    # Timeouts for retrieval auxiliary services
-    retrieval_query_refinement_timeout: float = 2.0
-    retrieval_query_expansion_timeout: float = 3.0
-    retrieval_expansion_scroll_limit: int = 100  # Max nodes fetched per doc during neighbor expansion
-
-    # RAGAS Evaluation
-    ragas_evaluation_enabled: bool = False  # Enable RAGAS metrics after each response
-
-    # Knowledge Graph
-    kg_enabled: bool = False  # Enable Knowledge Graph for query enhancement
-    kg_top_k: int = 3  # Number of KG entities to retrieve for query enhancement
+    retrieval_chunk_top_k: int = 20
+    retrieval_rerank_top_k: int = 10
+    retrieval_hybrid_top_k: int = 20
+    retrieval_context_max_chars: int = 30000
 
     database_url: str = "replace-me"
-    redis_password: str = ""  # Set via REDIS_PASSWORD env var
-    redis_url: str = "redis://redis:6379/0"  # App cache + RediSearch — DB 0
-    redis_broker_db: int = 2  # Celery broker — DB 2
-    redis_result_db: int = 1  # Celery result — DB 1
+    redis_password: str = ""
+    redis_url: str = "redis://redis:6379/0"
+    redis_broker_db: int = 2
+    redis_result_db: int = 1
 
     @property
     def redis_url_auth(self) -> str:
@@ -153,8 +115,6 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60
 
     max_upload_size_mb: int = 2048
-
-    # Allowed file types for upload (MIME types)
     allowed_file_types: str = (
         "application/pdf,"
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document,"
@@ -164,8 +124,6 @@ class Settings(BaseSettings):
     )
     max_filename_length: int = 255
 
-    # Rate limiting behavior
-    # In non-production environments, limits can be relaxed for integration testing.
     rate_limit_relaxed_mode: bool = True
     rate_limit_relaxed_floor: int = 10000
 
@@ -176,71 +134,57 @@ class Settings(BaseSettings):
     s3_bucket: str = "rag-documents"
     s3_secure: bool = False
     allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0"
-    cors_origins: str = "http://localhost"  # All traffic through Traefik port 80
+    cors_origins: str = "http://localhost"
 
-    # Embedding — TEI remote (Alibaba-NLP/gte-multilingual-base, 768-dim, 8192 context)
     embedding_model: str = "tei"
     embedding_hf_model: str = "Alibaba-NLP/gte-multilingual-base"
     embedding_vector_size: int = 768
-    embedding_batch_size: int = 16
+    embedding_batch_size: int = 8
+    embedding_api_base: str = "http://ai-embedding:80/v1"
+    embedding_api_key: str = ""
     vector_store: str = "qdrant"
     qdrant_url: str = "http://qdrant:6333"
     qdrant_api_key: str | None = None
     qdrant_collection: str = "documents_vectors"
-    qdrant_timeout: int = 30  # Seconds
-    qdrant_group_size: int = 3  # Chunks per group in section-grouped retrieval
+    qdrant_timeout: int = 30
 
-    # Chat history auto-delete
-    chat_session_ttl_days: int = 30  # Sessions older than 30 days are auto-deleted
-    chat_history_redis_ttl: int = 86400  # Redis hot cache TTL in seconds (default 24h)
-    chat_history_limit: int = 40  # Max messages loaded from DB on cache miss
+    chat_session_ttl_days: int = 30
+    chat_history_redis_ttl: int = 86400
+    chat_history_limit: int = 40
 
-    # AI generation parameters — configurable per deployment
     ai_temperature: float = 0.3
     ai_max_output_tokens: int = 8192
-    ai_max_history_messages: int = 20
-    ai_http_timeout_refine: float = 30.0
-    ai_http_keepalive_expiry: float = 30.0
-    # Multi-turn context window
-    ai_stream_timeout: float = 1800.0  # HTTP timeout for AI streaming (seconds)
-    ai_http_max_connections: int = 50  # httpx connection pool size
-    ai_http_keepalive_connections: int = 10  # httpx keepalive pool size
-    ai_proxy_timeout: float = 120.0  # HTTP timeout for 9Router proxy stream calls
+    ai_max_history_messages: int = 6
+    ai_stream_timeout: float = 1800.0
+    ai_http_max_connections: int = 50
+    ai_http_keepalive_connections: int = 10
+    ai_proxy_timeout: float = 120.0
 
-    # Chat history limited to ai_max_history_messages in proxy_bridge (no compaction needed)
+    celery_task_time_limit: int = 3600
+    celery_task_soft_time_limit: int = 3300
+    celery_worker_max_memory_kb: int = 1_500_000
+    celery_visibility_timeout: int = 7200
+    celery_result_expires: int = 86400
+    celery_max_tasks_per_child: int = 50
+    celery_retry_backoff: int = 30
+    celery_retry_backoff_max: int = 600
+    celery_max_retries: int = 3
 
-    # Celery tuning — configurable for server-grade hardware
-    celery_task_time_limit: int = 3600  # 1 hour hard kill for massive PDFs (500+ pages)
-    celery_task_soft_time_limit: int = 3300  # 55 min → SoftTimeLimitExceeded
-    celery_worker_max_memory_kb: int = 1_500_000  # 1.5GB — kill child if exceeded
-    celery_visibility_timeout: int = 7200  # 2h — Redis re-delivery guard
-    celery_result_expires: int = 86400  # 24h — task result TTL
-    celery_max_tasks_per_child: int = 50  # Recycle child after N tasks
-    celery_retry_backoff: int = 30  # Base retry delay in seconds (upload tasks)
-    celery_retry_backoff_max: int = 600  # Max 10 min between retries
-    celery_max_retries: int = 3  # Max retry attempts for transient failures
+    rate_limit_global_rpm: int = 5000
 
-    # Rate limiting — global middleware
-    rate_limit_global_rpm: int = 5000  # Increased for 200 CCU support
-
-    # Audit Stream (Redis XADD)
     audit_stream_name: str = "audit:stream"
     audit_stream_batch_size: int = 100
-    audit_stream_process_interval: float = 10.0  # Seconds
-    audit_stream_maxlen: int = 50000  # Max entries retained in stream (approx 50K)
+    audit_stream_process_interval: float = 10.0
+    audit_stream_maxlen: int = 50000
 
-    # Cache TTLs — configurable for deployment scale
-    memory_cache_ttl: int = 300  # User memory Redis cache TTL (seconds)
-    doc_ids_cache_ttl: float = 60.0  # Active document IDs cache TTL (seconds)
-    retrieval_max_rerank_candidates: int = 30  # Max candidates sent to cross-encoder
+    memory_cache_ttl: int = 300
+    doc_ids_cache_ttl: float = 60.0
 
     def model_post_init(self, __context) -> None:
-        # Security: Validate JWT secret meets minimum requirements
         if not self.jwt_secret or self.jwt_secret == "replace-me":
             raise ValueError("JWT_SECRET must be configured")
         if len(self.jwt_secret) < 32:
             raise ValueError("JWT_SECRET must be at least 32 characters for security")
-        # Check for sufficient entropy (at least 3 character types)
         char_types = 0
         if any(c.islower() for c in self.jwt_secret):
             char_types += 1
@@ -253,7 +197,6 @@ class Settings(BaseSettings):
         if char_types < 3:
             raise ValueError("JWT_SECRET must contain at least 3 of: lowercase, uppercase, digits, special characters")
 
-        # Security: Validate other secrets
         if not self.s3_secret_key or self.s3_secret_key == "replace-me":
             raise ValueError("S3_SECRET_KEY must be configured")
         if not self.s3_access_key:
@@ -266,12 +209,7 @@ class Settings(BaseSettings):
         self.ingestion_engine = str(self.ingestion_engine).strip().lower() or "docling"
         if self.ingestion_engine not in {"docling", "classic"}:
             raise ValueError("INGESTION_ENGINE must be docling/classic")
-        if self.ingestion_min_non_empty_nodes < 1:
-            raise ValueError("INGESTION_MIN_NON_EMPTY_NODES must be >= 1")
-        if self.ingestion_min_total_text_chars < 1:
-            raise ValueError("INGESTION_MIN_TOTAL_TEXT_CHARS must be >= 1")
 
-        # Embedding validation
         self.vector_store = str(self.vector_store).strip().lower() or "qdrant"
         if self.vector_store not in {"qdrant"}:
             raise ValueError("VECTOR_STORE must be qdrant")
@@ -289,7 +227,6 @@ class Settings(BaseSettings):
         if not self.allowed_file_types:
             raise ValueError("ALLOWED_FILE_TYPES must not be empty")
 
-        # Production-only constraints: fail fast on unsafe defaults.
         if self.app_env == "production":
             if "*" in self.allowed_hosts:
                 raise ValueError("ALLOWED_HOSTS must not contain wildcard in production")
@@ -301,12 +238,6 @@ class Settings(BaseSettings):
                 raise ValueError("S3_SECURE must be true in production")
 
     def effective_rate_limit(self, base_limit: int) -> int:
-        """
-        Return the effective rate-limit threshold.
-
-        - Production: keep strict configured limits.
-        - Non-production: optionally relax to a high floor for testing.
-        """
         if base_limit < 1:
             raise ValueError("base_limit must be >= 1")
         if self.app_env == "production":
@@ -316,7 +247,6 @@ class Settings(BaseSettings):
         return base_limit
 
     def get_allowed_file_types(self) -> set[str]:
-        """Parse ALLOWED_FILE_TYPES string into a set of MIME types."""
         return set(t.strip() for t in self.allowed_file_types.split(",") if t.strip())
 
 

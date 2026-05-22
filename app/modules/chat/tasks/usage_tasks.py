@@ -19,6 +19,8 @@ def log_model_usage_task(
     completion_tokens: int,
     endpoint: str,
     cost_usd: float = 0.0,
+    latency_ms: float = 0.0,
+    model_type: str = "llm",
     user_id: str | None = None,
     session_id: str | None = None,
     message_id: str | None = None,
@@ -27,7 +29,16 @@ def log_model_usage_task(
     try:
         asyncio.run(
             _log_usage_async(
-                model_name, prompt_tokens, completion_tokens, endpoint, cost_usd, user_id, session_id, message_id
+                model_name,
+                prompt_tokens,
+                completion_tokens,
+                endpoint,
+                cost_usd,
+                latency_ms,
+                model_type,
+                user_id,
+                session_id,
+                message_id,
             )
         )
     except Exception as e:
@@ -41,6 +52,8 @@ async def _log_usage_async(
     completion_tokens: int,
     endpoint: str,
     cost_usd: float,
+    latency_ms: float,
+    model_type: str,
     user_id: str | None,
     session_id: str | None,
     message_id: str | None,
@@ -51,10 +64,12 @@ async def _log_usage_async(
         repo = UsageRepository(session)
         await repo.log_usage(
             model_name=model_name,
+            model_type=model_type,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             endpoint=endpoint,
             cost_usd=cost_usd,
+            latency_ms=latency_ms,
             user_id=user_id,
             session_id=session_id,
             message_id=message_id,

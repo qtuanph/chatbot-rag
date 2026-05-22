@@ -1,6 +1,6 @@
 {
   "document": "Known Issues & Post-Mortems",
-  "version": "2026-05-20",
+  "version": "2026-05-22",
   "schema": {
     "issue_id": "integer",
     "title": "string",
@@ -60,22 +60,6 @@
     },
     {
       "issue_id": 7,
-      "title": "Retrieval Package Export Drift (Non-Fatal Startup Warning)",
-      "symptom": "Startup warning: cannot import name 'retrieve_context' from retrieval_service during pre-warm path.",
-      "root_cause": "app/services/retrieval/__init__.py still re-exported legacy function names after class-based refactor.",
-      "resolution": "Updated re-exports to RetrievalService and removed stale function names from __all__.",
-      "lesson_learned": "Keep package-level re-export modules synchronized after function-to-class refactors."
-    },
-    {
-      "issue_id": 8,
-      "title": "BM25 Sync/Async Bug Causing Short Answers",
-      "symptom": "Chat returns short answers; BM25 vocab missing in Redis; hybrid search only uses dense vectors.",
-      "root_cause": "retrieval_service.py:131 called get_bm25_encoder() (sync) in async context. With async Redis client, encoder.load_sync() fails silently because self._redis.get() returns coroutine instead of data. Result: bm25_encoder.is_ready = False.",
-      "resolution": "Changed import from get_bm25_encoder to get_async_bm25_encoder; changed call to await get_async_bm25_encoder(self.redis).",
-      "lesson_learned": "In hybrid Sync/Async systems, always verify async/sync match. Use async Redis client method when in async context."
-    },
-    {
-      "issue_id": 9,
       "title": "Memory Extraction Too Restrictive - AI Loses Context Between Turns",
       "symptom": "AI gives generic answers ignoring previous context; user has to repeat information across turns.",
       "root_cause": "should_extract_memory() only triggered extraction when user message matched patterns like 'nhớ', 'remember', 'sai', etc. Normal questions like 'Nói chi tiết hơn được không?' were skipped, so AI lost context.",
@@ -83,7 +67,7 @@
       "lesson_learned": "Context memory should be extracted proactively, not only on explicit recall keywords. Users should not need to say 'nhớ' to be remembered."
     },
     {
-      "issue_id": 10,
+      "issue_id": 8,
       "title": "Cache Layer Gaps for 200+ CCU - Missing LLM Response Cache",
       "symptom": "No LLM response caching; every query hits expensive LLM API even for repeated/similar questions. TTLs too short (30min-1h). Semantic threshold too strict (0.02).",
       "root_cause": "System only cached RAG context (nodes/sections) but not final LLM response. Cache hit rate very low. Query not normalized reducing exact match hits.",
@@ -91,7 +75,7 @@
       "lesson_learned": "For 200+ CCU, must cache full LLM response to bypass expensive API calls. Query normalization critical for exact match cache hits."
     },
     {
-      "issue_id": 11,
+      "issue_id": 9,
       "title": "Dashboard Stats Show 0 Documents Despite Ready Status",
       "symptom": "Admin dashboard shows 0 total and 0 active documents even after successful ingestion.",
       "root_cause": "HealthService.get_health_data() was a static method returning only configuration status without querying the DocumentRepository for live counts.",
@@ -99,7 +83,7 @@
       "lesson_learned": "Aggregated metrics for system overview must be explicitly integrated with their respective repositories."
     },
     {
-      "issue_id": 12,
+      "issue_id": 10,
       "title": "Document Detail 'Load More' Button Stuck/Silent Failure",
       "symptom": "Clicking 'Load more' in document details fetches no new data, and total count (e.g., 54) doesn't match displayed nodes.",
       "root_cause": "TreeService.get_document_tree() paginated on root-level sections only, but the total count returned was for ALL sections. If children were expanded, the offset became out of sync with root nodes.",
@@ -107,7 +91,7 @@
       "lesson_learned": "Ensure pagination logic matches the flat or hierarchical nature of the UI component consuming the data."
     },
     {
-      "issue_id": 13,
+      "issue_id": 11,
       "title": "Celery Worker Crash — AMD ROCm stdout Pollution Corrupts Concurrency Value",
       "symptom": "workers-1 container restart-loops with: `Error: Invalid value for '-c' / '--concurrency': '/opt/rocm/lib/libamd_smi.so:\\nUnable\\n3' is not a valid integer.`",
       "root_cause": "entrypoint-worker.sh captured hardware concurrency via `$(python -c '... print(concurrency autoscale)' 2>/dev/null)`. The amdsmi library (AMD ROCm GPU detection) prints warning lines like `/opt/rocm/lib/libamd_smi.so: Unable to...` to STDOUT (not stderr), bypassing the 2>/dev/null redirect. These lines were prepended to the actual integer output, making CONCURRENCY an invalid multi-line string passed to `celery worker -c`.",
@@ -115,7 +99,7 @@
       "lesson_learned": "Never trust subprocess stdout to be clean when third-party C libraries (GPU drivers, BLAS, etc.) are imported. Always pipe through `tail -n 1` and validate with regex before using as a numeric argument."
     },
     {
-      "issue_id": 14,
+      "issue_id": 12,
       "title": "LlamaParse API 'agentic' Tier Rejection",
       "symptom": "Ingestion task fails with error code 400: MISSING_VERSION_FOR_TIER when 'tier' is set to 'agentic'.",
       "root_cause": "The LlamaCloud API key or plan used does not support the 'agentic' tier, or the API endpoint lacks the necessary version metadata for it.",
@@ -123,28 +107,12 @@
       "lesson_learned": "Always verify cloud API tier access levels before hardcoding premium/advanced flags in production ingestion pipelines."
     },
     {
-      "issue_id": 15,
+      "issue_id": 13,
       "title": "Double SentenceSplitter — Section Chunking Applied Twice",
       "symptom": "Chunks too small (~400 chars), broken context boundaries. OCR header/footer noise creating false section splits.",
-      "root_cause": "parse_from_markdown() applied SentenceSplitter (400 tokens, no metadata), then LlamaIngestionPipeline applied another SentenceSplitter (1200 chars, with metadata) on top. Result: double-split context fragmentation.",
-      "resolution": "Removed SentenceSplitter from parse_from_markdown(). Each heading section now returns as ONE node. LlamaIngestionPipeline is the single chunking pass (1200 chars, overlap=300, include_metadata=True).",
+      "root_cause": "parse_from_markdown() applied SentenceSplitter independently, then the LlamaIndex IngestionPipeline applied another SentenceSplitter on top. Result: double-split context fragmentation.",
+      "resolution": "Ensured single chunking pass: IngestionPipeline is the only place SentenceSplitter runs. parse_from_markdown() returns each heading section as one node without splitting.",
       "lesson_learned": "Chunking should happen exactly once. When piping data through multiple processing stages, verify each stage's transformations don't overlap."
-    },
-    {
-      "issue_id": 16,
-      "title": "AI-Engine Calls Lack Connection Pooling and Retry",
-      "symptom": "Per-call latency includes TCP handshake (+50-100ms). AI-Engine restart causes pipeline failure until next request.",
-      "root_cause": "sentence_transformer.py and reranker.py created new httpx.AsyncClient() per request with no connection reuse or retry logic.",
-      "resolution": "Added module-level shared httpx.AsyncClient with Limits(max_connections=50, max_keepalive=10). Added _retry_call() with 3 attempts, exponential backoff (1s→2s→4s), targeting transient errors (ConnectError, TimeoutException, RemoteProtocolError).",
-      "lesson_learned": "Async HTTP clients to AI backends MUST use connection pooling. Retry with backoff is essential for resilience in container orchestration environments where services restart independently."
-    },
-    {
-      "issue_id": 17,
-      "title": "HyDE Prompt Encourages Hallucination — Removed",
-      "symptom": "Hypothetical document embeddings pull irrelevant chunks due to hallucinated details. High recall but low precision on long queries.",
-      "root_cause": "HyDE prompt said 'hãy viết như thể đó là tài liệu tham khảo thực tế' — actively encouraged fabrication. HyDE ran on ALL queries <100 chars, including long ones where it causes noise.",
-      "resolution": "HyDE removed entirely (hyde_service.py deleted). Latency savings: ~1.5s per query. Precision improved by eliminating hallucination noise.",
-      "lesson_learned": "HyDE prompt must explicitly anti-hallucinate. 'Viết như tài liệu thật' is dangerous. Length gate must use word count, not character count, to match industry practice of 'short query enrichment'."
     }
   ]
 }

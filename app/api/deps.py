@@ -13,7 +13,6 @@ from app.core.config import settings
 from app.core import http_errors
 from app.db.session import get_async_session
 from app.modules.auth.utils.token_blacklist import TokenBlacklist
-from app.modules.documents.utils.document_registry import DocumentRegistry
 from app.modules.chat.utils.chat_store import ChatStore
 
 if TYPE_CHECKING:
@@ -29,8 +28,6 @@ if TYPE_CHECKING:
     from app.modules.documents.services import TreeService, TaskService, CleanupService, DocumentService
     from app.modules.system.service import HealthService
 
-# ── Redis Utility Getters ──────────────────
-
 
 async def get_redis_client() -> Any:
     from app.core.redis import get_redis_client
@@ -40,10 +37,6 @@ async def get_redis_client() -> Any:
 
 async def get_token_blacklist(r_client: Any = Depends(get_redis_client)) -> TokenBlacklist:
     return TokenBlacklist(r_client)
-
-
-async def get_document_registry(r_client: Any = Depends(get_redis_client)) -> DocumentRegistry:
-    return DocumentRegistry(r_client)
 
 
 async def get_chat_store(r_client: Any = Depends(get_redis_client)) -> ChatStore:
@@ -58,14 +51,12 @@ async def get_rate_limiter(r_client: Any = Depends(get_redis_client)) -> RateLim
 
 async def get_semantic_cache(r_client: Any = Depends(get_redis_client)) -> SemanticCache:
     from app.utils.cache import SemanticCache
-    from app.core.config import settings
 
     return SemanticCache(vector_dim=settings.embedding_vector_size, client=r_client)
 
 
 async def get_query_cache(r_client: Any = Depends(get_redis_client)) -> QueryEmbeddingCache:
     from app.utils.cache import QueryEmbeddingCache
-    from app.core.config import settings
 
     return QueryEmbeddingCache(r_client, model_name=settings.embedding_hf_model)
 
@@ -114,11 +105,10 @@ async def get_auth_context(
 
 async def require_admin(request: Request, auth: AuthContext | None = Depends(get_auth_context)) -> AuthContext:
     if request.method == "OPTIONS":
-        return None  # type: ignore
+        return None
 
     if auth is None:
         raise http_errors.unauthorized("Authentication required")
-
     if auth.role != "admin":
         raise http_errors.forbidden("Admin only")
     return auth
@@ -205,11 +195,11 @@ async def get_memory_service(
 
 async def get_task_service(
     doc_repo: DocumentRepository = Depends(get_doc_repo),
-    registry: DocumentRegistry = Depends(get_document_registry),
+    r_client: Any = Depends(get_redis_client),
 ) -> TaskService:
     from app.modules.documents.services import TaskService
 
-    return TaskService(doc_repo=doc_repo, registry=registry)
+    return TaskService(doc_repo=doc_repo, redis_client=r_client)
 
 
 async def get_tree_service(
@@ -224,7 +214,7 @@ async def get_tree_service(
 async def get_document_service(
     doc_repo: DocumentRepository = Depends(get_doc_repo),
     section_repo: SectionRepository = Depends(get_section_repo),
-    registry: DocumentRegistry = Depends(get_document_registry),
+    r_client: Any = Depends(get_redis_client),
     task_service: TaskService = Depends(get_task_service),
     tree_service: TreeService = Depends(get_tree_service),
 ) -> DocumentService:
@@ -233,7 +223,7 @@ async def get_document_service(
     return DocumentService(
         doc_repo=doc_repo,
         section_repo=section_repo,
-        registry=registry,
+        redis_client=r_client,
         task_service=task_service,
         tree_service=tree_service,
     )
@@ -248,11 +238,11 @@ async def get_health_service(doc_repo: DocumentRepository = Depends(get_doc_repo
 async def get_cleanup_service(
     doc_repo: DocumentRepository = Depends(get_doc_repo),
     section_repo: SectionRepository = Depends(get_section_repo),
-    registry: DocumentRegistry = Depends(get_document_registry),
+    r_client: Any = Depends(get_redis_client),
 ) -> CleanupService:
     from app.modules.documents.services import CleanupService
 
-    return CleanupService(doc_repo=doc_repo, section_repo=section_repo, registry=registry)
+    return CleanupService(doc_repo=doc_repo, section_repo=section_repo, redis_client=r_client)
 
 
 async def get_recovery_service(
@@ -262,5 +252,4 @@ async def get_recovery_service(
 ) -> Any:
     from app.modules.documents.ingestion.recovery_service import RecoveryService
 
-    service = RecoveryService(doc_repo=doc_repo, section_repo=section_repo, redis_client=r_client)
-    return await service.initialize()
+    return RecoveryService(doc_repo=doc_repo, section_repo=section_repo, redis_client=r_client)

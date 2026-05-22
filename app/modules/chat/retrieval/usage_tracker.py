@@ -1,29 +1,29 @@
 """Fire-and-forget AI model usage tracker.
 
-Dispatches Celery task or inline async call to log every model invocation.
+Dispatches Celery task to log every model invocation.
+No longer tied to AIProxyBridge — accepts stats directly.
 """
 
 from __future__ import annotations
 
 import logging
 
-from app.adapters.ai.proxy_bridge import AIProxyBridge
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 def track_usage(
-    provider: AIProxyBridge,
+    provider: object,
     endpoint: str,
     user_id: str | None = None,
     session_id: str | None = None,
     message_id: str | None = None,
 ) -> None:
-    """Dispatch a fire-and-forget usage log for the given AIProxyBridge call.
+    """Dispatch a fire-and-forget usage log.
 
     Reads last_usage from the provider (populated after chat/chat_stream).
-    Falls back to Celery task dispatch; if Celery is unavailable, tries inline async.
+    Falls back to Celery task dispatch.
     """
     usage = getattr(provider, "last_usage", {})
     if not usage or not usage.get("total_tokens"):
@@ -31,7 +31,7 @@ def track_usage(
 
     prompt_tokens = usage.get("prompt_tokens", 0)
     completion_tokens = usage.get("completion_tokens", 0)
-    model_name = provider.model_name
+    model_name = usage.get("model", "unknown")
     total_tokens = prompt_tokens + completion_tokens
 
     cost_usd = _estimate_cost(prompt_tokens, completion_tokens)
@@ -55,7 +55,6 @@ def track_usage(
 
 
 def _estimate_cost(prompt_tokens: int, completion_tokens: int) -> float:
-    """Estimate cost in USD based on configured rates."""
     input_rate = settings.ai_input_cost_per_1m
     output_rate = settings.ai_output_cost_per_1m
     return (prompt_tokens * input_rate + completion_tokens * output_rate) / 1_000_000

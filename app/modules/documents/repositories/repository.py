@@ -246,6 +246,24 @@ class DocumentRepository(BaseRepository[Document]):
         rows = result.all()
         return {str(doc_id): title for doc_id, title in rows}
 
+    async def update_title(self, document_id: str, new_title: str) -> bool:
+        """Update document title after extracting from content."""
+        try:
+            document = await self.get_by_id(document_id)
+            if document is None or document.deleted_at is not None:
+                return False
+            document.title = new_title
+            document.updated_at = datetime.now(timezone.utc)
+            await self.session.commit()
+            logger.info("Document %s title updated: %s", document_id, new_title)
+            return True
+        except Exception as e:
+            await self.session.rollback()
+            raise DocumentStoreException(
+                f"Failed to update title for {document_id}: {str(e)}",
+                error_code="DOCUMENT_STORE_UPDATE_FAILED",
+            )
+
     async def get_counts(self) -> dict[str, int]:
         """Get active and total document counts."""
         total_stmt = select(func.count(self.model.id)).where(self.model.deleted_at.is_(None))

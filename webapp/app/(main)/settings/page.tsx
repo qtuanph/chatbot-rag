@@ -225,7 +225,7 @@ export default function SettingsPage() {
               <Brain className="mx-auto h-8 w-8 mb-2 opacity-50" />
               <p className="text-sm">Chưa có ghi nhớ nào</p>
               <p className="text-xs mt-1">
-                Thêm chỉ dẫn để AI hiểu bạn hơn, hoặc AI sẽ tự học từ cuộc trò chuyện
+                Thêm chỉ dẫn để AI hiểu bạn hơn
               </p>
             </div>
           ) : (

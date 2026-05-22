@@ -1,21 +1,18 @@
 """
 Celery task definitions for document cleanup and maintenance.
-Uses SYNCHRONOUS Redis for reliability in cleanup flows.
+Uses LlamaIndex QdrantVectorStore for vector cleanup.
 """
 
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.modules.chat.repositories import ChatRepository
-from app.core.redis import get_sync_redis_client, get_worker_redis
-from app.modules.documents.utils.document_registry import DocumentRegistry
+from app.core.redis import get_sync_redis_client
 from app.adapters.storage import build_storage
-from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.modules.documents.services import CleanupService
 from app.modules.documents.repositories import DocumentRepository, SectionRepository
 from app.utils.audit import safe_record_audit
@@ -23,14 +20,15 @@ from app.utils.audit import safe_record_audit
 logger = logging.getLogger(__name__)
 
 
-async def _verify_deletion_async(
-    document_id: str,
-    file_path: str | None,
-    vector_store,
-    storage,
-) -> dict:
-    """Post-delete verification (Async)."""
-    qdrant_count = await vector_store.count(document_id)
+async def _verify_deletion_async(document_id: str, file_path: str | None, storage) -> dict:
+    from qdrant_client import QdrantClient
+
+    client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
+    result = client.count(
+        collection_name=settings.qdrant_collection,
+        count_filter={"must": [{"key": "doc_id", "match": {"value": document_id}}]},
+    )
+    qdrant_count = result.count if result else 0
     file_gone = await asyncio.to_thread(storage.file_exists, file_path) if file_path else True
 
     async with AsyncSessionLocal() as session:
@@ -54,51 +52,30 @@ async def _verify_deletion_async(
     max_retries=settings.celery_max_retries,
 )
 def delete_document_task(self, task_id: str, document_id: str, user_id: str | None = None) -> dict:
-    """
-    Celery task: hard-delete document using Sync Redis for state management.
-    """
-    # 1. Sync State Update
     self.update_state(
         state="STARTED",
         meta={"stage": "deleting", "progress": {"percent": 20}, "document_id": document_id},
     )
 
-    # 2. Initialize Sync Resources
     sync_redis = get_sync_redis_client()
-    registry = DocumentRegistry(sync_redis)
-
     storage = build_storage()
 
     async def _delete_workflow():
-        # Inner Async context for Qdrant/DB
-        async with get_worker_redis() as local_async_redis:
-            async_registry = DocumentRegistry(local_async_redis)
+        async with AsyncSessionLocal() as session:
+            doc_repo = DocumentRepository(session)
+            section_repo = SectionRepository(session)
+            doc_info = await doc_repo.get_full_document(document_id)
+            file_path = doc_info.get("file_path") if doc_info else None
 
-            async with AsyncSessionLocal() as session:
-                doc_repo = DocumentRepository(session)
-                section_repo = SectionRepository(session)
-                doc_info = await doc_repo.get_full_document(document_id)
-                file_path = doc_info.get("file_path") if doc_info else None
+            cleanup_svc = CleanupService(doc_repo=doc_repo, section_repo=section_repo, redis_client=sync_redis)
+            cleanup_result = await cleanup_svc.hard_delete_document(document_id)
 
-                cleanup_svc = CleanupService(doc_repo=doc_repo, section_repo=section_repo, registry=async_registry)
-                cleanup_result = await cleanup_svc.hard_delete_document(document_id)
-
-                vector_store = QdrantVectorStore(
-                    url=settings.qdrant_url,
-                    api_key=settings.qdrant_api_key or None,
-                    collection_name=settings.qdrant_collection,
-                    vector_size=settings.embedding_vector_size,
-                )
-                verify = await _verify_deletion_async(document_id, file_path, vector_store, storage)
-                return cleanup_result, verify
+            verify = await _verify_deletion_async(document_id, file_path, storage)
+            return cleanup_result, verify
 
     try:
         cleanup_result, verify = asyncio.run(_delete_workflow())
 
-        # 3. Sync Finalization
-        registry.purge_sync(document_id)
-
-        # Audit (Truly sync call now)
         safe_record_audit(
             action="document.hard_delete_complete",
             actor_user_id=user_id,
@@ -120,7 +97,6 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
     ignore_result=True,
 )
 def cleanup_old_chat_sessions_task() -> dict:
-    """Periodic sync cleanup task."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=settings.chat_session_ttl_days)
 
     async def _run_cleanup():

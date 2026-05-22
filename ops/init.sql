@@ -333,10 +333,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE user_memories TO app_rw;
 CREATE TABLE IF NOT EXISTS ai_model_usage (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     model_name VARCHAR(255) NOT NULL,
+    model_type VARCHAR(20) NOT NULL DEFAULT 'llm',
     prompt_tokens INTEGER NOT NULL DEFAULT 0,
     completion_tokens INTEGER NOT NULL DEFAULT 0,
     total_tokens INTEGER NOT NULL DEFAULT 0,
     cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+    latency_ms DOUBLE PRECISION NOT NULL DEFAULT 0,
     endpoint VARCHAR(100) NOT NULL,
     user_id UUID,
     session_id UUID,
@@ -347,6 +349,7 @@ CREATE TABLE IF NOT EXISTS ai_model_usage (
 CREATE INDEX IF NOT EXISTS idx_ai_model_usage_created_at ON ai_model_usage(created_at);
 CREATE INDEX IF NOT EXISTS idx_ai_model_usage_endpoint ON ai_model_usage(endpoint);
 CREATE INDEX IF NOT EXISTS idx_ai_model_usage_user_id ON ai_model_usage(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_model_usage_model_type ON ai_model_usage(model_type);
 
 GRANT ALL ON ai_model_usage TO app_rw;
 

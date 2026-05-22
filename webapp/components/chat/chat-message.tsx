@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, ThumbsUp, ThumbsDown } from "lucide-react";
+import { FileText, ThumbsUp, ThumbsDown, Zap, Clock, Hash } from "lucide-react";
 import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
 import { chatApi } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -14,9 +14,17 @@ interface ChatMessageProps {
   message: ChatMessage;
   isStreaming?: boolean;
   isThinking?: boolean;
+  stats?: {
+    total_ms: number;
+    ttft_ms: number | null;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    estimated_cost_usd?: number;
+  } | null;
 }
 
-export function ChatMessage({ message, isStreaming = false, isThinking = false }: ChatMessageProps) {
+export function ChatMessage({ message, isStreaming = false, isThinking = false, stats }: ChatMessageProps) {
   const [showCitations, setShowCitations] = useState(false);
   const [localFeedback, setLocalFeedback] = useState<number>(message.feedback || 0);
 
@@ -84,17 +92,58 @@ export function ChatMessage({ message, isStreaming = false, isThinking = false }
                 </Button>
 
                 {showCitations && (
-                  <div className="mt-1 space-y-1">
-                    {message.citations.map((c, i) => (
-                      <div key={i} className="text-xs p-2 rounded bg-muted/50 border flex items-start gap-2">
-                        <Badge variant="outline" className="shrink-0 text-[10px]">{i + 1}</Badge>
-                        <div>
-                          <span className="font-medium">{c.title}</span>
-                          {c.heading && <span className="text-muted-foreground">{" > "}{c.heading}</span>}
-                          {c.page_range && <span className="text-muted-foreground"> (trang {c.page_range})</span>}
+                  <div className="mt-1 flex gap-3">
+                    {/* Citations */}
+                    <div className="flex-1 space-y-1">
+                      {message.citations.map((c, i) => (
+                        <div key={i} className="text-xs p-2 rounded bg-muted/50 border flex items-start gap-2">
+                          <Badge variant="outline" className="shrink-0 text-[10px]">{i + 1}</Badge>
+                          <div>
+                            <span className="font-medium">{c.title}</span>
+                            {c.heading && <span className="text-muted-foreground">{" > "}{c.heading}</span>}
+                            {c.page_range && <span className="text-muted-foreground"> (trang {c.page_range})</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Stats */}
+                    {stats && (
+                      <div className="shrink-0 w-48 space-y-1.5 text-xs p-3 rounded-lg bg-muted/30 border">
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <Zap className="h-3 w-3" />
+                          <span className="font-medium">AI Stats</span>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Time</span>
+                            <span className="font-medium">{(stats.total_ms / 1000).toFixed(2)}s</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">TTFT</span>
+                            <span className="font-medium">{(stats.ttft_ms != null ? (stats.ttft_ms / 1000).toFixed(2) : '0')}s</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">In</span>
+                            <span className="font-medium text-orange-500">{(stats.prompt_tokens ?? 0).toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Out</span>
+                            <span className="font-medium text-emerald-500">{(stats.completion_tokens ?? 0).toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between border-t pt-1 mt-1">
+                            <span className="text-muted-foreground">Total</span>
+                            <span className="font-medium">{(stats.total_tokens ?? 0).toLocaleString()}</span>
+                          </div>
+                          {(stats.estimated_cost_usd ?? 0) > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Cost</span>
+                              <span className="font-medium text-green-600">${(stats.estimated_cost_usd ?? 0).toFixed(4)}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
               </div>

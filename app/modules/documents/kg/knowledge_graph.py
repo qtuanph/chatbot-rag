@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +44,7 @@ class KnowledgeGraph:
 
         entities = []
         proper_nouns = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", text)
-        for noun in proper_nouns[:10]:
+        for noun in proper_nouns[: settings.kg_entity_extract_limit]:
             entities.append({"name": noun, "type": "ENTITY"})
         return entities
 
@@ -76,7 +78,7 @@ class KnowledgeGraph:
         for rel in self.relationships:
             if rel["source"] == entity_name or rel["target"] == entity_name:
                 connected.append(rel)
-        return connected[:20]
+        return connected[: settings.kg_connected_entity_limit]
 
     async def clear(self) -> None:
         """Clear all entities and relationships."""

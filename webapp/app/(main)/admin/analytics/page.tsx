@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { analyticsApi } from "@/lib/api-client";
-import type { AnalyticsStats } from "@/types/api";
-import { Clock, Hash, MessageSquare, RefreshCw, Zap, ArrowRight, ArrowLeft } from "lucide-react";
+import type { AnalyticsStats, ModelTypeStats, RecentRequest } from "@/types/api";
+import { Clock, Hash, MessageSquare, RefreshCw, ArrowRight, ArrowLeft, Cpu, Network, Brain, Trash2 } from "lucide-react";
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -21,29 +21,163 @@ function formatLatency(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+function formatCost(usd: number): string {
+  return `$${usd.toFixed(6)}`;
+}
+
+function timeAgo(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Vừa xong";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${diffDays}d ago`;
+}
+
+const DATE_RANGES = [
+  { label: "Hôm nay", value: 1 },
+  { label: "7 ngày", value: 7 },
+  { label: "30 ngày", value: 30 },
+];
+
+const MODEL_TYPE_COLORS: Record<string, string> = {
+  llm: "text-purple-500",
+  embedding: "text-blue-500",
+  reranker: "text-amber-500",
+};
+
+const MODEL_TYPE_LABELS: Record<string, string> = {
+  llm: "LLM",
+  embedding: "Embed",
+  reranker: "Rerank",
+};
+
+function ModelTypeCard({
+  title,
+  icon: Icon,
+  color,
+  stats,
+  hideOut = false,
+}: {
+  title: string;
+  icon: typeof Cpu;
+  color: string;
+  stats: ModelTypeStats;
+  hideOut?: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Icon className={`h-4 w-4 ${color}`} />
+          {title}
+        </CardTitle>
+        <span className="text-xs text-muted-foreground">{stats.call_count} calls</span>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Token In</span>
+            <span className="font-medium">{formatNumber(stats.tokens_in)}</span>
+          </div>
+          {!hideOut && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Token Out</span>
+              <span className="font-medium">{formatNumber(stats.tokens_out)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Latency TB</span>
+            <span className="font-medium">{formatLatency(stats.avg_latency_ms)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Cost</span>
+            <span className="font-medium">{formatCost(stats.cost_usd)}</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RequestRow({ req }: { req: RecentRequest }) {
+  const dotColor = MODEL_TYPE_COLORS[req.model_type] || "text-gray-500";
+  const typeLabel = MODEL_TYPE_LABELS[req.model_type] || req.model_type;
+
+  return (
+    <tr className="border-b border-muted/50 last:border-0">
+      <td className="py-2 pr-4">
+        <div className="flex items-center gap-2">
+          <span className={`inline-block w-2 h-2 rounded-full ${dotColor.replace("text-", "bg-")}`} />
+          <span className="text-sm font-mono truncate max-w-[200px]" title={req.model_name}>
+            {req.model_name}
+          </span>
+          <span className="text-xs text-muted-foreground shrink-0">[{typeLabel}]</span>
+        </div>
+      </td>
+      <td className="py-2 text-right">
+        <span className="text-sm font-medium text-orange-500">
+          {formatNumber(req.tokens_in)}↑
+        </span>
+      </td>
+      <td className="py-2 text-right">
+        <span className="text-sm font-medium text-emerald-500">
+          {formatNumber(req.tokens_out)}↓
+        </span>
+      </td>
+      <td className="py-2 text-right text-xs text-muted-foreground whitespace-nowrap">
+        {timeAgo(req.created_at)}
+      </td>
+    </tr>
+  );
+}
+
 export default function AnalyticsPage() {
   const { data: session } = useSession();
   const [data, setData] = useState<AnalyticsStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [days, setDays] = useState(30);
+  const [clearing, setClearing] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!session) return;
     try {
       setLoading(true);
       setError(null);
-      const result = await analyticsApi.getStats();
+      const result = await analyticsApi.getStats(days);
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải thống kê");
     } finally {
       setLoading(false);
     }
-  }, [session]);
+  }, [session, days]);
+
+  const handleClear = async () => {
+    try {
+      setClearing(true);
+      await analyticsApi.clearStats();
+      setShowConfirm(false);
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thể xóa thống kê");
+    } finally {
+      setClearing(false);
+    }
+  };
 
   useEffect(() => {
-    if (session) void fetchData();
-  }, [session, fetchData]);
+    if (session) {
+      analyticsApi.getStats(days).then(setData).catch((err) => setError(err instanceof Error ? err.message : "Lỗi tải dữ liệu")).finally(() => setLoading(false));
+    }
+  }, [session, days]);
 
   if (loading && !data) {
     return (
@@ -75,7 +209,7 @@ export default function AnalyticsPage() {
 
   if (!data) return null;
 
-  const maxDailyTokens = Math.max(...data.daily.map((d) => d.tokens_in + d.tokens_out), 1);
+  const llmTokens = data.by_model_type.llm.tokens_in + data.by_model_type.llm.tokens_out;
 
   return (
     <div className="p-6 space-y-6">
@@ -85,15 +219,65 @@ export default function AnalyticsPage() {
           <h1 className="text-2xl font-bold">Thống kê AI</h1>
           <p className="text-sm text-muted-foreground">Theo dõi hiệu năng và token tiêu thụ</p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Làm mới
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-muted rounded-md p-1">
+            {DATE_RANGES.map((r) => (
+              <Button
+                key={r.value}
+                variant={days === r.value ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setDays(r.value)}
+              >
+                {r.label}
+              </Button>
+            ))}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setShowConfirm(true)}
+            disabled={clearing}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Xóa thống kê
+          </Button>
+          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Làm mới
+          </Button>
+        </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      {showConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="text-destructive flex items-center gap-2">
+                <Trash2 className="h-5 w-5" />
+                Xóa toàn bộ thống kê?
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Hành động này sẽ xóa vĩnh viễn tất cả dữ liệu thống kê token, chi phí và latency. Không thể hoàn tác.
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowConfirm(false)} disabled={clearing}>
+                  Hủy
+                </Button>
+                <Button variant="destructive" onClick={handleClear} disabled={clearing}>
+                  {clearing ? "Đang xóa..." : "Xác nhận xóa"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        {/* Avg latency */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Thời gian phản hồi TB</CardTitle>
@@ -107,28 +291,26 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
-        {/* Token burn */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Token đã đốt</CardTitle>
+            <CardTitle className="text-sm font-medium">Token LLM</CardTitle>
             <Hash className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(data.total_tokens)}</div>
+            <div className="text-2xl font-bold">{formatNumber(llmTokens)}</div>
             <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <ArrowRight className="h-3 w-3 text-blue-500" />
-                In: {formatNumber(data.total_tokens_in)}
+                In: {formatNumber(data.by_model_type.llm.tokens_in)}
               </span>
               <span className="flex items-center gap-1">
                 <ArrowLeft className="h-3 w-3 text-emerald-500" />
-                Out: {formatNumber(data.total_tokens_out)}
+                Out: {formatNumber(data.by_model_type.llm.tokens_out)}
               </span>
             </div>
           </CardContent>
         </Card>
 
-        {/* Messages */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Tin nhắn AI</CardTitle>
@@ -143,66 +325,60 @@ export default function AnalyticsPage() {
         </Card>
       </div>
 
-      {/* Daily Token Chart */}
+      {/* Per-Model-Type Stats */}
+      <div>
+        <h2 className="text-lg font-semibold mb-3">Thống kê theo Model</h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          <ModelTypeCard
+            title="LLM Chính"
+            icon={Brain}
+            color="text-purple-500"
+            stats={data.by_model_type.llm}
+          />
+          <ModelTypeCard
+            title="Embedding"
+            icon={Cpu}
+            color="text-blue-500"
+            stats={data.by_model_type.embedding}
+            hideOut
+          />
+          <ModelTypeCard
+            title="Reranking"
+            icon={Network}
+            color="text-amber-500"
+            stats={data.by_model_type.reranker}
+            hideOut
+          />
+        </div>
+      </div>
+
+      {/* Recent Requests Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Zap className="h-4 w-4" />
-            Token theo ngày (30 ngày gần nhất)
-          </CardTitle>
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block w-3 h-3 rounded-sm bg-blue-500/70" /> Token In (câu hỏi)
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block w-3 h-3 rounded-sm bg-emerald-500/70" /> Token Out (trả lời)
-            </span>
-          </div>
+          <CardTitle className="text-base">Recent Requests</CardTitle>
         </CardHeader>
         <CardContent>
-          {data.daily.length === 0 ? (
+          {data.recent_requests.length === 0 ? (
             <p className="text-sm text-muted-foreground py-12 text-center">
               Chưa có dữ liệu. Hãy chat để bắt đầu thu thập thống kê.
             </p>
           ) : (
-            <div className="space-y-2">
-              {data.daily.map((day) => {
-                const total = day.tokens_in + day.tokens_out;
-                const pctIn = (day.tokens_in / maxDailyTokens) * 100;
-                const pctOut = (day.tokens_out / maxDailyTokens) * 100;
-                return (
-                  <div key={day.date} className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground w-16 shrink-0">
-                      {new Date(day.date).toLocaleDateString("vi-VN", {
-                        day: "2-digit",
-                        month: "2-digit",
-                      })}
-                    </span>
-                    {/* Stacked bar: in + out */}
-                    <div className="flex-1 h-5 bg-muted rounded-sm overflow-hidden flex">
-                      <div
-                        className="h-full bg-blue-500/70 transition-all"
-                        style={{ width: `${Math.max(pctIn, 0.5)}%` }}
-                        title={`In: ${formatNumber(day.tokens_in)}`}
-                      />
-                      <div
-                        className="h-full bg-emerald-500/70 transition-all"
-                        style={{ width: `${Math.max(pctOut, 0.5)}%` }}
-                        title={`Out: ${formatNumber(day.tokens_out)}`}
-                      />
-                    </div>
-                    <span className="text-xs font-medium w-14 text-right shrink-0">
-                      {formatNumber(total)}
-                    </span>
-                    <span className="text-xs text-muted-foreground w-14 text-right shrink-0">
-                      {formatLatency(day.avg_latency_ms ?? 0)}
-                    </span>
-                    <span className="text-xs text-muted-foreground w-12 text-right shrink-0">
-                      {day.messages} msg
-                    </span>
-                  </div>
-                );
-              })}
+            <div className="overflow-hidden rounded-md border border-muted/50">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left py-2 px-4 font-medium text-muted-foreground">Model</th>
+                    <th className="text-right py-2 px-4 font-medium text-muted-foreground">In</th>
+                    <th className="text-right py-2 px-4 font-medium text-muted-foreground">Out</th>
+                    <th className="text-right py-2 px-4 font-medium text-muted-foreground">When</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.recent_requests.map((req, i) => (
+                    <RequestRow key={`${req.created_at}-${i}`} req={req} />
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>

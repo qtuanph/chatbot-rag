@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import TYPE_CHECKING, Any
 from app.core.config import settings
 
 if TYPE_CHECKING:
-    from app.adapters.ai.proxy_bridge import AIProxyBridge
     from app.modules.chat.repositories import MemoryRepository
 
 logger = logging.getLogger(__name__)
@@ -70,45 +68,3 @@ class UserMemoryService:
 
     async def invalidate_cache(self, user_id: str) -> None:
         await self._redis.delete(self._cache_key(user_id))
-
-    async def extract_memories_from_turn(
-        self,
-        user_id: str,
-        user_message: str,
-        assistant_response: str,
-        ai_provider: "AIProxyBridge",
-    ) -> None:
-        """Extract memorable facts using AI proxy from every chat turn."""
-        try:
-            extraction_prompt = (
-                "Trích xuất sở thích, sửa đổi, chỉ dẫn hoặc thông tin cá nhân từ tin nhắn người dùng.\n\n"
-                f"Tin nhắn: {user_message}\n\n"
-                "Trả về JSON array: "
-                '[{"type": "preference|correction|instruction|fact", "content": "..."}]'
-            )
-
-            result = await ai_provider.chat([{"role": "user", "content": extraction_prompt}], context=[], citations=[])
-            from app.modules.chat.retrieval.usage_tracker import track_usage
-
-            track_usage(ai_provider, endpoint="memory_extraction", user_id=user_id)
-            text = result.get("answer", "")
-            if not text:
-                return
-
-            json_start = text.find("[")
-            json_end = text.rfind("]") + 1
-            if json_start >= 0 and json_end > json_start:
-                memories = json.loads(text[json_start:json_end])
-                for m in memories:
-                    if isinstance(m, dict) and m.get("content") and m.get("type"):
-                        mem_type = str(m["type"]).strip().lower()
-                        if mem_type not in VALID_MEMORY_TYPES:
-                            logger.debug("Invalid memory_type '%s', skipping", mem_type)
-                            continue
-                        content = str(m["content"]).strip()[:MAX_MEMORY_CONTENT]
-                        if not content:
-                            continue
-                        await self.add_memory(user_id, mem_type, content)
-
-        except Exception as e:
-            logger.warning("Memory extraction failed: %s", e)

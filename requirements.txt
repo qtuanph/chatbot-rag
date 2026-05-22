@@ -1,5 +1,8 @@
 fastapi==0.136.1
-llama-index-core==0.14.22
+llama-index-core>=0.14.22,<0.15
+llama-index-vector-stores-qdrant>=0.5.0
+llama-index-embeddings-openai>=0.5.0
+llama-index-llms-openai-like>=0.5.0
 uvicorn[standard]==0.47.0
 python-multipart==0.0.28
 pydantic-settings==2.14.1
@@ -12,9 +15,9 @@ httpx==0.28.1
 PyJWT==2.12.1
 bcrypt==5.0.0
 docling==2.93.0
-qdrant-client==1.18.0
+qdrant-client>=1.18.0
+fastembed
 nh3==0.3.5
-underthesea==9.4.0
 docling-hierarchical-pdf==0.1.8
 psutil==7.2.2
 nvidia-ml-py==13.595.45

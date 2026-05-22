@@ -1,12 +1,11 @@
-"""Query Refinement - Refine user query for better retrieval quality using AI provider."""
+"""Query Refinement - Refine user query for better retrieval using OpenAILike (9Router)."""
 
 from __future__ import annotations
 
 import logging
 from typing import List
 
-from app.adapters.ai.proxy_bridge import AIProxyBridge
-from app.core.config import settings
+from llama_index.core import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -24,19 +23,9 @@ _REFINEMENT_PROMPT = (
 
 
 async def refine_query(query: str, history: List[dict] | None = None) -> str:
-    """Refine a user query for better retrieval.
-
-    Args:
-        query: Original user query
-        history: Optional conversation history for context
-
-    Returns:
-        Refined query string (or original if refinement fails)
-    """
     if not query or len(query.strip()) < 5:
         return query
 
-    # Build context from recent history (last 5 messages)
     context_parts = []
     if history:
         recent = history[-5:] if len(history) > 5 else history
@@ -47,19 +36,15 @@ async def refine_query(query: str, history: List[dict] | None = None) -> str:
                 context_parts.append(f"{role}: {content}")
 
     history_context = "\n".join(context_parts) if context_parts else ""
-
     prompt = _REFINEMENT_PROMPT
     if history_context:
         prompt += f"\n\nLịch sử trò chuyện gần đây:\n{history_context}\n"
     prompt += f"\nCâu hỏi của người dùng: {query}\n\nCâu truy vấn tối ưu hóa:"
 
     try:
-        provider = AIProxyBridge(model=settings.ai_auxiliary_model or settings.ai_proxy_default_model)
-        response = await provider.chat(messages=[{"role": "user", "content": prompt}])
-        from app.modules.chat.retrieval.usage_tracker import track_usage
-
-        track_usage(provider, endpoint="query_refinement")
-        refined = response.get("answer", "").strip() if isinstance(response, dict) else ""
+        llm = Settings.llm
+        response = await llm.acomplete(prompt)
+        refined = response.text.strip() if response and response.text else ""
 
         if refined and len(refined) >= 3:
             logger.info("Query refined: '%s' -> '%s'", query[:80], refined[:80])

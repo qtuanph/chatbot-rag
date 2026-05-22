@@ -5,22 +5,27 @@ from celery.result import AsyncResult
 
 from app.core.celery_app import celery_app
 from app.modules.documents.repositories import DocumentRepository
-from app.modules.documents.utils.document_registry import DocumentRecord, DocumentRegistry
 
 logger = logging.getLogger(__name__)
 
+TASK_TO_DOC_KEY = "task:doc:"
+
 
 class TaskService:
-    """Specialized service for managing background task lifecycle and status."""
-
-    def __init__(self, doc_repo: DocumentRepository, registry: DocumentRegistry):
+    def __init__(self, doc_repo: DocumentRepository, redis_client=None):
         self.doc_repo = doc_repo
-        self.registry = registry
+        self.redis = redis_client
 
     async def get_task_status(self, task_id: str) -> dict:
-        """Merge status from DB (primary) + Celery (secondary) for granular tracking."""
-        record = await self.registry.get_by_task_id(task_id)
-        document_id = record.document_id if record else None
+        try:
+            if self.redis:
+                raw = await self.redis.get(f"{TASK_TO_DOC_KEY}{task_id}")
+                document_id = raw.decode("utf-8") if raw else None
+            else:
+                document_id = None
+        except Exception:
+            document_id = None
+
         document = await self.doc_repo.get_full_document(document_id) if document_id else None
 
         if document:
@@ -35,7 +40,6 @@ class TaskService:
                 "result": document.get("artifact_metadata", {}).get("ingestion_artifact"),
             }
 
-        # Fallback to Celery if DB record is not yet in sync
         def _get_celery_info():
             res = AsyncResult(task_id, app=celery_app)
             return {
@@ -58,17 +62,9 @@ class TaskService:
         }
 
     async def enqueue_ingestion(self, document_id: str, object_uri: str, filename: str, user_id: str) -> str:
-        """Enqueue a new ingestion task."""
         task_id = str(uuid4())
-        await self.registry.put(
-            DocumentRecord(
-                document_id=document_id,
-                task_id=task_id,
-                object_uri=object_uri,
-                filename=filename,
-                status="queued",
-            )
-        )
+        if self.redis:
+            await self.redis.set(f"{TASK_TO_DOC_KEY}{task_id}", document_id)
 
         await asyncio.to_thread(
             celery_app.send_task,
@@ -82,7 +78,6 @@ class TaskService:
             task_id=task_id,
         )
 
-        # Initial status in Celery backend
         await asyncio.to_thread(
             celery_app.backend.store_result,
             task_id,
@@ -93,17 +88,9 @@ class TaskService:
         return task_id
 
     async def enqueue_rechunk(self, document_id: str, user_id: str) -> str:
-        """Enqueue a rechunk task that re-indexes from saved OCR markdown."""
         task_id = str(uuid4())
-        await self.registry.put(
-            DocumentRecord(
-                document_id=document_id,
-                task_id=task_id,
-                object_uri="",
-                filename="",
-                status="queued",
-            )
-        )
+        if self.redis:
+            await self.redis.set(f"{TASK_TO_DOC_KEY}{task_id}", document_id)
 
         await asyncio.to_thread(
             celery_app.send_task,

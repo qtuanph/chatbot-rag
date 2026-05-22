@@ -26,6 +26,8 @@ class UsageRepository:
         completion_tokens: int,
         endpoint: str,
         cost_usd: float = 0.0,
+        latency_ms: float = 0.0,
+        model_type: str = "llm",
         user_id: str | UUID | None = None,
         session_id: str | UUID | None = None,
         message_id: str | UUID | None = None,
@@ -38,10 +40,12 @@ class UsageRepository:
         total = prompt_tokens + completion_tokens
         entry = AiModelUsage(
             model_name=model_name,
+            model_type=model_type,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total,
             cost_usd=cost_usd,
+            latency_ms=latency_ms,
             endpoint=endpoint,
             user_id=uid if isinstance(uid, UUID) else None,
             session_id=sid if isinstance(sid, UUID) else None,

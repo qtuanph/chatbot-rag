@@ -12,6 +12,7 @@ services:
       - hf_token
     volumes:
       - hf-cache:/home/qtuanph/.cache/huggingface
+      - settings-data:/app/data
     entrypoint: [ "/bin/bash", "/app/ops/entrypoint-api.sh" ]
     depends_on:
       db:
@@ -56,6 +57,7 @@ services:
       - hf_token
     volumes:
       - hf-cache:/home/qtuanph/.cache/huggingface
+      - settings-data:/app/data
     entrypoint: [ "/bin/bash", "/app/ops/entrypoint-worker.sh" ]
     depends_on:
       db:
@@ -81,9 +83,10 @@ services:
       - .env
     environment:
       - HF_HUB_ENABLE_HF_TRANSFER=1
-      - MAX_CONCURRENT_REQUESTS=64
-      - MAX_BATCH_TOKENS=32768
-      - MAX_BATCH_REQUESTS=16
+      - MAX_CONCURRENT_REQUESTS=8
+      - MAX_BATCH_TOKENS=4096
+      - MAX_BATCH_REQUESTS=4
+      - MAX_CLIENT_BATCH_SIZE=4
       - MAX_CLIENT_BATCH_SIZE=16
     command: --model-id Alibaba-NLP/gte-multilingual-base --dtype float16 --auto-truncate true
     volumes:
@@ -314,6 +317,7 @@ volumes:
   qdrantdata:
   hf-cache:
   9router-data:
+  settings-data:
 
 networks:
   internal:

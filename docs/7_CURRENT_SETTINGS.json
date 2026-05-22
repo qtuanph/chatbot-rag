@@ -1,60 +1,51 @@
 {
   "document": {
     "id": "7_CURRENT_SETTINGS",
-    "version": "2026-05-20",
+    "version": "2026-05-22",
     "purpose": "Current project settings snapshot — all defaults, env vars, and runtime parameters. AI reads this for accurate config context."
   },
   "ai_inference": {
     "embedding": {
-      "service": "ai-embedding (TEI container)",
+      "service": "OpenAI-compatible (managed via SQLite → /admin/providers)",
+      "protocol": "OpenAI /v1/embeddings",
+      "default_provider": "TEI container (ai-embedding:80) — seeded in SQLite",
       "image": "ghcr.io/huggingface/text-embeddings-inference:turing-1.9",
       "model": "Alibaba-NLP/gte-multilingual-base",
-      "dimensions": 1024,
+      "dimensions": 768,
       "context_length": 32768,
-      "url": "http://ai-embedding:80",
-      "port": 7997,
-      "gpu_count": 1,
-      "max_concurrent_requests": 128,
-      "api_endpoint": "POST /embed",
-      "request_format": {"inputs": "string | string[]"},
-      "response_format": "float[][] (already normalized by TEI)"
+      "batch_size": 16,
+      "config_source": "SQLite → settings_db → RuntimeProviderManager overrides Settings.embed_model"
     },
     "reranker": {
-      "service": "ai-reranker (TEI container)",
-      "image": "ghcr.io/huggingface/text-embeddings-inference:turing-1.9",
-      "model": "Alibaba-NLP/gte-multilingual-reranker-base",
-      "parameters": "306M",
-      "context_length": 8192,
-      "url": "http://ai-reranker:80",
-      "port": 7998,
-      "gpu_count": 1,
-      "max_concurrent_requests": 128,
-      "api_endpoint": "POST /rerank",
-      "request_format": {"query": "string", "texts": "string[]", "raw_scores": false},
-      "response_format": "[{\"index\": int, \"score\": float}] (sorted desc)"
+      "backend": "Managed via SQLite — active provider selected in /admin/providers",
+      "default": "TEI local (ai-reranker:80) — seeded as active",
+      "providers": {
+        "tei": {"model": "Alibaba-NLP/gte-multilingual-reranker-base", "endpoint": "POST /rerank"},
+        "nvidia": {"model": "nvidia/llama-nemotron-rerank-vl-1b-v2", "endpoint": "NVIDIA NIM API"},
+        "cohere": {"model": "rerank-multilingual-v3.0", "endpoint": "Cohere /rerank"}
+      },
+      "config_source": "SQLite → reranker/__init__.py reads from RuntimeProviderManager"
     },
     "llm_provider": {
-      "service": "ai-proxy (9Router)",
+      "service": "ai-proxy (9Router) — built-in, managed via SQLite",
       "image": "decolua/9router:latest",
       "url": "http://ai-proxy:2908",
-      "port": 2908,
       "interface": "OpenAI-compatible /v1/chat/completions",
-      "streaming": "SSE"
+      "streaming": "SSE",
+      "config_source": "SQLite (is_builtin=1, UI disabled for now)"
     }
   },
   "retrieval": {
-    "section_top_k": 5,
-    "chunk_top_k": 15,
+    "section_top_k": 99,
+    "context_max_chars": 30000,
+    "chunk_top_k": 30,
     "chunk_size": 500,
     "chunk_overlap": 75,
-    "fetch_multiplier": 7,
+    "fetch_multiplier": 5,
     "rerank_enabled": true,
-    "rerank_top_k": 30,
-    "context_expansion_window": 1,
-    "bm25_k1": 1.5,
-    "bm25_b": 0.75,
-    "bm25_singleton_ttl": 120.0,
-    "bm25_rebuild_batch_size": 500,
+    "rerank_top_k": 10,
+    "context_expansion_window": 0,
+
     "confidence_threshold_high": 0.7,
     "confidence_avg_high": 0.5,
     "confidence_threshold_low": 0.4,
@@ -64,10 +55,11 @@
     "query_expansion_enabled": false,
     "query_expansion_variants": 2,
     "query_expansion_timeout": 3.0,
-    "expansion_scroll_limit": 100,
+    "expansion_scroll_limit": 50,
     "semantic_cache_enabled": true,
     "semantic_cache_threshold": 0.08,
-    "normalize_enabled": true
+    "normalize_enabled": true,
+    "max_rerank_candidates": 15
   },
   "chat": {
     "history_limit": 40,
@@ -137,10 +129,17 @@
   "cache": {
     "memory_ttl": 300,
     "doc_ids_ttl": 60.0,
-    "max_rerank_candidates": 30,
+    "max_rerank_candidates": 15,
     "llm_cache_enabled": true,
     "llm_cache_ttl": 14400,
     "llm_cache_exact_first": true
+  },
+  "usage_tracking": {
+    "model_types": ["llm", "embedding", "reranker"],
+    "embedding_token_estimate": "chars / 3",
+    "reranker_token_estimate": "(query + docs chars) / 3",
+    "latency_tracked": true,
+    "tracking_method": "celery_fire_and_forget"
   },
   "security": {
     "jwt_algorithm": "HS256",
@@ -164,12 +163,9 @@
     "kg_enabled": false,
     "kg_top_k": 3
   },
-  "removed_features": {
-    "hyde": "Removed 2026-05-20 — latency high, caused hallucination noise",
-    "context_compaction": "Removed 2026-05-20 — replaced by AI_MAX_HISTORY_MESSAGES (default 10)",
-    "ai_engine": "Removed 2026-05-20 — replaced by TEI containers (ai-embedding, ai-reranker)",
-    "sentence_transformers": "Removed from requirements.txt — embedding via TEI HTTP",
-    "torch": "Removed from requirements.txt — no longer needed, pynvml handles GPU detection",
-    "websocket_chat": "Replaced by SSE streaming via POST /chat/stream"
+  "embedding": {
+    "model": "Alibaba-NLP/gte-multilingual-base",
+    "dimensions": 768,
+    "batch_size": 16
   }
 }

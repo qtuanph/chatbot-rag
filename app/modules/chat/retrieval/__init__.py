@@ -1,15 +1,11 @@
-"""Retrieval & caching services for RAG."""
+"""Retrieval & caching services for RAG — powered by LlamaIndex."""
 
-from app.modules.chat.retrieval.retrieval_service import RetrievalService
-from app.modules.chat.retrieval.retrieval_utils import build_answer
-from app.modules.chat.retrieval.expansion_service import expand_query
+from app.modules.chat.retrieval.pipeline import retrieve_context
 from app.models.rag import RagContext, RagNode, RagSection
 
 __all__ = [
-    "RetrievalService",
-    "build_answer",
+    "retrieve_context",
     "RagContext",
     "RagNode",
     "RagSection",
-    "expand_query",
 ]

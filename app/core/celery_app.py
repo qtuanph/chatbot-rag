@@ -77,10 +77,8 @@ celery_app.conf.update(
         "app.workers.cleanup_tasks.delete_document_task": {"queue": "cleanup"},
         "app.workers.cleanup_tasks.cleanup_old_chat_sessions_task": {"queue": "cleanup"},
         "app.workers.chat_tasks.save_chat_message_task": {"queue": "default"},
-        "app.workers.maintenance_tasks.rebuild_bm25_index_task": {"queue": "ingestion"},
         "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task": {"queue": "cleanup"},
         "app.workers.audit_worker.process_audit_stream": {"queue": "default"},
-        "app.workers.memory_tasks.extract_memories_task": {"queue": "default"},
     },
     task_default_queue="default",
     # ── Serialization ─────────────────────────────────────────────────────────

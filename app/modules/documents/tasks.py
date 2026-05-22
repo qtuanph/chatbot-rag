@@ -7,48 +7,21 @@ from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.modules.documents.repositories import DocumentRepository, SectionRepository
-from app.adapters.embeddings import build_embedding_service
-from app.adapters.vector_stores.qdrant import QdrantVectorStore
 from app.adapters.storage import build_storage
 from app.modules.documents.ingestion.ingestion_service import IngestionService
 from app.adapters.parsers.llamaparse_adapter import LlamaParseParser
-from app.modules.documents.ingestion.llama_pipeline import LlamaIngestionPipeline
-from app.core.redis import get_sync_redis_client, get_redis_client
-from app.modules.documents.utils.document_registry import DocumentRegistry
+from app.core.redis import get_redis_client
 from app.utils.audit import safe_record_audit
-from app.modules.system.tasks import rebuild_bm25_index_task
 import asyncio
 import logging
-import time
 
 logger = logging.getLogger(__name__)
 
 
-def _build_vector_store(embedding_service) -> QdrantVectorStore:
-    """Build a QdrantVectorStore instance."""
-    return QdrantVectorStore(
-        url=settings.qdrant_url,
-        api_key=settings.qdrant_api_key or None,
-        collection_name=settings.qdrant_collection,
-        vector_size=settings.embedding_vector_size,
-        timeout=settings.qdrant_timeout,
-    )
-
-
-async def _verify_ingestion(
-    document_id: str,
-    file_path: str,
-    vector_store: QdrantVectorStore,
-    storage,
-) -> dict:
-    """Post-ingestion verification (Async)."""
-    qdrant_count = await vector_store.count(document_id)
-    file_exists = await asyncio.to_thread(storage.file_exists, file_path)
-    return {
-        "qdrant_count": qdrant_count,
-        "storage_exists": file_exists,
-        "passed": qdrant_count > 0 and file_exists,
-    }
+async def _verify_ingestion(document_id: str, storage) -> dict:
+    uri = f"s3://{settings.s3_bucket}/{document_id}/ocr_output.md"
+    file_exists = await asyncio.to_thread(storage.file_exists, uri)
+    return {"storage_exists": file_exists, "passed": file_exists}
 
 
 @celery_app.task(
@@ -62,50 +35,35 @@ async def _verify_ingestion(
     time_limit=settings.celery_task_time_limit,
 )
 def parse_document_task(self, task_id: str, document_id: str, file_path: str, user_id: str | None = None) -> dict:
-    """
-    Ingestion task with Synchronous status management for reliability.
-    """
-    # 1. Initialize Sync Resources
-    sync_redis = get_sync_redis_client()
-    registry = DocumentRegistry(sync_redis)
     storage = build_storage()
     filename = file_path.split("/")[-1]
 
-    # 2. Local Async Execution Block
     async def _run_async_pipeline():
         async with AsyncSessionLocal() as session:
             doc_repo = DocumentRepository(session)
 
-            # Update status to processing
             await doc_repo.update_status(
                 document_id,
                 status="processing",
                 stage="initializing",
                 progress_percent=5,
-                status_message="[1/4] Đang khởi tạo môi trường nạp liệu...",
+                status_message="[1/4] Dang khoi tao moi truong nap lieu...",
             )
 
-            # Create an isolated async redis client for the pipeline (Loop-safe)
             async_redis = get_redis_client()
             try:
                 content = await asyncio.to_thread(storage.download_bytes, file_path)
-                embedding_service = build_embedding_service()
-                vector_store = _build_vector_store(embedding_service)
                 section_repo = SectionRepository(session)
 
                 pipeline = IngestionService(
                     redis_client=async_redis,
-                    embedding_service=embedding_service,
-                    vector_store=vector_store,
                     db_session=session,
                     section_repo=section_repo,
                 )
 
                 async def _progress_callback(stage: str, percent: int, message: str = ""):
-                    """Async callback to update DB status using a fresh session for 100% stability."""
                     logger.info("[%s] Progress: %d%% - %s", document_id, percent, message)
                     try:
-                        # Use a fresh session for each update to avoid transaction sharing issues
                         async with AsyncSessionLocal() as fresh_session:
                             fresh_repo = DocumentRepository(fresh_session)
                             await fresh_repo.update_status(
@@ -118,7 +76,6 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                     except Exception as status_err:
                         logger.warning("[%s] Failed to update progress in DB: %s", document_id, status_err)
 
-                # Core Ingestion (The only truly async part)
                 ingestion_result = await pipeline.ingest(
                     filename=filename,
                     content=content,
@@ -127,10 +84,16 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                     progress_callback=_progress_callback,
                 )
 
-                # Verification
-                verify = await _verify_ingestion(document_id, file_path, vector_store, storage)
+                verify = await _verify_ingestion(document_id, storage)
 
-                # Finalize DB
+                if ingestion_result.parse_metadata and ingestion_result.parse_metadata.sections_data:
+                    for sec in ingestion_result.parse_metadata.sections_data:
+                        title = sec.get("title", "")
+                        if title and title not in ("Untitled",) and not title.startswith("Phan "):
+                            if title != filename:
+                                await doc_repo.update_title(document_id, title)
+                            break
+
                 if ingestion_result.success:
                     artifact_dict = ingestion_result.parse_metadata.to_dict() if ingestion_result.parse_metadata else {}
                     artifact_dict["verification"] = verify
@@ -154,21 +117,15 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                     document_id,
                     status="failed",
                     stage="failed",
-                    status_message=f"Lỗi: {error_msg}",
+                    status_message=f"Loi: {error_msg}",
                 )
                 raise e
             finally:
                 await async_redis.aclose()
 
-    # 3. Execute Async Pipeline
     try:
         result = asyncio.run(_run_async_pipeline())
 
-        # 4. Sync Finalization (Safe from loop errors)
-        registry.purge_sync(document_id)
-        registry.invalidate_active_ids_sync()
-
-        # Audit (Truly sync call now)
         safe_record_audit(
             action="document.ingestion_complete",
             actor_user_id=user_id,
@@ -177,14 +134,10 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             details={"node_count": result.node_count},
         )
 
-        # Trigger maintenance
-        rebuild_bm25_index_task.delay()
-
         return {"status": "success", "document_id": document_id}
 
     except Exception as e:
         logger.error("[%s] Sync wrapper caught error: %s", document_id, e)
-        # Audit failure (Truly sync call now)
         safe_record_audit(
             action="document.ingestion_failed",
             actor_user_id=user_id,
@@ -206,18 +159,18 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
     time_limit=settings.celery_task_time_limit,
 )
 def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | None = None) -> dict:
-    """Re-chunk document from saved OCR markdown without calling LlamaParse API."""
-    sync_redis = get_sync_redis_client()
-    registry = DocumentRegistry(sync_redis)
     storage = build_storage()
     ocr_uri = f"s3://{settings.s3_bucket}/{document_id}/ocr_output.md"
 
     async def _rechunk_progress(stage: str, percent: int, message: str = ""):
-        """Update status using a fresh session to avoid transaction conflicts."""
         try:
             async with AsyncSessionLocal() as fresh_session:
                 await DocumentRepository(fresh_session).update_status(
-                    document_id, status="processing", stage=stage, progress_percent=percent, status_message=message
+                    document_id,
+                    status="processing",
+                    stage=stage,
+                    progress_percent=percent,
+                    status_message=message,
                 )
         except Exception as status_err:
             logger.warning("[%s] Status update failed: %s", document_id, status_err)
@@ -227,7 +180,7 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
             doc_repo = DocumentRepository(session)
             section_repo = SectionRepository(session)
 
-            await _rechunk_progress("rechunking", 5, "[1/4] Đang đọc OCR markdown từ S3...")
+            await _rechunk_progress("rechunking", 5, "[1/4] Dang doc OCR markdown tu S3...")
 
             async_redis = get_redis_client()
             try:
@@ -235,7 +188,7 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                 markdown_text = md_bytes.decode("utf-8")
                 logger.info("[%s] Loaded %d bytes of OCR markdown from S3", document_id, len(md_bytes))
 
-                await _rechunk_progress("rechunking", 15, "[2/4] Đang chia lại node từ markdown...")
+                await _rechunk_progress("rechunking", 15, "[2/4] Dang chia lai node tu markdown...")
 
                 nodes, sections_data = LlamaParseParser.parse_from_markdown(
                     markdown_text, document_id, source_format="markdown"
@@ -244,126 +197,48 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                     "[%s] Local parsing produced %d nodes, %d sections", document_id, len(nodes), len(sections_data)
                 )
 
-                embedding_service = build_embedding_service()
-                vector_store = _build_vector_store(embedding_service)
-
-                await _rechunk_progress("rechunking", 25, "[2/4] Đang dọn dẹp dữ liệu cũ...")
+                await _rechunk_progress("rechunking", 25, "[2/4] Dang don dep du lieu cu...")
 
                 try:
-                    await vector_store.delete(document_id)
+                    from app.core.llama_index import get_vector_store
+
+                    vs = get_vector_store()
+                    await vs.adelete(ref_doc_id=document_id)
                     await section_repo.delete_sections(document_id)
                     logger.info("[%s] Cleaned old vectors and sections", document_id)
                 except Exception as clean_err:
                     logger.warning("[%s] Partial cleanup error: %s", document_id, clean_err)
 
-                # Run LlamaIndex pipeline
-                pipeline = LlamaIngestionPipeline()
-                llm_docs = []
-                for n in nodes:
-                    from llama_index.core.schema import Document as LlamaDocument
-
-                    llm_docs.append(
-                        LlamaDocument(
-                            text=n.text,
-                            metadata={
-                                "node_id": n.node_id,
-                                "document_id": n.document_id,
-                                "page_number": n.page_number,
-                                "section_title": n.section_title,
-                                "parent_id": n.parent_id,
-                                "order": n.order,
-                                **n.metadata,
-                            },
-                        )
-                    )
-
-                llama_nodes = await pipeline.arun(llm_docs)
-                ctx_nodes = pipeline.convert_ingested_nodes(llama_nodes, document_id, "markdown")
-                logger.info("[%s] Pipeline produced %d nodes for indexing", document_id, len(ctx_nodes))
-
-                await _rechunk_progress("rechunking", 35, "[3/4] Đang lưu sections vào DB...")
-
+                await _rechunk_progress("rechunking", 35, "[3/4] Dang luu sections vao DB...")
                 await section_repo.store_sections(document_id, sections_data)
-                section_map = {s["section_id"]: s for s in sections_data}
-                for node in ctx_nodes:
-                    sec_id = node.metadata.get("section_id")
-                    if sec_id and sec_id in section_map:
-                        sec = section_map[sec_id]
-                        node.metadata["section_content"] = sec.get("content", "")
-                        node.metadata["breadcrumb"] = sec.get("breadcrumb", [])
-                        node.metadata["level"] = sec.get("level", 0)
 
-                await _rechunk_progress("rechunking", 40, "[4/4] Đang embedding và index vào Qdrant...")
-                t0 = time.time()
+                await _rechunk_progress("rechunking", 40, "[4/4] Dang embedding va index vao Qdrant...")
 
-                from app.modules.documents.utils import get_async_bm25_encoder
+                from app.modules.documents.ingestion.pipeline import run_ingestion_pipeline
 
-                bm25_encoder = await get_async_bm25_encoder(async_redis)
-                t1 = time.time()
-                logger.info("[%s] BM25 encoder ready in %.1fs", document_id, t1 - t0)
+                stored = await run_ingestion_pipeline(nodes, document_id, sections_data)
+                logger.info("[%s] Rechunk complete: %d nodes stored in Qdrant", document_id, stored)
 
-                chunk_size = settings.ingestion_embedding_chunk_size
-                n_chunks = max(1, (len(ctx_nodes) + chunk_size - 1) // chunk_size)
-                from app.core.hardware import hardware
-
-                concurrency = max(1, min(settings.ingestion_embed_parallelism or hardware.embed_parallelism, 4))
-                semaphore = asyncio.Semaphore(concurrency)
-                t2 = time.time()
-                logger.info(
-                    "[%s] Setup %d chunks, concurrency=%d in %.1fs", document_id, n_chunks, concurrency, t2 - t1
-                )
-
-                async def _process_chunk(chunk_idx: int, chunk_nodes: list):
-                    async with semaphore:
-                        ct0 = time.time()
-                        texts = [n.text for n in chunk_nodes]
-                        vecs = await embedding_service.embed_batch(texts)
-                        ct1 = time.time()
-                        sparse_embs = await asyncio.to_thread(bm25_encoder.encode_batch_sparse_vectors, texts)
-                        await vector_store.store(document_id, chunk_nodes, vecs, sparse_embeddings=sparse_embs)
-                        ct2 = time.time()
-                        logger.info(
-                            "[%s] Batch %d/%d: embed=%.1fs, store=%.1fs",
-                            document_id,
-                            chunk_idx + 1,
-                            n_chunks,
-                            ct1 - ct0,
-                            ct2 - ct1,
-                        )
-                        pct = 40 + int(55 * (chunk_idx + 1) / n_chunks)
-                        await _rechunk_progress(
-                            "rechunking", pct, f"[4/4] Indexing: batch {chunk_idx + 1}/{n_chunks}..."
-                        )
-
-                tasks = []
-                for idx in range(n_chunks):
-                    start = idx * chunk_size
-                    end = start + chunk_size
-                    tasks.append(_process_chunk(idx, ctx_nodes[start:end]))
-
-                await asyncio.gather(*tasks)
-                await bm25_encoder.save_async()
-
-                qdrant_count = await vector_store.count(document_id)
-                logger.info(
-                    "[%s] Rechunk complete: %d nodes, %d Qdrant vectors", document_id, len(ctx_nodes), qdrant_count
-                )
+                for sec in sections_data:
+                    title = sec.get("title", "")
+                    if title and title not in ("Untitled",) and not title.startswith("Phan "):
+                        await doc_repo.update_title(document_id, title)
+                        break
 
                 await doc_repo.finalize_ingestion(
                     document_id,
                     artifact_dict={
                         "rechunk": True,
                         "source": "ocr_output.md",
-                        "node_count": len(ctx_nodes),
+                        "node_count": stored,
                         "section_count": len(sections_data),
-                        "qdrant_count": qdrant_count,
                     },
-                    node_count=len(ctx_nodes),
-                    total_text_chars=sum(len(n.text) for n in ctx_nodes),
+                    node_count=stored,
+                    total_text_chars=sum(len(n.text) for n in nodes),
                     progress_percent=100,
                 )
 
-                return {"node_count": len(ctx_nodes), "section_count": len(sections_data), "qdrant_count": qdrant_count}
+                return {"node_count": stored, "section_count": len(sections_data)}
 
             except Exception as e:
                 logger.error("[%s] Rechunk failed: %s", document_id, e)
@@ -373,7 +248,7 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                             document_id,
                             status="failed",
                             stage="failed",
-                            status_message=f"Rechunk lỗi: {str(e)}",
+                            status_message=f"Rechunk loi: {str(e)}",
                         )
                 except Exception:
                     pass
@@ -383,8 +258,6 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
 
     try:
         result = asyncio.run(_run_async())
-        registry.purge_sync(document_id)
-        registry.invalidate_active_ids_sync()
         safe_record_audit(
             action="document.rechunk_complete",
             actor_user_id=user_id,
@@ -392,7 +265,6 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
             subject_id=document_id,
             details=result,
         )
-        rebuild_bm25_index_task.delay()
         return {"status": "success", "document_id": document_id}
     except Exception as e:
         logger.error("[%s] Rechunk sync wrapper error: %s", document_id, e)

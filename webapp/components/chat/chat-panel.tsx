@@ -90,21 +90,21 @@ export function ChatPanel({
 
   // Load messages when sessionId changes (skip for just-created sessions)
   useEffect(() => {
-    setLastStats(null);
-
-    if (!session || !sessionId) {
-      setMessages([]);
-      setHasMore(false);
-      return;
-    }
-
-    // Skip loading for locally-created sessions — they have no messages yet
-    if (sessionId === justCreatedSessionId) return;
-
     let cancelled = false;
-    setRestoring(true);
 
     (async () => {
+      if (!session || !sessionId) {
+        setMessages([]);
+        setHasMore(false);
+        setRestoring(false);
+        return;
+      }
+
+      // Skip loading for locally-created sessions — they have no messages yet
+      if (sessionId === justCreatedSessionId) return;
+
+      setRestoring(true);
+
       try {
         const result = await chatApi.getMessages(sessionId, PAGE_SIZE, 0);
         if (cancelled) return;
@@ -213,7 +213,7 @@ export function ChatPanel({
           const newSession = await chatApi.createSession();
           sid = newSession.session_id;
           isNewSession = true;
-          onSessionCreated?.(sid);
+          onSessionCreated?.(sid!);
         }
 
         const { controller, fetchStream } = chatApi.chatStream(query, sid, thinking ?? thinkingMode);
@@ -410,40 +410,12 @@ export function ChatPanel({
                 message={msg}
                 isStreaming={streaming && index === messages.length - 1 && msg.role === "assistant"}
                 isThinking={isThinking && index === messages.length - 1 && msg.role === "assistant"}
+                stats={index === messages.length - 1 && msg.role === "assistant" && !streaming ? lastStats : undefined}
               />
             ))}
           </div>
         )}
       </div>
-
-      {/* Stats bar */}
-      {lastStats && !streaming && (
-        <div className="flex items-center justify-center gap-2 px-4 py-1.5 text-xs text-muted-foreground border-t bg-muted/30 flex-wrap">
-          <span className="font-medium">{(lastStats.total_ms / 1000).toFixed(2)}s</span>
-          <span className="text-border">|</span>
-          <span title="Time To First Token - Thời gian đến chunk đầu tiên">
-            TTFT <span className="font-medium">{(lastStats.ttft_ms != null ? (lastStats.ttft_ms / 1000).toFixed(2) : '0')}s</span>
-          </span>
-          <span className="text-border">|</span>
-          <span>{lastStats.chars.toLocaleString()} ký tự</span>
-          {(lastStats.total_tokens ?? 0) > 0 && (
-            <>
-              <span className="text-border">|</span>
-              <span title="Prompt tokens">
-                In: <span className="font-medium">{(lastStats.prompt_tokens ?? 0).toLocaleString()}</span>
-              </span>
-              <span className="text-border">|</span>
-              <span title="Completion tokens">
-                Out: <span className="font-medium">{(lastStats.completion_tokens ?? 0).toLocaleString()}</span>
-              </span>
-              <span className="text-border">|</span>
-              <span className="font-medium">{((lastStats.total_tokens ?? 0)).toLocaleString()}</span> tokens
-              <span className="text-border">|</span>
-              <span className="text-green-600 font-medium">${(lastStats.estimated_cost_usd ?? 0).toFixed(4)}</span>
-            </>
-          )}
-        </div>
-      )}
 
       {/* Input */}
       <ChatInput

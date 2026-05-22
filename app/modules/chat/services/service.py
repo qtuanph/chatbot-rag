@@ -1,4 +1,8 @@
-"""Chat service — session management, context preparation, message persistence."""
+"""Chat service — session management, context preparation, message persistence.
+
+Uses OpenAILike (9Router) via llama_index.core.Settings.llm for streaming.
+Uses LlamaIndex retrieval pipeline (hybrid + TEI reranker) for RAG.
+"""
 
 from __future__ import annotations
 
@@ -11,27 +15,77 @@ from typing import Any
 from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.adapters.ai.proxy_bridge import AIProxyBridge
+from llama_index.core import Settings
+
 from app.core.config import settings
 from app.modules.chat.repositories.repository import ChatRepository
 from app.modules.chat.utils import ChatStore, compute_cost, normalize_query
-from app.modules.chat.retrieval import build_answer
+from app.modules.chat.retrieval import retrieve_context
 
 logger = logging.getLogger(__name__)
 
 
-class ChatService:
-    """Business logic for chat sessions, context preparation, and message persistence."""
+def build_answer(query: str, context: Any) -> dict:
+    """Build the answer seed from RAG context."""
+    from dataclasses import asdict as dc_asdict
 
+    if not context or not context.nodes:
+        return {
+            "answer": (
+                "Hiện tại tôi chưa có tài liệu nào để trả lời câu hỏi này. "
+                "Vui lòng yêu cầu Admin upload thêm tài liệu vào hệ thống."
+            ),
+            "citations": [],
+            "context": [],
+        }
+
+    sorted_nodes = sorted(
+        context.nodes,
+        key=lambda n: (n.document_id, n.section_id or "", -(n.score if n.score else 0.0)),
+    )
+
+    context_blocks = []
+    citations = []
+    seen_docs: set[str] = set()
+    citation_idx = 0
+    total_chars = 0
+    max_chars = settings.retrieval_context_max_chars
+
+    for node in sorted_nodes:
+        doc_key = f"{node.document_id}:{node.section_id or node.node_id}"
+        if doc_key not in seen_docs:
+            seen_docs.add(doc_key)
+            citation_idx += 1
+            page = f" (trang {node.page_range})" if node.page_range else ""
+            block = f"**{node.heading}** — {node.document_title}{page}\n{node.full_text}"
+            total_chars += len(block)
+            if total_chars <= max_chars or len(seen_docs) <= 1:
+                context_blocks.append(block)
+                citations.append(
+                    {
+                        "document_id": node.document_id,
+                        "node_id": node.node_id,
+                        "title": node.document_title,
+                        "heading": node.heading,
+                        "page_range": node.page_range,
+                        "index": citation_idx,
+                    }
+                )
+
+    context_text = "\n\n".join(context_blocks)
+    answer = f"Câu hỏi: {query}\n\nTài liệu tham khảo:\n{context_text}"
+
+    return {"answer": answer, "citations": citations, "context": [dc_asdict(node) for node in sorted_nodes]}
+
+
+class ChatService:
     def __init__(self, repo: ChatRepository, store: ChatStore, user_memory_service: Any = None) -> None:
         self.repo = repo
         self.store = store
         self._user_memory_service = user_memory_service
 
     async def prepare_chat(self, *, user_id: str, query: str, session_id: str | None = None) -> dict:
-        """Prepare full chat context: validate → session → retrieval → answer seed."""
         from app.modules.chat.utils import validate_query, deduplicate_citations, is_greeting
-        import time as _time
 
         _t0 = _time.monotonic()
         validate_query(query)
@@ -42,7 +96,6 @@ class ChatService:
         await self.get_or_create_session(session_id=resolved_session_id, user_id=user_id, query=query)
         logger.info("[PERF] Session setup: %.3fs", _time.monotonic() - _t0)
 
-        # Parallel fetch for history and memories
         _t1 = _time.monotonic()
         history_task = self.store.get_history(scope_id, resolved_session_id)
         if self._user_memory_service:
@@ -53,7 +106,6 @@ class ChatService:
             user_memories = None
         logger.info("[PERF] History + memories: %.3fs", _time.monotonic() - _t1)
 
-        # Pure greeting detection — skip retrieval, respond naturally
         if is_greeting(query):
             logger.info("Greeting detected, skipping RAG retrieval: query=%s", query[:50])
             return {
@@ -66,7 +118,6 @@ class ChatService:
                 "is_greeting": True,
             }
 
-        # Query refinement
         refined_query = query
         if settings.retrieval_query_refinement_enabled:
             from app.modules.chat.services.query_refiner import refine_query
@@ -80,21 +131,28 @@ class ChatService:
             except Exception:
                 logger.warning("Query refinement timed out, using original query.")
 
-        # Multi-query expansion (using refined query)
         queries = [refined_query]
         if settings.retrieval_query_expansion_enabled:
-            from app.modules.chat.retrieval.expansion_service import expand_query
+            from llama_index.core import Settings as LlamaSettings
 
             _t3 = _time.monotonic()
             try:
-                queries = await asyncio.wait_for(
-                    expand_query(refined_query), timeout=settings.retrieval_query_expansion_timeout
+                llm = LlamaSettings.llm
+                exp_prompt = (
+                    f"Bạn là công cụ mở rộng truy vấn. "
+                    f"Hãy tạo 3 câu truy vấn khác nhau từ câu gốc để tìm kiếm tài liệu hiệu quả hơn.\n"
+                    f"Câu gốc: {refined_query}\n"
+                    f"Trả lời mỗi câu trên một dòng, bắt đầu bằng '- '"
                 )
+                resp = await llm.acomplete(exp_prompt)
+                if resp and resp.text:
+                    lines = [l.strip("- ").strip() for l in resp.text.split("\n") if l.strip().startswith("- ")]
+                    if lines:
+                        queries = [refined_query] + lines[:2]
                 logger.info("[PERF] Query expansion: %.3fs (%d queries)", _time.monotonic() - _t3, len(queries))
-            except asyncio.TimeoutError:
-                logger.warning("Query expansion timed out, using original query.")
+            except Exception:
+                logger.warning("Query expansion failed, using original query.")
 
-        # RAG retrieval
         _t4 = _time.monotonic()
         context = await self.retrieve_rag_context(self.repo.session, queries, resolved_session_id, 20)
         logger.info("[PERF] RAG retrieval: %.3fs", _time.monotonic() - _t4)
@@ -117,23 +175,24 @@ class ChatService:
         }
 
     async def stream_chat_events(
-        self, *, user_id: str, query: str, prepared_chat: dict, thinking_mode: bool = False, start_time: float | None = None
+        self,
+        *,
+        user_id: str,
+        query: str,
+        prepared_chat: dict,
+        thinking_mode: bool = False,
+        start_time: float | None = None,
     ) -> AsyncGenerator[str, None]:
-        """Generate SSE events for chat."""
-        from app.core.config import settings
         from app.utils.cache import LLMResponseCache
         from app.modules.chat.retrieval.usage_tracker import track_usage
 
-        provider = AIProxyBridge(thinking_mode=thinking_mode)
         session_id = prepared_chat["session_id"]
         history = prepared_chat["history"]
         citations = prepared_chat["citations"]
 
-        # Use passed start_time (from router, before prepare_chat) or fallback to now
         if start_time is None:
             start_time = _time.monotonic()
 
-        # Pure greeting — respond naturally without calling the LLM
         if prepared_chat.get("is_greeting"):
             greeting = self._random_greeting()
             yield f"data: {json.dumps({'chunk': greeting, 'done': False})}\n\n"
@@ -176,7 +235,6 @@ class ChatService:
 
                     cache_latency_ms = int((cache_hit_time - start_time) * 1000)
 
-                    # Persist cached response to DB FIRST to get real message_id
                     cached_message_id: str | None = None
                     try:
                         cached_message_id = await asyncio.shield(
@@ -218,9 +276,6 @@ class ChatService:
             except Exception as e:
                 logger.warning("[LLM-CACHE] Cache check failed: %s", e)
 
-        # History already limited to ai_max_history_messages in proxy_bridge
-
-        # Use full section content from build_answer.answer (not chunk-text from .context)
         seed = prepared_chat["assistant_seed"] or {}
         raw = seed.get("answer", "")
         if raw and "Tài liệu tham khảo:\n" in raw:
@@ -228,26 +283,42 @@ class ChatService:
         else:
             formatted_context = ""
 
-        async for chunk in provider.chat_stream(
-            [{"role": i["role"], "content": i["content"]} for i in history],
-            context=seed.get("context") or [],
-            formatted_context=formatted_context,
-            citations=citations,
-            user_memories=prepared_chat["user_memories"],
-        ):
+        llm = Settings.llm
+        messages = [{"role": i["role"], "content": i["content"]} for i in history]
+
+        system_prompt = (
+            "Bạn là trợ lý AI chuyên nghiệp. Hãy trả lời câu hỏi dựa trên tài liệu tham khảo được cung cấp. "
+            "Nếu thông tin không có trong tài liệu, hãy nói rõ. "
+            "Luôn trích dẫn nguồn tài liệu khi sử dụng thông tin."
+        )
+        if formatted_context:
+            system_prompt += f"\n\n{formatted_context}"
+        if prepared_chat.get("user_memories"):
+            system_prompt += f"\n\n{prepared_chat['user_memories']}"
+
+        full_messages = [{"role": "system", "content": system_prompt}] + messages
+
+        resp_gen = await llm.astream_chat(full_messages)
+        usage_info = {}
+        model_name = getattr(llm, "model", "unknown")
+
+        async for chunk in resp_gen:
             if first_chunk_time is None:
                 first_chunk_time = _time.monotonic()
-            full_answer += chunk
-            # Immediate yield to prevent word-concatenation and "stuck" feeling in Vietnamese
-            yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
+            delta = chunk.delta if hasattr(chunk, "delta") else (chunk.text if hasattr(chunk, "text") else str(chunk))
+            full_answer += delta
+            yield f"data: {json.dumps({'chunk': delta, 'done': False})}\n\n"
+            if hasattr(chunk, "additional_kwargs"):
+                usage_info.update(chunk.additional_kwargs)
 
         ai_done_time = _time.monotonic()
         clean_answer = full_answer.strip()
-        usage = getattr(provider, "last_usage", {})
 
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
+        prompt_tokens = usage_info.get("prompt_tokens", 0)
+        completion_tokens = usage_info.get("completion_tokens", 0)
         ttft_ms = int((first_chunk_time - start_time) * 1000) if first_chunk_time else 0
+
+        provider = type("obj", (), {"last_usage": usage_info, "model_name": model_name})()
 
         if llm_cache and clean_answer:
             try:
@@ -259,14 +330,13 @@ class ChatService:
                         "completion_tokens": completion_tokens,
                         "total_tokens": prompt_tokens + completion_tokens,
                         "estimated_cost_usd": compute_cost(prompt_tokens, completion_tokens),
-                        "model": provider.model_name,
+                        "model": model_name,
                     },
                 }
                 asyncio.create_task(llm_cache.set(normalized_query, None, cache_data))
             except Exception as e:
                 logger.warning("[LLM-CACHE] Cache store failed: %s", e)
 
-        # Finalize persistence after the streamed answer is complete.
         finalize_error: str | None = None
         vids = [c["node_id"] for c in citations if "node_id" in c]
         message_id: str | None = None
@@ -281,19 +351,14 @@ class ChatService:
                     tokens_in=prompt_tokens,
                     tokens_out=completion_tokens,
                     latency_ms=int((ai_done_time - start_time) * 1000),
-                    model_used=provider.model_name,
+                    model_used=model_name,
                     vector_ids=vids,
                 )
             )
-            self.enqueue_memory_extraction(user_id=user_id, user_message=query, assistant_response=clean_answer)
-
-            # Track AI model usage for quota/stats
             track_usage(provider, endpoint="chat", user_id=user_id, session_id=session_id, message_id=message_id)
 
-            # Run RAGAS evaluation async (best-effort)
             if settings.ragas_evaluation_enabled:
                 asyncio.create_task(self._run_ragas_evaluation(query, clean_answer, prepared_chat))
-
         except Exception as e:
             finalize_error = "Failed to persist assistant message"
             logger.error("Failed to finalize chat session: %s", e, exc_info=True)
@@ -312,31 +377,23 @@ class ChatService:
                 "completion_tokens": completion_tokens,
                 "total_tokens": prompt_tokens + completion_tokens,
                 "estimated_cost_usd": compute_cost(prompt_tokens, completion_tokens),
-                "model": provider.model_name,
+                "model": model_name,
             },
         }
         if finalize_error:
             final_data["error"] = finalize_error
         yield f"data: {json.dumps(final_data)}\n\n"
 
-    # ── RAG retrieval ────────────────────────────────────────────────
-
     async def retrieve_rag_context(
         self, session: AsyncSession, queries: list[str], session_id: str | None = None, limit: int = 20
     ) -> Any:
-        """Run RAG retrieval. Returns RagContext."""
-        from app.modules.chat.retrieval.retrieval_service import RetrievalService
-
         positive_ids, negative_ids = [], []
         if session_id:
             positive_ids, negative_ids = await ChatRepository(session).get_feedback_signals(session_id)
 
-        # Use the class-based service with the same loop-safe client
-        retrieval_service = RetrievalService(redis_client=self.store.client)
-        return await retrieval_service.retrieve_context(
-            session,
+        return await retrieve_context(
             queries,
-            limit,
+            limit=limit,
             positive_point_ids=positive_ids,
             negative_point_ids=negative_ids,
         )
@@ -344,7 +401,6 @@ class ChatService:
     # ── Session management ──────────────────────────────────────────
 
     async def resolve_session(self, *, user_id: str, session_id: str | None) -> str:
-        """Resolve or create a session ID. Returns session_id."""
         scope_id = f"user:{user_id}"
         resolved = session_id or await self.store.get_active_session(scope_id) or str(uuid4())
         await self.store.set_active_session(scope_id, resolved)
@@ -352,14 +408,12 @@ class ChatService:
 
     @staticmethod
     def validate_session_id(session_id: str) -> None:
-        """Validate UUID format of session ID. Raises ValueError."""
         try:
             UUID(session_id)
         except ValueError:
             raise ValueError("Invalid session ID format") from None
 
     async def get_or_create_session(self, *, session_id: str, user_id: str, query: str) -> dict:
-        """Get existing session or create new. Raises ValueError on ownership mismatch."""
         session = await self.repo.get_session(session_id)
 
         if session is None:
@@ -405,7 +459,6 @@ class ChatService:
         model_used: str | None = None,
         vector_ids: list[str] | None = None,
     ) -> str:
-        """Save assistant message to PostgreSQL + Redis. Returns the message_id."""
         msg_dict: dict
         try:
             logger.info("Saving assistant message: session_id=%s, user_id=%s, role=%s", session_id, user_id, role)
@@ -435,7 +488,6 @@ class ChatService:
         return message_id
 
     async def _run_ragas_evaluation(self, query: str, answer: str, prepared_chat: dict) -> None:
-        """Run RAGAS evaluation async after chat response."""
         try:
             from app.modules.analytics.ragas_evaluator import RagasEvaluator
 
@@ -459,16 +511,36 @@ class ChatService:
             logger.warning("[RAGAS] Evaluation failed: %s", e)
 
     async def set_message_feedback(self, message_id: str, user_id: str, feedback: int) -> dict:
-        """Record user feedback for a message. Raises ValueError if not found or unauthorized."""
         updated = await self.repo.update_feedback(message_id, feedback)
         if not updated:
             raise ValueError("Message not found")
+        if feedback == -1:
+            await self._clear_cache_for_dislike(message_id)
         logger.info("Feedback recorded: user=%s message=%s feedback=%d", user_id[:8], message_id[:8], feedback)
         return updated
 
+    async def _clear_cache_for_dislike(self, message_id: str) -> None:
+        query = await self.repo.get_previous_user_message(message_id)
+        if not query:
+            return
+
+        from app.modules.chat.utils import normalize_query
+        from app.utils.cache.llm_response_cache import LLMResponseCache
+
+        normalized = normalize_query(query) if settings.query_normalize_enabled else query
+        llm_cache = LLMResponseCache(redis_client=self.store.client)
+        await llm_cache.delete(normalized)
+
+        try:
+            keys = await self.store.client.keys("cache:semantic:*")
+            if keys:
+                await self.store.client.delete(*keys)
+                logger.info("[CACHE] Cleared %d semantic cache entries on dislike", len(keys))
+        except Exception as e:
+            logger.warning("[CACHE] Failed to clear semantic cache: %s", e)
+
     @staticmethod
     def _random_greeting() -> str:
-        """Return a random greeting response for social messages."""
         import random
 
         greetings = [
@@ -480,22 +552,9 @@ class ChatService:
         ]
         return random.choice(greetings)
 
-    @staticmethod
-    def enqueue_memory_extraction(*, user_id: str, user_message: str, assistant_response: str) -> None:
-        """Dispatch durable memory extraction after a chat turn."""
-        try:
-            from app.modules.chat.tasks.memory_tasks import extract_memories_task
-
-            extract_memories_task.delay(
-                user_id=user_id, user_message=user_message, assistant_response=assistant_response
-            )
-        except Exception as e:
-            logger.debug("Memory extraction dispatch failed (best-effort): %s", e)
-
     # ── Session listing ─────────────────────────────────────────────
 
     async def create_session(self, *, user_id: str) -> dict:
-        """Create a new empty chat session."""
         session_id = str(uuid4())
         session = await self.repo.create_session(session_id=session_id, user_id=user_id, title="Active chat")
         return {
@@ -512,7 +571,6 @@ class ChatService:
     # ── Message listing ─────────────────────────────────────────────
 
     async def list_messages(self, *, session_id: str, user_id: str, limit: int = 20, offset: int = 0) -> dict:
-        """List messages for a session. Raises ValueError if not found or ownership mismatch."""
         session = await self.repo.get_session(session_id)
         if session is None:
             raise ValueError("Chat session not found")
