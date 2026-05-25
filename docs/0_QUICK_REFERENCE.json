@@ -27,23 +27,25 @@
   },
   "must_know": {
     "hard_delete_order": "registry.delete() → vectors → sections → file → DB row → purge. Sections BEFORE DB row.",
-    "retrieval": "Hybrid (dense + Qdrant native BM25 RRF) → rerank (managed via SQLite /admin/providers) → full section context to LLM. See 2.2_WORKFLOWS_CHAT.md",
+    "retrieval": "Hybrid (dense + Qdrant native BM25 RRF) → rerank (managed via settings.db SQLite → /settings/providers) → full section context to LLM. See 2.2_WORKFLOWS_CHAT.md",
     "api_gateway": "Browser → /api/bep/ → Next.js Route Handler → getToken() → Bearer → backend. Token NEVER exposed to browser.",
     "provider_boundary": "ChatService owns orchestration. OpenAILike (9Router) via llama_index.core.Settings.llm. See 1_ARCHITECTURE.md",
-    "ai_inference": "Embedding: TEI container (gte-multilingual-base, 768-dim). Reranker: managed via SQLite at /admin/providers (switchable at runtime). LLM: 9Router via AIProxyBridge.",
+    "ai_inference": "Embedding: switchable via Admin → 'Kết nối AI' (settings.db), default TEI (gte-multilingual-base, 768-dim). Reranker: switchable (TEI/NVIDIA/Cohere) via settings.db. LLM: 9Router (built-in, fixed). RuntimeProviderManager overrides LlamaIndex Settings on activate.",
     "async_rules": "All I/O = async def + await. CPU-bound = asyncio.to_thread(). Celery → asyncio.run() at entry only.",
     "csr_layers": "Route (HTTP) → Service (logic, raises ValueError/RuntimeError) → Repository (SQL, returns dicts). See 1_ARCHITECTURE.md"
   },
   "models": {
-    "embedding_model": "Alibaba-NLP/gte-multilingual-base (768-dim, 32768 ctx, TEI container)",
-    "reranker_model": "Alibaba-NLP/gte-multilingual-reranker-base (TEI, local) or nvidia/llama-nemotron-rerank-1b-v2 (NVIDIA NIM)",
-    "llm": "9Router (decolua/9router:latest, OpenAI-compatible, port 2908)"
+    "embedding_model": "Default: Alibaba-NLP/gte-multilingual-base (768-dim, 32768 ctx, TEI container). Switchable via Admin → Kết nối AI → Embedding tab (settings.db).",
+    "reranker_model": "Default: Alibaba-NLP/gte-multilingual-reranker-base (TEI local). Switchable via Kết nối AI → Reranker tab: TEI / NVIDIA NIM / Cohere.",
+    "llm": "9Router (decolua/9router:latest, OpenAI-compatible, port 2908) — built-in, fixed. 9Router-side provider mgmt via port 2908 Dashboard."
   },
   "key_rules": {
     "rechunk": "POST /documents/{id}/rechunk — if ocr_output.md in S3 → free rechunk (no LlamaParse API call); else → retry parse.",
     "single_chunking": "SentenceSplitter in LlamaIndex IngestionPipeline only. No double-splitting.",
     "text_md_skip": ".md/.txt files skip LlamaParse API — parse_from_markdown() directly.",
-    "history_limit": "AI_MAX_HISTORY_MESSAGES=6 (messages sent to LLM per turn)"
+    "history_limit": "AI_MAX_HISTORY_MESSAGES=6 (messages sent to LLM per turn)",
+    "ingestion_chunk_size": "ingestion_chunk_size=1200 chars, overlap=150 (config.py). Retrieval chunk_size=600, overlap=120.",
+    "settings_db": "settings.db (SQLite) tại /app/data/settings.db — KHÁC với SQLite của 9Router. Managed via /settings/* API routes."
   },
   "anti_patterns": [
     "flat chunking without hierarchy",

@@ -195,13 +195,41 @@ Memory types: `preference` | `correction` | `instruction` | `fact`. Max 1000 cha
 
 Tree ordering: `document_sections.order_index` is canonical sort key. `page_number` is display hint (may be range string like "1-3").
 
+### Settings — AI Provider Config (Kết nối AI)
+
+Quản lý Embedding, Reranker, và LLM providers. Lưu vào `settings.db` (SQLite riêng của project). Thay đổi có hiệu lực ngay lập tức qua `RuntimeProviderManager.reload()` — không cần restart.
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| GET | `/settings/templates` | Admin | Danh sách provider templates (tei, openai, openrouter, nvidia, gemini, cohere, 9router) |
+| GET | `/settings/providers?service_type=` | Admin | List providers, filter by `embedding`/`reranker`/`llm` |
+| POST | `/settings/providers` | Admin | Tạo provider mới (không được tạo LLM thủ công — chỉ built-in) |
+| GET | `/settings/providers/{id}` | Admin | Chi tiết provider |
+| PUT | `/settings/providers/{id}` | Admin | Sửa url, model, api_key, priority. Trigger `RuntimeProviderManager.reload()` |
+| DELETE | `/settings/providers/{id}` | Admin | Xóa provider (không xóa được `is_builtin=1`) |
+| POST | `/settings/providers/{id}/activate` | Admin | **Set active** cho service_type — deactivate tất cả provider cùng loại, activate cái này. Trigger reload() ngay |
+| POST | `/settings/providers/{id}/test` | Admin | Test kết nối: embed/rerank/chat test call thực tế → `{success, message}` |
+| GET | `/settings/providers/{id}/keys` | Admin | Danh sách API keys của provider |
+| POST | `/settings/providers/{id}/keys` | Admin | Thêm API key (round-robin pool) |
+| DELETE | `/settings/providers/{id}/keys/{key_id}` | Admin | Xóa API key |
+
+**Seeded providers** (first-boot, nếu `ai_providers` trống):
+
+| service_type | provider_name | Default active |
+|---|---|---|
+| embedding | tei (TEI Local, built-in) | ✅ |
+| embedding | openai, openrouter, nvidia, gemini, cohere | ❌ |
+| reranker | tei (TEI Local, built-in) | ✅ |
+| reranker | nvidia, cohere | ❌ |
+| llm | 9router (built-in) | ✅ |
+
 ### Admin — Model Listing
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | GET | `/admin/models` | Admin | List available models from 9Router's connected providers |
 
-Rate limit: 20/min per admin. Proxies to 9Router `/v1/models`. Provider management done via 9Router Dashboard at port 2908.
+Rate limit: 20/min per admin. Proxies to 9Router `/v1/models`. Provider management (9Router-side) via 9Router Dashboard tại port 2908 (SQLite riêng của 9Router, khác `settings.db` của project).
 
 ### Analytics
 

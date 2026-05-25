@@ -9,10 +9,12 @@ import time
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import AuthContext, get_auth_context, get_chat_service
+from app.api.deps import AuthContext, get_auth_context, get_chat_service, get_rate_limiter
 from app.core import http_errors
+from app.core.config import settings
 from app.modules.chat.schemas import MessageFeedbackRequest, MessageFeedbackResponse
 from app.modules.chat.services import ChatService
+from app.utils.rate_limiter import RateLimiter
 
 router = APIRouter(tags=["chat"])
 logger = logging.getLogger(__name__)
@@ -50,6 +52,7 @@ async def chat_stream_sse(
     request: Request,
     auth: AuthContext = Depends(get_auth_context),
     service: ChatService = Depends(get_chat_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ):
     """SSE endpoint for chat streaming."""
     body = await request.json()
@@ -59,6 +62,11 @@ async def chat_stream_sse(
 
     if not query or not query.strip():
         raise http_errors.bad_request("Query cannot be empty")
+
+    if not await rate_limiter.is_allowed(
+        f"chat:{auth.user_id}", limit=settings.effective_rate_limit(30), window_ms=60000
+    ):
+        raise http_errors.too_many_requests("Too many chat requests. Please wait.")
 
     return StreamingResponse(
         _sse_stream(auth, query, session_id, thinking_mode, service),

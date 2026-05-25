@@ -89,7 +89,7 @@ Compose defaults bind to 127.0.0.1. Production: front with ingress/reverse proxy
 
 ## Traefik Configuration
 
-Image: `traefik:v3.7.1` | Dashboard: http://localhost:8080
+Image: `traefik:v3.7.3` | Dashboard: http://localhost:8080
 
 ### Routing via Docker Labels
 

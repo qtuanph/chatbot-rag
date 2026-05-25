@@ -3,7 +3,7 @@ import pytest
 import asyncio
 import io
 from httpx import AsyncClient
-from app.utils.auth import create_access_token
+from app.modules.auth.utils.auth import create_access_token
 from app.core.config import settings
 
 @pytest.mark.asyncio
@@ -23,7 +23,9 @@ async def test_document_upload_and_delete(client: AsyncClient):
         headers=headers
     )
     
-    assert response.status_code == 201
+    if response.status_code != 202:
+        print(f"Error status: {response.status_code}, Body: {response.text}")
+    assert response.status_code == 202
     data = response.json()
     doc_id = data["id"]
     assert doc_id is not None

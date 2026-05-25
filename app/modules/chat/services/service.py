@@ -1,4 +1,4 @@
-"""Chat service — session management, context preparation, message persistence.
+﻿"""Chat service — session management, context preparation, message persistence.
 
 Uses OpenAILike (9Router) via llama_index.core.Settings.llm for streaming.
 Uses LlamaIndex retrieval pipeline (hybrid + TEI reranker) for RAG.
@@ -89,6 +89,16 @@ def build_answer(query: str, context: Any) -> dict:
     answer = f"Câu hỏi: {query}\n\nTài liệu tham khảo:\n{context_text}"
 
     return {"answer": answer, "citations": citations, "context": [dc_asdict(node) for node in sorted_nodes]}
+
+
+def _fire_and_forget(coro: Any, error_msg: str = "Background task failed") -> None:
+    async def _run():
+        try:
+            await coro
+        except Exception as e:
+            logger.warning("%s: %s", error_msg, e)
+
+    asyncio.create_task(_run())
 
 
 class ChatService:
@@ -271,19 +281,16 @@ class ChatService:
             messages.append(ChatMessage(role=_to_llama_role(role), content=str(content or "")))
 
         system_prompt = (
-            "Bạn là trợ lý hướng dẫn sử dụng phần mềm cho người mới. "
-            "Chỉ dùng thông tin có trong ngữ cảnh tài liệu đã cung cấp. "
-            "Nếu chưa đủ chắc chắn, hãy nói rõ điều chưa chắc và nêu cách kiểm tra tiếp; không được bịa. "
-            "Trả lời tự nhiên như người hỗ trợ thật, dễ hiểu, đi thẳng vào thao tác. "
-            "Mặc định trả lời ngắn (4-8 dòng), chỉ liệt kê nhiều bước khi người dùng yêu cầu chi tiết. "
-            "Bạn được phép chủ động chọn định dạng trình bày để dễ hiểu hơn: "
-            "dùng bảng Markdown khi cần so sánh/tổng hợp; "
-            "dùng sơ đồ text/ASCII đơn giản khi cần mô tả luồng hoặc quan hệ giữa các bước. "
-            "Không cần chờ người dùng yêu cầu mới trình bày dạng bảng/sơ đồ nếu điều đó giúp câu trả lời rõ ràng hơn. "
-            "Sau bảng/sơ đồ, luôn kèm giải thích ngắn bên dưới. "
+            "Bạn là trợ lý hỗ trợ người dùng cuối, trả lời dựa trên tài liệu đã được nạp vào hệ thống. "
+            "Chỉ dùng thông tin có trong ngữ cảnh tài liệu được cung cấp. "
+            "Nếu chưa đủ chắc chắn, nói rõ phần chưa chắc và gợi ý 1-2 bước kiểm tra tiếp theo; không bịa thông tin. "
+            "Trả lời tự nhiên, dễ hiểu, đi thẳng vào thao tác. "
+            "Mặc định ngắn gọn (4-8 dòng), chỉ liệt kê nhiều bước khi người dùng yêu cầu chi tiết. "
+            "Được phép dùng bảng Markdown khi cần so sánh/tổng hợp, và dùng sơ đồ text/ASCII khi cần mô tả luồng. "
+            "Sau bảng/sơ đồ, luôn kèm giải thích ngắn. "
             "Không dùng ký hiệu trích dẫn kiểu [1], [Nguồn], [Source]. "
-            "Cuối câu trả lời thêm 1 dòng tham chiếu ngắn theo mẫu: "
-            "\"Thông tin này nằm trong phần hướng dẫn ... của tài liệu ...\"."
+            "Chỉ nêu số mục/chương/trang khi có trong ngữ cảnh hiện tại. "
+            "Nếu không thấy rõ số mục/chương/trang, chỉ ghi tham chiếu chung: 'Theo tài liệu đã cung cấp'."
         )
         if formatted_context:
             system_prompt += f"\n\n{formatted_context}"
@@ -301,7 +308,9 @@ class ChatService:
             async for chunk in resp_gen:
                 if first_chunk_time is None:
                     first_chunk_time = _time.monotonic()
-                delta = chunk.delta if hasattr(chunk, "delta") else (chunk.text if hasattr(chunk, "text") else str(chunk))
+                delta = (
+                    chunk.delta if hasattr(chunk, "delta") else (chunk.text if hasattr(chunk, "text") else str(chunk))
+                )
                 full_answer += delta
                 yield f"data: {json.dumps({'chunk': delta, 'done': False})}\n\n"
                 if hasattr(chunk, "additional_kwargs"):
@@ -354,7 +363,9 @@ class ChatService:
                         "model": model_name,
                     },
                 }
-                asyncio.create_task(llm_cache.set(normalized_query, None, cache_data))
+                _fire_and_forget(
+                    llm_cache.set(normalized_query, None, cache_data), "[LLM-CACHE] Async cache set failed"
+                )
             except Exception as e:
                 logger.warning("[LLM-CACHE] Cache store failed: %s", e)
 
@@ -379,7 +390,9 @@ class ChatService:
             track_usage(provider, endpoint="chat", user_id=user_id, session_id=session_id, message_id=message_id)
 
             if settings.ragas_evaluation_enabled:
-                asyncio.create_task(self._run_ragas_evaluation(query, clean_answer, prepared_chat))
+                _fire_and_forget(
+                    self._run_ragas_evaluation(query, clean_answer, prepared_chat), "[RAGAS] Async evaluation failed"
+                )
         except Exception as e:
             finalize_error = "Failed to persist assistant message"
             logger.error("Failed to finalize chat session: %s", e, exc_info=True)
@@ -553,7 +566,9 @@ class ChatService:
         await llm_cache.delete(normalized)
 
         try:
-            keys = await self.store.client.keys("cache:semantic:*")
+            keys = []
+            async for key in self.store.client.scan_iter("cache:semantic:*"):
+                keys.append(key)
             if keys:
                 await self.store.client.delete(*keys)
                 logger.info("[CACHE] Cleared %d semantic cache entries on dislike", len(keys))
@@ -622,3 +637,6 @@ class ChatService:
             "total": total,
             "has_more": effective_offset > 0,
         }
+
+
+

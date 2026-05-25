@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import multiprocessing
 from typing import Any, Awaitable, Callable
 
 from llama_index.core import Document, Settings as LlamaSettings
@@ -12,8 +13,10 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client.http import models as rest
 from qdrant_client.http.exceptions import UnexpectedResponse
 
+import asyncio
 from app.core.config import settings
 from app.core.llama_index import get_vector_store
+from app.core.hardware import hardware
 
 logger = logging.getLogger(__name__)
 
@@ -124,13 +127,15 @@ async def run_ingestion_pipeline(
     total_stored = 0
     write_observed = False
 
+    aclient = getattr(vector_store, "_aclient", None) or getattr(vector_store, "aclient", None)
+
     async def _ensure_collection() -> None:
-        if vector_store._aclient is None:
+        if aclient is None:
             return
-        exists = await vector_store._aclient.collection_exists(collection_name=vector_store.collection_name)
+        exists = await aclient.collection_exists(collection_name=vector_store.collection_name)
         if exists:
             return
-        await vector_store._aclient.create_collection(
+        await aclient.create_collection(
             collection_name=vector_store.collection_name,
             vectors_config={
                 vector_store.dense_vector_name: rest.VectorParams(
@@ -142,20 +147,24 @@ async def run_ingestion_pipeline(
                 vector_store.sparse_vector_name: rest.SparseVectorParams(),
             },
         )
-        logger.warning("[%s] Auto-created missing Qdrant collection '%s' during ingestion.", document_id, vector_store.collection_name)
+        logger.warning(
+            "[%s] Auto-created missing Qdrant collection '%s' during ingestion.",
+            document_id,
+            vector_store.collection_name,
+        )
 
     async def _count_points() -> int:
-        if vector_store._aclient is None:
+        if aclient is None:
             return -1
         try:
-            res = await vector_store._aclient.count(
+            res = await aclient.count(
                 collection_name=vector_store.collection_name,
                 exact=True,
             )
         except UnexpectedResponse as e:
             if "doesn't exist" in str(e):
                 await _ensure_collection()
-                res = await vector_store._aclient.count(
+                res = await aclient.count(
                     collection_name=vector_store.collection_name,
                     exact=True,
                 )
@@ -168,14 +177,45 @@ async def run_ingestion_pipeline(
     for start in range(0, len(docs), batch_size):
         batch = docs[start : start + batch_size]
         before_count = await _count_points()
-        stored_nodes = await pipeline.arun(
-            documents=batch,
-            num_workers=1,
-        )
+
+        retries = 3
+        backoff = 2
+        stored_nodes = None
+        for attempt in range(retries):
+            try:
+                num_workers = settings.embed_parallelism
+                if num_workers <= 0:
+                    num_workers = min(4, hardware.embed_parallelism)
+                # Celery prefork workers are daemon processes and cannot spawn child processes.
+                # LlamaIndex arun(num_workers>1) uses ProcessPoolExecutor under the hood.
+                # Force single-worker mode inside daemon context to avoid:
+                # "daemonic processes are not allowed to have children".
+                if multiprocessing.current_process().daemon:
+                    stored_nodes = await pipeline.arun(documents=batch)
+                else:
+                    stored_nodes = await pipeline.arun(
+                        documents=batch,
+                        num_workers=num_workers,
+                    )
+                break
+            except Exception as e:
+                if attempt == retries - 1:
+                    raise
+                wait_time = backoff**attempt
+                logger.warning(
+                    "[%s] Ingestion pipeline failed attempt %d/%d, retrying in %ds: %s",
+                    document_id,
+                    attempt + 1,
+                    retries,
+                    wait_time,
+                    e,
+                )
+                await asyncio.sleep(wait_time)
+
         after_count = await _count_points()
         if before_count >= 0 and after_count >= 0 and after_count > before_count:
             write_observed = True
-        total_stored += len(stored_nodes)
+        total_stored += len(stored_nodes) if stored_nodes else 0
         processed_docs = min(start + batch_size, len(docs))
         if progress_callback:
             try:

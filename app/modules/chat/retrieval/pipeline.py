@@ -44,8 +44,8 @@ def _extract_text_and_metadata_from_payload(payload: dict[str, Any], text_key: s
                 merged_meta.update(metadata)
                 metadata = merged_meta
             text = str(parsed_text or "")
-        except Exception:
-            pass
+        except Exception as parse_err:
+            logger.debug("Failed to parse _node_content from payload: %s", parse_err)
 
     return str(text), metadata
 
@@ -53,33 +53,24 @@ def _extract_text_and_metadata_from_payload(payload: dict[str, Any], text_key: s
 async def _hybrid_retrieve_via_qdrant(query: str, limit: int) -> list[NodeWithScore]:
     """Run hybrid retrieval directly via qdrant-client (dense + sparse fusion)."""
     vector_store = get_vector_store()
-    aclient = vector_store._aclient
+    aclient = getattr(vector_store, "_aclient", None) or getattr(vector_store, "aclient", None)
     if aclient is None:
         raise RuntimeError("Qdrant async client is not initialized")
     collection_name = vector_store.collection_name
 
     exists = await aclient.collection_exists(collection_name=collection_name)
     if not exists:
-        await aclient.create_collection(
-            collection_name=collection_name,
-            vectors_config={
-                vector_store.dense_vector_name: rest.VectorParams(
-                    size=settings.embedding_vector_size,
-                    distance=rest.Distance.COSINE,
-                )
-            },
-            sparse_vectors_config={
-                vector_store.sparse_vector_name: rest.SparseVectorParams(),
-            },
+        raise RuntimeError(
+            f"Qdrant collection '{collection_name}' does not exist. Please run the ingestion pipeline to build it."
         )
-        logger.warning(
-            "Qdrant collection '%s' did not exist. Auto-created empty collection; retrieval will be empty until ingestion finishes.",
-            collection_name,
-        )
-        return []
 
     dense_vector = await Settings.embed_model.aget_query_embedding(query)
-    sparse_indices, sparse_values = await asyncio.to_thread(vector_store._sparse_query_fn, [query])
+
+    sparse_query_fn = getattr(vector_store, "_sparse_query_fn", None) or getattr(vector_store, "sparse_query_fn", None)
+    if sparse_query_fn is None:
+        raise RuntimeError("Qdrant sparse query function is not available")
+
+    sparse_indices, sparse_values = await asyncio.to_thread(sparse_query_fn, [query])
     sparse_vector = rest.SparseVector(indices=sparse_indices[0], values=sparse_values[0])
 
     response = await aclient.query_points(
@@ -103,9 +94,10 @@ async def _hybrid_retrieve_via_qdrant(query: str, limit: int) -> list[NodeWithSc
     )
 
     nodes: list[NodeWithScore] = []
+    text_key = getattr(vector_store, "text_key", "text")
     for point in response.points:
         payload = point.payload or {}
-        text, metadata = _extract_text_and_metadata_from_payload(payload, vector_store.text_key)
+        text, metadata = _extract_text_and_metadata_from_payload(payload, text_key)
         node = TextNode(id_=str(point.id), text=text, metadata=metadata)
         nodes.append(NodeWithScore(node=node, score=float(point.score or 0.0)))
     return nodes

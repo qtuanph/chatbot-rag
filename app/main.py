@@ -49,11 +49,10 @@ async def lifespan(application: FastAPI):
             await embed_model.aget_text_embedding("warmup")
             logger.info("Embedding model warmed")
 
-            # 2. Warm Semantic Cache Index
             from app.core.redis import get_redis_client
             from app.utils.cache import SemanticCache
 
-            redis = await get_redis_client()
+            redis = get_redis_client()
             sem_cache = SemanticCache(vector_dim=settings.embedding_vector_size, client=redis)
             await sem_cache.init_index()
             logger.info("Semantic cache index warmed")

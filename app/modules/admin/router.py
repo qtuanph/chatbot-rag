@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import get_async_session
 from app.modules.chat.repositories.usage_repository import UsageRepository
+from app.api.deps import require_admin, AuthContext
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.get("/models")
-async def list_models():
+async def list_models(auth: AuthContext = Depends(require_admin)):
     """List available models from 9Router's connected providers."""
     proxy_base = settings.ai_proxy_url.rstrip("/")
     headers = {}
@@ -40,6 +41,7 @@ async def list_models():
 async def get_daily_usage(
     days: int = Query(30, ge=1, le=365),
     session: AsyncSession = Depends(get_async_session),
+    auth: AuthContext = Depends(require_admin),
 ):
     """Daily token usage breakdown for quota tracking."""
     repo = UsageRepository(session)

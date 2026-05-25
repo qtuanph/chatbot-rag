@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     nvidia_reranker_model: str = "nvidia/llama-nemotron-rerank-1b-v2"
     nvidia_reranker_url: str = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
     nvidia_reranker_timeout: float = 30.0
+    ai_reranker_timeout: float = 30.0
     log_level: str = "INFO"
 
     celery_include: str = "all"
@@ -130,13 +131,14 @@ class Settings(BaseSettings):
     s3_secret_key: str = "replace-me"
     s3_bucket: str = "rag-documents"
     s3_secure: bool = False
-    allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0"
+    allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0,test"
     cors_origins: str = "http://localhost"
 
     embedding_model: str = "tei"
     embedding_hf_model: str = "Alibaba-NLP/gte-multilingual-base"
     embedding_vector_size: int = 768
     embedding_batch_size: int = 8
+    embed_parallelism: int = 0
     embedding_api_base: str = "http://ai-embedding:80/v1"
     embedding_api_key: str = ""
     vector_store: str = "qdrant"

@@ -208,7 +208,7 @@ services:
       - internal
 
   redis:
-    image: redis:8-alpine
+    image: redis:8.6.3-trixie
     command: redis-server --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes --requirepass ${REDIS_PASSWORD:-}
     ports:
       - "127.0.0.1:6379:6379"

@@ -18,18 +18,78 @@ def _resolve_nvidia_rerank_url(url: str, model: str) -> str:
 
 TEMPLATES: list[dict] = [
     # Embedding
-    {"service_type": "embedding", "provider_name": "tei", "display_name": "TEI (Local)", "url": "http://ai-embedding:80/v1", "model": "Alibaba-NLP/gte-multilingual-base"},
-    {"service_type": "embedding", "provider_name": "openai", "display_name": "OpenAI", "url": "https://api.openai.com/v1", "model": "text-embedding-ada-002"},
-    {"service_type": "embedding", "provider_name": "openrouter", "display_name": "OpenRouter", "url": "https://openrouter.ai/api/v1", "model": "openai/text-embedding-3-small"},
-    {"service_type": "embedding", "provider_name": "nvidia", "display_name": "NVIDIA NIM", "url": "https://integrate.api.nvidia.com/v1", "model": "baai/bge-m3"},
-    {"service_type": "embedding", "provider_name": "gemini", "display_name": "Google Gemini", "url": "https://generativelanguage.googleapis.com/v1", "model": "text-embedding-004"},
-    {"service_type": "embedding", "provider_name": "cohere", "display_name": "Cohere", "url": "https://api.cohere.com/v1", "model": "embed-multilingual-v3.0"},
+    {
+        "service_type": "embedding",
+        "provider_name": "tei",
+        "display_name": "TEI (Local)",
+        "url": "http://ai-embedding:80/v1",
+        "model": "Alibaba-NLP/gte-multilingual-base",
+    },
+    {
+        "service_type": "embedding",
+        "provider_name": "openai",
+        "display_name": "OpenAI",
+        "url": "https://api.openai.com/v1",
+        "model": "text-embedding-ada-002",
+    },
+    {
+        "service_type": "embedding",
+        "provider_name": "openrouter",
+        "display_name": "OpenRouter",
+        "url": "https://openrouter.ai/api/v1",
+        "model": "openai/text-embedding-3-small",
+    },
+    {
+        "service_type": "embedding",
+        "provider_name": "nvidia",
+        "display_name": "NVIDIA NIM",
+        "url": "https://integrate.api.nvidia.com/v1",
+        "model": "baai/bge-m3",
+    },
+    {
+        "service_type": "embedding",
+        "provider_name": "gemini",
+        "display_name": "Google Gemini",
+        "url": "https://generativelanguage.googleapis.com/v1",
+        "model": "text-embedding-004",
+    },
+    {
+        "service_type": "embedding",
+        "provider_name": "cohere",
+        "display_name": "Cohere",
+        "url": "https://api.cohere.com/v1",
+        "model": "embed-multilingual-v3.0",
+    },
     # Reranker
-    {"service_type": "reranker", "provider_name": "tei", "display_name": "TEI (Local)", "url": "http://ai-reranker:80", "model": "Alibaba-NLP/gte-multilingual-reranker-base"},
-    {"service_type": "reranker", "provider_name": "nvidia", "display_name": "NVIDIA NIM", "url": "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking", "model": "nvidia/llama-nemotron-rerank-1b-v2"},
-    {"service_type": "reranker", "provider_name": "cohere", "display_name": "Cohere", "url": "https://api.cohere.com", "model": "rerank-multilingual-v3.0"},
+    {
+        "service_type": "reranker",
+        "provider_name": "tei",
+        "display_name": "TEI (Local)",
+        "url": "http://ai-reranker:80",
+        "model": "Alibaba-NLP/gte-multilingual-reranker-base",
+    },
+    {
+        "service_type": "reranker",
+        "provider_name": "nvidia",
+        "display_name": "NVIDIA NIM",
+        "url": "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking",
+        "model": "nvidia/llama-nemotron-rerank-1b-v2",
+    },
+    {
+        "service_type": "reranker",
+        "provider_name": "cohere",
+        "display_name": "Cohere",
+        "url": "https://api.cohere.com",
+        "model": "rerank-multilingual-v3.0",
+    },
     # LLM
-    {"service_type": "llm", "provider_name": "9router", "display_name": "9Router (Built-in)", "url": "http://ai-proxy:2908/v1", "model": "chatbot-rag"},
+    {
+        "service_type": "llm",
+        "provider_name": "9router",
+        "display_name": "9Router (Built-in)",
+        "url": "http://ai-proxy:2908/v1",
+        "model": "chatbot-rag",
+    },
 ]
 
 
@@ -71,15 +131,17 @@ class SettingsService:
     def create_from_template(self, template_name: str, api_key: str = "") -> dict | None:
         for t in TEMPLATES:
             if t["provider_name"] == template_name:
-                return self.repo.create_provider({
-                    "service_type": t["service_type"],
-                    "provider_name": t["provider_name"],
-                    "display_name": t["display_name"],
-                    "url": t["url"],
-                    "model": t["model"],
-                    "api_key": api_key,
-                    "priority": 0,
-                })
+                return self.repo.create_provider(
+                    {
+                        "service_type": t["service_type"],
+                        "provider_name": t["provider_name"],
+                        "display_name": t["display_name"],
+                        "url": t["url"],
+                        "model": t["model"],
+                        "api_key": api_key,
+                        "priority": 0,
+                    }
+                )
         return None
 
     # ── API Keys ──────────────────────────────────────────────────
@@ -128,8 +190,15 @@ class SettingsService:
                 test_url = f"{url}/chat/completions"
                 payload = {"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1}
 
-            if provider["service_type"] == "reranker" and provider.get("provider_name") == "nvidia" and api_key == "no-key":
-                return {"success": False, "message": "Thiếu NVIDIA API key trong SQLite (api_keys hoặc provider.api_key)." }
+            if (
+                provider["service_type"] == "reranker"
+                and provider.get("provider_name") == "nvidia"
+                and api_key == "no-key"
+            ):
+                return {
+                    "success": False,
+                    "message": "Thiếu NVIDIA API key trong SQLite (api_keys hoặc provider.api_key).",
+                }
 
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             async with httpx.AsyncClient(timeout=10) as client:

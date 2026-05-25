@@ -32,7 +32,7 @@ async def _verify_deletion_async(document_id: str, file_path: str | None, storag
             result = await asyncio.to_thread(
                 client.count,
                 collection_name=settings.qdrant_collection,
-                count_filter={"must": [{"key": "doc_id", "match": {"value": document_id}}]},
+                count_filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
             )
             qdrant_count = result.count if result else 0
     except ApiException as e:

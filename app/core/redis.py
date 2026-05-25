@@ -63,12 +63,19 @@ async def get_worker_redis() -> AsyncGenerator[redis.Redis, None]:
 # ── Sync Clients (For Simple Workers & Audit) ──────────────────────────
 
 
+_sync_pool: Any = None
+
+
 def get_sync_redis_client() -> Any:
     """
     Get a SYNCHRONOUS Redis client.
     The 'Gold Standard' for stability in Celery tasks that don't need async I/O.
     """
+    global _sync_pool
     import redis as redis_sync
 
-    pool = redis_sync.ConnectionPool.from_url(settings.redis_url_auth, max_connections=10, decode_responses=True)
-    return redis_sync.Redis(connection_pool=pool)
+    if _sync_pool is None:
+        _sync_pool = redis_sync.ConnectionPool.from_url(
+            settings.redis_url_auth, max_connections=10, decode_responses=True
+        )
+    return redis_sync.Redis(connection_pool=_sync_pool)

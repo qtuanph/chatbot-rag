@@ -109,14 +109,10 @@ class SettingsRepository:
             (provider_id, key_value),
         )
         self.db.commit()
-        return dict(
-            self.db.execute("SELECT * FROM api_keys WHERE id = ?", (cur.lastrowid,)).fetchone()
-        )
+        return dict(self.db.execute("SELECT * FROM api_keys WHERE id = ?", (cur.lastrowid,)).fetchone())
 
     def delete_key(self, provider_id: int, key_id: int) -> bool:
-        cur = self.db.execute(
-            "DELETE FROM api_keys WHERE id = ? AND provider_id = ?", (key_id, provider_id)
-        )
+        cur = self.db.execute("DELETE FROM api_keys WHERE id = ? AND provider_id = ?", (key_id, provider_id))
         self.db.commit()
         return cur.rowcount > 0
 
@@ -136,7 +132,5 @@ class SettingsRepository:
         return key["key_value"]
 
     def mark_key_failure(self, key_id: int) -> None:
-        self.db.execute(
-            "UPDATE api_keys SET failure_count = failure_count + 1 WHERE id = ?", (key_id,)
-        )
+        self.db.execute("UPDATE api_keys SET failure_count = failure_count + 1 WHERE id = ?", (key_id,))
         self.db.commit()

@@ -1,5 +1,5 @@
 """
-Ingestion Pipeline: Parse â†’ Validate â†’ Store Sections â†’ Embed & Index.
+Ingestion Pipeline: Parse → Validate → Store Sections → Embed & Index.
 Uses LlamaParse/cloud markdown parsing + LlamaIndex for chunking + embedding + Qdrant indexing.
 """
 
@@ -147,7 +147,7 @@ class IngestionService:
         if is_docx(ctx.filename):
             await report("parsing", 7, "Converting DOCX to PDF for accurate OCR...")
             try:
-                pdf_content, pdf_filename = convert_docx_to_pdf(ctx.content, ctx.filename)
+                pdf_content, pdf_filename = await asyncio.to_thread(convert_docx_to_pdf, ctx.content, ctx.filename)
                 content_to_parse = pdf_content
                 filename_to_parse = pdf_filename
             except Exception as docx_err:
@@ -190,7 +190,7 @@ class IngestionService:
             logger.warning("[%s] No nodes to index", ctx.document_id)
             return
 
-        await report("embedding", 40, "Dang bat dau embedding va ghi du lieu vao Qdrant...")
+        await report("embedding", 40, "Đang bắt đầu embedding và ghi dữ liệu vào Qdrant...")
 
         sections_data = getattr(ctx.parse_metadata, "sections_data", None) or []
         embedding_start = 40
@@ -204,7 +204,7 @@ class IngestionService:
             await report(
                 "embedding",
                 min(embedding_end, max(embedding_start, percent)),
-                f"Da embed {processed_docs}/{total_docs} chunk, dang ghi vao Qdrant...",
+                f"Đã embed {processed_docs}/{total_docs} chunk, đang ghi vào Qdrant...",
             )
 
         stored = await run_ingestion_pipeline(
@@ -214,6 +214,5 @@ class IngestionService:
             progress_callback=_on_pipeline_progress,
         )
 
-        await report("embedding", 95, "Embedding xong, dang hoan tat ghi va xac nhan du lieu trong Qdrant...")
+        await report("embedding", 95, "Embedding xong, đang hoàn tất ghi và xác nhận dữ liệu trong Qdrant...")
         logger.info("[%s] LlamaIndex pipeline stored %d nodes", ctx.document_id, stored)
-

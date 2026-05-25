@@ -14,8 +14,8 @@ from qdrant_client import AsyncQdrantClient, QdrantClient
 
 from app.core.config import settings
 
-_embed_async_semaphore = asyncio.Semaphore(1)
-_embed_sync_semaphore = threading.Semaphore(1)
+_embed_async_semaphore = asyncio.Semaphore(8)
+_embed_sync_semaphore = threading.Semaphore(8)
 
 
 class SequentialOpenAIEmbedding(OpenAIEmbedding):

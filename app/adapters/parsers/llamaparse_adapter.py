@@ -59,6 +59,8 @@ class LlamaParseParser(BaseParser):
 
                 logger.info("LlamaParse job started: %s. Polling for completion...", job_id)
 
+                max_polls = int(settings.llama_cloud_timeout // 2)
+                polls = 0
                 while True:
                     status_res = await client.get(f"{LLAMA_CLOUD_API_BASE}/job/{job_id}", headers=headers)
                     status_res.raise_for_status()
@@ -70,6 +72,12 @@ class LlamaParseParser(BaseParser):
                         break
                     elif status == "ERROR":
                         raise Exception(f"LlamaParse error: {status_data}")
+
+                    polls += 1
+                    if polls >= max_polls:
+                        raise TimeoutError(
+                            f"LlamaParse job {job_id} timed out after {settings.llama_cloud_timeout} seconds"
+                        )
 
                     await asyncio.sleep(2)
 

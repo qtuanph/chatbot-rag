@@ -40,8 +40,14 @@ def get_reranker(top_k: int | None = None) -> TEIRerankerPostprocessor | NvidiaR
             kwargs["timeout"] = settings.nvidia_reranker_timeout
             return NvidiaRerankerPostprocessor(**kwargs)
         elif name == "cohere":
-            kwargs["base_url"] = cfg.get("url", settings.ai_reranker_url)
-            return TEIRerankerPostprocessor(**kwargs)
+            effective_key = runtime.get_reranker_api_key() or cfg.get("api_key") or "no-key"
+            kwargs["base_url"] = cfg.get("url", "https://api.cohere.com")
+            kwargs["model_name"] = cfg.get("model", "rerank-multilingual-v3.0")
+            kwargs["api_key"] = effective_key
+            kwargs["timeout"] = settings.ai_reranker_timeout
+            from app.adapters.reranker.cohere_postprocessor import CohereRerankerPostprocessor
+
+            return CohereRerankerPostprocessor(**kwargs)
         else:
             kwargs["base_url"] = cfg.get("url", settings.ai_reranker_url)
             return TEIRerankerPostprocessor(**kwargs)
@@ -51,4 +57,10 @@ def get_reranker(top_k: int | None = None) -> TEIRerankerPostprocessor | NvidiaR
     return TEIRerankerPostprocessor(**kwargs)
 
 
-__all__ = ["TEIRerankerPostprocessor", "NvidiaRerankerPostprocessor", "build_reranker", "get_reranker"]
+__all__ = [
+    "TEIRerankerPostprocessor",
+    "NvidiaRerankerPostprocessor",
+    "CohereRerankerPostprocessor",
+    "build_reranker",
+    "get_reranker",
+]

@@ -51,13 +51,16 @@ class CleanupService:
         # 4. Document DB row (PostgreSQL)
         db_deleted = await self.doc_repo.hard_delete(document_id)
 
-        # 5. Clean up Redis task mapping
         if self.redis:
             try:
                 # redis client here is sync (from get_sync_redis_client), run in thread.
-                keys = await asyncio.to_thread(self.redis.keys, f"task:doc:*{document_id}*")
-                if keys:
-                    await asyncio.to_thread(self.redis.delete, *keys)
+                def _scan_and_delete():
+                    keys = list(self.redis.scan_iter(f"task:doc:*{document_id}*"))
+                    if keys:
+                        self.redis.delete(*keys)
+                    return len(keys)
+
+                await asyncio.to_thread(_scan_and_delete)
             except Exception as e:
                 logger.warning("[%s] Failed to clean task keys from Redis: %s", document_id, e)
 

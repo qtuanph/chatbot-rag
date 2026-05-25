@@ -133,7 +133,8 @@ Route (Controller)              Service (Business Logic)        Repository (Data
 | `chat` | Conversation & RAG | History, Retrieval logic, Memories |
 | `analytics` | Monitoring & Audit | Token tracking, Audit stream processing |
 | `system` | Orchestration | Health checks, Maintenance tasks, Global state |
-| `admin` | Provider Management | 9Router model listing |
+| `admin` | Provider Management | 9Router model listing (`GET /admin/models`) |
+| `settings` | AI Provider Config | CRUD + activate providers, manage API keys — backed by `settings.db` (SQLite) |
 
 ## Runtime Data Flow
 
@@ -208,7 +209,54 @@ Frontend: Settings page `/settings` with full CRUD. Content limit: 1000 chars pe
 
 ## AI Provider Architecture
 
-The project uses **9Router** (`decolua/9router:latest`) — a Next.js 16 AI router acting as an OpenAI-compatible proxy. All AI calls go through `LlamaIndex Settings`:
+### AI Provider Config (Project-owned SQLite)
+
+Project quản lý toàn bộ AI providers (Embedding, Reranker, LLM) qua trang **Admin → "Kết nối AI"** (`/admin/providers`), backed bởi **`settings.db`** — SQLite file riêng của project (không phải SQLite của 9Router).
+
+```
+Admin UI (/admin/providers)
+        ↓  POST /api/v1/settings/providers/{id}/activate
+FastAPI SettingsService → SettingsRepository → settings.db (SQLite)
+        ↓  RuntimeProviderManager.reload()
+LlamaIndex Settings.embed_model / Settings.llm (overridden in-process)
+```
+
+**SQLite schema** (`settings.db`):
+- `ai_providers` — id, service_type (embedding/reranker/llm), provider_name, display_name, url, model, api_key, is_active, is_builtin, priority
+- `api_keys` — round-robin key pool per provider (failure tracking)
+
+**Khởi động**: `init_llama_index()` → `RuntimeProviderManager.init()` → đọc `is_active=1` từ SQLite → override `Settings.embed_model` (embedding) và `Settings.llm` (nếu LLM không phải built-in).
+
+**Khi activate**: `POST /settings/providers/{id}/activate` → SQLite → `RuntimeProviderManager.reload()` → LlamaIndex Settings thay đổi ngay in-process (không restart).
+
+### Embedding Providers (switchable)
+
+| Provider | Seeded? | Default active |
+|----------|---------|----------------|
+| TEI (Local) — `gte-multilingual-base` | ✅ built-in | ✅ `is_active=1` |
+| OpenAI — `text-embedding-ada-002` | ✅ template | ❌ |
+| OpenRouter — `openai/text-embedding-3-small` | ✅ template | ❌ |
+| NVIDIA NIM — `baai/bge-m3` | ✅ template | ❌ |
+| Google Gemini — `text-embedding-004` | ✅ template | ❌ |
+| Cohere — `embed-multilingual-v3.0` | ✅ template | ❌ |
+
+Embedding URL format: OpenAI-compatible `/v1/embeddings`. Override applies to `Settings.embed_model = SequentialOpenAIEmbedding(api_base=url)`.
+
+### Reranker Providers (switchable)
+
+| Provider | Seeded? | Default active |
+|----------|---------|----------------|
+| TEI (Local) — `gte-multilingual-reranker-base` | ✅ built-in | ✅ `is_active=1` |
+| NVIDIA NIM — `nvidia/llama-nemotron-rerank-1b-v2` | ✅ template | ❌ |
+| Cohere — `rerank-multilingual-v3.0` | ✅ template | ❌ |
+
+Reranker config NOT overriding LlamaIndex Settings — instead `get_reranker()` calls `RuntimeProviderManager.get_reranker_config()` on every retrieval request.
+
+### LLM Provider (9Router — built-in, fixed)
+
+Project chỉ có **1 LLM provider: 9Router** (`is_builtin=1`, `is_active=1`). LLM tab trong UI chỉ hiển thị 9Router, nút Activate bị ẩn, không thể add/switch LLM khác từ UI.
+
+**9Router** (`decolua/9router:latest`) — Next.js 16 AI router, OpenAI-compatible proxy:
 
 ```
 FastAPI ChatService → Settings.llm = OpenAILike (api_base=ai-proxy:2908/v1)
@@ -226,7 +274,7 @@ FastAPI ChatService → Settings.llm = OpenAILike (api_base=ai-proxy:2908/v1)
 | Interface | Full OpenAI-compatible `/v1/chat/completions` + `/v1/models` |
 | Streaming | SSE via `stream: true` |
 | Format translation | Auto-convert between OpenAI ↔ Claude ↔ Gemini formats |
-| Provider mgmt | Dashboard UI at port 2908 (SQLite database) |
+| Provider mgmt (9Router-side) | 9Router Dashboard UI tại port 2908 (SQLite của 9Router — khác `settings.db`) |
 | RTK Token Saver | 20-40% token reduction via prompt compression |
 | 3-tier fallback | Subscription → Cheap → Free provider tiers |
 | Fallback | Auto-switch on quota exceeded, retry on 429/5xx |
