@@ -1,6 +1,8 @@
 # Trademark Policy
 
-This project name, logos, and branding assets are trademarks of the maintainer(s), unless explicitly stated otherwise.
+This project name, logos, branding assets, and official repository identity are the property of the project owner, unless explicitly stated otherwise.
+
+Official upstream repository: `https://github.com/qtuanph/chatbot-rag`
 
 ## Allowed Use
 
@@ -29,6 +31,10 @@ If you provide hosting, integration, or consulting based on a modified fork, you
 - Clearly disclose it is an unofficial fork
 - Publish corresponding source code changes as required by AGPL-3.0
 - Keep all license and attribution notices intact
+
+## Ownership Clarification
+
+Open-source licensing grants usage/modification rights under AGPL-3.0, but does not transfer ownership of the original repository, project identity, or trademarks.
 
 ## Requests
 

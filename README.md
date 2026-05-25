@@ -210,3 +210,9 @@ This project relies heavily on LlamaIndex core building blocks such as:
 This project is open-source under AGPL-3.0 with strict compliance expectations.
 If you deploy modified versions publicly, you must publish corresponding source code.
 Using this project's name/logo for unofficial commercial offerings is prohibited without permission.
+
+## Ownership Statement
+
+This repository (`qtuanph/chatbot-rag`) is the original work and official repository of the author/owner.
+All branding identity, project name, and official distribution rights remain with the owner.
+Open-source availability under AGPL-3.0 does not transfer ownership of the original project.
