@@ -1,0 +1,934 @@
+from __future__ import annotations
+
+import json
+import logging
+import time
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
+from typing import Any
+
+from llama_index.core import Settings
+from llama_index.core.base.llms.types import ChatMessage, MessageRole
+from llama_index.core.evaluation import FaithfulnessEvaluator
+from llama_index.core.response_synthesizers import ResponseMode, get_response_synthesizer
+from llama_index.core.schema import NodeWithScore, TextNode
+from llama_index.llms.openai_like import OpenAILike
+
+from app.core.config import settings
+from app.modules.chat.retrieval.pipeline import retrieve_context
+from app.modules.chat.retrieval.usage_tracker import track_usage
+from app.modules.chat.utils.query_normalizer import normalize_query, ALL_DEFAULT_STOPWORDS
+from app.modules.chat.utils.chat_utils import compute_cost, is_greeting
+from app.models.rag import RagContext, RagNode
+from app.modules.documents.repositories.section_repository import SectionRepository
+from app.modules.tenants.repository import TenantRepository
+
+logger = logging.getLogger("uvicorn.error")
+
+
+@dataclass
+class CompletionResult:
+    content: str
+    citations: list[dict[str, Any]]
+    usage: dict[str, Any]
+    model: str
+
+
+def _to_llama_role(role: str) -> MessageRole:
+    mapping = {
+        "system": MessageRole.SYSTEM,
+        "user": MessageRole.USER,
+        "assistant": MessageRole.ASSISTANT,
+        "tool": MessageRole.TOOL,
+    }
+    return mapping.get(role.lower(), MessageRole.USER)
+
+
+class PublicInferenceService:
+    def __init__(
+        self,
+        tenant_repo: TenantRepository,
+        section_repo: SectionRepository,
+        semantic_cache: Any = None,
+        redis_client: Any = None,
+    ) -> None:
+        self.tenant_repo = tenant_repo
+        self.section_repo = section_repo
+        self.semantic_cache = semantic_cache
+        self._redis = redis_client
+
+    async def _resolve_doc_cache_key(self, tenant_id: str) -> str:
+        if not tenant_id:
+            return "global"
+        cache_key = f"tenant_docs:{tenant_id}"
+        if self._redis:
+            try:
+                raw = await self._redis.get(cache_key)
+                if raw:
+                    return raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
+            except Exception:
+                pass
+
+        from app.modules.documents.repositories.access_repository import DocumentAccessRepository
+
+        access_repo = DocumentAccessRepository(self.section_repo.session)
+        doc_ids = await access_repo.get_document_ids_for_tenant(tenant_id)
+        if not doc_ids:
+            doc_key = tenant_id
+        else:
+            import hashlib
+
+            sorted_ids = ",".join(sorted(doc_ids))
+            doc_key = hashlib.sha256(sorted_ids.encode("utf-8")).hexdigest()[:16]
+
+        if self._redis:
+            try:
+                await self._redis.setex(cache_key, 300, doc_key)
+            except Exception:
+                pass
+        return doc_key
+
+    async def _check_tiered_cache(self, tenant_id: str, user_query: str) -> dict[str, Any] | None:
+        if self._redis and user_query:
+            from app.modules.chat.cache.faq_cache import faq_lookup
+
+            faq_hit = await faq_lookup(self._redis, tenant_id, user_query)
+            if faq_hit:
+                faq_hit["_cache_tier"] = "faq"
+                return faq_hit
+
+        if settings.exact_cache_enabled and self._redis:
+            from app.modules.chat.cache.exact_cache import exact_cache_get
+
+            doc_key = await self._resolve_doc_cache_key(tenant_id)
+            cached = await exact_cache_get(self._redis, doc_key, user_query)
+            if cached:
+                cached["_cache_tier"] = "exact"
+                return cached
+
+        if settings.retrieval_semantic_cache_enabled and self.semantic_cache and user_query:
+            normalized_query = normalize_query(user_query, stopwords=ALL_DEFAULT_STOPWORDS)
+            if normalized_query:
+                embed_model = Settings.embed_model
+                query_vector = await embed_model.aget_query_embedding(normalized_query)
+                cached = await self.semantic_cache.get(tenant_id, query_vector)
+                if cached:
+                    cached["_cache_tier"] = "semantic"
+                    return cached
+        return None
+
+    async def _write_tiered_cache(
+        self,
+        tenant_id: str,
+        user_query: str,
+        payload: dict[str, Any],
+        query_vector: list[float] | None = None,
+        normalized_query: str | None = None,
+    ) -> None:
+        content = payload.get("content", "") if payload else ""
+        if not content or content.strip() in ("", "Empty Response"):
+            return
+
+        if settings.exact_cache_enabled and self._redis:
+            from app.modules.chat.cache.exact_cache import exact_cache_set
+
+            doc_key = await self._resolve_doc_cache_key(tenant_id)
+            await exact_cache_set(
+                self._redis, doc_key, user_query, payload, ttl_seconds=settings.exact_cache_ttl_seconds
+            )
+
+        if settings.retrieval_semantic_cache_enabled and self.semantic_cache and normalized_query and query_vector:
+            await self.semantic_cache.set(tenant_id, normalized_query, query_vector, payload)
+
+    async def complete(
+        self,
+        *,
+        tenant_id: str,
+        messages: list[dict[str, str]],
+        thinking_mode: bool = False,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        user_id: str | None = None,
+        conversation_id: str | None = None,
+    ) -> CompletionResult:
+        if not conversation_id:
+            import uuid
+
+            conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
+
+        user_query = self._latest_user_query(messages)
+
+        from app.modules.chat.quota.quota_service import QuotaService
+
+        quota_svc = QuotaService(self._redis, tenant_repo=self.tenant_repo)
+        tenant_config = await quota_svc._get_tenant_config(tenant_id)
+
+        allowed, reason = await quota_svc.check_and_increment_rate(
+            tenant_id=tenant_id, user_id=user_id, tenant_config=tenant_config
+        )
+        if not allowed:
+            raise ValueError(f"Rate limit exceeded: {reason}")
+
+        allowed, reason = await quota_svc.check_and_increment_daily(tenant_id=tenant_id, user_id=user_id)
+        if not allowed:
+            raise ValueError(f"Daily request quota exceeded: {reason}")
+
+        cached = await self._check_tiered_cache(tenant_id, user_query)
+        if cached:
+            cache_tier = cached.pop("_cache_tier", "exact")
+            usage = cached.get("usage", {})
+            usage["cached"] = True
+            usage["cached_type"] = cache_tier
+            res = CompletionResult(
+                content=cached["content"],
+                citations=cached["citations"],
+                usage=usage,
+                model=cached.get("model", "cached"),
+            )
+            try:
+                from app.modules.chat.tasks.usage_tasks import log_model_usage_task
+
+                log_model_usage_task.delay(
+                    model_name=res.model,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    endpoint="/chat/completions",
+                    cost_micros_vnd=0,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    is_cache_hit=True,
+                    cached_type=cache_tier,
+                )
+            except Exception as exc:
+                logger.warning("Failed to log cache hit usage: %s", exc)
+
+            if settings.chat_history_persist_enabled and conversation_id:
+                try:
+                    from app.modules.chat.tasks.usage_tasks import save_conversation_turn_task
+
+                    save_conversation_turn_task.delay(
+                        tenant_id=tenant_id,
+                        conversation_id=conversation_id,
+                        user_content=user_query,
+                        assistant_content=res.content,
+                        citations=res.citations,
+                        usage=res.usage,
+                        model_name=res.model,
+                        is_cache_hit=True,
+                        cached_type=cache_tier,
+                        no_answer=False,
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to dispatch cached conversation save: %s", exc)
+            return res
+
+        allowed, reason = await quota_svc.reserve_llm_call(tenant_id=tenant_id)
+        if not allowed:
+            raise ValueError(f"Monthly LLM call limit exceeded: {reason}")
+
+        allowed, reason = await quota_svc.check_budget_before_llm(tenant_id=tenant_id)
+        if not allowed:
+            raise ValueError(f"Monthly budget limit reached: {reason}")
+
+        setting = await self._get_tenant_setting(tenant_id)
+        context = await self._resolve_context(
+            tenant_id=tenant_id,
+            messages=messages,
+            user_id=user_id,
+        )
+        llm_messages = self._build_messages(messages, setting, context)
+        llm = Settings.llm
+        previous_temperature = getattr(llm, "temperature", None)
+        previous_max_tokens = getattr(llm, "max_tokens", None)
+        if temperature is not None:
+            llm.temperature = temperature
+        if max_tokens is not None:
+            llm.max_tokens = max_tokens
+        t0 = time.perf_counter()
+        try:
+            response = await llm.achat(llm_messages)
+        finally:
+            if temperature is not None:
+                llm.temperature = previous_temperature
+            if max_tokens is not None:
+                llm.max_tokens = previous_max_tokens
+
+        latency_ms = (time.perf_counter() - t0) * 1000
+        usage = getattr(response, "additional_kwargs", {}) or {}
+        usage["latency_ms"] = latency_ms
+        content = ""
+        message = getattr(response, "message", None)
+        if message is not None and hasattr(message, "content"):
+            content = str(message.content or "")
+        if not content and hasattr(response, "text"):
+            content = str(response.text or "")
+        content = await self._ensure_grounded_answer(user_query=user_query, answer=content.strip(), context=context)
+        result = CompletionResult(
+            content=content,
+            citations=self._build_citations(context),
+            usage=self._normalize_usage(usage),
+            model=getattr(llm, "model", "chatbot-rag"),
+        )
+
+        await self._write_tiered_cache(
+            tenant_id=tenant_id,
+            user_query=user_query,
+            payload={
+                "content": result.content,
+                "citations": result.citations,
+                "usage": result.usage,
+                "model": result.model,
+            },
+        )
+
+        cost_micros = result.usage.get("cost_micros_vnd", 0)
+        total_tokens = result.usage.get("total_tokens", 0)
+        await quota_svc.record_cost_and_tokens(
+            tenant_id=tenant_id, cost_micros_vnd=cost_micros, total_tokens=total_tokens, tenant_config=tenant_config
+        )
+
+        provider = type("UsageProxy", (), {"last_usage": result.usage, "model_name": result.model})()
+        track_usage(provider, endpoint="public.chat.completions", tenant_id=tenant_id)
+
+        if settings.chat_history_persist_enabled and conversation_id:
+            try:
+                from app.modules.chat.tasks.usage_tasks import save_conversation_turn_task
+
+                save_conversation_turn_task.delay(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    user_content=user_query,
+                    assistant_content=result.content,
+                    citations=result.citations,
+                    usage=result.usage,
+                    model_name=result.model,
+                    is_cache_hit=False,
+                    cached_type=None,
+                    no_answer=not result.content
+                    or result.content.strip() == "Empty Response"
+                    or "chưa đủ căn cứ" in result.content.lower()
+                    or "chưa có đủ thông tin" in result.content.lower()
+                    or "chưa có thông tin" in result.content.lower()
+                    or "rất tiếc" in result.content.lower(),
+                )
+            except Exception as exc:
+                logger.warning("Failed to dispatch conversation save: %s", exc)
+
+        return result
+
+    async def stream_complete(
+        self,
+        *,
+        tenant_id: str,
+        messages: list[dict[str, str]],
+        thinking_mode: bool = False,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        user_id: str | None = None,
+        conversation_id: str | None = None,
+    ) -> AsyncGenerator[str, None]:
+        if not conversation_id:
+            import uuid
+
+            conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
+
+        user_query = self._latest_user_query(messages)
+
+        from app.modules.chat.quota.quota_service import QuotaService
+
+        quota_svc = QuotaService(self._redis, tenant_repo=self.tenant_repo)
+        tenant_config = await quota_svc._get_tenant_config(tenant_id)
+
+        allowed, reason = await quota_svc.check_and_increment_rate(
+            tenant_id=tenant_id, user_id=user_id, tenant_config=tenant_config
+        )
+        if not allowed:
+            yield f"data: {json.dumps({'error': True, 'code': 'rate_limited', 'message': reason})}\n\n"
+            return
+
+        allowed, reason = await quota_svc.check_and_increment_daily(tenant_id=tenant_id, user_id=user_id)
+        if not allowed:
+            yield f"data: {json.dumps({'error': True, 'code': 'daily_quota_exceeded', 'message': reason})}\n\n"
+            return
+
+        cached = await self._check_tiered_cache(tenant_id, user_query)
+        if cached:
+            cache_tier = cached.pop("_cache_tier", "exact")
+            created = int(time.time())
+            completion_id = f"chatcmpl-{created}"
+            model_name = cached["model"]
+
+            yield f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_name, 'choices': [{'index': 0, 'delta': {'content': cached['content']}, 'finish_reason': None}]})}\n\n"
+
+            usage = cached.get("usage", {})
+            usage["cached"] = True
+            usage["cached_type"] = cache_tier
+            yield f"data: {json.dumps({'done': True, 'citations': cached['citations'], 'stats': usage | {'model': model_name}})}\n\n"
+            yield f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_name, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}], 'citations': cached['citations'], 'usage': usage})}\n\n"
+            yield "data: [DONE]\n\n"
+
+            if settings.chat_history_persist_enabled and conversation_id:
+                try:
+                    from app.modules.chat.tasks.usage_tasks import save_conversation_turn_task
+
+                    save_conversation_turn_task.delay(
+                        tenant_id=tenant_id,
+                        conversation_id=conversation_id,
+                        user_content=user_query,
+                        assistant_content=cached["content"],
+                        citations=cached["citations"],
+                        usage=usage,
+                        model_name=model_name,
+                        is_cache_hit=True,
+                        cached_type=cache_tier,
+                        no_answer=False,
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to dispatch cached conversation stream save: %s", exc)
+            return
+
+        allowed, reason = await quota_svc.reserve_llm_call(tenant_id=tenant_id)
+        if not allowed:
+            yield f"data: {json.dumps({'error': True, 'code': 'monthly_quota_exceeded', 'message': reason})}\n\n"
+            return
+
+        allowed, reason = await quota_svc.check_budget_before_llm(tenant_id=tenant_id)
+        if not allowed:
+            yield f"data: {json.dumps({'error': True, 'code': 'budget_hard_stop', 'message': reason})}\n\n"
+            return
+
+        setting = await self._get_tenant_setting(tenant_id)
+        context = await self._resolve_context(
+            tenant_id=tenant_id,
+            messages=messages,
+            user_id=user_id,
+        )
+        llm_messages = self._build_messages(messages, setting, context)
+        llm = Settings.llm
+        previous_temperature = getattr(llm, "temperature", None)
+        previous_max_tokens = getattr(llm, "max_tokens", None)
+        if temperature is not None:
+            llm.temperature = temperature
+        if max_tokens is not None:
+            llm.max_tokens = max_tokens
+
+        created = int(time.time())
+        model_name = getattr(llm, "model", "chatbot-rag")
+        completion_id = f"chatcmpl-{created}"
+        usage_info: dict[str, Any] = {}
+        collected_text = ""
+        user_query = self._latest_user_query(messages)
+        try:
+            t0 = time.perf_counter()
+            if thinking_mode:
+                yield f"data: {json.dumps({'thinking': True, 'done': False})}\n\n"
+            response = await llm.astream_chat(llm_messages)
+            async for chunk in response:
+                delta = chunk.delta if hasattr(chunk, "delta") else str(chunk)
+                if delta:
+                    collected_text += delta
+                    payload = {
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": model_name,
+                        "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}],
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                if hasattr(chunk, "additional_kwargs") and isinstance(chunk.additional_kwargs, dict):
+                    usage_info.update(chunk.additional_kwargs)
+        finally:
+            if temperature is not None:
+                llm.temperature = previous_temperature
+            if max_tokens is not None:
+                llm.max_tokens = previous_max_tokens
+            usage_info["latency_ms"] = (time.perf_counter() - t0) * 1000
+
+        final_text = collected_text.strip()
+        result = CompletionResult(
+            content=final_text,
+            citations=self._build_citations(context),
+            usage=self._normalize_usage(usage_info),
+            model=model_name,
+        )
+
+        await self._write_tiered_cache(
+            tenant_id=tenant_id,
+            user_query=user_query,
+            payload={
+                "content": result.content,
+                "citations": result.citations,
+                "usage": result.usage,
+                "model": result.model,
+            },
+        )
+
+        cost_micros = result.usage.get("cost_micros_vnd", 0)
+        total_tokens = result.usage.get("total_tokens", 0)
+        await quota_svc.record_cost_and_tokens(
+            tenant_id=tenant_id, cost_micros_vnd=cost_micros, total_tokens=total_tokens, tenant_config=tenant_config
+        )
+
+        provider = type("UsageProxy", (), {"last_usage": result.usage, "model_name": result.model})()
+        track_usage(provider, endpoint="public.chat.stream", tenant_id=tenant_id)
+        yield f"data: {json.dumps({'done': True, 'citations': result.citations, 'stats': result.usage | {'model': result.model}})}\n\n"
+
+        if thinking_mode:
+            yield f"data: {json.dumps({'thinking': False, 'done': False})}\n\n"
+        final_payload = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model_name,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            "citations": result.citations,
+            "usage": result.usage,
+        }
+        yield f"data: {json.dumps(final_payload)}\n\n"
+        yield "data: [DONE]\n\n"
+
+        if settings.chat_history_persist_enabled and conversation_id:
+            try:
+                from app.modules.chat.tasks.usage_tasks import save_conversation_turn_task
+
+                save_conversation_turn_task.delay(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    user_content=user_query,
+                    assistant_content=result.content,
+                    citations=result.citations,
+                    usage=result.usage,
+                    model_name=result.model,
+                    is_cache_hit=False,
+                    cached_type=None,
+                    no_answer=not result.content
+                    or result.content.strip() == "Empty Response"
+                    or "chưa đủ căn cứ" in result.content.lower()
+                    or "chưa có đủ thông tin" in result.content.lower()
+                    or "chưa có thông tin" in result.content.lower()
+                    or "rất tiếc" in result.content.lower(),
+                )
+            except Exception as exc:
+                logger.warning("Failed to dispatch stream conversation save: %s", exc)
+
+    async def _get_tenant_setting(self, tenant_id: str) -> dict[str, Any]:
+        tenant = await self.tenant_repo.get_tenant(tenant_id)
+        if tenant is None:
+            raise ValueError("Tenant not found")
+        setting = await self.tenant_repo.get_setting(tenant_id)
+        if setting is None:
+            return {"system_instruction": ""}
+        return setting
+
+    @staticmethod
+    def _latest_user_query(messages: list[dict[str, str]]) -> str:
+        for message in reversed(messages):
+            if message.get("role") == "user" and message.get("content", "").strip():
+                return message["content"].strip()
+        raise ValueError("At least one user message is required")
+
+    @staticmethod
+    def _build_retrieval_queries(messages: list[dict[str, str]]) -> list[str]:
+        user_messages = [
+            message.get("content", "").strip()
+            for message in messages
+            if message.get("role") == "user" and message.get("content", "").strip()
+        ]
+        if not user_messages:
+            raise ValueError("At least one user message is required")
+
+        history_count = max(0, min(settings.retrieval_history_query_count, len(user_messages) - 1))
+        if history_count == 0:
+            return [user_messages[-1]]
+
+        queries: list[str] = [user_messages[-1]]
+        for previous in user_messages[-history_count - 1 : -1]:
+            if previous and previous not in queries:
+                queries.append(previous)
+        return queries[: history_count + 1]
+
+    async def _resolve_context(
+        self,
+        *,
+        tenant_id: str,
+        messages: list[dict[str, str]],
+        user_id: str | None,
+    ) -> RagContext:
+        user_query = self._latest_user_query(messages)
+        if is_greeting(user_query):
+            self._emit_debug("RAG_BYPASS", tenant_id=tenant_id, query=user_query, reason="greeting")
+            return RagContext(nodes=[], sections=None, confidence={"node_count": 0, "bypass_reason": "greeting"})
+
+        try:
+            context = await retrieve_context(
+                self._build_retrieval_queries(messages),
+                limit=settings.retrieval_rerank_top_k,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+            return await self._hydrate_context(context)
+        except Exception as e:
+            self._emit_debug("RAG_RETRIEVAL_ERROR", error=str(e), tenant_id=tenant_id)
+            from app.models.rag import RagNode
+
+            error_node = RagNode(
+                node_id="sys_error",
+                parent_id=None,
+                document_id="sys",
+                document_title="System Status",
+                heading="Missing Documents",
+                summary="System has no documents.",
+                full_text="[SYSTEM INSTRUCTION] Hiện tại hệ thống chưa có tài liệu nào, hoặc dữ liệu đang được khởi tạo. Bạn hãy phản hồi một cách lịch sự, yêu cầu người dùng upload thêm tài liệu vào hệ thống để bạn có thể hỗ trợ họ nhé.",
+                page_range=None,
+                section_id=None,
+                section_code=None,
+                breadcrumb=tuple(),
+                node_kind="system",
+                score=1.0,
+            )
+            return RagContext(nodes=[error_node], sections=None, confidence={"node_count": 1, "error": str(e)})
+
+    async def _hydrate_context(self, context: RagContext) -> RagContext:
+        if not settings.retrieval_section_hydration_enabled or not context.nodes:
+            return context
+
+        target_nodes = [node for node in context.nodes[: settings.retrieval_section_hydration_top_k] if node.section_id]
+        section_doc_pairs = [
+            (node.document_id, node.section_id) for node in target_nodes if node.document_id and node.section_id
+        ]
+        if not section_doc_pairs:
+            return context
+
+        section_map = {}
+        missing_pairs = []
+
+        if self._redis and section_doc_pairs:
+            cache_keys = [f"rag:section:{d}:{s}" for d, s in section_doc_pairs]
+            try:
+                cached_list = await self._redis.mget(cache_keys)
+                for (doc_id, sec_id), cached in zip(section_doc_pairs, cached_list):
+                    key = (doc_id, sec_id)
+                    if cached:
+                        try:
+                            section_map[key] = json.loads(cached)
+                            continue
+                        except Exception:
+                            pass
+                    missing_pairs.append(key)
+            except Exception as exc:
+                logger.warning("_hydrate_rag_nodes redis mget error: %s", exc)
+                missing_pairs = list(section_doc_pairs)
+        else:
+            missing_pairs = list(section_doc_pairs)
+
+        if missing_pairs:
+            section_rows = await self.section_repo.get_sections_for_rag(missing_pairs)
+            pipe = self._redis.pipeline() if self._redis else None
+            for row in section_rows:
+                key = (str(row.get("document_id") or ""), str(row.get("section_id") or ""))
+                cache_dict = {
+                    "content": str(row.get("content") or ""),
+                    "title": str(row.get("title") or ""),
+                    "page_range": row.get("page_range"),
+                }
+                section_map[key] = cache_dict
+                if pipe:
+                    pipe.setex(f"rag:section:{key[0]}:{key[1]}", 3600, json.dumps(cache_dict))
+            if pipe:
+                try:
+                    await pipe.execute()
+                except Exception as exc:
+                    logger.warning("_hydrate_rag_nodes redis pipeline error: %s", exc)
+        hydrated_nodes: list[RagNode] = []
+        for node in context.nodes:
+            key = (node.document_id, node.section_id or "")
+            section = section_map.get(key)
+            if not section:
+                hydrated_nodes.append(node)
+                continue
+            full_text = str(section.get("content") or node.full_text or "").strip() or node.full_text
+            heading = str(section.get("title") or node.heading or "").strip() or node.heading
+            page_range = section.get("page_range") or node.page_range
+            hydrated_nodes.append(
+                RagNode(
+                    node_id=node.node_id,
+                    parent_id=node.parent_id,
+                    document_id=node.document_id,
+                    document_title=node.document_title,
+                    heading=heading,
+                    summary=full_text[:400],
+                    full_text=full_text,
+                    page_range=str(page_range) if page_range else None,
+                    section_id=node.section_id,
+                    section_code=node.section_code,
+                    breadcrumb=node.breadcrumb,
+                    node_kind=node.node_kind,
+                    score=node.score,
+                )
+            )
+        return RagContext(nodes=hydrated_nodes, sections=context.sections, confidence=context.confidence)
+
+    @staticmethod
+    def _preview_text(text: str, limit: int = 240) -> str:
+        normalized = " ".join(str(text or "").split())
+        if len(normalized) <= limit:
+            return normalized
+        return f"{normalized[:limit]}..."
+
+    def _context_debug_payload(self, context: RagContext, limit: int = 5) -> list[dict[str, Any]]:
+        return [
+            {
+                "node_id": node.node_id,
+                "score": round(float(node.score or 0.0), 6),
+                "document_id": node.document_id,
+                "document_title": node.document_title,
+                "section_id": node.section_id,
+                "heading": node.heading,
+                "page_range": node.page_range,
+                "preview": self._preview_text(node.full_text or node.summary or ""),
+            }
+            for node in context.nodes[:limit]
+        ]
+
+    @staticmethod
+    def _emit_debug(event: str, **payload: Any) -> None:
+        message = json.dumps({"event": event, **payload}, ensure_ascii=False)
+        logger.info(message)
+        print(message, flush=True)
+
+    def _build_messages(self, messages: list[dict[str, str]], setting: dict[str, Any], context) -> list[ChatMessage]:
+        context_blocks = []
+        total_chars = 0
+        max_chars = settings.retrieval_context_max_chars
+
+        for idx, node in enumerate(context.nodes, start=1):
+            title = node.document_title or "Document"
+            heading = node.heading or "Relevant section"
+            section_code = f" [{node.section_code}]" if node.section_code else ""
+            page = f" (page {node.page_range})" if node.page_range else ""
+            breadcrumb = " > ".join(node.breadcrumb or ())
+            breadcrumb_line = f"\nĐường dẫn: {breadcrumb}" if breadcrumb else ""
+
+            block_text = f"[Nguồn {idx}] {title} - {heading}{section_code}{page}{breadcrumb_line}\n{node.full_text}"
+
+            if total_chars + len(block_text) > max_chars:
+                break
+
+            context_blocks.append(block_text)
+            total_chars += len(block_text)
+
+        system_prompt = (
+            "Bạn là trợ lý doanh nghiệp hoạt động trong đúng phạm vi tenant hiện tại. "
+            "Trả lời câu hỏi dựa trên các thông tin và ngữ cảnh truy xuất được cung cấp dưới đây."
+        )
+        tenant_instruction = (setting.get("system_instruction") or "").strip()
+        if tenant_instruction:
+            system_prompt += f"\n\nInstruction riêng của tenant:\n{tenant_instruction}"
+        if context_blocks:
+            system_prompt += "\n\nNgữ cảnh truy xuất từ tài liệu:\n" + "\n\n".join(context_blocks)
+            system_prompt += (
+                "\n\nQUY TẮC PHẢN HỒI BẮT BUỘC:"
+                "\n- ĐỌC KỸ TOÀN BỘ tất cả các [Nguồn 1], [Nguồn 2], ... được cung cấp ở trên trước khi đưa ra câu trả lời."
+                "\n- Kiểm tra kỹ cả các phần metadata tiêu đề, người tạo, người duyệt, ngày tháng ở phần đầu các nguồn thông tin."
+                "\n- Trình bày câu trả lời đẹp mắt, dễ đọc bằng Markdown chuẩn (dùng danh sách gạch đầu dòng - hoặc tiêu đề ###). Xuống dòng rõ ràng giữa các mục."
+                "\n- Hãy linh hoạt tổng hợp và trả lời đầy đủ, chính xác dựa trên tất cả thông tin và ngữ cảnh tài liệu được cung cấp."
+                "\n- Bám sát thông tin trong tài liệu, không tự ý suy đoán hoặc đưa ra các quy trình không có trong dữ liệu."
+                "\n- Nếu ngữ cảnh tài liệu chứa các ý liên quan tới một phần hoặc toàn bộ câu hỏi, hãy trình bày chi tiết và rõ ràng từng nội dung đó để giải đáp cho người dùng."
+            )
+        else:
+            system_prompt += (
+                "\n\nCẢNH BÁO: Hiện tại KHÔNG CÓ bất kỳ nguồn tài liệu nào được tìm thấy hoặc Tenant chưa được cấp quyền truy cập tài liệu."
+                "\n\nQUY TẮC BẮT BUỘC KHÓA AI (STRICT ENTERPRISE RAG):"
+                "\n- BẮT BUỘC trả lời chính xác: 'Xin lỗi, hiện tại hệ thống chưa tìm thấy dữ liệu hoặc tài liệu chưa được phân quyền truy cập cho Tenant để trả lời câu hỏi này.'"
+                "\n- TUYỆT ĐỐI KHÔNG DÙNG kiến thức chung bên ngoài hay tự đoán định nghĩa (ví dụ: không được tự ý giải thích các thuật ngữ công nghệ bên ngoài tài liệu)."
+            )
+
+        llm_messages = [ChatMessage(role=MessageRole.SYSTEM, content=system_prompt)]
+        recent_messages = messages[-settings.ai_max_history_messages :]
+        for message in recent_messages:
+            llm_messages.append(
+                ChatMessage(role=_to_llama_role(message["role"]), content=message.get("content", "").strip())
+            )
+        self._emit_debug(
+            "RAG_PROMPT",
+            tenant_instruction=bool(tenant_instruction),
+            context_nodes=len(context.nodes),
+            recent_messages=len(recent_messages),
+            context=self._context_debug_payload(context),
+        )
+        return llm_messages
+
+    @staticmethod
+    def _build_citations(context) -> list[dict[str, Any]]:
+        citations: list[dict[str, Any]] = []
+        for idx, node in enumerate(context.nodes, start=1):
+            citations.append(
+                {
+                    "index": idx,
+                    "document_id": node.document_id,
+                    "title": node.document_title,
+                    "heading": node.heading,
+                    "section_code": node.section_code,
+                    "breadcrumb": list(node.breadcrumb or ()),
+                    "page_range": node.page_range,
+                    "node_id": node.node_id,
+                }
+            )
+        return citations
+
+    @staticmethod
+    def _normalize_usage(usage: dict[str, Any]) -> dict[str, Any]:
+        prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
+        completion_tokens = int(usage.get("completion_tokens", 0) or 0)
+        total_tokens = int(usage.get("total_tokens", prompt_tokens + completion_tokens) or 0)
+        latency_ms = float(usage.get("latency_ms", 0.0) or 0.0)
+        result = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "latency_ms": latency_ms,
+        }
+        result.update(compute_cost(prompt_tokens, completion_tokens))
+        return result
+
+    def _build_insufficient_evidence_answer(self, context: RagContext) -> str:
+        return "Rất tiếc, chưa đủ căn cứ trong tài liệu để trả lời câu hỏi này."
+
+    async def _ensure_grounded_answer(self, *, user_query: str, answer: str, context: RagContext) -> str:
+        if not answer.strip():
+            return answer.strip()
+        confidence = context.confidence or {}
+        if confidence.get("bypass_reason") == "greeting":
+            self._emit_debug("RAG_GROUNDING", query=user_query, decision="bypass-greeting")
+            return answer.strip()
+
+        contexts = [
+            "\n".join(part for part in [node.document_title, node.heading, node.full_text] if part).strip()
+            for node in context.nodes
+            if (node.full_text or "").strip() or (node.heading or "").strip()
+        ]
+        if not contexts:
+            self._emit_debug("RAG_GROUNDING", query=user_query, decision="no-context", fallback="insufficient-evidence")
+            return self._build_insufficient_evidence_answer(context)
+
+        # When document contexts are found via retrieval (BM25/Qdrant),
+        # return the LLM's synthesized response directly.
+        self._emit_debug("RAG_GROUNDING", query=user_query, decision="pass-with-context")
+        return answer.strip()
+
+    @staticmethod
+    def _should_run_grounding_verification(context: RagContext) -> bool:
+        confidence = context.confidence or {}
+        node_count = int(confidence.get("node_count", len(context.nodes)) or len(context.nodes))
+        top_score = float(confidence.get("top_score", 0.0) or 0.0)
+        dominance_ratio = float(confidence.get("dominance_ratio", 0.0) or 0.0)
+        unique_document_count = int(confidence.get("unique_document_count", 0) or 0)
+
+        if node_count == 0:
+            return True
+        if (
+            node_count <= 2
+            and unique_document_count <= 1
+            and top_score > 0
+            and dominance_ratio >= settings.retrieval_rerank_skip_dominance_ratio
+        ):
+            return False
+        return True
+
+    async def _evaluate_faithfulness(
+        self,
+        *,
+        user_query: str,
+        answer: str,
+        contexts: list[str],
+    ) -> Any | None:
+        try:
+            evaluator_llm = Settings.llm
+            if settings.ai_evaluation_model:
+                from app.modules.settings.runtime_manager import RuntimeProviderManager
+
+                runtime = RuntimeProviderManager.get_instance()
+                evaluator_llm = OpenAILike(
+                    model=settings.ai_evaluation_model,
+                    api_base=(runtime.get_llm_api_base() or "http://ai-proxy:2908") + "/v1",
+                    api_key=runtime.get_llm_api_key() or "no-key",
+                    is_chat_model=True,
+                    temperature=0.0,
+                    context_window=128000,
+                    max_tokens=settings.ai_max_output_tokens,
+                    timeout=settings.ai_proxy_timeout,
+                )
+            evaluator = FaithfulnessEvaluator(llm=evaluator_llm, raise_error=False)
+            return await evaluator.aevaluate(
+                query=user_query,
+                response=answer,
+                contexts=contexts,
+            )
+        except Exception:
+            return None
+
+    @staticmethod
+    def _is_faithful(evaluation: Any) -> bool:
+        if getattr(evaluation, "invalid_result", False):
+            return False
+        passing = getattr(evaluation, "passing", None)
+        # Explicitly failed → reject
+        if passing is False:
+            score = getattr(evaluation, "score", None)
+            # But if score is None (evaluator unsure) or > 0, give benefit of doubt
+            if score is not None and float(score) > 0:
+                return True
+            return False
+        # passing=True or passing=None (evaluator inconclusive) → accept AI answer
+        return True
+
+    async def _synthesize_grounded_answer(self, *, user_query: str, context: RagContext) -> str | None:
+        nodes = self._to_source_nodes(context)
+        if not nodes:
+            return None
+
+        try:
+            synthesizer = get_response_synthesizer(
+                llm=Settings.llm,
+                response_mode=ResponseMode.REFINE,
+                structured_answer_filtering=True,
+                use_async=True,
+            )
+            response = await synthesizer.asynthesize(
+                query=user_query,
+                nodes=nodes,
+            )
+        except Exception:
+            logger.warning("RAG_SYNTHESIZE query=%r failed", user_query, exc_info=True)
+            return None
+
+        response_text = getattr(response, "response", None) or getattr(response, "response_txt", None) or str(response)
+        cleaned = str(response_text or "").strip()
+        self._emit_debug(
+            "RAG_SYNTHESIZE",
+            query=user_query,
+            nodes=len(nodes),
+            response_preview=self._preview_text(cleaned),
+        )
+        return cleaned or None
+
+    @staticmethod
+    def _to_source_nodes(context: RagContext) -> list[NodeWithScore]:
+        source_nodes: list[NodeWithScore] = []
+        for node in context.nodes:
+            text = str(node.full_text or "").strip()
+            if not text:
+                continue
+            text_node = TextNode(
+                id_=node.node_id,
+                text=text,
+                metadata={
+                    "document_id": node.document_id,
+                    "document_title": node.document_title,
+                    "heading": node.heading,
+                    "section_id": node.section_id,
+                    "page_range": node.page_range,
+                },
+            )
+            source_nodes.append(NodeWithScore(node=text_node, score=float(node.score or 0.0)))
+        return source_nodes
