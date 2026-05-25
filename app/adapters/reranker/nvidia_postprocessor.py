@@ -9,6 +9,16 @@ from llama_index.core.schema import NodeWithScore, QueryBundle
 from app.core.config import settings
 
 
+def resolve_nvidia_rerank_url(base_url: str, model_name: str) -> str:
+    """Support both full endpoint URL and base URL style."""
+    u = (base_url or "").strip().rstrip("/")
+    if u.endswith("/reranking"):
+        return u
+    if "/v1/retrieval/" in u:
+        return f"{u}/reranking"
+    return f"{u}/v1/retrieval/{model_name}/reranking"
+
+
 class NvidiaRerankerPostprocessor(BaseNodePostprocessor):
     """Rerank retrieved nodes using NVIDIA NIM API."""
 
@@ -32,9 +42,10 @@ class NvidiaRerankerPostprocessor(BaseNodePostprocessor):
             "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json",
         }
+        target_url = resolve_nvidia_rerank_url(self.base_url, self.model_name)
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(self.base_url, json=payload, headers=headers)
+            resp = await client.post(target_url, json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()
 

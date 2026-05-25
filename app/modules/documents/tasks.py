@@ -47,7 +47,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 status="processing",
                 stage="initializing",
                 progress_percent=5,
-                status_message="[1/4] Dang khoi tao moi truong nap lieu...",
+                status_message="[1/4] Đang khởi tạo môi trường nạp liệu...",
             )
 
             async_redis = get_redis_client()
@@ -180,7 +180,7 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
             doc_repo = DocumentRepository(session)
             section_repo = SectionRepository(session)
 
-            await _rechunk_progress("rechunking", 5, "[1/4] Dang doc OCR markdown tu S3...")
+            await _rechunk_progress("rechunking", 5, "[1/4] Đang đọc OCR markdown từ S3...")
 
             async_redis = get_redis_client()
             try:
@@ -188,7 +188,7 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                 markdown_text = md_bytes.decode("utf-8")
                 logger.info("[%s] Loaded %d bytes of OCR markdown from S3", document_id, len(md_bytes))
 
-                await _rechunk_progress("rechunking", 15, "[2/4] Dang chia lai node tu markdown...")
+                await _rechunk_progress("rechunking", 15, "[2/4] Đang chia lại node từ markdown...")
 
                 nodes, sections_data = LlamaParseParser.parse_from_markdown(
                     markdown_text, document_id, source_format="markdown"
@@ -197,7 +197,7 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                     "[%s] Local parsing produced %d nodes, %d sections", document_id, len(nodes), len(sections_data)
                 )
 
-                await _rechunk_progress("rechunking", 25, "[2/4] Dang don dep du lieu cu...")
+                await _rechunk_progress("rechunking", 25, "[2/4] Đang dọn dẹp dữ liệu cũ...")
 
                 try:
                     from app.core.llama_index import get_vector_store
@@ -209,14 +209,29 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                 except Exception as clean_err:
                     logger.warning("[%s] Partial cleanup error: %s", document_id, clean_err)
 
-                await _rechunk_progress("rechunking", 35, "[3/4] Dang luu sections vao DB...")
+                await _rechunk_progress("rechunking", 35, "[3/4] Đang lưu sections vào DB...")
                 await section_repo.store_sections(document_id, sections_data)
 
-                await _rechunk_progress("rechunking", 40, "[4/4] Dang embedding va index vao Qdrant...")
+                await _rechunk_progress("rechunking", 40, "[4/4] Đang embedding và index vào Qdrant...")
 
                 from app.modules.documents.ingestion.pipeline import run_ingestion_pipeline
 
-                stored = await run_ingestion_pipeline(nodes, document_id, sections_data)
+                async def _on_rechunk_pipeline_progress(processed_docs: int, total_docs: int, total_stored: int):
+                    if total_docs <= 0:
+                        return
+                    percent = 40 + int((95 - 40) * (processed_docs / total_docs))
+                    await _rechunk_progress(
+                        "rechunking",
+                        min(95, max(40, percent)),
+                        f"[4/4] Đã embed {processed_docs}/{total_docs} chunk, đang ghi vector vào Qdrant...",
+                    )
+
+                stored = await run_ingestion_pipeline(
+                    nodes,
+                    document_id,
+                    sections_data,
+                    progress_callback=_on_rechunk_pipeline_progress,
+                )
                 logger.info("[%s] Rechunk complete: %d nodes stored in Qdrant", document_id, stored)
 
                 for sec in sections_data:

@@ -1,171 +1,183 @@
-{
-  "document": {
-    "id": "7_CURRENT_SETTINGS",
-    "version": "2026-05-22",
-    "purpose": "Current project settings snapshot — all defaults, env vars, and runtime parameters. AI reads this for accurate config context."
-  },
-  "ai_inference": {
-    "embedding": {
-      "service": "OpenAI-compatible (managed via SQLite → /admin/providers)",
-      "protocol": "OpenAI /v1/embeddings",
-      "default_provider": "TEI container (ai-embedding:80) — seeded in SQLite",
-      "image": "ghcr.io/huggingface/text-embeddings-inference:turing-1.9",
-      "model": "Alibaba-NLP/gte-multilingual-base",
-      "dimensions": 768,
-      "context_length": 32768,
-      "batch_size": 16,
-      "config_source": "SQLite → settings_db → RuntimeProviderManager overrides Settings.embed_model"
-    },
-    "reranker": {
-      "backend": "Managed via SQLite — active provider selected in /admin/providers",
-      "default": "TEI local (ai-reranker:80) — seeded as active",
-      "providers": {
-        "tei": {"model": "Alibaba-NLP/gte-multilingual-reranker-base", "endpoint": "POST /rerank"},
-        "nvidia": {"model": "nvidia/llama-nemotron-rerank-vl-1b-v2", "endpoint": "NVIDIA NIM API"},
-        "cohere": {"model": "rerank-multilingual-v3.0", "endpoint": "Cohere /rerank"}
-      },
-      "config_source": "SQLite → reranker/__init__.py reads from RuntimeProviderManager"
-    },
-    "llm_provider": {
-      "service": "ai-proxy (9Router) — built-in, managed via SQLite",
-      "image": "decolua/9router:latest",
-      "url": "http://ai-proxy:2908",
-      "interface": "OpenAI-compatible /v1/chat/completions",
-      "streaming": "SSE",
-      "config_source": "SQLite (is_builtin=1, UI disabled for now)"
-    }
-  },
-  "retrieval": {
-    "section_top_k": 99,
-    "context_max_chars": 30000,
-    "chunk_top_k": 30,
-    "chunk_size": 500,
-    "chunk_overlap": 75,
-    "fetch_multiplier": 5,
-    "rerank_enabled": true,
-    "rerank_top_k": 10,
-    "context_expansion_window": 0,
-
-    "confidence_threshold_high": 0.7,
-    "confidence_avg_high": 0.5,
-    "confidence_threshold_low": 0.4,
-    "query_refinement_enabled": false,
-    "query_refinement_ttl": 600,
-    "query_refinement_timeout": 2.0,
-    "query_expansion_enabled": false,
-    "query_expansion_variants": 2,
-    "query_expansion_timeout": 3.0,
-    "expansion_scroll_limit": 50,
-    "semantic_cache_enabled": true,
-    "semantic_cache_threshold": 0.08,
-    "normalize_enabled": true,
-    "max_rerank_candidates": 15
-  },
-  "chat": {
-    "history_limit": 40,
-    "history_redis_ttl": 86400,
-    "max_history_messages": 10,
-    "session_ttl_days": 30,
-    "temperature": 0.3,
-    "max_output_tokens": 8192,
-    "proxy_timeout": 120.0,
-    "stream_timeout": 1800.0,
-    "http_timeout_refine": 30.0,
-    "http_keepalive_expiry": 30.0,
-    "http_max_connections": 50,
-    "http_keepalive_connections": 10
-  },
-  "embedding_pipeline": {
-    "batch_size": 32,
-    "chunk_size": 32,
-    "parallelism": 0,
-    "vector_store": "qdrant",
-    "qdrant_url": "http://qdrant:6333",
-    "qdrant_collection": "documents_vectors",
-    "qdrant_timeout": 30,
-    "qdrant_group_size": 3
-  },
-  "ingestion": {
-    "engine": "docling",
-    "min_non_empty_nodes": 1,
-    "min_total_text_chars": 80,
-    "min_quality_score": 0.5,
-    "min_section_chars": 200,
-    "chunk_token_to_char_multiplier": 3,
-    "parsing_timeout": 3600,
-    "ocr_languages": ["vi", "en"]
-  },
-  "celery": {
-    "task_time_limit": 3600,
-    "task_soft_time_limit": 3300,
-    "worker_max_memory_kb": 1500000,
-    "visibility_timeout": 7200,
-    "result_expires": 86400,
-    "max_tasks_per_child": 50,
-    "retry_backoff": 30,
-    "retry_backoff_max": 600,
-    "max_retries": 3
-  },
-  "redis": {
-    "url": "redis://redis:6379/0",
-    "broker_db": 2,
-    "result_db": 1,
-    "maxmemory": "512mb",
-    "eviction_policy": "allkeys-lru",
-    "save": "60 1000",
-    "appendonly": true
-  },
-  "rate_limiting": {
-    "global_rpm": 5000,
-    "relaxed_mode": true,
-    "relaxed_floor": 10000
-  },
-  "audit": {
-    "stream_name": "audit:stream",
-    "batch_size": 100,
-    "process_interval": 10.0,
-    "maxlen": 50000
-  },
-  "cache": {
-    "memory_ttl": 300,
-    "doc_ids_ttl": 60.0,
-    "max_rerank_candidates": 15,
-    "llm_cache_enabled": true,
-    "llm_cache_ttl": 14400,
-    "llm_cache_exact_first": true
-  },
-  "usage_tracking": {
-    "model_types": ["llm", "embedding", "reranker"],
-    "embedding_token_estimate": "chars / 3",
-    "reranker_token_estimate": "(query + docs chars) / 3",
-    "latency_tracked": true,
-    "tracking_method": "celery_fire_and_forget"
-  },
-  "security": {
-    "jwt_algorithm": "HS256",
-    "jwt_expire_minutes": 60,
-    "jwt_secret_min_length": 32,
-    "jwt_secret_min_char_types": 3,
-    "max_upload_size_mb": 2048,
-    "max_filename_length": 255,
-    "allowed_file_types": [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "text/plain",
-      "text/markdown",
-      "application/vnd.ms-excel",
-      "application/msword"
-    ]
-  },
-  "optional_features": {
-    "ragas_evaluation_enabled": false,
-    "kg_enabled": false,
-    "kg_top_k": 3
-  },
-  "embedding": {
-    "model": "Alibaba-NLP/gte-multilingual-base",
-    "dimensions": 768,
-    "batch_size": 16
-  }
+﻿{
+    "document":  {
+                     "id":  "7_CURRENT_SETTINGS",
+                     "version":  "2026-05-22",
+                     "purpose":  "Current project settings snapshot â€” all defaults, env vars, and runtime parameters. AI reads this for accurate config context."
+                 },
+    "ai_inference":  {
+                         "embedding":  {
+                                           "service":  "OpenAI-compatible (managed via SQLite â†’ /admin/providers)",
+                                           "protocol":  "OpenAI /v1/embeddings",
+                                           "default_provider":  "TEI container (ai-embedding:80) â€” seeded in SQLite",
+                                           "nvidia_openai_compatible_base_url":  "https://integrate.api.nvidia.com/v1",
+                                           "image":  "ghcr.io/huggingface/text-embeddings-inference:turing-1.9",
+                                           "model":  "Alibaba-NLP/gte-multilingual-base",
+                                           "dimensions":  768,
+                                           "context_length":  32768,
+                                           "batch_size":  16,
+                                           "config_source":  "SQLite â†’ settings_db â†’ RuntimeProviderManager overrides Settings.embed_model"
+                                       },
+                         "reranker":  {
+                                          "backend":  "Managed via SQLite â€” active provider selected in /admin/providers",
+                                          "default":  "TEI local (ai-reranker:80) â€” seeded as active",
+                                          "providers":  {
+                                                            "tei":  {
+                                                                        "model":  "Alibaba-NLP/gte-multilingual-reranker-base",
+                                                                        "endpoint":  "POST /rerank"
+                                                                    },
+                                                            "nvidia":  {
+                                                                           "model":  "nvidia/llama-nemotron-rerank-1b-v2",
+                                                                           "endpoint":  "NVIDIA NIM API"
+                                                                       },
+                                                            "cohere":  {
+                                                                           "model":  "rerank-multilingual-v3.0",
+                                                                           "endpoint":  "Cohere /rerank"
+                                                                       }
+                                                        },
+                                          "config_source":  "SQLite â†’ reranker/__init__.py reads from RuntimeProviderManager"
+                                      },
+                         "llm_provider":  {
+                                              "service":  "ai-proxy (9Router) â€” built-in, managed via SQLite",
+                                              "image":  "decolua/9router:latest",
+                                              "url":  "http://ai-proxy:2908",
+                                              "interface":  "OpenAI-compatible /v1/chat/completions",
+                                              "streaming":  "SSE",
+                                              "config_source":  "SQLite (is_builtin=1, UI disabled for now)"
+                                          }
+                     },
+    "retrieval":  {
+                      "section_top_k":  99,
+                      "context_max_chars":  30000,
+                      "chunk_top_k":  30,
+                      "chunk_size":  500,
+                      "chunk_overlap":  75,
+                      "fetch_multiplier":  5,
+                      "rerank_enabled":  true,
+                      "rerank_top_k":  10,
+                      "context_expansion_window":  0,
+                      "confidence_threshold_high":  0.7,
+                      "confidence_avg_high":  0.5,
+                      "confidence_threshold_low":  0.4,
+                      "semantic_cache_enabled":  true,
+                      "semantic_cache_threshold":  0.08,
+                      "normalize_enabled":  true,
+                      "max_rerank_candidates":  15,
+                      "long_context_reorder_enabled":  true
+                  },
+    "chat":  {
+                 "history_limit":  40,
+                 "history_redis_ttl":  86400,
+                 "max_history_messages":  6,
+                 "session_ttl_days":  30,
+                 "temperature":  0.3,
+                 "max_output_tokens":  8192,
+                 "proxy_timeout":  120.0,
+                 "stream_timeout":  1800.0,
+                 "http_timeout_refine":  30.0,
+                 "http_keepalive_expiry":  30.0,
+                 "http_max_connections":  50,
+                 "http_keepalive_connections":  10
+             },
+    "embedding_pipeline":  {
+                               "batch_size":  16,
+                               "chunk_size":  32,
+                               "parallelism":  0,
+                               "vector_store":  "qdrant",
+                               "native_bm25_enabled":  false,
+                               "hybrid_sparse_backend":  "qdrant-client Fusion.RRF (dense + fastembed Qdrant/bm25 sparse)",
+                               "qdrant_url":  "http://qdrant:6333",
+                               "qdrant_collection":  "documents_vectors",
+                               "qdrant_timeout":  30,
+                               "qdrant_group_size":  3
+                           },
+    "ingestion":  {
+                      "engine":  "llamaparse",
+                      "min_non_empty_nodes":  1,
+                      "min_total_text_chars":  80,
+                      "min_quality_score":  0.5,
+                      "min_section_chars":  200,
+                      "chunk_token_to_char_multiplier":  3,
+                      "parsing_timeout":  3600,
+                      "ocr_languages":  [
+                                            "vi",
+                                            "en"
+                                        ]
+                  },
+    "celery":  {
+                   "task_time_limit":  3600,
+                   "task_soft_time_limit":  3300,
+                   "worker_max_memory_kb":  1500000,
+                   "visibility_timeout":  7200,
+                   "result_expires":  86400,
+                   "max_tasks_per_child":  50,
+                   "retry_backoff":  30,
+                   "retry_backoff_max":  600,
+                   "max_retries":  3
+               },
+    "redis":  {
+                  "url":  "redis://redis:6379/0",
+                  "broker_db":  2,
+                  "result_db":  1,
+                  "maxmemory":  "512mb",
+                  "eviction_policy":  "allkeys-lru",
+                  "save":  "60 1000",
+                  "appendonly":  true
+              },
+    "rate_limiting":  {
+                          "global_rpm":  5000,
+                          "relaxed_mode":  true,
+                          "relaxed_floor":  10000
+                      },
+    "audit":  {
+                  "stream_name":  "audit:stream",
+                  "batch_size":  100,
+                  "process_interval":  10.0,
+                  "maxlen":  50000
+              },
+    "cache":  {
+                  "memory_ttl":  300,
+                  "doc_ids_ttl":  60.0,
+                  "max_rerank_candidates":  15,
+                  "llm_cache_enabled":  true,
+                  "llm_cache_ttl":  14400,
+                  "llm_cache_exact_first":  true
+              },
+    "usage_tracking":  {
+                           "model_types":  [
+                                               "llm",
+                                               "embedding",
+                                               "reranker"
+                                           ],
+                           "embedding_token_estimate":  "chars / 3",
+                           "reranker_token_estimate":  "(query + docs chars) / 3",
+                           "latency_tracked":  true,
+                           "tracking_method":  "celery_fire_and_forget"
+                       },
+    "security":  {
+                     "jwt_algorithm":  "HS256",
+                     "jwt_expire_minutes":  60,
+                     "jwt_secret_min_length":  32,
+                     "jwt_secret_min_char_types":  3,
+                     "max_upload_size_mb":  2048,
+                     "max_filename_length":  255,
+                     "allowed_file_types":  [
+                                                "application/pdf",
+                                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                                "text/plain",
+                                                "text/markdown",
+                                                "application/vnd.ms-excel",
+                                                "application/msword"
+                                            ]
+                 },
+    "optional_features":  {
+                              "ragas_evaluation_enabled":  false,
+                              "kg_enabled":  false,
+                              "kg_top_k":  3
+                          },
+    "embedding":  {
+                      "model":  "Alibaba-NLP/gte-multilingual-base",
+                      "dimensions":  768,
+                      "batch_size":  16
+                  }
 }

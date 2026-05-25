@@ -18,13 +18,13 @@
       "id": "chat",
       "title": "Chat → Retrieve → Generate → Response",
       "file": "2.2_WORKFLOWS_CHAT.md",
-      "summary": "3-layer cache architecture + 5-stage retrieval with Neighbor Expansion (Soi sáng).",
+      "summary": "3-layer cache architecture + 6-stage retrieval (embed, hybrid, rerank, reorder, dedup, context assembly).",
       "key_rules": [
         "SemanticCache (Redis Vector) for similarity > 92% (dist < 0.08)",
         "LLM Response Cache bypasses LLM API entirely (4h TTL)",
         "Query Embedding Cache skips embedding on repeat queries (4h TTL)",
         "Sliding Window rate limiting: 30 req/min per user",
-        "History limited to AI_MAX_HISTORY_MESSAGES (default 10) — no compaction"
+        "History limited to AI_MAX_HISTORY_MESSAGES (default 6) ? no compaction"
       ]
     },
     {

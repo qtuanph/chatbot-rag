@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Trash2, Power, TestTube, Key, Globe, Cpu } from "lucide-react";
 import { settingsApi, ApiError } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -47,12 +47,6 @@ export default function ProvidersPage() {
   const [keyDialog, setKeyDialog] = useState<AIProvider | null>(null);
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);
   const [newKeyValue, setNewKeyValue] = useState("");
-
-  useEffect(() => {
-    if (tabParam && TAB_KEYS.includes(tabParam)) {
-      setTab(tabParam);
-    }
-  }, [tabParam]);
 
   // Add form state
   const [useTemplate, setUseTemplate] = useState(true);
@@ -136,7 +130,7 @@ export default function ProvidersPage() {
     const f = (e.target as HTMLFormElement).elements as unknown as Record<string, HTMLInputElement>;
     if (f["edit-url"]) data.url = f["edit-url"].value;
     if (f["edit-model"]) data.model = f["edit-model"].value;
-    if (f["edit-api_key"]) data.api_key = f["edit-api_key"].value;
+    if (f["edit-api_key"] && f["edit-api_key"].value.trim()) data.api_key = f["edit-api_key"].value.trim();
     try {
       await settingsApi.updateProvider(editDialog.id, data);
       toast.success("Đã cập nhật");
@@ -273,7 +267,14 @@ export default function ProvidersPage() {
         )}
       </div>
 
-      <Tabs value={tab}>
+      <Tabs value={tab} onValueChange={(value) => setTab(value as TabKey)}>
+        <TabsList>
+          {TAB_KEYS.map((k) => (
+            <TabsTrigger key={`trigger-${k}`} value={k}>
+              {TAB_LABELS[k]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
         {TAB_KEYS.map((k) => (
           <TabsContent key={k} value={k} className="space-y-3 mt-4">
             {loading ? (
@@ -369,6 +370,9 @@ export default function ProvidersPage() {
             <div className="space-y-2">
               <Label htmlFor="edit-api_key">API Key</Label>
               <Input id="edit-api_key" name="edit-api_key" type="password" defaultValue={editDialog?.api_key} placeholder="Leave empty to keep current" />
+              <p className="text-xs text-muted-foreground">
+                Khuyến nghị: quản lý key tại nút <strong>API Keys</strong>. Để trống ở đây sẽ giữ nguyên key hiện tại.
+              </p>
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setEditDialog(null)}>Hủy</Button>

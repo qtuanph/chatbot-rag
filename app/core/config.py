@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     ai_reranker_url: str = "http://ai-reranker:80"
     reranker_backend: str = "tei"  # "tei" (local TEI) | "nvidia" (NVIDIA NIM API)
     nvidia_api_key: str = ""
-    nvidia_reranker_model: str = "nvidia/llama-nemotron-rerank-vl-1b-v2"
-    nvidia_reranker_url: str = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking"
+    nvidia_reranker_model: str = "nvidia/llama-nemotron-rerank-1b-v2"
+    nvidia_reranker_url: str = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
     nvidia_reranker_timeout: float = 30.0
     log_level: str = "INFO"
 
@@ -42,10 +42,6 @@ class Settings(BaseSettings):
     llm_cache_exact_first: bool = True
 
     query_normalize_enabled: bool = True
-    retrieval_query_refinement_enabled: bool = True
-    retrieval_query_refinement_timeout: float = 5.0
-    retrieval_query_expansion_enabled: bool = True
-    retrieval_query_expansion_timeout: float = 5.0
     ragas_evaluation_enabled: bool = False
 
     llama_cloud_api_key: str = ""
@@ -58,7 +54,6 @@ class Settings(BaseSettings):
     retrieval_chunk_size: int = 600
     retrieval_chunk_overlap: int = 120
 
-    ingestion_engine: str = "docling"
     ingestion_min_non_empty_nodes: int = 1
     ingestion_min_total_text_chars: int = 80
     ingestion_min_quality_score: float = 0.5
@@ -81,13 +76,15 @@ class Settings(BaseSettings):
             return [lang.strip() for lang in v.split(",") if lang.strip()]
         return v
 
-    ingestion_chunk_size: int = 600
-    ingestion_chunk_overlap: int = 120
+    ingestion_chunk_size: int = 1200
+    ingestion_chunk_overlap: int = 150
 
     retrieval_chunk_top_k: int = 20
     retrieval_rerank_top_k: int = 10
     retrieval_hybrid_top_k: int = 20
+    retrieval_hybrid_enabled: bool = True
     retrieval_context_max_chars: int = 30000
+    retrieval_long_context_reorder_enabled: bool = True
 
     database_url: str = "replace-me"
     redis_password: str = ""
@@ -206,10 +203,6 @@ class Settings(BaseSettings):
         self.api_v1_prefix = str(self.api_v1_prefix).strip() or "/api/v1"
         if not self.api_v1_prefix.startswith("/"):
             raise ValueError("API_V1_PREFIX must start with '/'")
-        self.ingestion_engine = str(self.ingestion_engine).strip().lower() or "docling"
-        if self.ingestion_engine not in {"docling", "classic"}:
-            raise ValueError("INGESTION_ENGINE must be docling/classic")
-
         self.vector_store = str(self.vector_store).strip().lower() or "qdrant"
         if self.vector_store not in {"qdrant"}:
             raise ValueError("VECTOR_STORE must be qdrant")

@@ -1,7 +1,8 @@
-"""LlamaIndex global initialisation — embed model, LLM, vector store."""
+"""LlamaIndex global initialization: embed model, LLM, vector store."""
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from functools import lru_cache
 
@@ -9,7 +10,7 @@ from llama_index.core import Settings
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai_like import OpenAILike
 from llama_index.vector_stores.qdrant import QdrantVectorStore
-from qdrant_client import QdrantClient, AsyncQdrantClient
+from qdrant_client import AsyncQdrantClient, QdrantClient
 
 from app.core.config import settings
 
@@ -18,7 +19,7 @@ _embed_sync_semaphore = threading.Semaphore(1)
 
 
 class SequentialOpenAIEmbedding(OpenAIEmbedding):
-    """OpenAIEmbedding variant that serializes embedding requests."""
+    """OpenAI-compatible embedding model that serializes embedding requests."""
 
     async def _aget_text_embedding(self, text: str):
         async with _embed_async_semaphore:
@@ -36,9 +37,17 @@ class SequentialOpenAIEmbedding(OpenAIEmbedding):
         with _embed_sync_semaphore:
             return super()._get_query_embedding(query)
 
+    async def _aget_text_embeddings(self, texts: list[str]):
+        async with _embed_async_semaphore:
+            return await super()._aget_text_embeddings(texts)
+
+    def _get_text_embeddings(self, texts: list[str]):
+        with _embed_sync_semaphore:
+            return super()._get_text_embeddings(texts)
+
 
 def init_llama_index() -> None:
-    """Initialise global LlamaIndex settings at application startup."""
+    """Initialize global LlamaIndex settings at application startup."""
     Settings.embed_model = SequentialOpenAIEmbedding(
         model_name=settings.embedding_hf_model,
         api_base=settings.embedding_api_base,
@@ -58,7 +67,6 @@ def init_llama_index() -> None:
         timeout=settings.ai_proxy_timeout,
     )
 
-    # Override with SQLite active providers (if configured)
     from app.modules.settings.runtime_manager import RuntimeProviderManager
 
     RuntimeProviderManager.get_instance().init()
@@ -66,7 +74,17 @@ def init_llama_index() -> None:
 
 @lru_cache(maxsize=1)
 def get_vector_store() -> QdrantVectorStore:
-    """Return a singleton QdrantVectorStore with native BM25 hybrid search."""
+    """Return a singleton QdrantVectorStore.
+
+    Note: current llama-index qdrant adapter initializes fastembed sparse encoders
+    whenever enable_hybrid=True, so we pin sparse model to Qdrant/bm25 for
+    lightweight and stable sparse generation.
+    """
+    return build_vector_store(enable_hybrid=settings.retrieval_hybrid_enabled)
+
+
+def build_vector_store(enable_hybrid: bool) -> QdrantVectorStore:
+    """Build a QdrantVectorStore with explicit hybrid mode."""
     client = QdrantClient(
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key or None,
@@ -77,11 +95,10 @@ def get_vector_store() -> QdrantVectorStore:
         api_key=settings.qdrant_api_key or None,
         timeout=settings.qdrant_timeout,
     )
-
     return QdrantVectorStore(
         collection_name=settings.qdrant_collection,
         client=client,
         aclient=aclient,
-        enable_hybrid=True,
-        enable_native_bm25=True,
+        enable_hybrid=enable_hybrid,
+        fastembed_sparse_model="Qdrant/bm25" if enable_hybrid else None,
     )

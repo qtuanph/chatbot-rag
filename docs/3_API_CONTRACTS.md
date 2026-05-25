@@ -18,7 +18,7 @@ Browser → /api/bep/v1/... → Next.js Route Handler → getToken() (HttpOnly c
 | Route Handler | `webapp/app/api/bep/[...path]/route.ts` — reads JWT via `getToken()` from encrypted HttpOnly cookie |
 | Backend | Receives standard Bearer token — no changes to auth logic |
 | Session type | Client Session has `role` + `userId` only — `accessToken` stays server-side |
-| WebSocket | Real-time bidirectional streaming via `/ws/chat/stream` |
+| SSE | Real-time server-sent events via `POST /chat/stream` |
 | Upload | `multipart/form-data` forwarded with `duplex: 'half'` |
 | Retry | Route Handler retries once on socket close; returns 502 JSON |
 
@@ -54,7 +54,7 @@ Applied via `next.config.ts` `headers()` on all routes:
 | `PATCH /memories/{id}` | 20/min per user | `throttle:memory:update:{user_id}` |
 | `DELETE /memories/{id}` | 20/min per user | `throttle:memory:delete:{user_id}` |
 | `POST /chat/sessions` | 30/min per user | `throttle:chat:sessions:{user_id}` |
-| `WebSocket /ws/chat/stream` | 30/min per user | existing chat throttle |
+| `POST /chat/stream (SSE)` | 30/min per user | existing chat throttle |
 | `POST /chat/messages/{id}/feedback` | 60/min per user | `throttle:feedback:{user_id}` |
 | `GET /analytics/stats` | 60/min per user | `throttle:analytics:{user_id}` |
 | Admin endpoints | 20/min per admin | `throttle:admin:{admin_id}` |
@@ -103,7 +103,7 @@ Request:
 { "query": "question text", "session_id": "optional-session-id" }
 ```
 
-Streaming only: WebSocket with `{"chunk": "...", "done": false}` chunks, final `{"done": true, "session_id": "...", "citations": [...], "stats": {"total_ms", "ttft_ms", "chunks", "chars", "prompt_tokens", "completion_tokens", "total_tokens", "model", "estimated_cost_usd"}}`.
+Streaming only: SSE via `POST /chat/stream` with `data: {"chunk":"...","done":false}` events, and a final `done:true` event containing `session_id`, `message_id`, `citations`, and `stats`.
 
 ## Error Response Envelope
 
@@ -150,7 +150,7 @@ Validation: username 3-64 chars (normalized lowercase + trim), password 8-256 ch
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| WebSocket | `/ws/chat/stream` | Member | Real-time streaming |
+| POST | `/chat/stream` | Member | SSE real-time streaming |
 | POST | `/chat/sessions` | Member | Create empty session → `{session_id, title, ...}` |
 | GET | `/chat/sessions` | Member | Sessions ordered by `updated_at DESC` |
 | GET | `/chat/messages?session_id=...` | Member | Messages ordered by `created_at ASC`, pagination with limit/offset |
@@ -246,7 +246,7 @@ Rate limit: 60/min per user. Throttle key: `throttle:analytics:{user_id}`.
 | Auth model | Unchanged | Unchanged |
 | Retrieval pipeline | Unchanged | Unchanged |
 
-Provider abstraction via LlamaIndex OpenAI normalizes request/response so `/ws/chat/stream` stays unchanged across phases.
+Provider abstraction via LlamaIndex OpenAI normalizes request/response so `POST /chat/stream` contract stays stable across provider changes.
 
 ## Version Conflict Resolution
 

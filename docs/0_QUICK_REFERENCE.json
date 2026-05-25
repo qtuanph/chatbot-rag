@@ -36,7 +36,7 @@
   },
   "models": {
     "embedding_model": "Alibaba-NLP/gte-multilingual-base (768-dim, 32768 ctx, TEI container)",
-    "reranker_model": "Alibaba-NLP/gte-multilingual-reranker-base (TEI, local) or nvidia/llama-nemotron-rerank-vl-1b-v2 (NVIDIA NIM)",
+    "reranker_model": "Alibaba-NLP/gte-multilingual-reranker-base (TEI, local) or nvidia/llama-nemotron-rerank-1b-v2 (NVIDIA NIM)",
     "llm": "9Router (decolua/9router:latest, OpenAI-compatible, port 2908)"
   },
   "key_rules": {

@@ -26,7 +26,7 @@ Self-hosted. No cloud lock-in. Complete control over your data.
 | **Hierarchical Indexing** | Docs → Sections (H1–H6) → Chunks via LlamaIndex `IngestionPipeline`. Preserves document structure for accurate context retrieval. |
 | **LlamaIndex RAG** | `VectorStoreIndex` with hybrid search (dense + Qdrant native BM25 RRF) + switchable reranker (TEI or NVIDIA NIM). |
 | **TEI Inference** | Dedicated TEI containers: `gte-multilingual-base` (embedding, 768-dim) + `gte-multilingual-reranker-base` (reranker). GPU-optimized. |
-| **Switchable Reranker** | `RERANKER_BACKEND=tei` (local TEI) or `nvidia` (NVIDIA NIM API). Change one env var, no code changes. |
+| **Switchable Reranker** | Managed via SQLite `/admin/providers`: activate `TEI (Local)` or `NVIDIA NIM` at runtime (no redeploy needed). |
 | **Smart OCR** | LlamaParse cloud OCR for PDF/DOCX. Local parser for .md/.txt (no API call). |
 | **Async Ingestion** | Upload returns `task_id` instantly. Background parsing/indexing via Celery with live progress. |
 | **SSE Chat** | Real-time streaming via `OpenAILike.astream_chat()` through 9Router, with citations grouped by document. |
@@ -92,7 +92,7 @@ Browser → Traefik (:80) → Next.js (webapp) → FastAPI (api)
 | Cache / Queue | Redis 8 |
 | Vector Search | Qdrant (dense + native BM25 hybrid) |
 | Embedding | TEI — `Alibaba-NLP/gte-multilingual-base` (768-dim, 32k ctx) |
-| Reranker | TEI — `Alibaba-NLP/gte-multilingual-reranker-base`, or NVIDIA NIM `nvidia/llama-nemotron-rerank-vl-1b-v2` |
+| Reranker | TEI — `Alibaba-NLP/gte-multilingual-reranker-base`, or NVIDIA NIM `nvidia/llama-nemotron-rerank-1b-v2` |
 | LLM Provider | 9Router (OpenAI-compatible, port 2908) |
 | OCR | LlamaParse (cloud) + local MarkdownNodeParser |
 | Reverse Proxy | Traefik v3.7 |
@@ -151,7 +151,7 @@ All settings via environment variables. See `app/core/config.py` for defaults.
 |----------|---------|-------------|
 | `AI_EMBEDDING_URL` | `http://ai-embedding:80` | TEI embedding endpoint |
 | `AI_RERANKER_URL` | `http://ai-reranker:80` | TEI reranker endpoint |
-| `RERANKER_BACKEND` | `tei` | Reranker: `tei` (local) or `nvidia` (NVIDIA NIM API) |
+| `RERANKER_BACKEND` | `tei` | Legacy fallback only. Runtime reranker selection is managed via SQLite `/admin/providers`. |
 | `NVIDIA_API_KEY` | — | Required when `RERANKER_BACKEND=nvidia` |
 | `AI_PROXY_URL` | `http://ai-proxy:2908` | 9Router endpoint |
 | `EMBEDDING_HF_MODEL` | `Alibaba-NLP/gte-multilingual-base` | Embedding model |

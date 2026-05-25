@@ -16,8 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, Search, ChevronDown, ChevronRight, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Search, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { documentsApi, treeApi } from "@/lib/api-client";

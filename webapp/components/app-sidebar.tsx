@@ -106,35 +106,36 @@ export function AppSidebar() {
             <SidebarMenu>
               {items.map((item) =>
                 item.subItems ? (
-                  <Collapsible className="group/collapsible">
-                    <SidebarGroup>
-                      <CollapsibleTrigger className="cursor-pointer">
-                        <SidebarGroupLabel>
-                          <div className="flex items-center gap-2">
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.title}</span>
-                            <ChevronDown className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
-                          </div>
-                        </SidebarGroupLabel>
+                  <Collapsible
+                    key={item.href}
+                    className="group/collapsible"
+                    open={openGroups.has(item.href)}
+                    onOpenChange={() => toggleGroup(item.href)}
+                  >
+                    <SidebarMenuItem>
+                      <CollapsibleTrigger className="w-full cursor-pointer">
+                        <SidebarMenuButton isActive={isActive(item.href)}>
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.title}</span>
+                          <ChevronDown className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
+                        </SidebarMenuButton>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <SidebarGroupContent>
-                          <SidebarMenu>
-                            {item.subItems.map((sub) => (
-                              <SidebarMenuItem key={sub.href}>
-                                <SidebarMenuSubButton
-                                  isActive={isSubActive(sub.href)}
-                                  onClick={() => router.push(sub.href)}
-                                >
-                                  <sub.icon className="h-4 w-4" />
-                                  <span>{sub.title}</span>
-                                </SidebarMenuSubButton>
-                              </SidebarMenuItem>
-                            ))}
-                          </SidebarMenu>
-                        </SidebarGroupContent>
+                        <SidebarMenuSub>
+                          {item.subItems.map((sub) => (
+                            <SidebarMenuSubItem key={sub.href}>
+                              <SidebarMenuSubButton
+                                isActive={isSubActive(sub.href)}
+                                onClick={() => router.push(sub.href)}
+                              >
+                                <sub.icon className="h-4 w-4" />
+                                <span>{sub.title}</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                        </SidebarMenuSub>
                       </CollapsibleContent>
-                    </SidebarGroup>
+                    </SidebarMenuItem>
                   </Collapsible>
                 ) : (
                   <SidebarMenuItem key={item.href}>

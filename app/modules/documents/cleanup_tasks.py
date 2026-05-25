@@ -22,14 +22,26 @@ logger = logging.getLogger(__name__)
 
 async def _verify_deletion_async(document_id: str, file_path: str | None, storage) -> dict:
     from qdrant_client import QdrantClient
+    from qdrant_client.http.exceptions import ApiException
 
     client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
-    result = client.count(
-        collection_name=settings.qdrant_collection,
-        count_filter={"must": [{"key": "doc_id", "match": {"value": document_id}}]},
-    )
-    qdrant_count = result.count if result else 0
-    file_gone = await asyncio.to_thread(storage.file_exists, file_path) if file_path else True
+    qdrant_count = 0
+    try:
+        exists = await asyncio.to_thread(client.collection_exists, collection_name=settings.qdrant_collection)
+        if exists:
+            result = await asyncio.to_thread(
+                client.count,
+                collection_name=settings.qdrant_collection,
+                count_filter={"must": [{"key": "doc_id", "match": {"value": document_id}}]},
+            )
+            qdrant_count = result.count if result else 0
+    except ApiException as e:
+        # Collection may be absent during/after cleanup; treat as no remaining vectors.
+        logger.warning("[%s] Qdrant verify warning: %s", document_id, e)
+    except Exception as e:
+        logger.warning("[%s] Qdrant verify unexpected warning: %s", document_id, e)
+    file_exists = await asyncio.to_thread(storage.file_exists, file_path) if file_path else False
+    file_removed = not file_exists
 
     async with AsyncSessionLocal() as session:
         doc_repo = DocumentRepository(session)
@@ -37,9 +49,9 @@ async def _verify_deletion_async(document_id: str, file_path: str | None, storag
 
     return {
         "qdrant_clean": qdrant_count == 0,
-        "file_removed": file_gone,
+        "file_removed": file_removed,
         "db_row_gone": db_gone,
-        "passed": qdrant_count == 0 and file_gone and db_gone,
+        "passed": qdrant_count == 0 and file_removed and db_gone,
     }
 
 

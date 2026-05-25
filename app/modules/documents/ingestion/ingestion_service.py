@@ -1,6 +1,6 @@
-"""
-Ingestion Pipeline: Parse → Validate → Store Sections → Embed & Index.
-Uses Docling for parsing, LlamaIndex for chunking + embedding + Qdrant indexing.
+﻿"""
+Ingestion Pipeline: Parse â†’ Validate â†’ Store Sections â†’ Embed & Index.
+Uses LlamaParse/cloud markdown parsing + LlamaIndex for chunking + embedding + Qdrant indexing.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ ProgressCallback = Callable[[str, int, str], Any]
 
 
 class IngestionService:
-    """Ingestion orchestration using Docling parser + LlamaIndex pipeline."""
+    """Ingestion orchestration using LlamaParse parser + LlamaIndex pipeline."""
 
     def __init__(
         self,
@@ -138,7 +138,7 @@ class IngestionService:
             )
 
     async def _parse_step(self, ctx: PipelineContext, report: ProgressCallback) -> None:
-        """Parse document with Docling."""
+        """Parse document with LlamaParse/local markdown parser."""
         await report("parsing", 5, f"Parsing {ctx.filename}...")
 
         filename_to_parse = ctx.filename
@@ -190,10 +190,30 @@ class IngestionService:
             logger.warning("[%s] No nodes to index", ctx.document_id)
             return
 
-        await report("embedding", 40, "Running LlamaIndex ingestion pipeline...")
+        await report("embedding", 40, "Dang bat dau embedding va ghi du lieu vao Qdrant...")
 
         sections_data = getattr(ctx.parse_metadata, "sections_data", None) or []
-        stored = await run_ingestion_pipeline(ctx.nodes, ctx.document_id, sections_data)
+        embedding_start = 40
+        embedding_end = 95
 
-        await report("embedding", 95, f"Indexed {stored} nodes in Qdrant")
+        async def _on_pipeline_progress(processed_docs: int, total_docs: int, total_stored: int) -> None:
+            if total_docs <= 0:
+                return
+            ratio = processed_docs / total_docs
+            percent = embedding_start + int((embedding_end - embedding_start) * ratio)
+            await report(
+                "embedding",
+                min(embedding_end, max(embedding_start, percent)),
+                f"Da embed {processed_docs}/{total_docs} chunk, dang ghi vao Qdrant...",
+            )
+
+        stored = await run_ingestion_pipeline(
+            ctx.nodes,
+            ctx.document_id,
+            sections_data,
+            progress_callback=_on_pipeline_progress,
+        )
+
+        await report("embedding", 95, "Embedding xong, dang hoan tat ghi va xac nhan du lieu trong Qdrant...")
         logger.info("[%s] LlamaIndex pipeline stored %d nodes", ctx.document_id, stored)
+

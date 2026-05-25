@@ -117,6 +117,7 @@ export function DocumentTable() {
   const [docs, setDocs] = useState<DocumentSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [rechunkingId, setRechunkingId] = useState<string | null>(null);
 
@@ -237,6 +238,7 @@ export function DocumentTable() {
         await documentsApi.delete(id);
         toast.success("Tài liệu đã được đánh dấu xóa");
         setDeleteTarget(null);
+        setDeleteConfirmText("");
         if (viewDoc?.document_id === id) {
           handleCloseView();
         }
@@ -447,7 +449,13 @@ export function DocumentTable() {
         </div>
 
         {/* Delete confirm dialog */}
-        <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+        <Dialog
+          open={!!deleteTarget}
+          onOpenChange={() => {
+            setDeleteTarget(null);
+            setDeleteConfirmText("");
+          }}
+        >
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Xác nhận xóa</DialogTitle>
@@ -456,15 +464,30 @@ export function DocumentTable() {
               Bạn có chắc muốn xóa tài liệu này? Hành động này không thể hoàn
               tác.
             </p>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Nhập <span className="font-mono font-semibold">DELETE</span> để xác nhận xóa.
+              </p>
+              <input
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="Nhập DELETE"
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              />
+            </div>
             <DialogFooter>
               <Button
                 variant="outline"
-                onClick={() => setDeleteTarget(null)}
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeleteConfirmText("");
+                }}
               >
                 Hủy
               </Button>
               <Button
                 variant="destructive"
+                disabled={deleteConfirmText !== "DELETE"}
                 onClick={() => deleteTarget && handleDelete(deleteTarget)}
               >
                 Xóa

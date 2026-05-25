@@ -276,8 +276,6 @@ Every call to 9Router is logged via `track_usage()` in `app/modules/chat/retriev
 | Endpoint | Trigger |
 |----------|---------|
 | `chat` | Main QA response |
-| `query_refinement` | Query refinement |
-| `query_expansion` | Multi-query expansion |
 | `memory_extraction` | Memory extraction |
 | `ragas_eval` | RAGAS evaluation (when enabled) |
 

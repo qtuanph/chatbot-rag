@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from llama_index.core import Settings
+from llama_index.core.base.llms.types import ChatMessage, MessageRole
 
 from app.core.config import settings
 from app.modules.chat.repositories.repository import ChatRepository
@@ -23,6 +24,16 @@ from app.modules.chat.utils import ChatStore, compute_cost, normalize_query
 from app.modules.chat.retrieval import retrieve_context
 
 logger = logging.getLogger(__name__)
+
+
+def _to_llama_role(role: str) -> MessageRole:
+    role_map = {
+        "system": MessageRole.SYSTEM,
+        "user": MessageRole.USER,
+        "assistant": MessageRole.ASSISTANT,
+        "tool": MessageRole.TOOL,
+    }
+    return role_map.get((role or "").lower(), MessageRole.USER)
 
 
 def build_answer(query: str, context: Any) -> dict:
@@ -56,8 +67,10 @@ def build_answer(query: str, context: Any) -> dict:
         if doc_key not in seen_docs:
             seen_docs.add(doc_key)
             citation_idx += 1
+            title = node.document_title or "Tài liệu"
+            heading = node.heading or "Mục liên quan"
             page = f" (trang {node.page_range})" if node.page_range else ""
-            block = f"**{node.heading}** — {node.document_title}{page}\n{node.full_text}"
+            block = f"{title} — {heading}{page}\n{node.full_text}"
             total_chars += len(block)
             if total_chars <= max_chars or len(seen_docs) <= 1:
                 context_blocks.append(block)
@@ -118,40 +131,7 @@ class ChatService:
                 "is_greeting": True,
             }
 
-        refined_query = query
-        if settings.retrieval_query_refinement_enabled:
-            from app.modules.chat.services.query_refiner import refine_query
-
-            _t2 = _time.monotonic()
-            try:
-                refined_query = await asyncio.wait_for(
-                    refine_query(query, history), timeout=settings.retrieval_query_refinement_timeout
-                )
-                logger.info("[PERF] Query refinement: %.3fs", _time.monotonic() - _t2)
-            except Exception:
-                logger.warning("Query refinement timed out, using original query.")
-
-        queries = [refined_query]
-        if settings.retrieval_query_expansion_enabled:
-            from llama_index.core import Settings as LlamaSettings
-
-            _t3 = _time.monotonic()
-            try:
-                llm = LlamaSettings.llm
-                exp_prompt = (
-                    f"Bạn là công cụ mở rộng truy vấn. "
-                    f"Hãy tạo 3 câu truy vấn khác nhau từ câu gốc để tìm kiếm tài liệu hiệu quả hơn.\n"
-                    f"Câu gốc: {refined_query}\n"
-                    f"Trả lời mỗi câu trên một dòng, bắt đầu bằng '- '"
-                )
-                resp = await llm.acomplete(exp_prompt)
-                if resp and resp.text:
-                    lines = [l.strip("- ").strip() for l in resp.text.split("\n") if l.strip().startswith("- ")]
-                    if lines:
-                        queries = [refined_query] + lines[:2]
-                logger.info("[PERF] Query expansion: %.3fs (%d queries)", _time.monotonic() - _t3, len(queries))
-            except Exception:
-                logger.warning("Query expansion failed, using original query.")
+        queries = [query]
 
         _t4 = _time.monotonic()
         context = await self.retrieve_rag_context(self.repo.session, queries, resolved_session_id, 20)
@@ -284,32 +264,73 @@ class ChatService:
             formatted_context = ""
 
         llm = Settings.llm
-        messages = [{"role": i["role"], "content": i["content"]} for i in history]
+        messages: list[ChatMessage] = []
+        for item in history:
+            content = item.get("content", "") if isinstance(item, dict) else ""
+            role = item.get("role", "user") if isinstance(item, dict) else "user"
+            messages.append(ChatMessage(role=_to_llama_role(role), content=str(content or "")))
 
         system_prompt = (
-            "Bạn là trợ lý AI chuyên nghiệp. Hãy trả lời câu hỏi dựa trên tài liệu tham khảo được cung cấp. "
-            "Nếu thông tin không có trong tài liệu, hãy nói rõ. "
-            "Luôn trích dẫn nguồn tài liệu khi sử dụng thông tin."
+            "Bạn là trợ lý hướng dẫn sử dụng phần mềm cho người mới. "
+            "Chỉ dùng thông tin có trong ngữ cảnh tài liệu đã cung cấp. "
+            "Nếu chưa đủ chắc chắn, hãy nói rõ điều chưa chắc và nêu cách kiểm tra tiếp; không được bịa. "
+            "Trả lời tự nhiên như người hỗ trợ thật, dễ hiểu, đi thẳng vào thao tác. "
+            "Mặc định trả lời ngắn (4-8 dòng), chỉ liệt kê nhiều bước khi người dùng yêu cầu chi tiết. "
+            "Bạn được phép chủ động chọn định dạng trình bày để dễ hiểu hơn: "
+            "dùng bảng Markdown khi cần so sánh/tổng hợp; "
+            "dùng sơ đồ text/ASCII đơn giản khi cần mô tả luồng hoặc quan hệ giữa các bước. "
+            "Không cần chờ người dùng yêu cầu mới trình bày dạng bảng/sơ đồ nếu điều đó giúp câu trả lời rõ ràng hơn. "
+            "Sau bảng/sơ đồ, luôn kèm giải thích ngắn bên dưới. "
+            "Không dùng ký hiệu trích dẫn kiểu [1], [Nguồn], [Source]. "
+            "Cuối câu trả lời thêm 1 dòng tham chiếu ngắn theo mẫu: "
+            "\"Thông tin này nằm trong phần hướng dẫn ... của tài liệu ...\"."
         )
         if formatted_context:
             system_prompt += f"\n\n{formatted_context}"
         if prepared_chat.get("user_memories"):
             system_prompt += f"\n\n{prepared_chat['user_memories']}"
 
-        full_messages = [{"role": "system", "content": system_prompt}] + messages
+        full_messages: list[ChatMessage] = [ChatMessage(role=MessageRole.SYSTEM, content=system_prompt)] + messages
 
-        resp_gen = await llm.astream_chat(full_messages)
         usage_info = {}
         model_name = getattr(llm, "model", "unknown")
+        stream_failed = False
 
-        async for chunk in resp_gen:
-            if first_chunk_time is None:
-                first_chunk_time = _time.monotonic()
-            delta = chunk.delta if hasattr(chunk, "delta") else (chunk.text if hasattr(chunk, "text") else str(chunk))
-            full_answer += delta
-            yield f"data: {json.dumps({'chunk': delta, 'done': False})}\n\n"
-            if hasattr(chunk, "additional_kwargs"):
-                usage_info.update(chunk.additional_kwargs)
+        try:
+            resp_gen = await llm.astream_chat(full_messages)
+            async for chunk in resp_gen:
+                if first_chunk_time is None:
+                    first_chunk_time = _time.monotonic()
+                delta = chunk.delta if hasattr(chunk, "delta") else (chunk.text if hasattr(chunk, "text") else str(chunk))
+                full_answer += delta
+                yield f"data: {json.dumps({'chunk': delta, 'done': False})}\n\n"
+                if hasattr(chunk, "additional_kwargs"):
+                    usage_info.update(chunk.additional_kwargs)
+        except Exception as e:
+            stream_failed = True
+            logger.warning("LLM stream failed, fallback to non-stream response: %s", e, exc_info=True)
+
+        if stream_failed:
+            try:
+                resp = await llm.achat(full_messages)
+                content = getattr(resp, "message", None)
+                fallback_text = ""
+                if content is not None and hasattr(content, "content"):
+                    fallback_text = str(content.content or "")
+                if not fallback_text and hasattr(resp, "text"):
+                    fallback_text = str(resp.text or "")
+                if not fallback_text:
+                    fallback_text = "Mình bị gián đoạn kết nối khi trả lời. Bạn gửi lại câu hỏi này giúp mình nhé."
+                if not full_answer:
+                    full_answer = fallback_text
+                    yield f"data: {json.dumps({'chunk': fallback_text, 'done': False})}\n\n"
+                if hasattr(resp, "additional_kwargs") and isinstance(resp.additional_kwargs, dict):
+                    usage_info.update(resp.additional_kwargs)
+            except Exception as e2:
+                logger.error("LLM non-stream fallback also failed: %s", e2, exc_info=True)
+                if not full_answer:
+                    full_answer = "Mình bị gián đoạn kết nối tới AI. Bạn thử lại sau vài giây nhé."
+                    yield f"data: {json.dumps({'chunk': full_answer, 'done': False})}\n\n"
 
         ai_done_time = _time.monotonic()
         clean_answer = full_answer.strip()

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, ThumbsUp, ThumbsDown, Zap, Clock, Hash } from "lucide-react";
+import { FileText, ThumbsUp, ThumbsDown, Zap } from "lucide-react";
 import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
 import { chatApi } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -41,7 +41,7 @@ export function ChatMessage({ message, isStreaming = false, isThinking = false, 
 
   const isUser = message.role === "user";
   const isLoading = !isUser && (isStreaming && !message.content) || isThinking;
-  const isStreamingContent = !isUser && isStreaming && message.content;
+  const isStreamingContent = Boolean(!isUser && isStreaming && message.content);
 
   return (
     <div className={`flex gap-3 px-4 py-3 ${isUser ? "justify-end" : ""}`}>
@@ -73,14 +73,7 @@ export function ChatMessage({ message, isStreaming = false, isThinking = false, 
 
             {message.content && (
               <div className={`rounded-2xl bg-muted px-4 py-2.5 ${isStreamingContent ? "streaming-active" : ""}`}>
-                {isStreamingContent ? (
-                  <div className="text-sm leading-relaxed whitespace-pre-wrap font-sans">
-                    {message.content}
-                    <span className="inline-block w-0.5 h-4 bg-foreground/70 ml-0.5 align-text-bottom animate-pulse" />
-                  </div>
-                ) : (
-                  <MarkdownRenderer content={message.content} />
-                )}
+                <MarkdownRenderer content={message.content} showCursor={isStreamingContent} />
               </div>
             )}
 

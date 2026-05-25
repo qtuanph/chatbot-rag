@@ -8,6 +8,8 @@ services:
         - BUILDKIT_INLINE_CACHE=1
     env_file:
       - .env
+    environment:
+      - FASTEMBED_CACHE_PATH=/tmp/fastembed
     secrets:
       - hf_token
     volumes:
@@ -53,6 +55,8 @@ services:
     # CPU only - embedding done via TEI HTTP, no GPU needed
     env_file:
       - .env
+    environment:
+      - FASTEMBED_CACHE_PATH=/tmp/fastembed
     secrets:
       - hf_token
     volumes:
@@ -83,12 +87,11 @@ services:
       - .env
     environment:
       - HF_HUB_ENABLE_HF_TRANSFER=1
-      - MAX_CONCURRENT_REQUESTS=8
-      - MAX_BATCH_TOKENS=4096
-      - MAX_BATCH_REQUESTS=4
-      - MAX_CLIENT_BATCH_SIZE=4
+      - MAX_CONCURRENT_REQUESTS=512
+      - MAX_BATCH_TOKENS=16384
+      - MAX_BATCH_REQUESTS=16
       - MAX_CLIENT_BATCH_SIZE=16
-    command: --model-id Alibaba-NLP/gte-multilingual-base --dtype float16 --auto-truncate true
+    command: --model-id Alibaba-NLP/gte-multilingual-base --dtype float16 --max-batch-tokens 16384 --max-batch-requests 16 --max-concurrent-requests 512 --auto-truncate true
     volumes:
       - hf-cache:/data
     deploy:
@@ -119,7 +122,7 @@ services:
       - MAX_CONCURRENT_REQUESTS=1
       - MAX_BATCH_TOKENS=2048
       - MAX_BATCH_REQUESTS=1
-    command: --model-id Alibaba-NLP/gte-multilingual-reranker-base --dtype float16
+    command: --model-id Alibaba-NLP/gte-multilingual-reranker-base --dtype float16 --max-batch-tokens 8192 --max-batch-requests 32 --max-client-batch-size 32 --max-concurrent-requests 512 --auto-truncate true
     volumes:
       - hf-cache:/data
     depends_on:
@@ -294,6 +297,11 @@ services:
       - "--providers.docker.exposedByDefault=false"
       - "--providers.docker.network=chatbot-rag_internal"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.transport.respondingTimeouts.readTimeout=0s"
+      - "--entrypoints.web.transport.respondingTimeouts.writeTimeout=0s"
+      - "--entrypoints.web.transport.respondingTimeouts.idleTimeout=600s"
+      - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=0s"
+      - "--serversTransport.forwardingTimeouts.idleConnTimeout=600s"
       - "--entrypoints.web.http.encodedCharacters.allowEncodedSlash=true"
       - "--log.level=INFO"
     ports:

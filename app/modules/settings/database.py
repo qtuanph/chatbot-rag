@@ -71,12 +71,12 @@ def _seed_templates(db: sqlite3.Connection) -> None:
         ("embedding", "tei", "TEI (Local)", "http://ai-embedding:80/v1", "Alibaba-NLP/gte-multilingual-base", "", 1, 1, 0),
         ("embedding", "openai", "OpenAI", "https://api.openai.com/v1", "text-embedding-ada-002", "", 0, 0, 1),
         ("embedding", "openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "openai/text-embedding-3-small", "", 0, 0, 2),
-        ("embedding", "nvidia", "NVIDIA NIM", "https://ai.api.nvidia.com/v1", "nvidia/nv-embed-qa-4", "", 0, 0, 3),
+        ("embedding", "nvidia", "NVIDIA NIM", "https://integrate.api.nvidia.com/v1", "baai/bge-m3", "", 0, 0, 3),
         ("embedding", "gemini", "Google Gemini", "https://generativelanguage.googleapis.com/v1", "text-embedding-004", "", 0, 0, 4),
         ("embedding", "cohere", "Cohere", "https://api.cohere.com/v1", "embed-multilingual-v3.0", "", 0, 0, 5),
         # Reranker
         ("reranker", "tei", "TEI (Local)", "http://ai-reranker:80", "Alibaba-NLP/gte-multilingual-reranker-base", "", 1, 1, 0),
-        ("reranker", "nvidia", "NVIDIA NIM", "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking", "nvidia/llama-nemotron-rerank-vl-1b-v2", "", 0, 0, 1),
+        ("reranker", "nvidia", "NVIDIA NIM", "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking", "nvidia/llama-nemotron-rerank-1b-v2", "", 0, 0, 1),
         ("reranker", "cohere", "Cohere", "https://api.cohere.com", "rerank-multilingual-v3.0", "", 0, 0, 2),
         # LLM (9Router built-in)
         ("llm", "9router", "9Router (Built-in)", "http://ai-proxy:2908/v1", "chatbot-rag", "", 1, 1, 0),

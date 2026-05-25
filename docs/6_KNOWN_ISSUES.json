@@ -113,6 +113,30 @@
       "root_cause": "parse_from_markdown() applied SentenceSplitter independently, then the LlamaIndex IngestionPipeline applied another SentenceSplitter on top. Result: double-split context fragmentation.",
       "resolution": "Ensured single chunking pass: IngestionPipeline is the only place SentenceSplitter runs. parse_from_markdown() returns each heading section as one node without splitting.",
       "lesson_learned": "Chunking should happen exactly once. When piping data through multiple processing stages, verify each stage's transformations don't overlap."
+    },
+    {
+      "issue_id": 14,
+      "title": "LlamaIndex Chat Stream Crash — dict Instead of ChatMessage",
+      "symptom": "SSE chat stream fails with AttributeError: 'dict' object has no attribute 'blocks' when calling OpenAILike.astream_chat().",
+      "root_cause": "ChatService passed raw role/content dicts into LlamaIndex astream_chat, but recent LlamaIndex OpenAI utils expect ChatMessage objects with block-aware structure.",
+      "resolution": "Converted all outbound messages (system + history) to llama_index.core.base.llms.types.ChatMessage and MessageRole before calling astream_chat.",
+      "lesson_learned": "Do not pass provider payload dicts directly into LlamaIndex LLM APIs; always use LlamaIndex native message types."
+    },
+    {
+      "issue_id": 15,
+      "title": "NVIDIA Reranker 401 Storm From Missing SQLite API Key",
+      "symptom": "Every retrieval request logs HTTP 401 from NVIDIA reranker, even though chat continues with fallback nodes.",
+      "root_cause": "Reranker factory instantiated NVIDIA postprocessor with missing API key (\"no-key\") instead of using runtime key resolution and early fallback.",
+      "resolution": "Updated reranker factory to read effective runtime API key and automatically fallback to TEI reranker when NVIDIA key is absent.",
+      "lesson_learned": "Provider adapters must fail fast on missing credentials and switch to a healthy local backend to avoid noisy retry/fallback loops."
+    },
+    {
+      "issue_id": 16,
+      "title": "Qdrant Payload ID Drift Between PostgreSQL document.id and LlamaIndex doc_id/ref_doc_id",
+      "symptom": "Upload/rechunk logs report success, but retrieval and delete-by-document-id fail with 404/0-result because collection filter by current document_id returns no points.",
+      "root_cause": "In ingestion pipeline, LlamaIndex Document was created without id_. LlamaIndex auto-generated random ref_doc_id/doc_id per source node; these IDs were written to Qdrant and no longer matched PostgreSQL documents.id.",
+      "resolution": "Forced Document(id_=document_id, ...) in ingestion conversion so Qdrant doc_id/ref_doc_id are always aligned with PostgreSQL document UUID.",
+      "lesson_learned": "When using LlamaIndex + Qdrant, always pin source document id explicitly; never rely on auto-generated ref_doc_id for cross-system joins."
     }
   ]
 }

@@ -63,8 +63,8 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | CELERY_MAX_TASKS_PER_CHILD | Recycle after N tasks (default 50) |
 | AI_TEMPERATURE | Generation temperature (default 0.3) |
 | AI_MAX_OUTPUT_TOKENS | Max output tokens (default 8192) |
-| AI_MAX_HISTORY_MESSAGES | Messages sent to LLM per turn (default 10) |
-| AI_STREAM_TIMEOUT | HTTP timeout for AI streaming (default 300s) |
+| AI_MAX_HISTORY_MESSAGES | Messages sent to LLM per turn (default 6) |
+| AI_STREAM_TIMEOUT | HTTP timeout for AI streaming (default 1800s) |
 | AI_HTTP_MAX_CONNECTIONS | httpx connection pool (default 50) |
 | RATE_LIMIT_GLOBAL_RPM | Global rate limit, production only (default 5000 for 200 CCU) |
 | RATE_LIMIT_RELAXED_MODE | Bypass rate limiting when true (default true in dev) |
@@ -75,13 +75,11 @@ No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 | AUDIT_STREAM_NAME | Redis Stream key for audit events (default `audit:stream`) |
 | RETRIEVAL_SEMANTIC_CACHE_THRESHOLD | Cosine distance threshold for semantic cache hit (default 0.08) |
 | MEMORY_CACHE_TTL | User memory Redis cache TTL in seconds (default 300) |
-| INGESTION_ENGINE | Document parser engine — docling or classic (default `docling`) |
 | INGESTION_MIN_QUALITY_SCORE | Minimum quality score for parsed docs (default 0.5) |
 | RETRIEVAL_SECTION_TOP_K | Top sections retrieved per query (default 5) |
 | RETRIEVAL_CHUNK_TOP_K | Initial candidate pool (default 15) |
 | RETRIEVAL_FETCH_MULTIPLIER | fetch_k multiplier (default 7, fetch_k=105) |
 | RETRIEVAL_RERANK_TOP_K | Candidates for reranker (default 30) |
-| RETRIEVAL_CONTEXT_EXPANSION_WINDOW | Neighbor nodes to fetch (Soi sáng) (default 1) |
 | LLM_CACHE_ENABLED | Enable 4-hour LLM response cache (default true) |
 | QUERY_NORMALIZE_ENABLED | Enable query normalization for cache hit rate (default true) |
 

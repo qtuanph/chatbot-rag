@@ -1,16 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Upload, X, CheckCircle, AlertCircle, FileText } from "lucide-react";
+import { Upload, CheckCircle, AlertCircle, FileText } from "lucide-react";
 import { documentsApi, ApiError } from "@/lib/api-client";
 import { toast } from "sonner";
 
@@ -26,6 +21,23 @@ interface UploadItem {
 
 interface UploadDialogProps {
   onUploaded: () => void;
+}
+
+const PROGRESS_POLL_MS = 1000;
+
+function statusLabel(status: UploadItem["status"]): string {
+  switch (status) {
+    case "uploading":
+      return "Đang tải lên";
+    case "processing":
+      return "Đang xử lý";
+    case "done":
+      return "Hoàn tất";
+    case "failed":
+      return "Thất bại";
+    default:
+      return "";
+  }
 }
 
 export function UploadDialog({ onUploaded }: UploadDialogProps) {
@@ -44,68 +56,74 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
     setItems([]);
   }, [cancelAllPolling]);
 
-  // Check if any item is still in progress
-  const hasActive = items.some((i) => i.status === "uploading" || i.status === "processing");
+  const pollProgress = useCallback(
+    (itemId: string, taskId: string) => {
+      const poll = async () => {
+        try {
+          const status = await documentsApi.getStatus(taskId);
 
-  const pollProgress = useCallback((itemId: string, taskId: string) => {
-    const poll = async () => {
-      try {
-        const status = await documentsApi.getStatus(taskId);
-
-        setItems((prev) =>
-          prev.map((item) =>
-            item.id === itemId
-              ? {
-                  ...item,
-                  progress: status.progress.percent,
-                  message: status.status_message || status.stage || "",
-                  status: status.status === "ready" ? "done" : status.status === "failed" ? "failed" : "processing",
-                  error: status.error,
-                }
-              : item,
-          ),
-        );
-
-        if (status.status === "ready") {
-          // Final update then stop
           setItems((prev) =>
             prev.map((item) =>
-              item.id === itemId ? { ...item, progress: 100, message: "Hoàn tất!" } : item,
+              item.id === itemId
+                ? {
+                    ...item,
+                    progress: status.progress.percent,
+                    message: status.status_message || status.stage || "",
+                    status:
+                      status.status === "ready"
+                        ? "done"
+                        : status.status === "failed"
+                          ? "failed"
+                          : "processing",
+                    error: status.error,
+                  }
+                : item,
+            ),
+          );
+
+          if (status.status === "ready") {
+            setItems((prev) =>
+              prev.map((item) =>
+                item.id === itemId ? { ...item, progress: 100, message: "Hoàn tất!" } : item,
+              ),
+            );
+            pollTimers.current.delete(itemId);
+            onUploaded();
+            return;
+          }
+
+          if (status.status === "failed") {
+            pollTimers.current.delete(itemId);
+            onUploaded();
+            return;
+          }
+
+          pollTimers.current.set(itemId, setTimeout(() => poll(), PROGRESS_POLL_MS));
+        } catch {
+          setItems((prev) =>
+            prev.map((item) =>
+              item.id === itemId
+                ? { ...item, status: "failed", error: "Lỗi khi kiểm tra tiến trình" }
+                : item,
             ),
           );
           pollTimers.current.delete(itemId);
-          return;
         }
-
-        if (status.status === "failed") {
-          pollTimers.current.delete(itemId);
-          return;
-        }
-
-        // Continue polling every 5 seconds
-        pollTimers.current.set(itemId, setTimeout(() => poll(), 5000));
-      } catch {
-        setItems((prev) =>
-          prev.map((item) =>
-            item.id === itemId ? { ...item, status: "failed", error: "Lỗi khi kiểm tra tiến trình" } : item,
-          ),
-        );
-        pollTimers.current.delete(itemId);
-      }
-    };
-    poll();
-  }, []);
+      };
+      poll();
+    },
+    [onUploaded],
+  );
 
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files || files.length === 0 || !session) return;
 
-      // Create upload items for all selected files
       const newItems: UploadItem[] = Array.from(files).map((file) => ({
         id: crypto.randomUUID(),
         file,
-        status: "uploading" as const,
+        status: "uploading",
         progress: 5,
         message: "Đang tải lên...",
         error: null,
@@ -114,12 +132,9 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
 
       setItems((prev) => [...prev, ...newItems]);
 
-      // Upload all files in parallel
       const uploadPromises = newItems.map(async (item) => {
         try {
           const result = await documentsApi.upload(item.file);
-          
-          // Trigger immediate refresh so document appears in table while processing
           onUploaded();
 
           setItems((prev) =>
@@ -134,23 +149,16 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
         } catch (err) {
           const msg = err instanceof ApiError ? err.detail : "Tải lên thất bại";
           setItems((prev) =>
-            prev.map((i) =>
-              i.id === item.id
-                ? { ...i, status: "failed", error: msg }
-                : i,
-            ),
+            prev.map((i) => (i.id === item.id ? { ...i, status: "failed", error: msg } : i)),
           );
           toast.error(`${item.file.name}: ${msg}`);
         }
       });
 
-      // Fire all uploads in parallel, don't await here to allow UI updates
       Promise.allSettled(uploadPromises);
-
-      // Reset file input so the same files can be re-selected
       e.target.value = "";
     },
-    [session, pollProgress],
+    [session, pollProgress, onUploaded],
   );
 
   const handleClose = useCallback(() => {
@@ -162,9 +170,19 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
   }, [cancelAllPolling, items, resetState, onUploaded]);
 
   const allDone = items.length > 0 && items.every((i) => i.status === "done" || i.status === "failed");
+  const avgProgress = items.length > 0 ? Math.round(items.reduce((acc, i) => acc + i.progress, 0) / items.length) : 0;
+  const doneCount = items.filter((i) => i.status === "done").length;
+  const failedCount = items.filter((i) => i.status === "failed").length;
+  const activeCount = items.filter((i) => i.status === "processing" || i.status === "uploading").length;
+  const showAggregateProgress = items.length > 1;
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!next) handleClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) handleClose();
+      }}
+    >
       <Button className="gap-2" onClick={() => setOpen(true)}>
         <Upload className="h-4 w-4" />
         Tải tài liệu lên
@@ -174,6 +192,17 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
           <DialogTitle>Tải tài liệu lên</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {items.length > 0 && showAggregateProgress && (
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium">Tiến trình tổng</span>
+                <span className="tabular-nums">{avgProgress}%</span>
+              </div>
+              <Progress value={avgProgress} className="h-2" />
+              <p className="text-xs text-muted-foreground">{`Đang xử lý: ${activeCount} • Hoàn tất: ${doneCount} • Lỗi: ${failedCount}`}</p>
+            </div>
+          )}
+
           {items.length === 0 ? (
             <div className="grid w-full max-w-sm items-center gap-1.5">
               <label
@@ -181,16 +210,13 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
                 className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
               >
                 <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  Click hoặc kéo thả file vào đây
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  PDF, DOCX, XLSX, TXT, MD — chọn nhiều file để tải song song
-                </p>
+                <p className="text-sm text-muted-foreground">Click hoặc kéo thả file vào đây</p>
+                <p className="text-xs text-muted-foreground mt-1">PDF, DOCX, XLSX, TXT, MD — chọn nhiều file để tải song song</p>
                 <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-left text-xs text-amber-800">
                   <FileText className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
                   <span>
-                    <strong className="font-semibold">Nên dùng file .MD</strong> — không cần OCR, giữ nguyên cấu trúc heading, tốc độ xử lý nhanh hơn và độ chính xác cao hơn so với PDF/DOCX.
+                    <strong className="font-semibold">Nên dùng file .MD</strong> — không cần OCR, giữ nguyên cấu trúc heading,
+                    tốc độ xử lý nhanh hơn và độ chính xác cao hơn so với PDF/DOCX.
                   </span>
                 </div>
               </label>
@@ -214,29 +240,21 @@ export function UploadDialog({ onUploaded }: UploadDialogProps) {
                       <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
                     )}
                     <span className="text-sm font-medium truncate">{item.file.name}</span>
-                    <span className="text-xs text-muted-foreground ml-auto shrink-0">
-                      {item.progress}%
-                    </span>
+                    <span className="text-[11px] rounded px-1.5 py-0.5 bg-muted text-muted-foreground">{statusLabel(item.status)}</span>
+                    <span className="text-xs text-muted-foreground ml-auto shrink-0">{item.progress}%</span>
                   </div>
-                  <Progress value={item.progress} />
+                  <Progress value={item.progress} className="h-2" />
                   <p className="text-xs text-muted-foreground">
-                    {item.error ? (
-                      <span className="text-destructive">{item.error}</span>
-                    ) : (
-                      item.message
-                    )}
+                    {item.error ? <span className="text-destructive">{item.error}</span> : item.message}
                   </p>
                 </div>
               ))}
             </div>
           )}
 
-          {items.length > 0 && (
+          {items.length > 0 && showAggregateProgress && (
             <p className="text-xs text-muted-foreground text-center">
-              {!allDone
-                ? `Đang xử lý ${items.filter((i) => i.status === "processing" || i.status === "uploading").length}/${items.length} file(s)`
-                : `${items.filter((i) => i.status === "done").length}/${items.length} file(s) hoàn tất`
-              }
+              {!allDone ? `Đang xử lý ${activeCount}/${items.length} file(s)` : `${doneCount}/${items.length} file(s) hoàn tất`}
             </p>
           )}
 

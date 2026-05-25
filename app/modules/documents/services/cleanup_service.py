@@ -7,7 +7,7 @@ import logging
 from typing import Any, TYPE_CHECKING
 
 from app.adapters.storage import build_storage
-from app.core.llama_index import get_vector_store
+from app.core.llama_index import build_vector_store
 
 if TYPE_CHECKING:
     from app.modules.documents.repositories import DocumentRepository, SectionRepository
@@ -29,7 +29,9 @@ class CleanupService:
     async def hard_delete_document(self, document_id: str) -> dict[str, bool]:
         """Hard-delete document. Order (per AGENTS.md): Vectors → Sections → File → DB."""
         storage = build_storage()
-        vector_store = get_vector_store()
+        # Cleanup path only needs delete by ref_doc_id; disable hybrid to avoid
+        # unnecessary sparse model initialization/download.
+        vector_store = build_vector_store(enable_hybrid=False)
 
         # 1. Vectors (Qdrant via LlamaIndex)
         try:
@@ -52,9 +54,10 @@ class CleanupService:
         # 5. Clean up Redis task mapping
         if self.redis:
             try:
-                keys = await self.redis.keys(f"task:doc:*{document_id}*")
+                # redis client here is sync (from get_sync_redis_client), run in thread.
+                keys = await asyncio.to_thread(self.redis.keys, f"task:doc:*{document_id}*")
                 if keys:
-                    await self.redis.delete(*keys)
+                    await asyncio.to_thread(self.redis.delete, *keys)
             except Exception as e:
                 logger.warning("[%s] Failed to clean task keys from Redis: %s", document_id, e)
 
