@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from app.core.config import settings
+from llama_index.core import Settings as LlamaSettings
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,13 @@ def track_usage(
 
     prompt_tokens = usage.get("prompt_tokens", 0)
     completion_tokens = usage.get("completion_tokens", 0)
-    model_name = usage.get("model", "unknown")
+    model_name = (
+        usage.get("model")
+        or usage.get("model_name")
+        or getattr(provider, "model_name", None)
+        or getattr(getattr(LlamaSettings, "llm", None), "model", None)
+        or "unknown"
+    )
     total_tokens = prompt_tokens + completion_tokens
 
     cost_usd = _estimate_cost(prompt_tokens, completion_tokens)

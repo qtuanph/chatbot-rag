@@ -1,4 +1,4 @@
-﻿"""Chat service — session management, context preparation, message persistence.
+"""Chat service — session management, context preparation, message persistence.
 
 Uses OpenAILike (9Router) via llama_index.core.Settings.llm for streaming.
 Uses LlamaIndex retrieval pipeline (hybrid + TEI reranker) for RAG.
@@ -144,7 +144,13 @@ class ChatService:
         queries = [query]
 
         _t4 = _time.monotonic()
-        context = await self.retrieve_rag_context(self.repo.session, queries, resolved_session_id, 20)
+        context = await self.retrieve_rag_context(
+            self.repo.session,
+            queries,
+            resolved_session_id,
+            20,
+            user_id=user_id,
+        )
         logger.info("[PERF] RAG retrieval: %.3fs", _time.monotonic() - _t4)
 
         _t5 = _time.monotonic()
@@ -419,7 +425,12 @@ class ChatService:
         yield f"data: {json.dumps(final_data)}\n\n"
 
     async def retrieve_rag_context(
-        self, session: AsyncSession, queries: list[str], session_id: str | None = None, limit: int = 20
+        self,
+        session: AsyncSession,
+        queries: list[str],
+        session_id: str | None = None,
+        limit: int = 20,
+        user_id: str | None = None,
     ) -> Any:
         positive_ids, negative_ids = [], []
         if session_id:
@@ -430,6 +441,8 @@ class ChatService:
             limit=limit,
             positive_point_ids=positive_ids,
             negative_point_ids=negative_ids,
+            user_id=user_id,
+            session_id=session_id,
         )
 
     # ── Session management ──────────────────────────────────────────

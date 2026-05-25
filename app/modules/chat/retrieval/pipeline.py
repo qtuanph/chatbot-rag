@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Any
 
 from llama_index.core import QueryBundle, Settings, VectorStoreIndex
@@ -19,6 +20,41 @@ from app.core.config import settings
 from app.models.rag import RagContext, RagNode
 
 logger = logging.getLogger(__name__)
+
+
+def _estimate_tokens_from_chars(text: str) -> int:
+    # Keep consistent with docs/7_CURRENT_SETTINGS.json (chars / 3).
+    return max(0, len(text or "") // 3)
+
+
+def _dispatch_model_usage(
+    *,
+    model_name: str,
+    model_type: str,
+    prompt_tokens: int,
+    completion_tokens: int = 0,
+    latency_ms: float = 0.0,
+    endpoint: str,
+    user_id: str | None,
+    session_id: str | None,
+) -> None:
+    try:
+        from app.modules.chat.tasks.usage_tasks import log_model_usage_task
+
+        log_model_usage_task.delay(
+            model_name=model_name or "unknown",
+            model_type=model_type,
+            prompt_tokens=max(0, int(prompt_tokens)),
+            completion_tokens=max(0, int(completion_tokens)),
+            endpoint=endpoint,
+            latency_ms=max(0.0, float(latency_ms)),
+            cost_usd=0.0,
+            user_id=user_id,
+            session_id=session_id,
+            message_id=None,
+        )
+    except Exception as e:
+        logger.warning("Failed to dispatch %s usage: %s", model_type, e)
 
 
 def _extract_text_and_metadata_from_payload(payload: dict[str, Any], text_key: str) -> tuple[str, dict[str, Any]]:
@@ -50,7 +86,12 @@ def _extract_text_and_metadata_from_payload(payload: dict[str, Any], text_key: s
     return str(text), metadata
 
 
-async def _hybrid_retrieve_via_qdrant(query: str, limit: int) -> list[NodeWithScore]:
+async def _hybrid_retrieve_via_qdrant(
+    query: str,
+    limit: int,
+    user_id: str | None = None,
+    session_id: str | None = None,
+) -> list[NodeWithScore]:
     """Run hybrid retrieval directly via qdrant-client (dense + sparse fusion)."""
     vector_store = get_vector_store()
     aclient = getattr(vector_store, "_aclient", None) or getattr(vector_store, "aclient", None)
@@ -64,7 +105,24 @@ async def _hybrid_retrieve_via_qdrant(query: str, limit: int) -> list[NodeWithSc
             f"Qdrant collection '{collection_name}' does not exist. Please run the ingestion pipeline to build it."
         )
 
+    t0_embed = time.perf_counter()
     dense_vector = await Settings.embed_model.aget_query_embedding(query)
+    embed_latency_ms = (time.perf_counter() - t0_embed) * 1000
+    embed_model_name = (
+        getattr(Settings.embed_model, "model_name", None)
+        or getattr(Settings.embed_model, "model", None)
+        or "unknown"
+    )
+    _dispatch_model_usage(
+        model_name=str(embed_model_name),
+        model_type="embedding",
+        prompt_tokens=_estimate_tokens_from_chars(query),
+        completion_tokens=0,
+        latency_ms=embed_latency_ms,
+        endpoint="retrieval.embed_query",
+        user_id=user_id,
+        session_id=session_id,
+    )
 
     sparse_query_fn = getattr(vector_store, "_sparse_query_fn", None) or getattr(vector_store, "sparse_query_fn", None)
     if sparse_query_fn is None:
@@ -109,6 +167,8 @@ async def retrieve_context(
     limit: int = 20,
     positive_point_ids: list[str] | None = None,
     negative_point_ids: list[str] | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
 ) -> RagContext:
     """Retrieve context using LlamaIndex hybrid (dense + native BM25 RRF) + TEI reranker.
 
@@ -134,13 +194,38 @@ async def retrieve_context(
     for query in queries:
         qb = QueryBundle(query_str=query)
         if settings.retrieval_hybrid_enabled:
-            nodes = await _hybrid_retrieve_via_qdrant(query=query, limit=settings.retrieval_hybrid_top_k)
+            nodes = await _hybrid_retrieve_via_qdrant(
+                query=query,
+                limit=settings.retrieval_hybrid_top_k,
+                user_id=user_id,
+                session_id=session_id,
+            )
         else:
             if retriever is None:
                 raise RuntimeError("Dense retriever is not initialized")
             nodes = await retriever.aretrieve(query)
         try:
+            t0_rerank = time.perf_counter()
             reranked_nodes = await reranker.postprocess_nodes(nodes, qb)
+            rerank_latency_ms = (time.perf_counter() - t0_rerank) * 1000
+            rerank_model_name = (
+                getattr(reranker, "model_name", None)
+                or getattr(reranker, "base_url", None)
+                or reranker.__class__.__name__
+            )
+            rerank_prompt_tokens = _estimate_tokens_from_chars(query) + _estimate_tokens_from_chars(
+                "".join((n.node.text or "") for n in nodes)
+            )
+            _dispatch_model_usage(
+                model_name=str(rerank_model_name),
+                model_type="reranker",
+                prompt_tokens=rerank_prompt_tokens,
+                completion_tokens=0,
+                latency_ms=rerank_latency_ms,
+                endpoint="retrieval.rerank",
+                user_id=user_id,
+                session_id=session_id,
+            )
             if reranked_nodes:
                 nodes = reranked_nodes
             else:

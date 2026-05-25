@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Trash2, Power, TestTube, Key, Globe, Cpu } from "lucide-react";
 import { settingsApi, ApiError } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -74,6 +73,14 @@ export default function ProvidersPage() {
   useEffect(() => {
     settingsApi.listProviders(tab).then(setProviders).catch(() => toast.error("Không thể tải danh sách providers")).finally(() => setLoading(false));
   }, [tab]);
+
+  // Sync tab state with URL query (?tab=...) when navigating from sidebar.
+  useEffect(() => {
+    const nextTab: TabKey = tabParam && TAB_KEYS.includes(tabParam) ? tabParam : "embedding";
+    if (nextTab !== tab) {
+      setTab(nextTab);
+    }
+  }, [tabParam, tab]);
 
   useEffect(() => {
     settingsApi.getTemplates().then(setTemplates).catch(() => {});
@@ -267,32 +274,24 @@ export default function ProvidersPage() {
         )}
       </div>
 
-      <Tabs value={tab} onValueChange={(value) => setTab(value as TabKey)}>
-        <TabsList>
-          {TAB_KEYS.map((k) => (
-            <TabsTrigger key={`trigger-${k}`} value={k}>
-              {TAB_LABELS[k]}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        {TAB_KEYS.map((k) => (
-          <TabsContent key={k} value={k} className="space-y-3 mt-4">
-            {loading ? (
-              <p className="text-sm text-muted-foreground">Loading...</p>
-            ) : providers.filter((p) => p.service_type === k).length === 0 ? (
-              <Card>
-                <CardContent className="p-8 text-center text-muted-foreground">
-                  <Cpu className="mx-auto h-8 w-8 mb-2" />
-                  <p>Chưa có provider nào</p>
-                  <p className="text-xs">Thêm provider mới để bắt đầu</p>
-                </CardContent>
-              </Card>
-            ) : (
-              providers.filter((p) => p.service_type === k).map(providerCard)
-            )}
-          </TabsContent>
-        ))}
-      </Tabs>
+            <div className="space-y-3 mt-4">
+        <div className="text-sm text-muted-foreground">
+          Đang xem: <span className="font-medium text-foreground">{TAB_LABELS[tab]}</span>
+        </div>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : providers.filter((p) => p.service_type === tab).length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center text-muted-foreground">
+              <Cpu className="mx-auto h-8 w-8 mb-2" />
+              <p>Chưa có provider nào</p>
+              <p className="text-xs">Thêm provider mới để bắt đầu</p>
+            </CardContent>
+          </Card>
+        ) : (
+          providers.filter((p) => p.service_type === tab).map(providerCard)
+        )}
+      </div>
 
       {/* ── Add Dialog ── */}
       <Dialog open={addDialog} onOpenChange={setAddDialog}>
@@ -429,3 +428,4 @@ export default function ProvidersPage() {
     </div>
   );
 }
+
