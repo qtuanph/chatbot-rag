@@ -174,7 +174,7 @@ Full config reference: [`docs/7_CURRENT_SETTINGS.json`](docs/7_CURRENT_SETTINGS.
 
 ## Contributing
 
-1. Read [`AGENTS.md`](AGENTS.md) for dev guidelines
+1. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md)
 2. Create a feature branch (`git checkout -b feat/your-feature`)
 3. Commit using [Conventional Commits](https://www.conventionalcommits.org/)
 4. Push and open a Pull Request
@@ -198,3 +198,15 @@ This project relies heavily on LlamaIndex core building blocks such as:
 ## License
 
 [GNU AGPL-3.0](LICENSE)
+
+## Project Policies
+
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
+- [Trademark Policy](TRADEMARK_POLICY.md)
+
+## Compliance Notice
+
+This project is open-source under AGPL-3.0 with strict compliance expectations.
+If you deploy modified versions publicly, you must publish corresponding source code.
+Using this project's name/logo for unofficial commercial offerings is prohibited without permission.
