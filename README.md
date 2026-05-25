@@ -185,6 +185,16 @@ python -m black app --line-length=120
 python -m flake8 app --select=F,E1,E2,E4,E9,W --ignore=E203,E501,W293,W292,W391,W503,W504
 ```
 
+## Acknowledgements
+
+Special thanks to the **LlamaIndex** team and open-source community.
+This project relies heavily on LlamaIndex core building blocks such as:
+- `VectorStoreIndex`
+- `IngestionPipeline`
+- `QdrantVectorStore`
+- `TextEmbeddingsInference`
+- `OpenAILike`
+
 ## License
 
 [Apache 2.0](LICENSE)

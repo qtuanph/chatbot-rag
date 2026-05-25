@@ -1,4 +1,4 @@
-﻿"""
+"""
 Ingestion Pipeline: Parse â†’ Validate â†’ Store Sections â†’ Embed & Index.
 Uses LlamaParse/cloud markdown parsing + LlamaIndex for chunking + embedding + Qdrant indexing.
 """
