@@ -13,7 +13,7 @@ Self-hosted. No cloud lock-in. Complete control over your data.
 [![LlamaIndex](https://img.shields.io/badge/LlamaIndex-0.14-7B3FE4?logo=llamaindex&logoColor=white)](https://www.llamaindex.ai/)
 [![Qdrant](https://img.shields.io/badge/Qdrant-1.18-DC2D5E?logo=qdrant&logoColor=white)](https://qdrant.tech/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 
 </div>
 
@@ -197,4 +197,4 @@ This project relies heavily on LlamaIndex core building blocks such as:
 
 ## License
 
-[Apache 2.0](LICENSE)
+[GNU AGPL-3.0](LICENSE)
