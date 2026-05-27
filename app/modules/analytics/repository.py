@@ -1,9 +1,10 @@
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import cast, Date, func, select
+from sqlalchemy import cast, Date, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import ChatMessage, ChatSession
+from app.models.auth import User
 from app.models.usage import AiModelUsage
 
 
@@ -276,3 +277,56 @@ class AnalyticsRepository:
         result = await self.session.execute(stmt)
         await self.session.commit()
         return result.rowcount
+
+    async def get_user_usage_summary(self, days: int = 30) -> list[dict]:
+        """Usage summary per user in last N days, including users with zero usage.
+
+        Table focus:
+        - token_in/out: LLM only
+        - cost: all model types
+        """
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        usage_subq = (
+            select(
+                AiModelUsage.user_id.label("user_id"),
+                func.coalesce(
+                    func.sum(case((AiModelUsage.model_type == "llm", AiModelUsage.prompt_tokens), else_=0)), 0
+                ).label("llm_tokens_in"),
+                func.coalesce(
+                    func.sum(case((AiModelUsage.model_type == "llm", AiModelUsage.completion_tokens), else_=0)), 0
+                ).label("llm_tokens_out"),
+                func.coalesce(func.sum(AiModelUsage.cost_usd), 0).label("cost_usd"),
+                func.coalesce(func.count(AiModelUsage.id), 0).label("call_count"),
+            )
+            .where(AiModelUsage.user_id.isnot(None), AiModelUsage.created_at >= cutoff)
+            .group_by(AiModelUsage.user_id)
+            .subquery()
+        )
+
+        stmt = (
+            select(
+                User.id.label("user_id"),
+                User.username.label("username"),
+                func.coalesce(usage_subq.c.llm_tokens_in, 0).label("tokens_in"),
+                func.coalesce(usage_subq.c.llm_tokens_out, 0).label("tokens_out"),
+                func.coalesce(usage_subq.c.cost_usd, 0).label("cost_usd"),
+                func.coalesce(usage_subq.c.call_count, 0).label("call_count"),
+            )
+            .outerjoin(usage_subq, usage_subq.c.user_id == User.id)
+            .order_by(User.username.asc())
+        )
+
+        rows = (await self.session.execute(stmt)).all()
+        return [
+            {
+                "user_id": str(row.user_id),
+                "username": row.username,
+                "tokens_in": int(row.tokens_in or 0),
+                "tokens_out": int(row.tokens_out or 0),
+                "total_tokens": int((row.tokens_in or 0) + (row.tokens_out or 0)),
+                "cost_usd": round(float(row.cost_usd or 0), 6),
+                "call_count": int(row.call_count or 0),
+                "window_days": days,
+            }
+            for row in rows
+        ]

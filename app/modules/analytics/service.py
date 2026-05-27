@@ -69,6 +69,33 @@ class AnalyticsService:
         """Delete all ai_model_usage records. Admin only."""
         return await self.repo.clear_all_usage()
 
+    async def get_my_usage_windows(self, *, user_id: str) -> dict:
+        """User-scoped usage in 1/7/30 day windows with LLM/Embedding/Reranker breakdown."""
+        windows: dict[str, dict] = {}
+        for days in (1, 7, 30):
+            by_type = await self.repo.get_model_type_stats(is_admin=False, user_id=user_id, days=days)
+            totals_in = int(sum(int(v.get("tokens_in", 0)) for v in by_type.values()))
+            totals_out = int(sum(int(v.get("tokens_out", 0)) for v in by_type.values()))
+            windows[str(days)] = {
+                "days": days,
+                "total": {
+                    "tokens_in": totals_in,
+                    "tokens_out": totals_out,
+                    "total_tokens": totals_in + totals_out,
+                    "estimated_cost_usd": round(float(self._compute_cost(totals_in, totals_out)), 6),
+                },
+                "by_model_type": by_type,
+            }
+
+        return {
+            "user_id": user_id,
+            "windows": windows,
+            "pricing": {
+                "input_per_1m": settings.ai_input_cost_per_1m,
+                "output_per_1m": settings.ai_output_cost_per_1m,
+            },
+        }
+
     @staticmethod
     def _compute_cost(tokens_in: int, tokens_out: int) -> float:
         return (tokens_in * settings.ai_input_cost_per_1m + tokens_out * settings.ai_output_cost_per_1m) / 1_000_000

@@ -43,3 +43,17 @@ async def clear_analytics_stats(
 
     deleted = await service.clear_stats()
     return {"status": "cleared", "deleted_records": deleted}
+
+
+@router.get("/analytics/me/usage")
+async def get_my_usage_windows(
+    auth: AuthContext = Depends(get_auth_context),
+    service: AnalyticsService = Depends(get_analytics_service),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+) -> dict:
+    """Get current user's usage windows (1/7/30 days) with LLM/Embedding/Reranker breakdown."""
+    if not await rate_limiter.is_allowed(
+        f"analytics:me:{auth.user_id}", limit=settings.effective_rate_limit(60), window_ms=60000
+    ):
+        raise http_errors.too_many_requests("Too many requests. Please wait.")
+    return await service.get_my_usage_windows(user_id=auth.user_id)

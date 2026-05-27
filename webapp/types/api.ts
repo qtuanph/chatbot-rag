@@ -24,6 +24,45 @@ export interface UserItem {
   role: string;
 }
 
+export interface UserUsageSummaryItem {
+  user_id: string;
+  username: string;
+  tokens_in: number;
+  tokens_out: number;
+  total_tokens: number;
+  cost_usd: number;
+  call_count: number;
+  window_days?: number;
+}
+
+export interface UserUsageWindow {
+  days: number;
+  tokens_in: number;
+  tokens_out: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  daily: Array<{
+    date: string;
+    tokens_in: number;
+    tokens_out: number;
+  }>;
+}
+
+export interface UserUsageDetail {
+  user_id: string;
+  window_30d: UserUsageWindow & {
+    by_model_type: {
+      llm: ModelTypeStats;
+      embedding: ModelTypeStats;
+      reranker: ModelTypeStats;
+    };
+  };
+  pricing: {
+    input_per_1m: number;
+    output_per_1m: number;
+  };
+}
+
 export interface CreateUserRequest {
   username: string;
   password: string;
@@ -265,6 +304,31 @@ export interface AnalyticsStats {
     output_per_1m: number;
     model: string;
     note: string;
+  };
+}
+
+export interface UserUsageWindows {
+  user_id: string;
+  windows: Record<
+    string,
+    {
+      days: number;
+      total: {
+        tokens_in: number;
+        tokens_out: number;
+        total_tokens: number;
+        estimated_cost_usd: number;
+      };
+      by_model_type: {
+        llm: ModelTypeStats;
+        embedding: ModelTypeStats;
+        reranker: ModelTypeStats;
+      };
+    }
+  >;
+  pricing: {
+    input_per_1m: number;
+    output_per_1m: number;
   };
 }
 

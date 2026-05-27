@@ -306,7 +306,7 @@ export function ChatPanel({
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-h-0 flex-col overscroll-none">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 shrink-0 border-b">
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
@@ -361,7 +361,7 @@ export function ChatPanel({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 min-h-0 overflow-y-auto" ref={scrollRef}>
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" ref={scrollRef}>
         {restoring ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
