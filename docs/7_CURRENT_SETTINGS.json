@@ -153,7 +153,19 @@
         "embedding_token_estimate": "chars / 3",
         "reranker_token_estimate": "(query + docs chars) / 3",
         "latency_tracked": true,
-        "tracking_method": "celery_fire_and_forget"
+        "tracking_method": "celery_fire_and_forget",
+        "user_usage_views": {
+            "member_self_endpoint": "/api/v1/analytics/me/usage",
+            "member_windows_days": [1, 7, 30],
+            "member_breakdown": ["llm", "embedding", "reranker"],
+            "admin_summary_endpoint": "/api/v1/admin/users/usage",
+            "admin_summary_window_days": 30,
+            "admin_summary_tokens_scope": "llm_only",
+            "admin_summary_cost_scope": "all_model_types",
+            "admin_detail_endpoint": "/api/v1/admin/users/{user_id}/usage",
+            "admin_detail_window_days": 30,
+            "admin_detail_breakdown": ["llm", "embedding", "reranker"]
+        }
     },
     "security": {
         "jwt_algorithm": "HS256",
