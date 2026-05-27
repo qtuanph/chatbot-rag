@@ -21,6 +21,9 @@ import type {
   TreeSearchResult,
   HealthData,
   AnalyticsStats,
+  UserUsageWindows,
+  UserUsageSummaryItem,
+  UserUsageDetail,
 } from "@/types/api";
 
 // Browser: calls go through Next.js Route Handler proxy (/api/bep/...)
@@ -55,6 +58,15 @@ function extractErrorMessage(body: unknown, fallback: string): string {
   const detail = record.detail;
   if (typeof detail === "string" && detail.trim().length > 0) {
     return detail;
+  }
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0] as Record<string, unknown>;
+    const msg = typeof first?.msg === "string" ? first.msg : "";
+    const locArr = Array.isArray(first?.loc) ? first.loc.map(String) : [];
+    const loc = locArr.length > 0 ? locArr.join(".") : "";
+    if (msg) {
+      return loc ? `${loc}: ${msg}` : msg;
+    }
   }
 
   const error = record.error;
@@ -126,6 +138,12 @@ export const authApi = {
     apiFetch<{ status: string }>(`/auth/users/${encodeURIComponent(username)}`, {
       method: "DELETE",
     }),
+
+  getUsersUsageSummary: (): Promise<{ items: UserUsageSummaryItem[] }> =>
+    apiFetch<{ items: UserUsageSummaryItem[] }>("/admin/users/usage"),
+
+  getUserUsageDetail: (userId: string): Promise<UserUsageDetail> =>
+    apiFetch<UserUsageDetail>(`/admin/users/${encodeURIComponent(userId)}/usage`),
 };
 
 // --- Chat ---
@@ -268,6 +286,8 @@ export const memoriesApi = {
 export const analyticsApi = {
   getStats: (days = 30): Promise<AnalyticsStats> =>
     apiFetch<AnalyticsStats>(`/analytics/stats?days=${days}`),
+  getMyUsageWindows: (): Promise<UserUsageWindows> =>
+    apiFetch<UserUsageWindows>("/analytics/me/usage"),
   clearStats: (): Promise<{ status: string; deleted_records: number }> =>
     apiFetch<{ status: string; deleted_records: number }>("/analytics/stats", { method: "DELETE" }),
 };

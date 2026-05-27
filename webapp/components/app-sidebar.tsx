@@ -30,6 +30,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import {
   Collapsible,
@@ -53,6 +54,7 @@ const adminNavItems = [
 ];
 
 const memberNavItems = [
+  { title: "Thống kê", href: "/analytics", icon: BarChart3 },
   { title: "Chat", href: "/chat", icon: MessageSquare },
   { title: "Cài đặt", href: "/settings", icon: Settings },
 ];
@@ -73,6 +75,7 @@ export function AppSidebar() {
   const isAdmin = session?.role === "admin";
   const items: NavItem[] = isAdmin ? adminNavItems : memberNavItems;
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const { isMobile, setOpenMobile } = useSidebar();
 
   const isActive = (href: string) => {
     const base = href.split("?")[0];
@@ -91,6 +94,13 @@ export function AppSidebar() {
       else next.add(href);
       return next;
     });
+  };
+
+  const navigateTo = (href: string) => {
+    router.push(href);
+    if (isMobile) {
+      setOpenMobile(false);
+    }
   };
 
   return (
@@ -126,7 +136,7 @@ export function AppSidebar() {
                             <SidebarMenuSubItem key={sub.href}>
                               <SidebarMenuSubButton
                                 isActive={isSubActive(sub.href)}
-                                onClick={() => router.push(sub.href)}
+                                onClick={() => navigateTo(sub.href)}
                               >
                                 <sub.icon className="h-4 w-4" />
                                 <span>{sub.title}</span>
@@ -141,7 +151,7 @@ export function AppSidebar() {
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       isActive={isActive(item.href)}
-                      onClick={() => router.push(item.href)}
+                      onClick={() => navigateTo(item.href)}
                     >
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>

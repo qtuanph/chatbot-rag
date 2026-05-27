@@ -132,7 +132,7 @@ Streaming only: SSE via `POST /chat/stream` with `data: {"chunk":"...","done":fa
 | GET | `/auth/users` | Admin | List all users |
 | DELETE | `/auth/users/{username}` | Admin | Delete user (cannot self-delete) |
 
-Validation: username 3-64 chars (normalized lowercase + trim), password 8-256 chars, role must match `roles` table.
+Validation: username 3-64 chars (normalized lowercase + trim), password 6-256 chars, role must match `roles` table.
 
 ### Documents & Ingestion
 
@@ -228,6 +228,9 @@ Quản lý Embedding, Reranker, và LLM providers. Lưu vào `settings.db` (SQLi
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | GET | `/admin/models` | Admin | List available models from 9Router's connected providers |
+| GET | `/admin/usage/daily?days=30` | Admin | Daily usage breakdown for the whole system |
+| GET | `/admin/users/usage` | Admin | Per-user summary in last 30 days (token in/out = LLM only, cost = all 3 model types) |
+| GET | `/admin/users/{user_id}/usage` | Admin | Per-user detail for last 30 days, includes breakdown `llm/embedding/reranker` |
 
 Rate limit: 20/min per admin. Proxies to 9Router `/v1/models`. Provider management (9Router-side) via 9Router Dashboard tại port 2908 (SQLite riêng của 9Router, khác `settings.db` của project).
 
@@ -237,6 +240,7 @@ Rate limit: 20/min per admin. Proxies to 9Router `/v1/models`. Provider manageme
 |--------|------|------|-------|
 | GET | `/analytics/stats` | JWT | Token usage analytics. Admin: system-wide. Member: own sessions only. |
 
+| GET | `/analytics/me/usage` | JWT | Current user windows 1/7/30 ngày, gồm LLM/Embedding/Reranker |
 Response:
 ```json
 {
@@ -247,6 +251,10 @@ Response:
   "pricing": {"input_per_1m": 0.0, "output_per_1m": 0.0, "model": "from-AI_PROXY_DEFAULT_MODEL", "note": "Free tier"}
 }
 ```
+
+Frontend routes:
+- Admin: `/admin/analytics`
+- Member: `/analytics` (cùng layout thống kê, dữ liệu chỉ của user hiện tại)
 
 Rate limit: 60/min per user. Throttle key: `throttle:analytics:{user_id}`.
 

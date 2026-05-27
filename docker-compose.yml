@@ -277,7 +277,7 @@ services:
       - internal
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.webapp.rule=Host(`localhost`)"
+      - "traefik.http.routers.webapp.rule=Host(`localhost`) || Host(`sse.qtuanph.dev`)"
       - "traefik.http.routers.webapp.entrypoints=web"
       - "traefik.http.routers.webapp.priority=1"
       - "traefik.http.routers.webapp.service=webapp-svc"

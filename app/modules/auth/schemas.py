@@ -23,7 +23,7 @@ class LogoutResponse(BaseModel):
 
 class CreateUserRequest(BaseModel):
     username: str = Field(min_length=3, max_length=64)
-    password: str = Field(min_length=8, max_length=256)
+    password: str = Field(min_length=6, max_length=256)
     role: str = Field(default="member", min_length=1, max_length=50)
 
     @field_validator("username")

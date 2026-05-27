@@ -29,6 +29,8 @@ All traffic through Traefik on port 80. No direct port access.
 | api | `qtuanph` (non-root) |
 | webapp | `nextapp` (non-root) |
 
+Base runtime for backend/workers: `python:3.13-slim` (multi-stage Docker build).
+
 No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
 
 ## Required Environment Variables

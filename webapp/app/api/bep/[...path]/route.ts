@@ -12,9 +12,11 @@ async function proxyHandler(
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   const { path } = await params;
+  const useSecureCookie = (process.env.NEXTAUTH_URL || "").startsWith("https://");
   const token = await getToken({
     req: request,
     secret: process.env.NEXTAUTH_SECRET,
+    secureCookie: useSecureCookie,
   });
 
   const backendUrl = `${API_INTERNAL}/${path.join("/")}${request.nextUrl.search}`;
