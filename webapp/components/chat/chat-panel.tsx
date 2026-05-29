@@ -20,6 +20,16 @@ import type { ChatSession, Citation, ChatStreamDone, AnalyticsStats } from "@/ty
 
 const PAGE_SIZE = 20;
 
+function formatVndFromUsd(usd: number): string {
+  const usdToVnd = 26000;
+  const vnd = Math.max(0, Math.round((usd || 0) * usdToVnd));
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+    maximumFractionDigits: 0,
+  }).format(vnd);
+}
+
 function formatRelativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const min = Math.floor(diff / 60000);
@@ -381,7 +391,7 @@ export function ChatPanel({
                   {userStats.estimated_cost_usd > 0 && (
                     <>
                       {" \u00B7 "}
-                      ${userStats.estimated_cost_usd.toFixed(4)}
+                      {formatVndFromUsd(userStats.estimated_cost_usd)}
                     </>
                   )}
                 </p>

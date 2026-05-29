@@ -132,7 +132,7 @@ Streaming only: SSE via `POST /chat/stream` with `data: {"chunk":"...","done":fa
 | GET | `/auth/users` | Admin | List all users |
 | DELETE | `/auth/users/{username}` | Admin | Delete user (cannot self-delete) |
 
-Validation: username 3-64 chars (normalized lowercase + trim), password 6-256 chars, role must match `roles` table.
+Validation: username 3-64 chars (trim only, case-sensitive), password 6-256 chars, role must match `roles` table.
 
 ### Documents & Ingestion
 

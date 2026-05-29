@@ -8,7 +8,7 @@ class LoginRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def normalize_username(cls, value: str) -> str:
-        return value.strip().lower()
+        return value.strip()
 
 
 class TokenResponse(BaseModel):
@@ -29,7 +29,7 @@ class CreateUserRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def normalize_username(cls, value: str) -> str:
-        return value.strip().lower()
+        return value.strip()
 
 
 class CreateUserResponse(BaseModel):

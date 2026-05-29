@@ -25,8 +25,14 @@ function formatInt(n: number): string {
   return new Intl.NumberFormat("vi-VN").format(n || 0);
 }
 
-function formatUsd(n: number): string {
-  return `$${(n || 0).toFixed(6)}`;
+function formatVndFromUsd(n: number): string {
+  const usdToVnd = 26000;
+  const vnd = Math.max(0, Math.round((n || 0) * usdToVnd));
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+    maximumFractionDigits: 0,
+  }).format(vnd);
 }
 
 export default function UsersPage() {
@@ -244,7 +250,7 @@ export default function UsersPage() {
                         <span className="text-sm text-muted-foreground">0 / 0</span>
                       )}
                     </TableCell>
-                    <TableCell>{usage ? formatUsd(usage.cost_usd) : "$0.000000"}</TableCell>
+                    <TableCell>{usage ? formatVndFromUsd(usage.cost_usd) : "0 ₫"}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="outline" size="sm" onClick={() => void openDetail(user)}>
@@ -304,7 +310,7 @@ export default function UsersPage() {
                     {formatInt(detailUsage.window_30d.tokens_out)}
                   </div>
                   <div>Tổng token: {formatInt(detailUsage.window_30d.total_tokens)}</div>
-                  <div>Chi phí ước tính: {formatUsd(detailUsage.window_30d.estimated_cost_usd)}</div>
+                  <div>Chi phí ước tính: {formatVndFromUsd(detailUsage.window_30d.estimated_cost_usd)}</div>
                 </div>
               </div>
 

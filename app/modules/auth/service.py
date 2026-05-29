@@ -23,7 +23,7 @@ class AuthService:
         self, *, username: str, password: str, ip_address: str | None = None, user_agent: str | None = None
     ) -> dict:
         """Authenticate user and return token + role. Raises ValueError on failure."""
-        normalized = username.lower().strip()
+        normalized = username.strip()
         user = await self.repo.get_user_by_username(normalized, include_hash=True)
         if user is None or not verify_password(password, user["password_hash"]):
             raise ValueError("Invalid username or password")
@@ -67,7 +67,7 @@ class AuthService:
         """Create a new user. Returns user dict. Raises on conflict/invalid role."""
         from sqlalchemy.exc import IntegrityError
 
-        normalized = username.lower().strip()
+        normalized = username.strip()
 
         # Check duplicate
         existing = await self.repo.get_user_by_username(normalized)
@@ -80,8 +80,8 @@ class AuthService:
             raise ValueError("Invalid role")
 
         # Validate password strength
-        if len(password) < 8:
-            raise ValueError("Password must be at least 8 characters long")
+        if len(password) < 6:
+            raise ValueError("Password must be at least 6 characters long")
 
         try:
             user = await self.repo.create_user(
@@ -126,7 +126,7 @@ class AuthService:
 
     async def delete_user(self, *, username: str, admin_user_id: str) -> dict:
         """Delete a user by username. Raises on not found or self-delete."""
-        normalized = username.lower().strip()
+        normalized = username.strip()
         user = await self.repo.get_user_by_username(normalized)
         if user is None:
             raise ValueError("User not found")
