@@ -24,6 +24,16 @@ interface ChatMessageProps {
   } | null;
 }
 
+function formatVndFromUsd(usd: number): string {
+  const usdToVnd = 26000;
+  const vnd = Math.max(0, Math.round((usd || 0) * usdToVnd));
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+    maximumFractionDigits: 0,
+  }).format(vnd);
+}
+
 export function ChatMessage({ message, isStreaming = false, isThinking = false, stats }: ChatMessageProps) {
   const [showCitations, setShowCitations] = useState(false);
   const [localFeedback, setLocalFeedback] = useState<number>(message.feedback || 0);
@@ -130,8 +140,8 @@ export function ChatMessage({ message, isStreaming = false, isThinking = false, 
                           </div>
                           {(stats.estimated_cost_usd ?? 0) > 0 && (
                             <div className="flex justify-between">
-                              <span className="text-muted-foreground">Cost</span>
-                              <span className="font-medium text-green-600">${(stats.estimated_cost_usd ?? 0).toFixed(4)}</span>
+                              <span className="text-muted-foreground">Chi phí</span>
+                              <span className="font-medium text-green-600">{formatVndFromUsd(stats.estimated_cost_usd ?? 0)}</span>
                             </div>
                           )}
                         </div>

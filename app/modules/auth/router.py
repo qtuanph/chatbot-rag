@@ -33,7 +33,7 @@ async def login(
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> TokenResponse:
     client_ip = request.client.host if request.client else "unknown"
-    normalized_username = payload.username.lower().strip()
+    normalized_username = payload.username.strip()
     if not await rate_limiter.is_allowed(
         f"login:{client_ip}:{normalized_username}", limit=settings.effective_rate_limit(10), window_ms=60000
     ):

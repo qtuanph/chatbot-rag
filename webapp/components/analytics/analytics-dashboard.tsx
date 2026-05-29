@@ -22,7 +22,13 @@ function formatLatency(ms: number): string {
 }
 
 function formatCost(usd: number): string {
-  return `$${usd.toFixed(6)}`;
+  const usdToVnd = 26000;
+  const vnd = Math.max(0, Math.round((usd || 0) * usdToVnd));
+  return new Intl.NumberFormat("vi-VN", {
+    style: "currency",
+    currency: "VND",
+    maximumFractionDigits: 0,
+  }).format(vnd);
 }
 
 function timeAgo(dateStr: string): string {
@@ -96,7 +102,7 @@ function ModelTypeCard({
             <span className="font-medium">{formatLatency(stats.avg_latency_ms)}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Cost</span>
+            <span className="text-muted-foreground">Chi phí</span>
             <span className="font-medium">{formatCost(stats.cost_usd)}</span>
           </div>
         </div>
@@ -355,4 +361,3 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
     </div>
   );
 }
-
