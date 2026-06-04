@@ -17,9 +17,9 @@ class Settings(BaseSettings):
     app_port: int = 8000
     api_v1_prefix: str = "/api/v1"
     api_timeout_keep_alive: int = 75
-    ai_embedding_url: str = "http://ai-embedding:80"
-    ai_reranker_url: str = "http://ai-reranker:80"
-    reranker_backend: str = "tei"  # "tei" (local TEI) | "nvidia" (NVIDIA NIM API)
+    ai_embedding_url: str = "http://model-runner.docker.internal:12434/engines/v1"
+    ai_reranker_url: str = "http://model-runner.docker.internal:12434"
+    reranker_backend: str = "nvidia"  # "nvidia" (primary) | "dmr" (Docker Model Runner fallback)
     nvidia_api_key: str = ""
     nvidia_reranker_model: str = "nvidia/llama-nemotron-rerank-1b-v2"
     nvidia_reranker_url: str = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
@@ -32,8 +32,9 @@ class Settings(BaseSettings):
     ai_proxy_url: str = "http://ai-proxy:2908"
     ai_proxy_api_key: str = ""
     ai_proxy_default_model: str = ""
-    ai_input_cost_per_1m: float = 0.0
-    ai_output_cost_per_1m: float = 0.0
+    billing_currency_code: str = "VND"
+    ai_input_price_vnd_per_1m: int = 0
+    ai_output_price_vnd_per_1m: int = 0
 
     retrieval_semantic_cache_enabled: bool = True
     retrieval_semantic_cache_threshold: float = 0.08
@@ -134,12 +135,12 @@ class Settings(BaseSettings):
     allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0,test"
     cors_origins: str = "http://localhost"
 
-    embedding_model: str = "tei"
-    embedding_hf_model: str = "Alibaba-NLP/gte-multilingual-base"
-    embedding_vector_size: int = 768
+    embedding_model: str = "dmr"
+    embedding_hf_model: str = "ai/qwen3-embedding:0.6B-F16"
+    embedding_vector_size: int = 1024
     embedding_batch_size: int = 8
     embed_parallelism: int = 0
-    embedding_api_base: str = "http://ai-embedding:80/v1"
+    embedding_api_base: str = "http://model-runner.docker.internal:12434/engines/v1"
     embedding_api_key: str = ""
     vector_store: str = "qdrant"
     qdrant_url: str = "http://qdrant:6333"
@@ -212,6 +213,13 @@ class Settings(BaseSettings):
             raise ValueError("EMBEDDING_BATCH_SIZE must be >= 1")
         if self.embedding_vector_size < 1:
             raise ValueError("EMBEDDING_VECTOR_SIZE must be >= 1")
+        self.billing_currency_code = str(self.billing_currency_code).strip().upper() or "VND"
+        if self.billing_currency_code != "VND":
+            raise ValueError("BILLING_CURRENCY_CODE must be VND in this build")
+        if self.ai_input_price_vnd_per_1m < 0:
+            raise ValueError("AI_INPUT_PRICE_VND_PER_1M must be >= 0")
+        if self.ai_output_price_vnd_per_1m < 0:
+            raise ValueError("AI_OUTPUT_PRICE_VND_PER_1M must be >= 0")
         self.qdrant_url = str(self.qdrant_url).strip() or "http://qdrant:6333"
         if self.qdrant_timeout < 1:
             raise ValueError("QDRANT_TIMEOUT must be >= 1")

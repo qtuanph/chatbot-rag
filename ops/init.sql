@@ -1,6 +1,5 @@
--- Hierarchical RAG Database Initialization
--- Single-project, self-hosted Vietnamese chatbot
--- One shared project dataset for authenticated users
+-- Multi-tenant RAG Database Initialization
+-- Shared platform, tenant-scoped documents and stateless chat
 
 -- ============= TIMEZONE: Vietnam (UTC+7) =============
 -- All timestamps displayed in Asia/Ho_Chi_Minh timezone
@@ -81,7 +80,7 @@ $$ LANGUAGE plpgsql;
 
 -- ============= TABLES =============
 
--- Roles: admin, member (project-level, not tenant-based)
+-- Roles: platform admin and tenant admin
 CREATE TABLE IF NOT EXISTS roles (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     name VARCHAR(50) NOT NULL UNIQUE,
@@ -90,20 +89,37 @@ CREATE TABLE IF NOT EXISTS roles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS tenants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug VARCHAR(120) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
+    description TEXT,
+    monthly_token_quota INTEGER NOT NULL DEFAULT 0,
+    monthly_request_quota INTEGER NOT NULL DEFAULT 0,
+    rate_limit_rpm INTEGER NOT NULL DEFAULT 60,
+    allowed_origins JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
 -- Users: DB-backed authentication
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     role_id UUID NOT NULL REFERENCES roles(id) ON DELETE RESTRICT,
+    tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
     username VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     is_active BOOLEAN DEFAULT true NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL;
 
 -- Documents: uploaded files, parse state, and ingestion metadata
 CREATE TABLE IF NOT EXISTS documents (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     title VARCHAR(500) NOT NULL,
     file_name VARCHAR(500) NOT NULL,
     file_path VARCHAR(1000) NOT NULL,
@@ -129,33 +145,7 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS progress_percent INTEGER DEFAULT 
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_message VARCHAR(500);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
-
--- Chat sessions: conversations per user
-CREATE TABLE IF NOT EXISTS chat_sessions (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    title VARCHAR(500),
-    deleted_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
-);
-
--- Chat messages: Q&A history with citations
-CREATE TABLE IF NOT EXISTS chat_messages (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    session_id UUID NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
-    role VARCHAR(20) NOT NULL,
-    content TEXT NOT NULL,
-    citations JSONB DEFAULT '[]'::jsonb NOT NULL,
-    model_used VARCHAR(100),
-    tokens_in INTEGER,
-    tokens_out INTEGER,
-    latency_ms INTEGER,
-    feedback SMALLINT DEFAULT 0 NOT NULL, -- 0: none, 1: like, -1: dislike
-    vector_ids TEXT[], -- Store Qdrant point IDs used for this response
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
-);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE;
 
 -- Data sources: future SQL Server connectors (optional)
 CREATE TABLE IF NOT EXISTS data_sources (
@@ -189,7 +179,7 @@ CREATE TABLE IF NOT EXISTS data_source_query_audit (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     data_source_id UUID NOT NULL REFERENCES data_sources(id) ON DELETE CASCADE,
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    session_id UUID REFERENCES chat_sessions(id) ON DELETE SET NULL,
+    session_id UUID,
     sql_text_redacted TEXT NOT NULL,
     row_count INTEGER,
     duration_ms INTEGER,
@@ -211,6 +201,31 @@ CREATE TABLE IF NOT EXISTS security_audit (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS tenant_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE UNIQUE,
+    chatbot_display_name VARCHAR(255) NOT NULL DEFAULT 'Assistant',
+    welcome_message TEXT NOT NULL DEFAULT 'Xin chao, toi co the ho tro gi cho ban?',
+    system_instruction TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenant_api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    name VARCHAR(120) NOT NULL,
+    key_prefix VARCHAR(32) NOT NULL,
+    key_hash VARCHAR(128) NOT NULL UNIQUE,
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
+    expires_at TIMESTAMP WITH TIME ZONE,
+    last_used_at TIMESTAMP WITH TIME ZONE,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
 ALTER TABLE documents DROP CONSTRAINT IF EXISTS ck_documents_version;
 ALTER TABLE documents ADD CONSTRAINT ck_documents_version CHECK (version >= 1);
 
@@ -224,29 +239,26 @@ ALTER TABLE documents ADD CONSTRAINT ck_documents_progress_percent CHECK (
     progress_percent >= 0 AND progress_percent <= 100
 );
 
-ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS ck_chat_messages_tokens_in;
-ALTER TABLE chat_messages ADD CONSTRAINT ck_chat_messages_tokens_in CHECK (tokens_in IS NULL OR tokens_in >= 0);
-
-ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS ck_chat_messages_tokens_out;
-ALTER TABLE chat_messages ADD CONSTRAINT ck_chat_messages_tokens_out CHECK (tokens_out IS NULL OR tokens_out >= 0);
-
 -- ============= INDEXES =============
 CREATE INDEX IF NOT EXISTS idx_documents_sha256 ON documents(sha256);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_id ON documents(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 CREATE INDEX IF NOT EXISTS idx_documents_status_stage ON documents(status_stage);
 CREATE INDEX IF NOT EXISTS idx_documents_deleted_at ON documents(deleted_at) WHERE deleted_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id);
-CREATE INDEX IF NOT EXISTS idx_messages_session ON chat_messages(session_id);
-CREATE INDEX IF NOT EXISTS idx_chat_messages_session_time ON chat_messages(session_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_data_source_query_audit_created ON data_source_query_audit(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_data_source_query_audit_source_time ON data_source_query_audit(data_source_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_security_audit_actor ON security_audit(actor_user_id);
 CREATE INDEX IF NOT EXISTS idx_security_audit_created ON security_audit(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants(status);
+CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_tenant_id ON tenant_api_keys(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_status ON tenant_api_keys(status);
 
 -- Document Sections: Level 1 hierarchical storage for 2-stage retrieval (RAG v2)
 CREATE TABLE IF NOT EXISTS document_sections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     section_id VARCHAR(255) NOT NULL,
     parent_section_id VARCHAR(255),
@@ -265,53 +277,49 @@ CREATE TABLE IF NOT EXISTS document_sections (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     CONSTRAINT uq_document_section UNIQUE (document_id, section_id)
 );
+ALTER TABLE document_sections ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_sections_document_id ON document_sections(document_id);
+CREATE INDEX IF NOT EXISTS idx_sections_tenant_id ON document_sections(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sections_parent ON document_sections(parent_section_id);
 CREATE INDEX IF NOT EXISTS idx_sections_level ON document_sections(level);
 CREATE INDEX IF NOT EXISTS idx_sections_order ON document_sections(document_id, order_index);
 
 -- ============= TRIGGERS =============
 CREATE TRIGGER touch_roles_updated_at BEFORE UPDATE ON roles FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_tenants_updated_at BEFORE UPDATE ON tenants FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_documents_updated_at BEFORE UPDATE ON documents FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
-CREATE TRIGGER touch_chat_sessions_updated_at BEFORE UPDATE ON chat_sessions FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
-CREATE TRIGGER touch_chat_messages_updated_at BEFORE UPDATE ON chat_messages FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_data_sources_updated_at BEFORE UPDATE ON data_sources FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_data_source_schema_cache_updated_at BEFORE UPDATE ON data_source_schema_cache FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_data_source_query_audit_updated_at BEFORE UPDATE ON data_source_query_audit FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_document_sections_updated_at BEFORE UPDATE ON document_sections FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_tenant_settings_updated_at BEFORE UPDATE ON tenant_settings FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_tenant_api_keys_updated_at BEFORE UPDATE ON tenant_api_keys FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 -- ============= PERMISSIONS =============
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE roles TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tenants TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE users TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE documents TO app_rw;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE chat_sessions TO app_rw;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE chat_messages TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_sources TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_source_schema_cache TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_source_query_audit TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE security_audit TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_sections TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tenant_settings TO app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tenant_api_keys TO app_rw;
 
 -- ============= SEED DATA =============
 -- Insert default roles (if not already present)
 INSERT INTO roles (name, description)
-VALUES 
-    ('admin', 'Project administrator with full access'),
-    ('member', 'Standard member with chat and document access')
+VALUES
+    ('platform_admin', 'Platform administrator with full cross-tenant access'),
+    ('tenant_admin', 'Tenant administrator with tenant-scoped access')
 ON CONFLICT (name) DO NOTHING;
 
--- Insert default users (passwords: bcrypt('abc123'))
--- Username: admin, password: abc123
--- Username: member, password: abc123
-INSERT INTO users (role_id, username, password_hash, is_active)
-SELECT r.id, 'admin', '$2b$12$Zu/0SxKObaExq.O16nsgXOxP6VVhPMTaYG0Gy1vQecXfShKhtAed6', true
-FROM roles r WHERE r.name = 'admin'
-ON CONFLICT (username) DO NOTHING;
-
-INSERT INTO users (role_id, username, password_hash, is_active)
-SELECT r.id, 'member', '$2b$12$Zu/0SxKObaExq.O16nsgXOxP6VVhPMTaYG0Gy1vQecXfShKhtAed6', true
-FROM roles r WHERE r.name = 'member'
+INSERT INTO users (role_id, tenant_id, username, password_hash, is_active)
+SELECT r.id, NULL, 'admin', '$2b$12$Zu/0SxKObaExq.O16nsgXOxP6VVhPMTaYG0Gy1vQecXfShKhtAed6', true
+FROM roles r WHERE r.name = 'platform_admin'
 ON CONFLICT (username) DO NOTHING;
 
 -- User memories: persistent facts/preferences learned from conversations
@@ -337,41 +345,28 @@ CREATE TABLE IF NOT EXISTS ai_model_usage (
     prompt_tokens INTEGER NOT NULL DEFAULT 0,
     completion_tokens INTEGER NOT NULL DEFAULT 0,
     total_tokens INTEGER NOT NULL DEFAULT 0,
-    cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+    cost_micros_vnd BIGINT NOT NULL DEFAULT 0,
+    currency_code VARCHAR(3) NOT NULL DEFAULT 'VND',
     latency_ms DOUBLE PRECISION NOT NULL DEFAULT 0,
     endpoint VARCHAR(100) NOT NULL,
+    tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
     user_id UUID,
-    session_id UUID,
-    message_id UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL;
+ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS cost_micros_vnd BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS currency_code VARCHAR(3) NOT NULL DEFAULT 'VND';
+ALTER TABLE ai_model_usage DROP COLUMN IF EXISTS cost_usd;
+ALTER TABLE ai_model_usage DROP COLUMN IF EXISTS session_id;
+ALTER TABLE ai_model_usage DROP COLUMN IF EXISTS message_id;
 
 CREATE INDEX IF NOT EXISTS idx_ai_model_usage_created_at ON ai_model_usage(created_at);
 CREATE INDEX IF NOT EXISTS idx_ai_model_usage_endpoint ON ai_model_usage(endpoint);
+CREATE INDEX IF NOT EXISTS idx_ai_model_usage_tenant_id ON ai_model_usage(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_ai_model_usage_user_id ON ai_model_usage(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_model_usage_model_type ON ai_model_usage(model_type);
 
 GRANT ALL ON ai_model_usage TO app_rw;
 
--- ============= FUNCTION: Auto-create monthly partitions for chat_messages =============
-CREATE OR REPLACE FUNCTION create_monthly_partitions()
-RETURNS void AS $$
-DECLARE
-    current_month DATE := date_trunc('month', CURRENT_DATE);
-    next_month DATE := current_month + INTERVAL '1 month';
-    partition_name TEXT := to_char(current_month, 'YYYY_MM');
-BEGIN
-    -- Only create if table is partitioned
-    IF EXISTS (
-        SELECT 1 FROM pg_inherits
-        WHERE inhparent = 'chat_messages'::regclass
-    ) THEN
-        EXECUTE format(
-            'CREATE TABLE IF NOT EXISTS chat_messages_%s PARTITION OF chat_messages
-             FOR VALUES FROM (%L) TO (%L)',
-            partition_name, current_month, next_month
-        );
-        RAISE NOTICE 'Created partition chat_messages_% for %', partition_name, current_month;
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
+DROP TABLE IF EXISTS chat_messages CASCADE;
+DROP TABLE IF EXISTS chat_sessions CASCADE;

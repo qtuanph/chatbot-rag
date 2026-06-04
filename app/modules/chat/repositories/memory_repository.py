@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import UserMemory
+from app.utils.datetime_utils import to_vietnam_iso
 
 
 class MemoryRepository:
@@ -77,6 +78,6 @@ class MemoryRepository:
             "memory_type": memory.memory_type,
             "content": memory.content,
             "is_active": memory.is_active,
-            "created_at": memory.created_at.isoformat(),
-            "updated_at": memory.updated_at.isoformat(),
+            "created_at": to_vietnam_iso(memory.created_at),
+            "updated_at": to_vietnam_iso(memory.updated_at),
         }

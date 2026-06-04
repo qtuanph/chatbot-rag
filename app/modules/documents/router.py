@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile, status, Query
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status, Query
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -41,6 +41,7 @@ router = APIRouter(tags=["documents"])
 @router.post("/upload", response_model=UploadAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
     request: Request,
+    tenant_id: str = Form(...),
     file: UploadFile = File(...),
     auth: AuthContext = Depends(require_admin),
     service: DocumentService = Depends(get_document_service),
@@ -79,7 +80,7 @@ async def upload_document(
 
     document_id = str(uuid4())
 
-    duplicate, next_version = await service.check_duplicate(sha256, filename)
+    duplicate, next_version = await service.check_duplicate(sha256, filename, tenant_id)
     if duplicate is not None:
         raise http_errors.conflict("Document already exists")
 
@@ -91,6 +92,7 @@ async def upload_document(
         file_type=file_type,
         sha256=sha256,
         next_version=next_version,
+        tenant_id=tenant_id,
         user_id=auth.user_id,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
@@ -127,21 +129,31 @@ async def get_status(
 async def list_documents(
     offset: int = 0,
     limit: int = 20,
-    _auth=Depends(require_admin),
+    tenant_id: str | None = None,
+    auth: AuthContext = Depends(get_auth_context),
     service: DocumentService = Depends(get_document_service),
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> DocumentListResponse:
     offset = max(0, offset)
     limit = max(1, min(limit, 100))
     if not await rate_limiter.is_allowed(
-        f"documents:{_auth.user_id}", limit=settings.effective_rate_limit(30), window_ms=60000
+        f"documents:{auth.user_id}", limit=settings.effective_rate_limit(30), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many document list requests")
 
-    result = await service.list_documents(offset=offset, limit=limit)
+    effective_tenant_id = tenant_id
+    if auth.role != "platform_admin":
+        if not auth.tenant_id:
+            raise http_errors.forbidden("Tenant context is required")
+        if tenant_id and tenant_id != auth.tenant_id:
+            raise http_errors.forbidden("You can only access documents in your own tenant")
+        effective_tenant_id = auth.tenant_id
+
+    result = await service.list_documents(offset=offset, limit=limit, tenant_id=effective_tenant_id)
     items = [
         DocumentSummaryResponse(
             document_id=row["document_id"],
+            tenant_id=row["tenant_id"],
             title=row["title"],
             file_name=row["file_name"],
             file_type=row["file_type"],
@@ -161,14 +173,18 @@ async def list_documents(
 
 @router.get("/documents/{document_id}", response_model=DocumentDetailResponse)
 async def get_document_detail(
-    document_id: str, _auth=Depends(require_admin), service: DocumentService = Depends(get_document_service)
+    document_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+    service: DocumentService = Depends(get_document_service),
 ) -> DocumentDetailResponse:
     try:
-        doc = await service.get_document_detail(document_id)
+        tenant_scope = None if auth.role == "platform_admin" else auth.tenant_id
+        doc = await service.get_document_detail(document_id, tenant_id=tenant_scope)
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None
     return DocumentDetailResponse(
         document_id=doc["id"],
+        tenant_id=str(doc["tenant_id"]),
         title=doc["title"],
         file_name=doc["file_name"],
         sha256=doc["sha256"],
@@ -276,7 +292,13 @@ async def get_document_tree(
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
     try:
-        return await service.get_document_tree(document_id=document_id, offset=offset, limit=limit)
+        tenant_scope = None if auth.role == "platform_admin" else auth.tenant_id
+        return await service.get_document_tree(
+            document_id=document_id,
+            offset=offset,
+            limit=limit,
+            tenant_id=tenant_scope,
+        )
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None
 
@@ -294,7 +316,8 @@ async def get_node_details(
     ):
         raise http_errors.too_many_requests("Too many node detail requests")
     try:
-        return await service.get_node_details(document_id=document_id, node_id=node_id)
+        tenant_scope = None if auth.role == "platform_admin" else auth.tenant_id
+        return await service.get_node_details(document_id=document_id, node_id=node_id, tenant_id=tenant_scope)
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None
 
@@ -312,6 +335,7 @@ async def search_nodes(
     ):
         raise http_errors.too_many_requests("Too many tree search requests")
     try:
-        return await service.search_nodes(document_id=document_id, query=query)
+        tenant_scope = None if auth.role == "platform_admin" else auth.tenant_id
+        return await service.search_nodes(document_id=document_id, query=query, tenant_id=tenant_scope)
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None

@@ -1,10 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from uuid import uuid4
 
 import bcrypt
 import jwt
 
 from app.core.config import settings
+from app.utils.datetime_utils import utc_now
 
 
 def hash_password(password: str) -> str:
@@ -19,8 +20,8 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(*, subject: str, role: str = "") -> str:
-    now = datetime.now(timezone.utc)
+def create_access_token(*, subject: str, role: str = "", tenant_id: str | None = None) -> str:
+    now = utc_now()
     token_id = str(uuid4())
     payload = {
         "sub": subject,
@@ -29,4 +30,6 @@ def create_access_token(*, subject: str, role: str = "") -> str:
         "exp": int((now + timedelta(minutes=settings.jwt_expire_minutes)).timestamp()),
         "jti": token_id,
     }
+    if tenant_id:
+        payload["tenant_id"] = tenant_id
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)

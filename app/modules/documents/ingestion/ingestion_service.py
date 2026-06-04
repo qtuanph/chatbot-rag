@@ -44,6 +44,7 @@ class PipelineContext:
     filename: str
     content: bytes
     document_id: str
+    tenant_id: str
     user_id: str
     nodes: list[IngestedNode] = field(default_factory=list)
     parse_metadata: ParsingMetadata | None = None
@@ -78,9 +79,10 @@ class IngestionService:
         content: bytes,
         user_id: str,
         document_id: str,
+        tenant_id: str,
         progress_callback: ProgressCallback | None = None,
     ) -> IngestionResult:
-        ctx = PipelineContext(filename, content, document_id, user_id)
+        ctx = PipelineContext(filename, content, document_id, tenant_id, user_id)
 
         async def report(stage: str, percent: int, message: str = "") -> None:
             if progress_callback:
@@ -181,7 +183,7 @@ class IngestionService:
 
         await report("parsing", 37, f"Saving {len(sections_data)} sections to database...")
         repo = self.section_repo or SectionRepository(self.db_session)
-        section_ids = await repo.store_sections(ctx.document_id, sections_data)
+        section_ids = await repo.store_sections(ctx.document_id, ctx.tenant_id, sections_data)
         ctx.section_count = len(section_ids)
 
     async def _vector_index_step(self, ctx: PipelineContext, report: ProgressCallback) -> None:
@@ -210,6 +212,7 @@ class IngestionService:
         stored = await run_ingestion_pipeline(
             ctx.nodes,
             ctx.document_id,
+            ctx.tenant_id,
             sections_data,
             progress_callback=_on_pipeline_progress,
         )

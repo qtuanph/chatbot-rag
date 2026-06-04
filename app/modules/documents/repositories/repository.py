@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DocumentStoreException
 from app.models.document import Document
 from app.modules.documents.base import BaseRepository
+from app.utils.datetime_utils import to_vietnam_iso, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +40,8 @@ class DocumentRepository(BaseRepository[Document]):
                 document.progress_percent = max(0, min(100, int(progress_percent)))
             if status_message is not None:
                 document.status_message = status_message
-            document.status_updated_at = datetime.now(timezone.utc)
-            document.updated_at = datetime.now(timezone.utc)
+            document.status_updated_at = utc_now()
+            document.updated_at = utc_now()
             await self.session.commit()
             logger.info("Document %s status \u2192 %s", document_id, status)
             return True
@@ -51,11 +52,11 @@ class DocumentRepository(BaseRepository[Document]):
                 error_code="DOCUMENT_STORE_UPDATE_FAILED",
             )
 
-    async def find_by_sha256(self, sha256: str) -> dict | None:
+    async def find_by_sha256(self, sha256: str, tenant_id: str) -> dict | None:
         """Find a non-deleted document by SHA256 hash (for deduplication)."""
         stmt = (
             select(self.model)
-            .where(self.model.sha256 == sha256, self.model.deleted_at.is_(None))
+            .where(self.model.sha256 == sha256, self.model.tenant_id == tenant_id, self.model.deleted_at.is_(None))
             .order_by(self.model.created_at.desc())
             .limit(1)
         )
@@ -63,10 +64,10 @@ class DocumentRepository(BaseRepository[Document]):
         document = result.scalar_one_or_none()
         return self._to_dict(document) if document else None
 
-    async def get_next_version(self, filename: str) -> int:
+    async def get_next_version(self, filename: str, tenant_id: str) -> int:
         """Get the next version number for a given filename."""
         stmt = select(func.coalesce(func.max(self.model.version), 0)).where(
-            self.model.file_name == filename, self.model.deleted_at.is_(None)
+            self.model.file_name == filename, self.model.tenant_id == tenant_id, self.model.deleted_at.is_(None)
         )
         result = await self.session.execute(stmt)
         max_ver = result.scalar()
@@ -82,11 +83,13 @@ class DocumentRepository(BaseRepository[Document]):
         sha256: str,
         file_type: str,
         file_size: int,
+        tenant_id: str,
         version: int = 1,
     ) -> dict:
         """Insert a new document record."""
         document = self.model(
             id=document_id,
+            tenant_id=tenant_id,
             title=title,
             file_name=file_name,
             file_path=file_path,
@@ -104,19 +107,20 @@ class DocumentRepository(BaseRepository[Document]):
         await self.session.refresh(document)
         return self._to_dict(document)
 
-    async def list_paginated(self, offset: int = 0, limit: int = 20) -> tuple[list[dict], int]:
+    async def list_paginated(
+        self, offset: int = 0, limit: int = 20, tenant_id: str | None = None
+    ) -> tuple[list[dict], int]:
         """List non-deleted documents with pagination. Returns (items, total)."""
         count_stmt = select(func.count(self.model.id)).where(self.model.deleted_at.is_(None))
+        if tenant_id:
+            count_stmt = count_stmt.where(self.model.tenant_id == tenant_id)
         count_result = await self.session.execute(count_stmt)
         total = count_result.scalar() or 0
 
-        stmt = (
-            select(self.model)
-            .where(self.model.deleted_at.is_(None))
-            .order_by(self.model.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-        )
+        stmt = select(self.model).where(self.model.deleted_at.is_(None))
+        if tenant_id:
+            stmt = stmt.where(self.model.tenant_id == tenant_id)
+        stmt = stmt.order_by(self.model.created_at.desc()).offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
         return [self._to_dict(r) for r in rows], total
@@ -126,12 +130,12 @@ class DocumentRepository(BaseRepository[Document]):
         document = await self.get_by_id(document_id)
         if document is None:
             return False
-        document.deleted_at = datetime.now(timezone.utc)
+        document.deleted_at = utc_now()
         document.status = "failed"
         document.status_stage = "failed"
         document.progress_percent = 100
         document.status_message = "Failed to enqueue ingestion task."
-        document.status_updated_at = datetime.now(timezone.utc)
+        document.status_updated_at = utc_now()
         await self.session.commit()
         return True
 
@@ -145,14 +149,18 @@ class DocumentRepository(BaseRepository[Document]):
         document.progress_percent = 5
         document.status_message = "Retrying: task queued for worker processing."
         document.parse_error = None
-        document.status_updated_at = datetime.now(timezone.utc)
+        document.status_updated_at = utc_now()
         await self.session.commit()
         await self.session.refresh(document)
         return self._to_dict(document)
 
-    async def get_full_document(self, document_id: str) -> dict | None:
+    async def get_full_document(self, document_id: str, tenant_id: str | None = None) -> dict | None:
         """Get full document details including all fields."""
         document = await self.get_by_id(document_id)
+        if document is None:
+            return None
+        if tenant_id and str(document.tenant_id) != tenant_id:
+            return None
         return self._to_dict(document) if document else None
 
     async def finalize_ingestion(
@@ -181,9 +189,9 @@ class DocumentRepository(BaseRepository[Document]):
             document.status = "ready"
             document.status_stage = "ready"
             document.status_message = "Ingestion completed successfully."
-            document.status_updated_at = datetime.now(timezone.utc)
+            document.status_updated_at = utc_now()
             document.parse_error = None
-            document.updated_at = datetime.now(timezone.utc)
+            document.updated_at = utc_now()
             await self.session.commit()
             return self._to_dict(document)
         except Exception as e:
@@ -202,16 +210,15 @@ class DocumentRepository(BaseRepository[Document]):
         rows = result.scalars().all()
         return [str(doc.id) for doc in rows]
 
-    async def get_latest_active_document_ids(self) -> set[str]:
+    async def get_latest_active_document_ids(self, tenant_id: str | None = None) -> set[str]:
         """Return IDs of latest-version, non-deleted, ready documents."""
-        latest_versions_stmt = (
-            select(
-                self.model.file_name.label("file_name"),
-                func.max(self.model.version).label("max_version"),
-            )
-            .where(self.model.deleted_at.is_(None), self.model.status == "ready")
-            .group_by(self.model.file_name)
-        ).subquery()
+        latest_versions_stmt = select(
+            self.model.file_name.label("file_name"),
+            func.max(self.model.version).label("max_version"),
+        ).where(self.model.deleted_at.is_(None), self.model.status == "ready")
+        if tenant_id:
+            latest_versions_stmt = latest_versions_stmt.where(self.model.tenant_id == tenant_id)
+        latest_versions_stmt = latest_versions_stmt.group_by(self.model.file_name).subquery()
 
         stmt = (
             select(self.model.id)
@@ -224,6 +231,8 @@ class DocumentRepository(BaseRepository[Document]):
             )
             .where(self.model.deleted_at.is_(None), self.model.status == "ready")
         )
+        if tenant_id:
+            stmt = stmt.where(self.model.tenant_id == tenant_id)
         result = await self.session.execute(stmt)
         rows = result.all()
         return {str(row[0]) for row in rows if row and row[0]}
@@ -253,7 +262,7 @@ class DocumentRepository(BaseRepository[Document]):
             if document is None or document.deleted_at is not None:
                 return False
             document.title = new_title
-            document.updated_at = datetime.now(timezone.utc)
+            document.updated_at = utc_now()
             await self.session.commit()
             logger.info("Document %s title updated: %s", document_id, new_title)
             return True
@@ -283,11 +292,11 @@ class DocumentRepository(BaseRepository[Document]):
             document = await self.get_by_id(document_id)
             if document is None:
                 return False
-            document.deleted_at = datetime.now(timezone.utc)
+            document.deleted_at = utc_now()
             document.status = "deleted"
             document.status_stage = "deleted"
-            document.status_updated_at = datetime.now(timezone.utc)
-            document.updated_at = datetime.now(timezone.utc)
+            document.status_updated_at = utc_now()
+            document.updated_at = utc_now()
             await self.session.commit()
             logger.info("Document %s marked as deleted", document_id)
             return True
@@ -315,11 +324,12 @@ class DocumentRepository(BaseRepository[Document]):
         data = super()._to_dict(obj)
         # Re-map some fields to match the old API format if they were renamed
         data["id"] = str(obj.id)
+        data["tenant_id"] = str(obj.tenant_id)
         data["artifact_metadata"] = obj.artifact_metadata or {}
-        data["status_updated_at"] = obj.status_updated_at.isoformat() if obj.status_updated_at else None
-        data["deleted_at"] = obj.deleted_at.isoformat() if obj.deleted_at else None
-        data["created_at"] = obj.created_at.isoformat() if obj.created_at else None
-        data["updated_at"] = obj.updated_at.isoformat() if obj.updated_at else None
+        data["status_updated_at"] = to_vietnam_iso(obj.status_updated_at)
+        data["deleted_at"] = to_vietnam_iso(obj.deleted_at)
+        data["created_at"] = to_vietnam_iso(obj.created_at)
+        data["updated_at"] = to_vietnam_iso(obj.updated_at)
 
         # Virtual fields from artifact_metadata
         stats = data["artifact_metadata"].get("stats", {})

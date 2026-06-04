@@ -5,12 +5,10 @@ Uses LlamaIndex QdrantVectorStore for vector cleanup.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
 
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
-from app.modules.chat.repositories import ChatRepository
 from app.core.redis import get_sync_redis_client
 from app.adapters.storage import build_storage
 from app.modules.documents.services import CleanupService
@@ -101,20 +99,3 @@ def delete_document_task(self, task_id: str, document_id: str, user_id: str | No
     except Exception as e:
         logger.error("[%s] Delete failed: %s", document_id, e)
         raise e
-
-
-@celery_app.task(
-    name="app.workers.cleanup_tasks.cleanup_old_chat_sessions_task",
-    acks_late=True,
-    ignore_result=True,
-)
-def cleanup_old_chat_sessions_task() -> dict:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.chat_session_ttl_days)
-
-    async def _run_cleanup():
-        async with AsyncSessionLocal() as session:
-            return await ChatRepository(session).delete_sessions_older_than(cutoff)
-
-    count = asyncio.run(_run_cleanup())
-    logger.info("Cleaned up %d old chat sessions", count)
-    return {"deleted_count": count}

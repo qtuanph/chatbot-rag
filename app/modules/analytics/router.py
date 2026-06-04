@@ -28,8 +28,13 @@ async def get_analytics_stats(
     ):
         raise http_errors.too_many_requests("Too many requests. Please wait.")
 
-    is_admin = auth.role == "admin"
-    return await service.get_stats(is_admin=is_admin, user_id=auth.user_id, days=days)
+    is_platform_admin = auth.role == "platform_admin"
+    return await service.get_stats(
+        is_platform_admin=is_platform_admin,
+        user_id=auth.user_id,
+        tenant_id=auth.tenant_id,
+        days=days,
+    )
 
 
 @router.delete("/analytics/stats")
@@ -38,7 +43,7 @@ async def clear_analytics_stats(
     service: AnalyticsService = Depends(get_analytics_service),
 ) -> dict:
     """Clear all analytics stats (admin only). Resets ai_model_usage table."""
-    if auth.role != "admin":
+    if auth.role != "platform_admin":
         raise http_errors.forbidden("Only admins can clear analytics data")
 
     deleted = await service.clear_stats()

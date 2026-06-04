@@ -1,79 +1,58 @@
 # Frontend Agent Rules
 
-## This Frontend is Coupled to Backend RAG
+## Inherit Parent Project Rules First
 
-This is NOT a standalone Next.js app. Read backend docs before making changes.
+Frontend work in this folder must follow the root project guardrails in:
+- `../AGENTS.md`
+- `../docs/0_QUICK_REFERENCE.json`
+- `../docs/1_ARCHITECTURE.md`
+- `../docs/3_API_CONTRACTS.md`
+- `../docs/5_NAMING_CONVENTIONS.md`
 
-**MUST READ** (in order, ALL required):
-1. `../AGENTS.md` (repo guardrails)
-2. `../docs/0_QUICK_REFERENCE.json` (rules & patterns)
-3. `../docs/1_ARCHITECTURE.md` (architecture, data model, AI control)
-4. `../docs/3_API_CONTRACTS.md` (API contracts, security baseline)
-5. `../docs/2_WORKFLOWS.json` (chat session lifecycle, workflows - children: 2.1-2.5)
-6. `../docs/5_NAMING_CONVENTIONS.md` (variable, function, file naming)
+If this file and the parent project guidance differ, follow the parent project guidance and the current backend code.
 
-## Critical Coupling Points
+## Current Frontend Target
 
-### Chat Streaming Contract (MUST NOT break)
-- Backend returns 2-stage retrieval citations: section_id + chunk_id + score
-- Frontend displays: "Source: [filename] - Section: [heading]"
-- Chunk not found → fallback to section-only citation
-- SSE final event includes `stats`: total_ms, ttft_ms, prompt_tokens, completion_tokens, total_tokens, estimated_cost_usd
-- Stats bar displays: time, TTFT, chars, token count, estimated cost ($X.XXXX)
-- AbortController: stream cancelled on unmount or new message submission
+This webapp is no longer built around persisted chat sessions.
 
-### Chat Session Lifecycle (MUST understand)
-- **Default**: Empty "Chat mới" on page load (no session restore)
-- **Sidebar**: `ChatView` wraps `ChatSidebar` + `ChatPanel` with nested `SidebarProvider`
-- **New session**: `POST /chat/sessions` creates empty session → sidebar updates
-- **Switch session**: Click in sidebar → ChatPanel loads messages via controlled `sessionId` prop
-- **Auto-title**: Backend sets title from first query (80 chars) → `onSessionUpdate` updates sidebar
-- **Cleanup**: Sessions hard-deleted after 30 days by Celery Beat (no soft-delete)
-- **Ordering**: `GET /chat/sessions` returns `updated_at DESC` (recently active first)
-- **Files**: `chat-view.tsx` (orchestrator), `chat-sidebar.tsx` (session list), `chat-panel.tsx` (controlled panel)
+Current product direction:
+- multi-tenant SaaS
+- `platform_admin` manages the platform
+- `tenant_admin` operates only inside their tenant
+- chat is stateless
+- transcript lives in frontend memory only
+- tenant settings and instruction are tenant-scoped
+- public integration is OpenAI-compatible, but internal webapp chat goes through backend-authenticated internal routes
 
-### API Gateway Proxy (MUST respect)
-- Browser calls `/api/bep/v1/...` only — NEVER sends Bearer token
-- Route Handler reads JWT from HttpOnly cookie via `getToken()` → attaches Bearer header
-- SSE streamed as `ReadableStream`
-- File upload: `multipart/form-data` with `duplex: 'half'`
+## Frontend Expectations
 
-### Admin Dashboard (MUST match backend)
-- Upload status: PROCESSING / COMPLETED / ERROR
-- DO NOT change statuses without updating backend Celery task states
-- Admin analytics page: `/admin/analytics` — KPI cards, daily token chart, cost comparison table
-- Analytics API: `GET /analytics/stats` — admin sees system-wide, member sees own sessions
+- Do not restore legacy chat session sidebar behavior
+- Do not use `localStorage` for transcript persistence
+- Do not expose backend Bearer token to browser code
+- Keep browser calls routed through `webapp/app/api/bep/[...path]/route.ts`
+- Respect backend role names exactly:
+  - `platform_admin`
+  - `tenant_admin`
+- Respect tenant boundaries in UI state and API calls
 
-### Member Stats
-- Welcome screen in ChatPanel shows per-user stats: messages, tokens, cost
-- Uses `analyticsApi.getStats()` — scoped to user's own sessions
+## UI Scope
 
-### Auth Token Refresh (MUST respect backend)
-- JWT tokens (PyJWT) with 1-hour expiry, role cached in payload
-- Blacklist singleton on backend — token checked via Redis
-- Logout must call `POST /api/v1/auth/logout`
+The webapp should provide:
+- `platform_admin`
+  - tenant management
+  - tenant API key management
+  - tenant document management
+  - tenant usage visibility
+  - tenant chat testing
+- `tenant_admin`
+  - tenant chat testing
+  - tenant document read-only view
+  - tenant usage view
+  - tenant instruction editing
 
-## Frontend Stack
+## Implementation Guidance
 
-- **Next.js 16** — check `package.json` for exact version
-- **next-auth v5** with custom JWT provider
-- **Tailwind CSS** + **shadcn/ui v4** (uses @base-ui/react, NOT Radix)
-- **API**: Tight coupling to `../docs/3_API_CONTRACTS.md` endpoints
-
-## Common Changes
-
-### Adding new API endpoint to chat
-1. Backend dev adds endpoint → updates `docs/3_API_CONTRACTS.md`
-2. Wait for docs update before implementing frontend
-3. Update `lib/api-client.ts` to call new endpoint
-4. Test via Postman first
-
-### Changing auth flow
-1. Read `../docs/3_API_CONTRACTS.md` → Auth section
-2. Update backend first
-3. Update `lib/auth.ts` to match
-4. Verify against tests
-
----
-
-**Bottom Line**: Backend architecture is in `../docs/`. Frontend adapts to backend contracts.
+- Prefer shared utilities in `lib/` and reusable UI in `components/`
+- If a module needs internal-only helpers, keep them inside that module scope
+- Remove or replace legacy session-centric code instead of keeping dead flows around
+- When backend contracts change, update `types/api.ts`, `lib/api-client.ts`, and affected pages together

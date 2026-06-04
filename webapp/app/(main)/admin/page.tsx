@@ -1,136 +1,112 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useSession } from "next-auth/react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useCallback, useEffect, useState } from "react";
+import { Activity, Database, FileText, Server } from "lucide-react";
+
 import { healthApi } from "@/lib/api-client";
+import { PageHeader } from "@/components/page-header";
+import { TenantUsageTable } from "@/components/analytics/tenant-usage-table";
 import type { HealthData } from "@/types/api";
-import {
-  Database,
-  HardDrive,
-  Brain,
-  Server,
-  Cpu,
-} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-const serviceIcons: Record<string, React.ElementType> = {
-  database: Database,
-  redis: HardDrive,
-  storage: Server,
-  ai_provider: Brain,
-  workers: Server,
-  qdrant: Cpu,
-};
-
-const serviceLabels: Record<string, string> = {
+const LABELS: Record<string, string> = {
   database: "PostgreSQL",
   redis: "Redis",
   storage: "RustFS",
   ai_provider: "AI Provider",
-  workers: "Celery Workers",
+  workers: "Workers",
   qdrant: "Qdrant",
 };
 
-function statusColor(status: string) {
-  switch (status) {
-    case "up":
-    case "healthy":
-      return "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/25";
-    case "degraded":
-      return "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/25";
-    default:
-      return "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/25";
-  }
-}
+const ICONS: Record<string, typeof Activity> = {
+  database: Database,
+  redis: Server,
+  storage: FileText,
+  ai_provider: Activity,
+  workers: Server,
+  qdrant: Database,
+};
 
-export default function AdminDashboard() {
-  const { data: session } = useSession();
-  const [data, setData] = useState<HealthData | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function AdminDashboardPage() {
+  const [health, setHealth] = useState<HealthData | null>(null);
+  const serviceEntries = Object.entries(health?.checks ?? health?.services ?? {});
 
-  const fetchData = useCallback(async () => {
-    if (!session) return;
+  const load = useCallback(async () => {
     try {
       const result = await healthApi.getData();
-      setData(result);
+      setHealth(result);
     } catch {
-      // Silently fail
-    } finally {
-      setLoading(false);
+      setHealth(null);
     }
-  }, [session]);
+  }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      void fetchData();
+    const timer = window.setTimeout(() => {
+      void load();
     }, 0);
-    const interval = setInterval(fetchData, 30000);
-    return () => {
-      clearTimeout(timer);
-      clearInterval(interval);
-    };
-  }, [fetchData]);
-
-  if (loading) {
-    return (
-      <div className="p-6 space-y-6">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-32" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const checks = data?.checks || {};
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <Badge variant="outline" className={statusColor(data?.status || "unknown")}>
-          {data?.status || "unknown"}
-        </Badge>
-      </div>
+    <div className="space-y-6 p-6">
+      <PageHeader
+        title="Tổng quan platform"
+        description="Theo dõi sức khỏe hệ thống, tài liệu sẵn sàng và tenant usage nổi bật."
+      />
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {Object.entries(checks).map(([key, value]) => {
-          const Icon = serviceIcons[key] || Server;
-          const status = typeof value === "object" ? value.status : "unknown";
-
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Trạng thái hệ thống</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{health?.status || "unknown"}</div>
+            <p className="text-xs text-muted-foreground">Tổng hợp từ health probes backend</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Tài liệu sẵn sàng</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{health?.active_docs ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Trên tổng {health?.total_docs ?? 0} tài liệu</p>
+          </CardContent>
+        </Card>
+        {serviceEntries.slice(0, 2).map(([key, value]) => {
+          const Icon = ICONS[key] || Activity;
+          const statusText =
+            typeof value.status === "string"
+              ? value.status
+              : typeof value.configured === "boolean"
+                ? value.configured
+                  ? "up"
+                  : "down"
+                : "unknown";
+          const detailText =
+            typeof value.latency_ms === "number"
+              ? `${value.latency_ms} ms`
+              : typeof value.provider === "string"
+                ? value.provider
+                : typeof value.broker === "string"
+                  ? value.broker
+                  : "Không có latency";
           return (
             <Card key={key}>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">
-                  {serviceLabels[key] || key}
-                </CardTitle>
+                <CardTitle className="text-sm font-medium">{LABELS[key] || key}</CardTitle>
                 <Icon className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <Badge variant="outline" className={statusColor(status)}>
-                  {status}
-                </Badge>
+                <div className="text-2xl font-bold">{statusText}</div>
+                <p className="text-xs text-muted-foreground">{detailText}</p>
               </CardContent>
             </Card>
           );
         })}
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Tài liệu</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data?.active_docs ?? 0}</div>
-            <p className="text-xs text-muted-foreground">
-              {data?.total_docs ?? 0} tổng cộng
-            </p>
-          </CardContent>
-        </Card>
       </div>
+
+      <TenantUsageTable />
     </div>
   );
 }

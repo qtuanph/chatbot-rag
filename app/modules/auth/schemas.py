@@ -15,6 +15,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     role: str
+    tenant_id: str | None = None
 
 
 class LogoutResponse(BaseModel):
@@ -24,7 +25,8 @@ class LogoutResponse(BaseModel):
 class CreateUserRequest(BaseModel):
     username: str = Field(min_length=3, max_length=64)
     password: str = Field(min_length=6, max_length=256)
-    role: str = Field(default="member", min_length=1, max_length=50)
+    role: str = Field(default="tenant_admin", min_length=1, max_length=50)
+    tenant_id: str | None = None
 
     @field_validator("username")
     @classmethod
@@ -36,6 +38,7 @@ class CreateUserResponse(BaseModel):
     id: str
     username: str
     role: str
+    tenant_id: str | None = None
 
 
 class RoleResponse(BaseModel):

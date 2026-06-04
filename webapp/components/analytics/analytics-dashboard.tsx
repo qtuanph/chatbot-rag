@@ -1,141 +1,15 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
+import { Brain, Cpu, Network, RefreshCw, TimerReset, Trash2 } from "lucide-react";
+
 import { analyticsApi } from "@/lib/api-client";
+import { formatDateTimeVN, formatLatency, formatNumber, formatVnd, microsVndToRoundedVnd } from "@/lib/format";
 import type { AnalyticsStats, ModelTypeStats, RecentRequest } from "@/types/api";
-import { Clock, Hash, MessageSquare, RefreshCw, ArrowRight, ArrowLeft, Cpu, Network, Brain, Trash2 } from "lucide-react";
-
-function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toLocaleString();
-}
-
-function formatLatency(ms: number): string {
-  if (ms === 0) return "—";
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
-}
-
-function formatCost(usd: number): string {
-  const usdToVnd = 26000;
-  const vnd = Math.max(0, Math.round((usd || 0) * usdToVnd));
-  return new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND",
-    maximumFractionDigits: 0,
-  }).format(vnd);
-}
-
-function timeAgo(dateStr: string): string {
-  const now = new Date();
-  const date = new Date(dateStr);
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return "Vừa xong";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return `${diffDays}d ago`;
-}
-
-const DATE_RANGES = [
-  { label: "Hôm nay", value: 1 },
-  { label: "7 ngày", value: 7 },
-  { label: "30 ngày", value: 30 },
-];
-
-const MODEL_TYPE_COLORS: Record<string, string> = {
-  llm: "text-purple-500",
-  embedding: "text-blue-500",
-  reranker: "text-amber-500",
-};
-
-const MODEL_TYPE_LABELS: Record<string, string> = {
-  llm: "LLM",
-  embedding: "Embed",
-  reranker: "Rerank",
-};
-
-function ModelTypeCard({
-  title,
-  icon: Icon,
-  color,
-  stats,
-  hideOut = false,
-}: {
-  title: string;
-  icon: typeof Cpu;
-  color: string;
-  stats: ModelTypeStats;
-  hideOut?: boolean;
-}) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Icon className={`h-4 w-4 ${color}`} />
-          {title}
-        </CardTitle>
-        <span className="text-xs text-muted-foreground">{stats.call_count} calls</span>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Token In</span>
-            <span className="font-medium">{formatNumber(stats.tokens_in)}</span>
-          </div>
-          {!hideOut && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Token Out</span>
-              <span className="font-medium">{formatNumber(stats.tokens_out)}</span>
-            </div>
-          )}
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Latency TB</span>
-            <span className="font-medium">{formatLatency(stats.avg_latency_ms)}</span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Chi phí</span>
-            <span className="font-medium">{formatCost(stats.cost_usd)}</span>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function RequestRow({ req }: { req: RecentRequest }) {
-  const dotColor = MODEL_TYPE_COLORS[req.model_type] || "text-gray-500";
-  const typeLabel = MODEL_TYPE_LABELS[req.model_type] || req.model_type;
-
-  return (
-    <tr className="border-b border-muted/50 last:border-0">
-      <td className="py-2 pr-4">
-        <div className="flex items-center gap-2">
-          <span className={`inline-block w-2 h-2 rounded-full ${dotColor.replace("text-", "bg-")}`} />
-          <span className="text-sm font-mono truncate max-w-[200px]" title={req.model_name}>
-            {req.model_name}
-          </span>
-          <span className="text-xs text-muted-foreground shrink-0">[{typeLabel}]</span>
-        </div>
-      </td>
-      <td className="py-2 text-right">
-        <span className="text-sm font-medium text-orange-500">{formatNumber(req.tokens_in)}↑</span>
-      </td>
-      <td className="py-2 text-right">
-        <span className="text-sm font-medium text-emerald-500">{formatNumber(req.tokens_out)}↓</span>
-      </td>
-      <td className="py-2 text-right text-xs text-muted-foreground whitespace-nowrap">{timeAgo(req.created_at)}</td>
-    </tr>
-  );
-}
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type AnalyticsDashboardProps = {
   title: string;
@@ -143,221 +17,258 @@ type AnalyticsDashboardProps = {
   allowClear?: boolean;
 };
 
+const DATE_RANGES = [
+  { label: "1 ngày", value: 1 },
+  { label: "7 ngày", value: 7 },
+  { label: "30 ngày", value: 30 },
+];
+
+function CostText({ micros }: { micros: number }) {
+  return <>{formatVnd(microsVndToRoundedVnd(micros))}</>;
+}
+
+function ModelTypeCard({
+  title,
+  stats,
+  icon: Icon,
+}: {
+  title: string;
+  stats: ModelTypeStats;
+  icon: typeof Brain;
+}) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm font-medium">
+          <Icon className="h-4 w-4 text-primary" />
+          {title}
+        </CardTitle>
+        <span className="text-xs text-muted-foreground">{formatNumber(stats.call_count)} lượt</span>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Token vào</span>
+          <span className="font-medium">{formatNumber(stats.tokens_in)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Token ra</span>
+          <span className="font-medium">{formatNumber(stats.tokens_out)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Độ trễ TB</span>
+          <span className="font-medium">{formatLatency(stats.avg_latency_ms)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Chi phí</span>
+          <span className="font-medium">
+            <CostText micros={stats.cost_micros_vnd} />
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RequestRow({ row }: { row: RecentRequest }) {
+  return (
+    <tr className="border-b border-muted/50 last:border-0">
+      <td className="py-2 pr-4 text-sm font-medium">{row.model_name}</td>
+      <td className="py-2 pr-4 text-sm">{row.model_type}</td>
+      <td className="py-2 pr-4 text-right text-sm">{formatNumber(row.tokens_in)}</td>
+      <td className="py-2 pr-4 text-right text-sm">{formatNumber(row.tokens_out)}</td>
+      <td className="py-2 pr-4 text-right text-sm">{formatLatency(row.latency_ms)}</td>
+      <td className="py-2 pr-4 text-right text-sm">
+        <CostText micros={row.cost_micros_vnd} />
+      </td>
+      <td className="py-2 text-right text-xs text-muted-foreground">{formatDateTimeVN(row.created_at)}</td>
+    </tr>
+  );
+}
+
 export function AnalyticsDashboard({ title, subtitle, allowClear = false }: AnalyticsDashboardProps) {
   const { data: session } = useSession();
-  const [data, setData] = useState<AnalyticsStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<AnalyticsStats | null>(null);
   const [days, setDays] = useState(30);
+  const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const loadStats = useCallback(async () => {
     if (!session) return;
     try {
       setLoading(true);
       setError(null);
-      const result = await analyticsApi.getStats(days);
-      setData(result);
+      const nextStats = await analyticsApi.getStats(days);
+      setStats(nextStats);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải thống kê");
     } finally {
       setLoading(false);
     }
-  }, [session, days]);
+  }, [days, session]);
 
-  const handleClear = async () => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadStats();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadStats]);
+
+  const handleClear = useCallback(async () => {
     try {
       setClearing(true);
       await analyticsApi.clearStats();
-      setShowConfirm(false);
-      await fetchData();
+      await loadStats();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể xóa thống kê");
     } finally {
       setClearing(false);
     }
-  };
+  }, [loadStats]);
 
-  useEffect(() => {
-    if (session) {
-      analyticsApi
-        .getStats(days)
-        .then(setData)
-        .catch((err) => setError(err instanceof Error ? err.message : "Lỗi tải dữ liệu"))
-        .finally(() => setLoading(false));
-    }
-  }, [session, days]);
-
-  if (loading && !data) {
+  if (loading && !stats) {
     return (
-      <div className="p-6 space-y-6">
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <div className="grid gap-4 md:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-28" />
+      <div className="space-y-6 p-6">
+        <Skeleton className="h-12" />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-32" />
           ))}
         </div>
-        <Skeleton className="h-72" />
       </div>
     );
   }
-
-  if (error && !data) {
-    return (
-      <div className="p-6 space-y-4">
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-destructive">{error}</p>
-            <Button onClick={fetchData} variant="outline" className="mt-4">
-              Thử lại
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (!data) return null;
-
-  const llmTokens = data.by_model_type.llm.tokens_in + data.by_model_type.llm.tokens_out;
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 p-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold">{title}</h1>
           <p className="text-sm text-muted-foreground">{subtitle}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-muted rounded-md p-1">
-            {DATE_RANGES.map((r) => (
-              <Button key={r.value} variant={days === r.value ? "default" : "ghost"} size="sm" onClick={() => setDays(r.value)}>
-                {r.label}
-              </Button>
-            ))}
-          </div>
-          {allowClear && (
-            <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setShowConfirm(true)} disabled={clearing}>
-              <Trash2 className="h-4 w-4 mr-2" />
-              Xóa thống kê
+        <div className="flex flex-wrap items-center gap-2">
+          {DATE_RANGES.map((range) => (
+            <Button
+              key={range.value}
+              size="sm"
+              variant={days === range.value ? "default" : "outline"}
+              onClick={() => setDays(range.value)}
+            >
+              {range.label}
             </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+          ))}
+          <Button size="sm" variant="outline" onClick={loadStats} disabled={loading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Làm mới
           </Button>
+          {allowClear && (
+            <Button size="sm" variant="destructive" onClick={handleClear} disabled={clearing}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              {clearing ? "Đang xóa..." : "Xóa usage"}
+            </Button>
+          )}
         </div>
       </div>
 
-      {allowClear && showConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle className="text-destructive flex items-center gap-2">
-                <Trash2 className="h-5 w-5" />
-                Xóa toàn bộ thống kê?
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                Hành động này sẽ xóa vĩnh viễn tất cả dữ liệu thống kê token, chi phí và latency. Không thể hoàn tác.
-              </p>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setShowConfirm(false)} disabled={clearing}>
-                  Hủy
-                </Button>
-                <Button variant="destructive" onClick={handleClear} disabled={clearing}>
-                  {clearing ? "Đang xóa..." : "Xác nhận xóa"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+      {error && (
+        <Card className="border-destructive/50">
+          <CardContent className="pt-6 text-sm text-destructive">{error}</CardContent>
+        </Card>
       )}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Thời gian phản hồi TB</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatLatency(data.avg_latency_ms)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Từ lúc gửi câu hỏi đến khi AI trả lời xong</p>
-          </CardContent>
-        </Card>
+      {stats && (
+        <>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Tổng request</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatNumber(stats.total_messages)}</div>
+                <p className="text-xs text-muted-foreground">Theo cửa sổ {days} ngày</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Tổng token</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatNumber(stats.total_tokens)}</div>
+                <p className="text-xs text-muted-foreground">
+                  In {formatNumber(stats.total_tokens_in)} • Out {formatNumber(stats.total_tokens_out)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                  <TimerReset className="h-4 w-4 text-primary" />
+                  Độ trễ trung bình
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatLatency(stats.avg_latency_ms)}</div>
+                <p className="text-xs text-muted-foreground">Theo request đã ghi nhận</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Chi phí ước tính</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatVnd(stats.cost_vnd_rounded)}</div>
+                <p className="text-xs text-muted-foreground">
+                  {stats.currency_code} • model {stats.pricing.model}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Token LLM</CardTitle>
-            <Hash className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(llmTokens)}</div>
-            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <ArrowRight className="h-3 w-3 text-blue-500" />
-                In: {formatNumber(data.by_model_type.llm.tokens_in)}
-              </span>
-              <span className="flex items-center gap-1">
-                <ArrowLeft className="h-3 w-3 text-emerald-500" />
-                Out: {formatNumber(data.by_model_type.llm.tokens_out)}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <ModelTypeCard title="LLM" stats={stats.by_model_type.llm} icon={Brain} />
+            <ModelTypeCard title="Embedding" stats={stats.by_model_type.embedding} icon={Cpu} />
+            <ModelTypeCard title="Reranker" stats={stats.by_model_type.reranker} icon={Network} />
+          </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Tin nhắn AI</CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data.total_messages.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground mt-1">{data.total_sessions} phiên chat</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div>
-        <h2 className="text-lg font-semibold mb-3">Thống kê theo Model</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          <ModelTypeCard title="LLM Chính" icon={Brain} color="text-purple-500" stats={data.by_model_type.llm} />
-          <ModelTypeCard title="Embedding" icon={Cpu} color="text-blue-500" stats={data.by_model_type.embedding} hideOut />
-          <ModelTypeCard title="Reranking" icon={Network} color="text-amber-500" stats={data.by_model_type.reranker} hideOut />
-        </div>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Recent Requests</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data.recent_requests.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Chưa có dữ liệu request.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px]">
-                <thead>
-                  <tr className="border-b border-muted/70">
-                    <th className="text-left py-2 pr-4 text-xs font-medium text-muted-foreground">Model</th>
-                    <th className="text-right py-2 text-xs font-medium text-muted-foreground">In</th>
-                    <th className="text-right py-2 text-xs font-medium text-muted-foreground">Out</th>
-                    <th className="text-right py-2 text-xs font-medium text-muted-foreground">When</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.recent_requests.map((req, idx) => (
-                    <RequestRow key={`${req.model_name}-${req.created_at}-${idx}`} req={req} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Yêu cầu gần đây</CardTitle>
+              <CardDescription>
+                Giúp kiểm tra model nào đang tiêu tốn nhiều nhất trong cửa sổ hiện tại.
+              </CardDescription>
+              <CardDescription>
+                Embedding và reranker thường chỉ có token vào hoặc số ước tính theo request, nên token ra có thể bằng 0 là bình thường.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {stats.recent_requests.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Chưa có request nào trong khoảng thời gian này.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px]">
+                    <thead>
+                      <tr className="border-b border-muted">
+                        <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Model</th>
+                        <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Loại</th>
+                        <th className="py-2 pr-4 text-right text-xs font-medium text-muted-foreground">In</th>
+                        <th className="py-2 pr-4 text-right text-xs font-medium text-muted-foreground">Out</th>
+                        <th className="py-2 pr-4 text-right text-xs font-medium text-muted-foreground">Độ trễ</th>
+                        <th className="py-2 pr-4 text-right text-xs font-medium text-muted-foreground">Chi phí</th>
+                        <th className="py-2 text-right text-xs font-medium text-muted-foreground">Thời điểm</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stats.recent_requests.map((row, index) => (
+                        <RequestRow key={`${row.model_name}-${row.created_at}-${index}`} row={row} />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

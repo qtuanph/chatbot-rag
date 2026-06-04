@@ -1,340 +1,186 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
-import { Eye, Plus, Trash2, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { authApi, ApiError } from "@/lib/api-client";
-import type {
-  CreateUserRequest,
-  RoleItem,
-  UserItem,
-  UserUsageDetail,
-  UserUsageSummaryItem,
-} from "@/types/api";
-import { Badge } from "@/components/ui/badge";
+import { authApi, tenantsApi } from "@/lib/api-client";
+import type { CreateUserRequest, RoleItem, TenantItem, UserItem } from "@/types/api";
+import { PageHeader } from "@/components/page-header";
+import { TenantSelect } from "@/components/tenants/tenant-select";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-function formatInt(n: number): string {
-  return new Intl.NumberFormat("vi-VN").format(n || 0);
-}
+const EMPTY_FORM: CreateUserRequest = {
+  username: "",
+  password: "",
+  role: "tenant_admin",
+  tenant_id: null,
+};
 
-function formatVndFromUsd(n: number): string {
-  const usdToVnd = 26000;
-  const vnd = Math.max(0, Math.round((n || 0) * usdToVnd));
-  return new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND",
-    maximumFractionDigits: 0,
-  }).format(vnd);
-}
-
-export default function UsersPage() {
-  const { data: session } = useSession();
-
+export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [roles, setRoles] = useState<RoleItem[]>([]);
-  const [usageByUserId, setUsageByUserId] = useState<Record<string, UserUsageSummaryItem>>({});
+  const [tenants, setTenants] = useState<TenantItem[]>([]);
+  const [form, setForm] = useState<CreateUserRequest>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
 
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [detailTarget, setDetailTarget] = useState<UserItem | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailUsage, setDetailUsage] = useState<UserUsageDetail | null>(null);
+  const tenantNameMap = useMemo(() => new Map(tenants.map((tenant) => [tenant.id, tenant.name])), [tenants]);
 
-  const fetchUsers = useCallback(async () => {
-    if (!session) return;
+  const load = useCallback(async () => {
     try {
-      setUsers(await authApi.getUsers());
-    } catch {
-      toast.error("Không thể tải danh sách người dùng");
-    }
-  }, [session]);
-
-  const fetchRoles = useCallback(async () => {
-    if (!session) return;
-    try {
-      setRoles(await authApi.getRoles());
-    } catch {
-      toast.error("Không thể tải danh sách vai trò");
-    }
-  }, [session]);
-
-  const fetchUsageSummary = useCallback(async () => {
-    if (!session) return;
-    try {
-      const res = await authApi.getUsersUsageSummary();
-      const map: Record<string, UserUsageSummaryItem> = {};
-      for (const item of res.items) map[item.user_id] = item;
-      setUsageByUserId(map);
-    } catch {
-      toast.error("Không thể tải thống kê token theo người dùng");
-    }
-  }, [session]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      void fetchUsers();
-      void fetchRoles();
-      void fetchUsageSummary();
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [fetchUsers, fetchRoles, fetchUsageSummary]);
-
-  const handleCreate = useCallback(
-    async (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      if (!session) return;
-
-      const formData = new FormData(e.currentTarget);
-      const username = ((formData.get("username") as string) ?? "").trim();
-      const password = ((formData.get("password") as string) ?? "").trim();
-      const role = (formData.get("role") as CreateUserRequest["role"]) ?? "member";
-
-      if (username.length < 3) {
-        toast.error("Tên đăng nhập phải có ít nhất 3 ký tự");
-        return;
-      }
-      if (password.length < 6) {
-        toast.error("Mật khẩu phải có ít nhất 6 ký tự");
-        return;
-      }
-
-      try {
-        await authApi.createUser({ username, password, role });
-        toast.success("Tạo người dùng thành công");
-        setDialogOpen(false);
-        await fetchUsers();
-        await fetchUsageSummary();
-      } catch (err) {
-        toast.error(err instanceof ApiError ? err.detail : "Tạo người dùng thất bại");
-      }
-    },
-    [session, fetchUsers, fetchUsageSummary],
-  );
-
-  const handleDelete = useCallback(
-    async (username: string) => {
-      if (!session) return;
-      try {
-        await authApi.deleteUser(username);
-        toast.success(`Đã xóa người dùng ${username}`);
-        setDeleteTarget(null);
-        await fetchUsers();
-        await fetchUsageSummary();
-      } catch (err) {
-        toast.error(err instanceof ApiError ? err.detail : "Xóa thất bại");
-      }
-    },
-    [session, fetchUsers, fetchUsageSummary],
-  );
-
-  const openDetail = useCallback(async (user: UserItem) => {
-    setDetailTarget(user);
-    setDetailLoading(true);
-    setDetailUsage(null);
-    try {
-      setDetailUsage(await authApi.getUserUsageDetail(user.id));
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.detail : "Không thể tải chi tiết thống kê");
-    } finally {
-      setDetailLoading(false);
+      const [userRows, roleRows, tenantRows] = await Promise.all([authApi.getUsers(), authApi.getRoles(), tenantsApi.list()]);
+      setUsers(userRows);
+      setRoles(roleRows);
+      setTenants(tenantRows);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể tải dữ liệu user";
+      toast.error(message);
     }
   }, []);
 
-  const closeDetail = useCallback(() => {
-    setDetailTarget(null);
-    setDetailUsage(null);
-    setDetailLoading(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  const handleCreate = useCallback(async () => {
+    try {
+      setSaving(true);
+      const payload: CreateUserRequest = {
+        username: form.username.trim(),
+        password: form.password,
+        role: form.role,
+        tenant_id: form.role === "tenant_admin" ? form.tenant_id : null,
+      };
+      const created = await authApi.createUser(payload);
+      setUsers((current) => [...current, created]);
+      setForm(EMPTY_FORM);
+      toast.success("Đã tạo user");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể tạo user";
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  }, [form]);
+
+  const handleDelete = useCallback(async (username: string) => {
+    try {
+      await authApi.deleteUser(username);
+      setUsers((current) => current.filter((user) => user.username !== username));
+      toast.success("Đã xóa user");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể xóa user";
+      toast.error(message);
+    }
   }, []);
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Người dùng</h1>
-          <p className="text-sm text-muted-foreground">{users.length} người dùng</p>
-        </div>
+    <div className="space-y-6 p-6">
+      <PageHeader title="Quản lý người dùng" description="Tạo platform admin hoặc tenant admin mới theo đúng tenant scope." />
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <Button className="gap-2" onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Thêm người dùng
-          </Button>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Thêm người dùng mới</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="username">Tên đăng nhập</Label>
-                <Input id="username" name="username" required minLength={3} maxLength={64} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Mật khẩu</Label>
-                <Input id="password" name="password" type="password" required minLength={6} maxLength={256} />
-                <p className="text-xs text-muted-foreground">Mật khẩu tối thiểu 6 ký tự.</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="role">Vai trò</Label>
-                <Select name="role" defaultValue={roles[0]?.name ?? "member"}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roles.length === 0 ? (
-                      <SelectItem value="member">member</SelectItem>
-                    ) : (
-                      roles.map((role) => (
-                        <SelectItem key={role.id} value={role.name}>
-                          {role.name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                  Hủy
-                </Button>
-                <Button type="submit">Tạo</Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Tên đăng nhập</TableHead>
-              <TableHead>Vai trò</TableHead>
-              <TableHead>Token In/Out (LLM, 30 ngày)</TableHead>
-              <TableHead>Chi phí (30 ngày, 3 model)</TableHead>
-              <TableHead className="text-right">Thao tác</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  <Users className="mx-auto h-8 w-8 mb-2" />
-                  Chưa có người dùng
-                </TableCell>
-              </TableRow>
-            ) : (
-              users.map((user) => {
-                const usage = usageByUserId[user.id];
-                return (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.username}</TableCell>
-                    <TableCell>
-                      <Badge variant={user.role === "admin" ? "default" : "secondary"}>
-                        {user.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {usage ? (
-                        <span className="text-sm">
-                          {formatInt(usage.tokens_in)} / {formatInt(usage.tokens_out)}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">0 / 0</span>
-                      )}
-                    </TableCell>
-                    <TableCell>{usage ? formatVndFromUsd(usage.cost_usd) : "0 ₫"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => void openDetail(user)}>
-                          <Eye className="h-4 w-4 mr-1" />
-                          Xem chi tiết
-                        </Button>
-                        {user.username !== session?.user?.name && (
-                          <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(user.username)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Xác nhận xóa</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Xóa người dùng <strong>{deleteTarget}</strong>? Hành động này không thể hoàn tác.
-          </p>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-              Hủy
-            </Button>
-            <Button variant="destructive" onClick={() => deleteTarget && void handleDelete(deleteTarget)}>
-              Xóa
+      <Card>
+        <CardHeader>
+          <CardTitle>Tạo user mới</CardTitle>
+          <CardDescription>Tenant admin bắt buộc phải gắn với một tenant cụ thể.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="space-y-2">
+            <Label htmlFor="username">Tên đăng nhập</Label>
+            <Input id="username" value={form.username} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="password">Mật khẩu</Label>
+            <Input
+              id="password"
+              type="password"
+              value={form.password}
+              onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Vai trò</Label>
+            <Select
+              value={form.role}
+              onValueChange={(value) =>
+                setForm((current) => ({
+                  ...current,
+                  role: value || "tenant_admin",
+                  tenant_id: (value || "tenant_admin") === "tenant_admin" ? current.tenant_id : null,
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {roles.map((role) => (
+                  <SelectItem key={role.id} value={role.name}>
+                    {role.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Tenant</Label>
+            <TenantSelect
+              tenants={tenants}
+              value={form.tenant_id}
+              onValueChange={(tenantId) => setForm((current) => ({ ...current, tenant_id: tenantId }))}
+              disabled={form.role !== "tenant_admin"}
+            />
+          </div>
+          <div className="flex justify-end md:col-span-2 xl:col-span-4">
+            <Button onClick={handleCreate} disabled={saving}>
+              <Plus className="mr-2 h-4 w-4" />
+              {saving ? "Đang tạo..." : "Tạo user"}
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </CardContent>
+      </Card>
 
-      <Dialog open={!!detailTarget} onOpenChange={(open) => !open && closeDetail()}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Thống kê 30 ngày: {detailTarget?.username ?? "-"}</DialogTitle>
-          </DialogHeader>
-          {detailLoading ? (
-            <p className="text-sm text-muted-foreground">Đang tải dữ liệu...</p>
-          ) : !detailUsage ? (
-            <p className="text-sm text-muted-foreground">Không có dữ liệu.</p>
-          ) : (
-            <div className="space-y-4">
-              <div className="rounded-md border p-4 space-y-2">
-                <h3 className="font-semibold">Tổng quan 30 ngày</h3>
-                <div className="text-sm">
-                  <div>
-                    Token In/Out: {formatInt(detailUsage.window_30d.tokens_in)} /{" "}
-                    {formatInt(detailUsage.window_30d.tokens_out)}
-                  </div>
-                  <div>Tổng token: {formatInt(detailUsage.window_30d.total_tokens)}</div>
-                  <div>Chi phí ước tính: {formatVndFromUsd(detailUsage.window_30d.estimated_cost_usd)}</div>
-                </div>
-              </div>
-
-              <div className="rounded-md border p-4 space-y-2">
-                <h3 className="font-semibold">Chi tiết theo model (30 ngày)</h3>
-                <div className="text-sm space-y-1">
-                  <div>
-                    LLM: {formatInt(detailUsage.window_30d.by_model_type.llm.tokens_in)} /{" "}
-                    {formatInt(detailUsage.window_30d.by_model_type.llm.tokens_out)} token
-                  </div>
-                  <div>
-                    Embedding: {formatInt(detailUsage.window_30d.by_model_type.embedding.tokens_in)} /{" "}
-                    {formatInt(detailUsage.window_30d.by_model_type.embedding.tokens_out)} token
-                  </div>
-                  <div>
-                    Reranker: {formatInt(detailUsage.window_30d.by_model_type.reranker.tokens_in)} /{" "}
-                    {formatInt(detailUsage.window_30d.by_model_type.reranker.tokens_out)} token
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <Card>
+        <CardHeader>
+          <CardTitle>Danh sách user</CardTitle>
+          <CardDescription>Giữ role rõ ràng để webapp và backend đồng bộ hành vi.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px]">
+              <thead>
+                <tr className="border-b border-muted">
+                  <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Username</th>
+                  <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Vai trò</th>
+                  <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Tenant</th>
+                  <th className="py-2 text-right text-xs font-medium text-muted-foreground">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id} className="border-b border-muted/50 last:border-0">
+                    <td className="py-3 pr-4 font-medium">{user.username}</td>
+                    <td className="py-3 pr-4">{user.role}</td>
+                    <td className="py-3 pr-4 text-sm text-muted-foreground">{user.tenant_id ? tenantNameMap.get(user.tenant_id) || user.tenant_id : "—"}</td>
+                    <td className="py-3 text-right">
+                      <Button size="sm" variant="destructive" onClick={() => handleDelete(user.username)}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Xóa
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

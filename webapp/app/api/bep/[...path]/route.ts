@@ -28,10 +28,6 @@ async function proxyHandler(
   if (token?.accessToken) {
     headers.set("Authorization", `Bearer ${token.accessToken}`);
   }
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp) headers.set("X-Real-IP", realIp);
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) headers.set("X-Forwarded-For", forwardedFor);
 
   // Build fetch options
   const init = {

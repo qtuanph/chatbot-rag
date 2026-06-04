@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RAG Chatbot",
-  description: "Enterprise document Q&A with hierarchical retrieval",
+  title: "RAG Platform",
+  description: "Nền tảng hỏi đáp tài liệu đa tenant cho doanh nghiệp",
 };
 
 export default function RootLayout({

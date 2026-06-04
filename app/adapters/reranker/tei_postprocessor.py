@@ -1,4 +1,4 @@
-"""TEI cross-encoder reranker as a LlamaIndex node postprocessor."""
+"""Local HTTP reranker postprocessor compatible with the legacy `/rerank` contract."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.core.config import settings
 
 
 class TEIRerankerPostprocessor(BaseNodePostprocessor):
-    """Rerank retrieved nodes using the TEI cross-encoder endpoint."""
+    """Rerank retrieved nodes using the local `/rerank` endpoint."""
 
     top_k: int = settings.retrieval_rerank_top_k
     base_url: str = settings.ai_reranker_url

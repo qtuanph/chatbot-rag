@@ -17,7 +17,7 @@ class SectionRepository(BaseRepository[DocumentSection]):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, DocumentSection)
 
-    async def store_sections(self, document_id: str, sections: list[dict[str, Any]]) -> list[str]:
+    async def store_sections(self, document_id: str, tenant_id: str, sections: list[dict[str, Any]]) -> list[str]:
         """Bulk insert sections for a document. Returns list of section DB IDs."""
         try:
             # Delete old sections first (atomic within outer transaction if applicable)
@@ -26,6 +26,7 @@ class SectionRepository(BaseRepository[DocumentSection]):
             async with self.session.begin_nested() as savepoint:
                 for sec in sections:
                     db_section = self.model(
+                        tenant_id=tenant_id,
                         document_id=document_id,
                         section_id=sec["section_id"],
                         parent_section_id=sec.get("parent_section_id"),
@@ -168,6 +169,7 @@ class SectionRepository(BaseRepository[DocumentSection]):
             return {}
         data = super()._to_dict(section)
         data["id"] = str(section.id)
+        data["tenant_id"] = str(section.tenant_id)
         data["document_id"] = str(section.document_id)
         data["breadcrumb"] = section.breadcrumb or []
         data["artifact_metadata"] = section.artifact_metadata or {}

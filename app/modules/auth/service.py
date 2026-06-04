@@ -32,7 +32,7 @@ class AuthService:
         if role is None:
             raise ValueError("User has no assigned role")
 
-        token = create_access_token(subject=user["id"], role=role["name"])
+        token = create_access_token(subject=user["id"], role=role["name"], tenant_id=user.get("tenant_id"))
 
         safe_record_audit(
             action="auth.login",
@@ -45,7 +45,12 @@ class AuthService:
             redis_client_override=self.blacklist.client,
         )
 
-        return {"access_token": token, "role": role["name"], "user_id": user["id"]}
+        return {
+            "access_token": token,
+            "role": role["name"],
+            "user_id": user["id"],
+            "tenant_id": user.get("tenant_id"),
+        }
 
     async def logout(
         self, *, jti: str, expires_at: int, user_id: str, ip_address: str | None = None, user_agent: str | None = None
@@ -63,7 +68,15 @@ class AuthService:
             redis_client_override=self.blacklist.client,
         )
 
-    async def create_user(self, *, username: str, password: str, role_name: str, admin_user_id: str) -> dict:
+    async def create_user(
+        self,
+        *,
+        username: str,
+        password: str,
+        role_name: str,
+        admin_user_id: str,
+        tenant_id: str | None = None,
+    ) -> dict:
         """Create a new user. Returns user dict. Raises on conflict/invalid role."""
         from sqlalchemy.exc import IntegrityError
 
@@ -78,16 +91,21 @@ class AuthService:
         role = await self.repo.get_role_by_name(role_name)
         if role is None:
             raise ValueError("Invalid role")
+        if role["name"] == "tenant_admin" and not tenant_id:
+            raise ValueError("tenant_id is required for tenant_admin users")
+        if role["name"] == "platform_admin":
+            tenant_id = None
 
         # Validate password strength
         if len(password) < 6:
             raise ValueError("Password must be at least 6 characters long")
 
         try:
-            user = await self.repo.create_user(
+            user = await self.repo.create_user_with_tenant(
                 username=normalized,
                 password_hash=hash_password(password),
                 role_id=role["id"],
+                tenant_id=tenant_id,
             )
         except IntegrityError:
             raise ValueError("Username already exists") from None
@@ -103,7 +121,7 @@ class AuthService:
             redis_client_override=self.blacklist.client,
         )
 
-        return {"id": user["id"], "username": user["username"], "role": role["name"]}
+        return {"id": user["id"], "username": user["username"], "role": role["name"], "tenant_id": user.get("tenant_id")}
 
     async def list_roles(self) -> list[dict]:
         return await self.repo.list_roles()
@@ -118,6 +136,7 @@ class AuthService:
             "user_id": user["id"],
             "username": user["username"],
             "role": role["name"] if role else "unknown",
+            "tenant_id": user.get("tenant_id"),
             "is_active": user["is_active"],
         }
 

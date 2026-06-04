@@ -12,12 +12,18 @@ class TreeService:
         self.doc_repo = doc_repo
         self.section_repo = section_repo
 
-    async def get_document_tree(self, document_id: str, offset: int = 0, limit: int = 100) -> dict[str, Any]:
+    async def get_document_tree(
+        self,
+        document_id: str,
+        offset: int = 0,
+        limit: int = 100,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Fetch sections and return them in a flat list for the table view, paginated.
         """
         # 1. Fetch document for metadata
-        doc = await self.doc_repo.get_full_document(document_id)
+        doc = await self.doc_repo.get_full_document(document_id, tenant_id=tenant_id)
         if not doc:
             raise ValueError(f"Document {document_id} not found")
 
@@ -50,8 +56,11 @@ class TreeService:
             "nodes": nodes,
         }
 
-    async def get_node_details(self, document_id: str, node_id: str) -> dict[str, Any]:
+    async def get_node_details(self, document_id: str, node_id: str, tenant_id: str | None = None) -> dict[str, Any]:
         """Fetch full details for a specific section node matching NodeDetail."""
+        doc = await self.doc_repo.get_full_document(document_id, tenant_id=tenant_id)
+        if not doc:
+            raise ValueError(f"Document {document_id} not found")
         s = await self.section_repo.get_section_by_section_id(document_id, node_id)
         if not s:
             raise ValueError(f"Node {node_id} not found in document {document_id}")
@@ -72,8 +81,11 @@ class TreeService:
             },
         }
 
-    async def search_nodes(self, document_id: str, query: str) -> dict[str, Any]:
+    async def search_nodes(self, document_id: str, query: str, tenant_id: str | None = None) -> dict[str, Any]:
         """Search for nodes and return in TreeSearchResult format."""
+        doc = await self.doc_repo.get_full_document(document_id, tenant_id=tenant_id)
+        if not doc:
+            raise ValueError(f"Document {document_id} not found")
         results = await self.section_repo.search_sections_by_document(document_id, query)
 
         mapped_results = []

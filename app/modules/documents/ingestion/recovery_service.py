@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from app.adapters.storage import build_storage
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.modules.documents.repositories import DocumentRepository, SectionRepository
 
 logger = logging.getLogger(__name__)
+from app.utils.datetime_utils import utc_now
 
 
 class RecoveryService:
@@ -228,5 +229,5 @@ class RecoveryService:
         return None
 
     async def _find_stuck_documents(self, timeout_minutes: int = 30) -> list[str]:
-        timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+        timeout_threshold = utc_now() - timedelta(minutes=timeout_minutes)
         return await self.doc_repo.find_stuck_documents(timeout_threshold)

@@ -1,287 +1,122 @@
-# 4 — Deployment and Observability
-
-Docker topology, Traefik v3.7.1 configuration, environment, and health. Architecture in `1_ARCHITECTURE.md`.
-
-## Deployment Topology
-
-Docker Compose with these services:
-
-| Service | Role | Access |
-|---------|------|--------|
-| traefik | Reverse proxy — **port 80 (public entry)** | Public |
-| api | FastAPI backend | Internal via Traefik |
-| webapp | Next.js 16 frontend | Internal via Traefik |
-| workers | Celery multi worker — node-ingestion (solo, GPU) + node-default (prefork, CPU, beat) | Internal |
-| ai-proxy | 9Router (Next.js 16, OpenAI-compatible AI router) — port 2908 | Internal (api→ai-proxy, Dashboard at localhost:2908) |
-| ai-embedding | TEI container — `Alibaba-NLP/gte-multilingual-base` (GPU, port 7997) | Internal |
-| ai-reranker | TEI container — `Alibaba-NLP/gte-multilingual-reranker-base` (GPU, port 7998) | Internal |
-| db | PostgreSQL 18 | Internal |
-| redis | Broker/result/cache | Internal |
-| rustfs | Object storage | Internal |
-| qdrant | Vector retrieval | Internal |
-
-All traffic through Traefik on port 80. No direct port access.
-
-## Container Runtime Users
-
-| Image | User |
-|-------|------|
-| api | `qtuanph` (non-root) |
-| webapp | `nextapp` (non-root) |
-
-Base runtime for backend/workers: `python:3.13-slim` (multi-stage Docker build).
-
-No hardcoded passwords in Dockerfiles. Debug passwords via runtime env/secrets.
-
-## Required Environment Variables
-
-| Variable | Purpose |
-|----------|---------|
-| DATABASE_URL | PostgreSQL connection |
-| REDIS_URL | Redis connection (DB 0 for app cache + RediSearch semantic cache). Celery broker/result URLs constructed internally from this + `REDIS_PASSWORD` — do NOT set `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND` directly |
-| S3_* | Object storage configuration |
-| QDRANT_URL | Qdrant endpoint |
-| QDRANT_COLLECTION | Vector collection name |
-| AI_PROXY_URL | 9Router endpoint (default `http://ai-proxy:2908`) |
-| AI_PROXY_DEFAULT_MODEL | Default model name for chat (9Router `prefix/model`, optional) |
-| AI_PROXY_JWT_SECRET | 9Router Dashboard JWT signing secret |
-| AI_PROXY_INITIAL_PASSWORD | 9Router Dashboard initial login password (default 123456) |
-| AI_EMBEDDING_URL | TEI embedding endpoint (default `http://ai-embedding:80`) |
-| AI_RERANKER_URL | TEI reranker endpoint (default `http://ai-reranker:80`) |
-| EMBEDDING_HF_MODEL | HuggingFace embedding model (default `Alibaba-NLP/gte-multilingual-base`) |
-| EMBEDDING_VECTOR_SIZE | Qdrant dimension (default 768) |
-| RETRIEVAL_RERANK_MODEL | Reranker model (default `Alibaba-NLP/gte-multilingual-reranker-base`) |
-| AI_INPUT_COST_PER_1M | Input token cost per 1M tokens (default 0.0) |
-| AI_OUTPUT_COST_PER_1M | Output token cost per 1M tokens (default 0.0) |
-| NEXTAUTH_URL | Public webapp base URL |
-| NEXTAUTH_SECRET | next-auth signing secret |
-| NEXT_PUBLIC_API_URL | Browser API URL (`/api/bep`) |
-| API_INTERNAL_URL | Server-side API URL (`http://api:8000/api/v1`) |
-| REDIS_MAXMEMORY | Redis maxmemory (default 512mb) |
-| REDIS_PASSWORD | Redis AUTH password (optional, used in all Redis URLs) |
-| CELERY_TASK_TIME_LIMIT | Task hard kill in seconds (default 3600) |
-| CELERY_TASK_SOFT_TIME_LIMIT | Task soft kill in seconds (default 3300) |
-| CELERY_WORKER_MAX_MEMORY_KB | Worker memory limit (default 1500000) |
-| CELERY_MAX_TASKS_PER_CHILD | Recycle after N tasks (default 50) |
-| AI_TEMPERATURE | Generation temperature (default 0.3) |
-| AI_MAX_OUTPUT_TOKENS | Max output tokens (default 8192) |
-| AI_MAX_HISTORY_MESSAGES | Messages sent to LLM per turn (default 6) |
-| AI_STREAM_TIMEOUT | HTTP timeout for AI streaming (default 1800s) |
-| AI_HTTP_MAX_CONNECTIONS | httpx connection pool (default 50) |
-| RATE_LIMIT_GLOBAL_RPM | Global rate limit, production only (default 5000 for 200 CCU) |
-| RATE_LIMIT_RELAXED_MODE | Bypass rate limiting when true (default true in dev) |
-| RATE_LIMIT_RELAXED_FLOOR | Minimum RPM even in relaxed mode (default 10000) |
-| CHAT_HISTORY_LIMIT | Redis messagepack history cap (default 40) |
-| CHAT_SESSION_TTL_DAYS | Session hard-delete TTL in days (default 30) |
-| AUDIT_STREAM_MAXLEN | Max entries retained in audit stream (default 50000) |
-| AUDIT_STREAM_NAME | Redis Stream key for audit events (default `audit:stream`) |
-| RETRIEVAL_SEMANTIC_CACHE_THRESHOLD | Cosine distance threshold for semantic cache hit (default 0.08) |
-| MEMORY_CACHE_TTL | User memory Redis cache TTL in seconds (default 300) |
-| INGESTION_MIN_QUALITY_SCORE | Minimum quality score for parsed docs (default 0.5) |
-| RETRIEVAL_SECTION_TOP_K | Top sections retrieved per query (default 5) |
-| RETRIEVAL_CHUNK_TOP_K | Initial candidate pool (default 15) |
-| RETRIEVAL_FETCH_MULTIPLIER | fetch_k multiplier (default 7, fetch_k=105) |
-| RETRIEVAL_RERANK_TOP_K | Candidates for reranker (default 30) |
-| LLM_CACHE_ENABLED | Enable 4-hour LLM response cache (default true) |
-| QUERY_NORMALIZE_ENABLED | Enable query normalization for cache hit rate (default true) |
-
-Docker Compose: keep webapp variables in root `.env` for single source of truth. Workers service routing configured in `ops/entrypoint-worker.sh` (no env vars needed).
-
-Compose defaults bind to 127.0.0.1. Production: front with ingress/reverse proxy + network policy.
-
-## Traefik Configuration
-
-Image: `traefik:v3.7.3` | Dashboard: http://localhost:8080
-
-### Routing via Docker Labels
-
-Traefik auto-discovers services via Docker labels — no static config file needed:
-
-| Service | Rule | Purpose |
-|---------|------|---------|
-| api | `PathPrefix(/api)` | All API traffic |
-| webapp | `Host(\`localhost\`)` | Web app frontend |
+# 4 — Deployment
 
-### Rate Limiting Middleware
-
-Applied via Traefik middleware labels on the API service:
-
-| Label | Value |
-|-------|-------|
-| `traefik.http.middlewares.api-ratelimit.ratelimit.average` | 100 |
-| `traefik.http.middlewares.api-ratelimit.ratelimit.burst` | 50 |
-
-### Key Traefik Features
-
-| Feature | Implementation |
-|---------|----------------|
-| SSE streaming | Native WebSocket/SSE support (no buffering config needed) |
-| API gateway | `/api/bep/` → webapp — browser never calls backend directly |
-| Auto-discovery | Docker provider reads labels from running containers |
-| WebSocket/HMR | Native support via Traefik's HTTP/WS handling |
-| Upload size | Configured via Traefik's default or per-service limits |
-| Hot reload | Labels change → Traefik reloads automatically |
-| Dashboard | http://localhost:8080 (insecure mode enabled) |
-| RFC 3986 | `--entrypoints.web.http.encodedCharacters.allowEncodedSlash=true` |
-
-## Health and Readiness
-
-| Service | Probe |
-|---------|-------|
-| traefik | `--ping=true` built-in health endpoint |
-| api | `/api/v1/health` (container healthcheck, 10s interval, 10s start_period) |
-| workers | celery inspect ping (included in API health payload — no dedicated docker healthcheck) |
-| PostgreSQL | pg_isready (3s interval) |
-| redis | redis-cli ping (3s interval) |
-| ai-embedding | HTTP /health (10s interval, 300s start_period) |
-| ai-reranker | HTTP /health (10s interval, 300s start_period) |
-| qdrant | TCP port 6333 check (3s interval) |
+Tài liệu deployment ở mức thực dụng, bám `docker-compose.yml` hiện tại.
 
-Healthcheck cadence varies by service: 3s for infrastructure (DB, redis, qdrant), 10s for application services (api, ai-embedding, ai-reranker).
+## Topology hiện tại
 
-## Connection Pool Sizing
+| Service | Vai trò |
+|---|---|
+| `api` | FastAPI backend |
+| `workers` | Celery workers |
+| `webapp` | Next.js frontend |
+| `ai-proxy` | 9Router |
+| `db` | PostgreSQL |
+| `redis` | queue + cache |
+| `rustfs` | object storage |
+| `qdrant` | vector DB |
+| `traefik` | reverse proxy |
 
-| Service | Pool | Overflow | Notes |
-|---------|------|----------|-------|
-| PostgreSQL (api) | `hardware.db_pool_size` | `hardware.db_max_overflow` | Auto-scales: `max(20, min(100, 250/workers))` |
-| PostgreSQL (celery) | — | — | ~4 |
-| redis | per-instance | — | ~7 instances |
+## Điểm khác so với bản cũ
 
-PostgreSQL: pool auto-calculated as `max(10, uvicorn_workers * 5)`. SQLAlchemy engine in `app/db/session.py` reads from `app/core/hardware.py`.
+Deployment hiện tại **không còn dựa vào TEI container local như mặc định chính**.
 
-AI provider: `AIProxyBridge` wraps LlamaIndex `OpenAI` LLM — connection pooling managed by `httpx` via LlamaIndex internals.
+### Mặc định hiện tại
 
-## Resource Limits
+- embedding mặc định: Docker Model Runner qua `model-runner.docker.internal`
+- reranker mặc định: NVIDIA NIM
+- local reranker Docker Model Runner chỉ là fallback
 
-| Service | CPUs | Memory | Notes |
-|---------|------|--------|-------|
-| api | 4.0 | 6G | Docker deploy limits — increase for production |
-| redis | — | `REDIS_MAXMEMORY` env var (default 512mb) | allkeys-lru eviction |
-| workers | — | — | GPU device reserved |
-| ai-embedding | — | ~1.3GB model + overhead | 1 GPU reserved |
-| ai-reranker | — | ~1.4GB model + overhead | 1 GPU reserved |
+## Cổng và routing
 
-## Hardware Auto-Detection
+| Thành phần | Ghi chú |
+|---|---|
+| `traefik` | public entry |
+| `webapp` | nhận browser traffic |
+| `/api/bep/*` | proxy từ Next.js sang backend |
+| `ai-proxy:2908` | 9Router nội bộ |
 
-`app/core/hardware.py` — HardwareProfile singleton detected once at module load. **3-tier VRAM-aware scaling.**
+## Volume chính
 
-| Mode | Condition | uvicorn workers | node-ingestion | node-default | Reason |
-|------|-----------|-----------------|----------------|-------------|--------|
-| TIGHT GPU | CUDA + VRAM headroom < 6GB | 1 | solo (1 task) | prefork min(cpu, 4) | Prevent VRAM duplication |
-| COMFORTABLE GPU | CUDA + VRAM headroom ≥ 6GB | min(cpu, ram//2, 8) | solo (1 task) | prefork min(cpu, 8) | GPU safety + CPU parallelism |
-| CPU only | No CUDA | min(cpu, ram//2, 8) | solo (1 task) | prefork min(cpu, 8) | Full throughput |
+| Volume | Mục đích |
+|---|---|
+| `pgdata` | PostgreSQL data |
+| `redisdata` | Redis data |
+| `rustfsdata` | file storage |
+| `qdrantdata` | vector data |
+| `hf-cache` | cache model/runtime |
+| `9router-data` | dữ liệu 9Router |
+| `settings-data` | `settings.db` của project |
 
-VRAM headroom = total VRAM − 2GB (TEI container overhead). GTX 1650 4GB → TIGHT. RTX 4090 24GB → COMFORTABLE.
+## settings.db
 
-Worker: `ops/entrypoint-worker.sh` runs `celery multi` with 2 nodes:
-- **node-ingestion**: `pool=solo`, queues=ingestion, GPU. Embedding model load/unload per task → always sequential.
-- **node-default**: `pool=prefork`, queues=cleanup,default, Beat scheduler. CPU-only tasks (chat, audit, memory) run in parallel.
+`settings.db` là SQLite riêng của project, dùng cho:
 
-## redis Configuration
+- provider settings
+- active embedding / reranker / llm metadata
+- key pool của provider nếu cần
 
-```
-redis-server --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes
-```
+Không nhầm với SQLite/data riêng của 9Router.
 
-| DB | Purpose |
-|----|---------|
-| 0 | App cache + RediSearch semantic cache (query cache, rate limits, chat history, vector similarity) |
-| 1 | Celery result backend (task results) |
-| 2 | Celery broker (task messages) |
+## Env quan trọng
 
-Separation prevents `allkeys-lru` eviction from deleting broker task messages.
+### API / proxy
 
-## Celery Worker Configuration
+- `NEXT_PUBLIC_API_URL=/api/bep`
+- `API_INTERNAL_URL=http://api:8000/api/v1`
 
-All values configurable via env vars. Defaults designed for dev laptop.
+### AI
 
-| Setting | Env Var | Default | Purpose |
-|---------|---------|---------|---------|
-| task_time_limit | CELERY_TASK_TIME_LIMIT | 3600s | Hard kill |
-| task_soft_time_limit | CELERY_TASK_SOFT_TIME_LIMIT | 3300s | Graceful SoftTimeLimitExceeded |
-| worker_max_memory_per_child | CELERY_WORKER_MAX_MEMORY_KB | 1,500,000 (1.5GB) | Kill child if RSS exceeded |
-| visibility_timeout | CELERY_VISIBILITY_TIMEOUT | 7200s (2h) | Prevent redis re-delivery |
-| result_expires | CELERY_RESULT_EXPIRES | 86400s (24h) | Task result TTL |
-| max_tasks_per_child | CELERY_MAX_TASKS_PER_CHILD | 50 | Recycle child after N tasks |
-| retry_backoff (upload) | CELERY_RETRY_BACKOFF | 30s | Exponential backoff base |
-| retry_backoff_max | CELERY_RETRY_BACKOFF_MAX | 600s | Max backoff |
-| max_retries | CELERY_MAX_RETRIES | 3 | Transient failure recovery |
-| broker_connection_retry_on_startup | — | true | Don't crash if redis unavailable |
-| worker_disable_rate_limits | — | true | Rate limit at API level |
-| worker_prefetch_multiplier | — | 1 | Fair distribution |
-| task_acks_late | — | true | ACK after completion |
-| Queue routing | entrypoint script | ingestion,cleanup,default | `celery multi` with 2 nodes — node-ingestion (solo), node-default (prefork+Beat) |
+- `AI_PROXY_URL=http://ai-proxy:2908`
+- `AI_PROXY_DEFAULT_MODEL`
+- `AI_EMBEDDING_URL=http://model-runner.docker.internal:12434/engines/v1`
+- `AI_RERANKER_URL=http://model-runner.docker.internal:12434`
 
-### Beat Schedule (Periodic Tasks)
+### Embedding defaults
 
-| Task | Schedule | Queue | Purpose |
-|------|----------|-------|---------|
-| `cleanup_old_chat_sessions_task` | Every `CHAT_SESSION_TTL_DAYS` (default 30 days) | cleanup | Hard-delete expired sessions |
-| `cleanup_orphaned_vectors_task` | Every `CHAT_SESSION_TTL_DAYS` (default 30 days) | cleanup | Remove Qdrant vectors without matching DB sections |
-| `process_audit_stream` | Every 10s | default | Batch persist redis Stream audit events to PostgreSQL (XREADGROUP consumer group) |
+- `EMBEDDING_API_BASE=http://model-runner.docker.internal:12434/engines/v1`
+- `EMBEDDING_HF_MODEL=ai/qwen3-embedding:0.6B-F16`
+- `EMBEDDING_VECTOR_SIZE=1024`
 
-## Observability Baseline
+## Worker model
 
-Track: request latency, error rate, queue depth, task failures, ingestion duration by stage, retrieval latency, provider generation latency.
+### `workers`
 
-## Backup and Recovery
+Một container workers hiện chạy theo hướng:
 
-| Data | Strategy |
-|------|----------|
-| PostgreSQL | Periodic dump with retention |
-| rustfs | Object sync backup |
-| Qdrant | Volume snapshot (rebuildable from raw docs + pipeline) |
+- ingest là đường nặng nhất
+- ingestion thực tế vẫn tuần tự/thiên về an toàn
+- phần này là một trong các nguyên nhân làm embedding chậm
 
-Recovery priority: PostgreSQL → rustfs → Qdrant (rebuildable).
+## Health
 
----
+| Probe | Ý nghĩa |
+|---|---|
+| `/api/v1/health` | health backend |
+| `/api/v1/public/v1/health` | health public inference |
 
-## Maintenance & Docker Operations
+## Gợi ý scale cho tương lai
 
-Use these commands to keep the deployment environment clean and free of orphaned resources.
+Nếu mục tiêu lên khoảng `200 CCU`, cần ưu tiên:
 
-### Docker Deep Cleanup (Recommended for Clean Builds)
+1. bỏ polling progress cho ingestion
+2. chuyển progress sang SSE
+3. tối ưu ingestion batch / concurrency cẩn thận
+4. tách rõ đường chat online và ingestion background
+5. benchmark lại Docker Model Runner local trước khi giữ lâu dài
 
-To clear all cache, stopped containers, and unused layers:
+## Gợi ý realtime
 
-```powershell
-# Windows (PowerShell)
-docker system prune -f; docker builder prune -a -f; docker volume prune -f
+### Chat
 
-# Linux/Bash
-docker system prune -f && docker builder prune -a -f && docker volume prune -f
-```
+- tiếp tục dùng SSE là hợp lý
 
-| Command | Action |
-|---------|--------|
-| `docker system prune -f` | Removes all unused containers, networks, and dangling images. |
-| `docker builder prune -a -f` | **Deep clean**: Removes all build cache (use this if changes aren't reflecting). |
-| `docker volume prune -f` | Removes all anonymous volumes not used by any container. |
+### Ingestion progress
 
-### Service Management
+- nên nâng từ polling 4 giây sang SSE
 
-```bash
-# Restart everything
-docker compose up -d --build
+### Khi nào mới cần WebSocket
 
-# View logs for a specific service
-docker compose logs -f api
+- khi thật sự cần hai chiều
+- ví dụ collaborative control, cancel/reprioritize tasks trực tiếp, nhiều tín hiệu song song
 
-# Scale workers (node-default)
-docker compose up -d --scale workers=2
-```
-
-### TEI Model Cache
-
-Models are downloaded at runtime into the shared `hf-cache` volume:
-
-```bash
-# View cached models
-docker exec ai-embedding ls /data
-
-# Force re-download (delete cache)
-docker volume rm chatbot-rag_hf-cache
-docker compose up -d
-```
-
-First startup takes 3-5 minutes to download models (~1.3GB + ~1.4GB). Subsequent restarts reuse cache.
+Nếu chỉ server -> client để báo tiến độ, **SSE là lựa chọn hợp lý hơn**.

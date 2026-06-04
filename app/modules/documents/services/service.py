@@ -41,13 +41,13 @@ class DocumentService:
     async def get_task_status(self, task_id: str) -> dict:
         return await self.task_service.get_task_status(task_id)
 
-    async def check_duplicate(self, sha256: str, filename: str) -> tuple[dict | None, int]:
-        if not await self.detector.exists(sha256):
-            next_version = await self.doc_repo.get_next_version(filename)
+    async def check_duplicate(self, sha256: str, filename: str, tenant_id: str) -> tuple[dict | None, int]:
+        if not await self.detector.exists(tenant_id, sha256):
+            next_version = await self.doc_repo.get_next_version(filename, tenant_id)
             return None, next_version
 
-        duplicate = await self.doc_repo.find_by_sha256(sha256)
-        next_version = await self.doc_repo.get_next_version(filename)
+        duplicate = await self.doc_repo.find_by_sha256(sha256, tenant_id)
+        next_version = await self.doc_repo.get_next_version(filename, tenant_id)
         return duplicate, next_version
 
     async def create_and_enqueue(
@@ -60,6 +60,7 @@ class DocumentService:
         file_type: str,
         sha256: str,
         next_version: int,
+        tenant_id: str,
         user_id: str,
         ip_address: str | None = None,
         user_agent: str | None = None,
@@ -77,10 +78,11 @@ class DocumentService:
             sha256=sha256,
             file_type=file_type,
             file_size=file_size,
+            tenant_id=tenant_id,
             version=next_version,
         )
 
-        await self.detector.add(sha256)
+        await self.detector.add(tenant_id, sha256)
 
         safe_record_audit(
             action="document.upload",
@@ -112,12 +114,13 @@ class DocumentService:
                 await asyncio.to_thread(storage.delete_object, object_uri)
             raise RuntimeError("Failed to enqueue document task. Please try again later.") from exc
 
-    async def list_documents(self, offset: int = 0, limit: int = 20) -> dict:
-        items, total = await self.doc_repo.list_paginated(offset=offset, limit=limit)
+    async def list_documents(self, offset: int = 0, limit: int = 20, tenant_id: str | None = None) -> dict:
+        items, total = await self.doc_repo.list_paginated(offset=offset, limit=limit, tenant_id=tenant_id)
         return {
             "items": [
                 {
                     "document_id": row["id"],
+                    "tenant_id": str(row["tenant_id"]),
                     "title": row["title"],
                     "file_name": row["file_name"],
                     "file_type": row["file_type"],
@@ -137,8 +140,8 @@ class DocumentService:
             "limit": limit,
         }
 
-    async def get_document_detail(self, document_id: str) -> dict:
-        doc = await self.doc_repo.get_full_document(document_id)
+    async def get_document_detail(self, document_id: str, tenant_id: str | None = None) -> dict:
+        doc = await self.doc_repo.get_full_document(document_id, tenant_id=tenant_id)
         if doc is None:
             raise ValueError("Document not found")
         return doc
