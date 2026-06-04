@@ -1,10 +1,12 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+
 import { authApi } from "@/lib/api-client";
 
 type AuthUser = {
   id?: string;
   role?: string;
+  tenantId?: string | null;
   token?: string;
 };
 
@@ -23,19 +25,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         try {
-          // Login to backend → get JWT
           const tokenRes = await authApi.login({
             username: credentials.username as string,
             password: credentials.password as string,
           });
 
-          // Get user info with token
           const user = await authApi.getMe(tokenRes.access_token);
 
           return {
             id: user.user_id,
             name: user.username,
             role: user.role,
+            tenantId: user.tenant_id,
             token: tokenRes.access_token,
           };
         } catch {
@@ -46,27 +47,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async jwt({ token, user }) {
-      // Initial sign in: persist token + role
       if (user) {
         const authUser = user as AuthUser;
         token.accessToken = authUser.token;
         token.role = authUser.role;
         token.userId = user.id;
-        // Store token expiry for refresh detection (backend JWT expires in 60s * 60 = 3600s)
+        token.tenantId = authUser.tenantId ?? null;
         token.accessTokenExpires = Math.floor(Date.now() / 1000) + 3600;
       }
-      // Token expired — force re-authentication by clearing access token
+
       const now = Math.floor(Date.now() / 1000);
       if (token.accessTokenExpires && now > token.accessTokenExpires - 300) {
-        // Within 5 minutes of expiry (or already expired), mark as needing refresh
         token.expired = "true";
       }
+
       return token;
     },
     async session({ session, token }) {
-      // Expose role and userId to client (accessToken kept server-side only)
       session.role = token.role as string;
       session.userId = token.userId as string;
+      session.tenantId = (token.tenantId as string | null | undefined) ?? null;
       return session;
     },
   },
@@ -75,20 +75,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   session: {
     strategy: "jwt",
-    maxAge: 60 * 60, // 1 hour (match backend JWT expiry)
+    maxAge: 60 * 60,
   },
   secret: process.env.NEXTAUTH_SECRET,
 });
 
-// Type augmentation for next-auth
 declare module "next-auth" {
   interface Session {
     role: string;
     userId: string;
+    tenantId: string | null;
   }
+
   interface User {
     role?: string;
     token?: string;
+    tenantId?: string | null;
   }
 }
 
@@ -99,6 +101,7 @@ declare module "next-auth/jwt" {
     expired?: string;
     role?: string;
     userId?: string;
+    tenantId?: string | null;
   }
 }
 

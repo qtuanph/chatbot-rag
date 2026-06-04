@@ -1,76 +1,43 @@
 {
   "document": {
     "id": "0_QUICK_REFERENCE",
-    "version": "2026-05-22",
-    "purpose": "Quick rules & patterns cheat sheet. For full details, READ the referenced docs — DO NOT guess.",
-    "read_order": [
-      "AGENTS.md — Guardrails, CSR rules, code quality",
-      "docs/1_ARCHITECTURE.md — System design, data model, invariants",
-      "docs/2_WORKFLOWS.json — Workflow index (children 2.1-2.5)",
-      "docs/3_API_CONTRACTS.md — Route reference, security",
-      "docs/4_DEPLOYMENT.md — Docker topology, env vars, health",
-      "docs/7_CURRENT_SETTINGS.json — All current defaults and config"
-    ],
-    "doc_guide": {
-      "1_ARCHITECTURE.md": "Tech stack, data model, CSR, delete policy, AI provider",
-      "2.1_WORKFLOWS_INGESTION.md": "Document ingestion pipeline + re-chunk",
-      "2.2_WORKFLOWS_CHAT.md": "Chat retrieval, cache layers, 9Router streaming",
-      "2.3_WORKFLOWS_DELETE.md": "6-step hard delete",
-      "2.4_WORKFLOWS_AUDIT.md": "Decoupled audit logging",
-      "2.5_WORKFLOWS_ANALYTICS.md": "Token tracking, analytics",
-      "3_API_CONTRACTS.md": "Full route reference",
-      "4_DEPLOYMENT.md": "Docker, Traefik, health, Celery config",
-      "5_NAMING_CONVENTIONS.md": "Naming standards",
-      "6_KNOWN_ISSUES.json": "Bug post-mortems",
-      "7_CURRENT_SETTINGS.json": "All defaults, env vars, runtime params"
-    }
+    "version": "2026-06-04",
+    "purpose": "Cheat sheet ngắn gọn cho project hiện tại."
   },
-  "must_know": {
-    "hard_delete_order": "registry.delete() → vectors → sections → file → DB row → purge. Sections BEFORE DB row.",
-    "retrieval": "Hybrid (dense + Qdrant native BM25 RRF) → rerank (managed via settings.db SQLite → /settings/providers) → full section context to LLM. See 2.2_WORKFLOWS_CHAT.md",
-    "api_gateway": "Browser → /api/bep/ → Next.js Route Handler → getToken() → Bearer → backend. Token NEVER exposed to browser.",
-    "provider_boundary": "ChatService owns orchestration. OpenAILike (9Router) via llama_index.core.Settings.llm. See 1_ARCHITECTURE.md",
-    "ai_inference": "Embedding: switchable via Admin → 'Kết nối AI' (settings.db), default TEI (gte-multilingual-base, 768-dim). Reranker: switchable (TEI/NVIDIA/Cohere) via settings.db. LLM: 9Router (built-in, fixed). RuntimeProviderManager overrides LlamaIndex Settings on activate.",
-    "async_rules": "All I/O = async def + await. CPU-bound = asyncio.to_thread(). Celery → asyncio.run() at entry only.",
-    "csr_layers": "Route (HTTP) → Service (logic, raises ValueError/RuntimeError) → Repository (SQL, returns dicts). See 1_ARCHITECTURE.md"
-  },
-  "models": {
-    "embedding_model": "Default: Alibaba-NLP/gte-multilingual-base (768-dim, 32768 ctx, TEI container). Switchable via Admin → Kết nối AI → Embedding tab (settings.db).",
-    "reranker_model": "Default: Alibaba-NLP/gte-multilingual-reranker-base (TEI local). Switchable via Kết nối AI → Reranker tab: TEI / NVIDIA NIM / Cohere.",
-    "llm": "9Router (decolua/9router:latest, OpenAI-compatible, port 2908) — built-in, fixed. 9Router-side provider mgmt via port 2908 Dashboard."
-  },
-  "key_rules": {
-    "rechunk": "POST /documents/{id}/rechunk — if ocr_output.md in S3 → free rechunk (no LlamaParse API call); else → retry parse.",
-    "single_chunking": "SentenceSplitter in LlamaIndex IngestionPipeline only. No double-splitting.",
-    "text_md_skip": ".md/.txt files skip LlamaParse API — parse_from_markdown() directly.",
-    "history_limit": "AI_MAX_HISTORY_MESSAGES=6 (messages sent to LLM per turn)",
-    "ingestion_chunk_size": "ingestion_chunk_size=1200 chars, overlap=150 (config.py). Retrieval chunk_size=600, overlap=120.",
-    "settings_db": "settings.db (SQLite) tại /app/data/settings.db — KHÁC với SQLite của 9Router. Managed via /settings/* API routes."
-  },
-  "anti_patterns": [
-    "flat chunking without hierarchy",
-    "double SentenceSplitter",
-    "calling LlamaParse API for .md/.txt files",
-    "direct provider SDK calls in routes",
-    "SessionLocal in route files (use Repository via Service)",
-    "business logic in route handlers",
-    "hallucinated answers without retrieval grounding"
+  "read_order": [
+    "AGENTS.md",
+    "docs/1_ARCHITECTURE.md",
+    "docs/2_WORKFLOWS.json",
+    "docs/3_API_CONTRACTS.md",
+    "docs/4_DEPLOYMENT.md",
+    "docs/7_CURRENT_SETTINGS.json",
+    "docs/8_TENANT_INTEGRATION_GUIDE.md"
   ],
-  "data_location": {
-    "sections": "PostgreSQL → document_sections",
-    "chunks": "Qdrant → dense + native BM25 sparse vectors, section_id metadata",
-    "documents": "PostgreSQL → documents",
-    "chat_messages": "PostgreSQL + Redis (MessagePack hot cache)",
-    "uploaded_files": "RustFS (S3-compatible)",
-    "user_memories": "PostgreSQL + Redis (5min TTL cache)",
-    "semantic_cache": "Redis 8.x (HNSW, DB 0)",
-    "audit_stream": "Redis Stream (audit:stream)"
+  "must_know": {
+    "mode": "multi-tenant SaaS",
+    "chat": "stateless",
+    "gateway": "Browser -> /api/bep/* -> Next.js proxy -> FastAPI",
+    "money": "VND, lưu integer cost_micros_vnd",
+    "time": "DB lưu UTC, backend/frontend format giờ Việt Nam khi hiển thị",
+    "delete_order": "registry -> vectors -> sections -> file -> DB row -> purge",
+    "embedding_default": "Docker Model Runner ai/qwen3-embedding:0.6B-F16",
+    "reranker_default": "NVIDIA NIM, có local fallback",
+    "llm_default": "9Router"
   },
-  "run_commands": {
-    "build": "DOCKER_BUILDKIT=1 docker compose build",
-    "start": "docker compose up -d",
-    "health": "curl http://localhost/api/v1/health",
-    "logs": "docker compose logs -f api",
-    "lint": "python -m black app --line-length=120 && python -m flake8 app --select=F,E1,E2,E4,E9,W --ignore=E203,E501,W293,W292,W391,W503,W504"
+  "important_notes": [
+    "Không được coi chat history DB là core flow nữa",
+    "Tenant isolation là bắt buộc ở document, retrieval, usage",
+    "Frontend tài liệu hiện poll gần realtime, chưa phải push realtime thật",
+    "Ingestion hiện chậm một phần vì worker solo và pipeline batch_size=1"
+  ],
+  "docs": {
+    "1_ARCHITECTURE.md": "Kiến trúc thật của project hiện tại",
+    "2.1_WORKFLOWS_INGESTION.md": "Upload, parse, embed, index",
+    "2.2_WORKFLOWS_CHAT.md": "Stateless chat nội bộ và public API",
+    "2.5_WORKFLOWS_ANALYTICS.md": "Usage/token/cost theo tenant",
+    "3_API_CONTRACTS.md": "Route và rule bảo mật",
+    "4_DEPLOYMENT.md": "Docker topology và realtime recommendation",
+    "7_CURRENT_SETTINGS.json": "Snapshot cấu hình hiện tại",
+    "8_TENANT_INTEGRATION_GUIDE.md": "Cách phần mềm tenant tích hợp chatbot"
   }
 }

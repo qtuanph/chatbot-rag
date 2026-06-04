@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, Integer, String, Float, func, text
+from sqlalchemy import BigInteger, DateTime, Float, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,10 +19,10 @@ class AiModelUsage(Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    cost_micros_vnd: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default=text("0"))
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="VND", server_default="VND")
     latency_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default=text("0"))
     endpoint: Mapped[str] = mapped_column(String(100), nullable=False)
+    tenant_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     user_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    message_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

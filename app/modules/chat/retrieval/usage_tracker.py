@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import logging
 
-from app.core.config import settings
 from llama_index.core import Settings as LlamaSettings
+from app.utils.money import compute_cost_micros_vnd
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +17,8 @@ logger = logging.getLogger(__name__)
 def track_usage(
     provider: object,
     endpoint: str,
+    tenant_id: str | None = None,
     user_id: str | None = None,
-    session_id: str | None = None,
-    message_id: str | None = None,
 ) -> None:
     """Dispatch a fire-and-forget usage log.
 
@@ -41,7 +40,7 @@ def track_usage(
     )
     total_tokens = prompt_tokens + completion_tokens
 
-    cost_usd = _estimate_cost(prompt_tokens, completion_tokens)
+    cost_micros_vnd = compute_cost_micros_vnd(prompt_tokens, completion_tokens)
 
     try:
         from app.modules.chat.tasks.usage_tasks import log_model_usage_task
@@ -51,17 +50,10 @@ def track_usage(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             endpoint=endpoint,
-            cost_usd=cost_usd,
+            cost_micros_vnd=cost_micros_vnd,
+            tenant_id=tenant_id,
             user_id=user_id,
-            session_id=session_id,
-            message_id=message_id,
         )
         logger.debug("Usage tracked: %s | %d tokens | %s", endpoint, total_tokens, model_name)
     except Exception as e:
         logger.warning("Failed to dispatch usage tracking: %s", e)
-
-
-def _estimate_cost(prompt_tokens: int, completion_tokens: int) -> float:
-    input_rate = settings.ai_input_cost_per_1m
-    output_rate = settings.ai_output_cost_per_1m
-    return (prompt_tokens * input_rate + completion_tokens * output_rate) / 1_000_000

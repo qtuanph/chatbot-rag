@@ -18,12 +18,11 @@ def log_model_usage_task(
     prompt_tokens: int,
     completion_tokens: int,
     endpoint: str,
-    cost_usd: float = 0.0,
+    cost_micros_vnd: int = 0,
     latency_ms: float = 0.0,
     model_type: str = "llm",
+    tenant_id: str | None = None,
     user_id: str | None = None,
-    session_id: str | None = None,
-    message_id: str | None = None,
 ) -> None:
     """Persist AI model usage record asynchronously via Celery."""
     try:
@@ -33,12 +32,11 @@ def log_model_usage_task(
                 prompt_tokens,
                 completion_tokens,
                 endpoint,
-                cost_usd,
+                cost_micros_vnd,
                 latency_ms,
                 model_type,
+                tenant_id,
                 user_id,
-                session_id,
-                message_id,
             )
         )
     except Exception as e:
@@ -51,12 +49,11 @@ async def _log_usage_async(
     prompt_tokens: int,
     completion_tokens: int,
     endpoint: str,
-    cost_usd: float,
+    cost_micros_vnd: int,
     latency_ms: float,
     model_type: str,
+    tenant_id: str | None,
     user_id: str | None,
-    session_id: str | None,
-    message_id: str | None,
 ) -> None:
     from app.modules.chat.repositories.usage_repository import UsageRepository
 
@@ -68,9 +65,8 @@ async def _log_usage_async(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             endpoint=endpoint,
-            cost_usd=cost_usd,
+            cost_micros_vnd=cost_micros_vnd,
             latency_ms=latency_ms,
+            tenant_id=tenant_id,
             user_id=user_id,
-            session_id=session_id,
-            message_id=message_id,
         )

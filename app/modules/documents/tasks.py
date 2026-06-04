@@ -54,6 +54,9 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             try:
                 content = await asyncio.to_thread(storage.download_bytes, file_path)
                 section_repo = SectionRepository(session)
+                document = await doc_repo.get_full_document(document_id)
+                if not document or not document.get("tenant_id"):
+                    raise ValueError("Document tenant context is missing")
 
                 pipeline = IngestionService(
                     redis_client=async_redis,
@@ -81,6 +84,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                     content=content,
                     user_id=user_id or "system",
                     document_id=document_id,
+                    tenant_id=str(document["tenant_id"]),
                     progress_callback=_progress_callback,
                 )
 
@@ -179,6 +183,9 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
         async with AsyncSessionLocal() as session:
             doc_repo = DocumentRepository(session)
             section_repo = SectionRepository(session)
+            document = await doc_repo.get_full_document(document_id)
+            if not document or not document.get("tenant_id"):
+                raise ValueError("Document tenant context is missing")
 
             await _rechunk_progress("rechunking", 5, "[1/4] Đang đọc OCR markdown từ S3...")
 
@@ -210,7 +217,7 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                     logger.warning("[%s] Partial cleanup error: %s", document_id, clean_err)
 
                 await _rechunk_progress("rechunking", 35, "[3/4] Đang lưu sections vào DB...")
-                await section_repo.store_sections(document_id, sections_data)
+                await section_repo.store_sections(document_id, str(document["tenant_id"]), sections_data)
 
                 await _rechunk_progress("rechunking", 40, "[4/4] Đang embedding và index vào Qdrant...")
 
@@ -229,6 +236,7 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                 stored = await run_ingestion_pipeline(
                     nodes,
                     document_id,
+                    str(document["tenant_id"]),
                     sections_data,
                     progress_callback=_on_rechunk_pipeline_progress,
                 )

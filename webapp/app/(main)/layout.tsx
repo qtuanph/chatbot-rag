@@ -14,18 +14,15 @@ export default function MainLayout({
         <AppSidebar />
       </Suspense>
       <SidebarInset>
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+        <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b bg-background px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <div className="flex-1 overflow-hidden">
-            {/* Title will be rendered by child pages or remains generic */}
-            <h1 className="text-sm font-medium truncate">RAG Chatbot</h1>
+            <h1 className="truncate text-sm font-medium">RAG Platform</h1>
           </div>
         </header>
         <main className="flex-1 overflow-auto">
-          <Suspense>
-            {children}
-          </Suspense>
+          <Suspense>{children}</Suspense>
         </main>
       </SidebarInset>
     </SidebarProvider>

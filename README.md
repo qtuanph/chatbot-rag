@@ -1,218 +1,158 @@
-<div align="center">
-
 # chatbot-rag
 
-**On-premise hierarchical RAG chatbot for Vietnamese enterprise documents**
+Nền tảng RAG chatbot multi-tenant theo hướng SaaS, tự host, đóng vai trò **cầu nối** để tích hợp chatbot vào phần mềm của từng công ty qua API kiểu OpenAI-compatible.
 
-Self-hosted. No cloud lock-in. Complete control over your data.
+## Mục tiêu hiện tại
 
-[![Docker](https://img.shields.io/badge/Docker-Compose-blue?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
-[![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white)](https://nextjs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![LlamaIndex](https://img.shields.io/badge/LlamaIndex-0.14-7B3FE4?logo=llamaindex&logoColor=white)](https://www.llamaindex.ai/)
-[![Qdrant](https://img.shields.io/badge/Qdrant-1.18-DC2D5E?logo=qdrant&logoColor=white)](https://qdrant.tech/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![License](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+- `platform_admin` quản trị toàn bộ tenant
+- mỗi `tenant` có:
+  - tài liệu riêng
+  - quota / usage riêng
+  - instruction riêng
+  - API key riêng
+- chat **stateless**
+  - không lưu lịch sử chat lâu dài
+  - frontend chỉ giữ context ngắn khi cửa sổ chat còn mở
+- public integration đi qua:
+  - `POST /api/v1/public/v1/chat/completions`
 
-</div>
+## Stack chính
 
----
+- **Frontend**: Next.js + shadcn/ui
+- **Backend**: FastAPI + Celery
+- **Vector DB**: Qdrant
+- **Database**: PostgreSQL
+- **Cache / Queue**: Redis
+- **Object Storage**: RustFS
+- **LLM Gateway**: 9Router
+- **Embedding local mặc định**: Docker Model Runner
+- **Reranker mặc định**: NVIDIA NIM
 
-## Features
+## Kiến trúc ngắn gọn
 
-| Feature | Description |
-|---------|-------------|
-| **Hierarchical Indexing** | Docs → Sections (H1–H6) → Chunks via LlamaIndex `IngestionPipeline`. Preserves document structure for accurate context retrieval. |
-| **LlamaIndex RAG** | `VectorStoreIndex` with hybrid search (dense + Qdrant native BM25 RRF) + switchable reranker (TEI or NVIDIA NIM). |
-| **TEI Inference** | Dedicated TEI containers: `gte-multilingual-base` (embedding, 768-dim) + `gte-multilingual-reranker-base` (reranker). GPU-optimized. |
-| **Switchable Reranker** | Managed via SQLite `/admin/providers`: activate `TEI (Local)` or `NVIDIA NIM` at runtime (no redeploy needed). |
-| **Smart OCR** | LlamaParse cloud OCR for PDF/DOCX. Local parser for .md/.txt (no API call). |
-| **Async Ingestion** | Upload returns `task_id` instantly. Background parsing/indexing via Celery with live progress. |
-| **SSE Chat** | Real-time streaming via `OpenAILike.astream_chat()` through 9Router, with citations grouped by document. |
-| **User Memory** | Persistent per-user preferences, corrections, and facts injected into AI context. |
-| **9Router AI Gateway** | OpenAI-compatible proxy with 3-tier fallback, RTK token saver, and usage tracking. |
-| **3-Layer Cache** | LLM Response + Semantic + Query Embedding — fast hit rates, reduced latency. |
+```text
+Browser
+  → /api/bep/*
+  → Next.js route handler
+  → FastAPI
+  → Service / Repository / Qdrant / Postgres / Redis
+  → 9Router / Embedding / Reranker
+```
+
+Các nguyên tắc quan trọng:
+- browser không cầm backend bearer token
+- mọi tenant-scoped data phải filter bằng `tenant_id`
+- chat stateless, không quay lại persisted sessions cũ
+- route không chứa business logic
+
+## Vai trò người dùng
+
+### `platform_admin`
+- tạo tenant
+- tạo tenant admin
+- tạo / revoke API key cho tenant
+- upload / retry / rechunk / xóa tài liệu cho tenant
+- chat thử theo tenant
+- xem usage / quota toàn hệ thống hoặc theo tenant
+
+### `tenant_admin`
+- xem tài liệu của tenant mình
+- chat thử nội bộ tenant mình
+- xem usage / quota tenant mình
+- sửa instruction / welcome / display name tenant mình
+- **không** thấy API key
+- **không** quản lý ingestion
+
+## API tích hợp cho tenant
+
+Tenant software chỉ cần vài thứ cơ bản:
+
+- `base_url`
+- `api_key`
+- `model`
+- `messages`
+
+Ví dụ:
+
+```http
+POST /api/v1/public/v1/chat/completions
+Authorization: Bearer <tenant_api_key>
+Content-Type: application/json
+```
+
+```json
+{
+  "model": "chatbot-rag",
+  "messages": [
+    { "role": "user", "content": "Hướng dẫn tạo phiếu nhập kho?" }
+  ],
+  "stream": true,
+  "temperature": 0.2,
+  "max_tokens": 1024
+}
+```
+
+Xem chi tiết tại `docs/8_TENANT_INTEGRATION_GUIDE.md`.
 
 ## Quick Start
 
 ```bash
-# 1. Configure
 cp .env.example .env
-# Edit .env: set JWT_SECRET, DATABASE_URL, S3_SECRET_KEY, HF_TOKEN
-
-# 2. Build & start
-DOCKER_BUILDKIT=1 docker compose up -d --build
-
-# 3. Access
-open http://localhost
+DOCKER_BUILDKIT=1 docker compose build
+docker compose up -d
 ```
 
-**First startup**: Takes 3-5 minutes to download TEI models (~2.7GB total). Subsequent restarts reuse cache.
+Truy cập:
 
-### Default Credentials
+- Webapp: `http://localhost`
+- API health: `http://localhost/api/v1/health`
+- Qdrant: `http://localhost:6333/dashboard`
+- 9Router: `http://localhost:2908`
 
-```
-Username: admin
-Password: abc123
-```
+## Tài liệu cần đọc
 
-### Services
+| Nội dung | File |
+|---------|------|
+| Guardrails cho agent/dev | `AGENTS.md` |
+| Kiến trúc | `docs/1_ARCHITECTURE.md` |
+| Workflows | `docs/2_WORKFLOWS.json` |
+| API contracts | `docs/3_API_CONTRACTS.md` |
+| Deployment | `docs/4_DEPLOYMENT.md` |
+| Current settings | `docs/7_CURRENT_SETTINGS.json` |
+| Tích hợp tenant | `docs/8_TENANT_INTEGRATION_GUIDE.md` |
 
-| Service | URL |
-|---------|-----|
-| Web App | http://localhost |
-| API Health | http://localhost/api/v1/health |
-| Qdrant Dashboard | http://localhost:6333/dashboard |
-| RustFS Console | http://localhost:9001 |
-| 9Router Dashboard | http://localhost:2908 |
+## Trạng thái hiện tại
 
-## Architecture
+- multi-tenant SaaS backend: **đã có**
+- stateless chat: **đã có**
+- OpenAI-compatible public chat API: **đã có**
+- tenant instruction riêng: **đã có**
+- tenant API key management: **đã có**
+- Docker Model Runner embedding default: **đã có**
+- NVIDIA NIM reranker default: **đã có**
 
-```
-Browser → Traefik (:80) → Next.js (webapp) → FastAPI (api)
-                                          ↕
-                          Celery Workers · Qdrant · PostgreSQL · Redis · RustFS
-                                          ↕
-                    ai-embedding (TEI) · ai-reranker (TEI) · ai-proxy (9Router)
-                                          ↕
-                                LlamaIndex Core
-                          Settings.embed_model · Settings.llm
-                          VectorStoreIndex · IngestionPipeline
-```
+## Ghi chú hiệu năng thực tế
 
-### Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 16 + shadcn/ui v4 + next-auth v5 |
-| Backend | FastAPI + Celery + SQLAlchemy |
-| RAG Framework | **LlamaIndex** (`VectorStoreIndex`, `IngestionPipeline`, `QdrantVectorStore`, `TextEmbeddingsInference`, `OpenAILike`) |
-| Database | PostgreSQL 18 |
-| Cache / Queue | Redis 8 |
-| Vector Search | Qdrant (dense + native BM25 hybrid) |
-| Embedding | TEI — `Alibaba-NLP/gte-multilingual-base` (768-dim, 32k ctx) |
-| Reranker | TEI — `Alibaba-NLP/gte-multilingual-reranker-base`, or NVIDIA NIM `nvidia/llama-nemotron-rerank-1b-v2` |
-| LLM Provider | 9Router (OpenAI-compatible, port 2908) |
-| OCR | LlamaParse (cloud) + local MarkdownNodeParser |
-| Reverse Proxy | Traefik v3.7 |
-
-### Retrieval Pipeline
-
-```
-Query → Cache Check (3 layers)
-  → MISS: Embed (TEI) → Hybrid Search (Dense + Native BM25 RRF)
-  → Rerank (TEI or NVIDIA) → Dedup → Full Section → LLM (SSE Stream)
-```
-
-## API Reference
-
-All endpoints prefixed with `/api/v1`. Auth via JWT Bearer.
-
-### Auth
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/auth/login` | POST | public | JWT authentication |
-| `/auth/logout` | POST | JWT | Revoke token |
-| `/auth/me` | GET | JWT | Current user info |
-| `/auth/users` | POST/GET | admin | User management |
-
-### Documents
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/documents/upload` | POST | admin | Upload → returns `task_id` |
-| `/documents/status/{task_id}` | GET | JWT | Poll progress |
-| `/documents/{id}` | DELETE | admin | Hard-delete |
-| `/documents/{id}/rechunk` | POST | admin | Re-index from saved OCR |
-
-### Chat
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/chat/stream` | POST (SSE) | member | Chat with streaming |
-| `/chat/sessions` | POST/GET | member | Session management |
-| `/chat/messages` | GET | member | Get messages |
-
-### Other
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/memories` | CRUD | member | User memory management |
-| `/analytics/stats` | GET | member | Usage statistics |
-| `/health` | GET | public | Health check |
-
-Full API docs: [`docs/3_API_CONTRACTS.md`](docs/3_API_CONTRACTS.md)
-
-## Configuration
-
-All settings via environment variables. See `app/core/config.py` for defaults.
-
-### Key Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AI_EMBEDDING_URL` | `http://ai-embedding:80` | TEI embedding endpoint |
-| `AI_RERANKER_URL` | `http://ai-reranker:80` | TEI reranker endpoint |
-| `RERANKER_BACKEND` | `tei` | Legacy fallback only. Runtime reranker selection is managed via SQLite `/admin/providers`. |
-| `NVIDIA_API_KEY` | — | Required when `RERANKER_BACKEND=nvidia` |
-| `AI_PROXY_URL` | `http://ai-proxy:2908` | 9Router endpoint |
-| `EMBEDDING_HF_MODEL` | `Alibaba-NLP/gte-multilingual-base` | Embedding model |
-| `AI_MAX_HISTORY_MESSAGES` | `6` | Messages sent to LLM per turn |
-| `RETRIEVAL_RERANK_TOP_K` | `10` | Candidates for reranker |
-
-Full config reference: [`docs/7_CURRENT_SETTINGS.json`](docs/7_CURRENT_SETTINGS.json)
-
-## Documentation
-
-| Topic | File |
-|-------|------|
-| Dev guidelines | [`AGENTS.md`](AGENTS.md) |
-| Architecture & data model | [`docs/1_ARCHITECTURE.md`](docs/1_ARCHITECTURE.md) |
-| Workflows (ingestion, chat, delete, audit, analytics) | [`docs/2_WORKFLOWS.json`](docs/2_WORKFLOWS.json) |
-| API contracts & security | [`docs/3_API_CONTRACTS.md`](docs/3_API_CONTRACTS.md) |
-| Deployment & observability | [`docs/4_DEPLOYMENT.md`](docs/4_DEPLOYMENT.md) |
-| Current settings (all defaults) | [`docs/7_CURRENT_SETTINGS.json`](docs/7_CURRENT_SETTINGS.json) |
-| Known issues | [`docs/6_KNOWN_ISSUES.json`](docs/6_KNOWN_ISSUES.json) |
+- Chat nhiều người dùng được, nhưng mức chịu tải thực tế còn phụ thuộc:
+  - provider LLM
+  - tốc độ embedding / reranking
+  - Redis / Postgres / Qdrant
+  - cấu hình worker
+- Ingestion hiện vẫn thiên về ổn định hơn là throughput tối đa
+- Nếu mục tiêu khoảng `200 CCU`, nên ưu tiên:
+  - SSE cho stream chat
+  - SSE cho progress ingestion
+  - scale worker / API / proxy tách riêng
+  - dùng provider inference đủ mạnh thay vì dồn hết sang local GPU nhỏ
 
 ## Contributing
 
-1. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md)
-2. Create a feature branch (`git checkout -b feat/your-feature`)
-3. Commit using [Conventional Commits](https://www.conventionalcommits.org/)
-4. Push and open a Pull Request
-
-All changes must pass linting:
-```bash
-python -m black app --line-length=120
-python -m flake8 app --select=F,E1,E2,E4,E9,W --ignore=E203,E501,W293,W292,W391,W503,W504
-```
-
-## Acknowledgements
-
-Special thanks to the **LlamaIndex** team and open-source community.
-This project relies heavily on LlamaIndex core building blocks such as:
-- `VectorStoreIndex`
-- `IngestionPipeline`
-- `QdrantVectorStore`
-- `TextEmbeddingsInference`
-- `OpenAILike`
+1. Đọc `AGENTS.md`
+2. Giữ đúng CSR:
+   - Route → Service → Repository
+3. Không hardcode để “pass bug”
+4. Sync docs cùng lúc với code
 
 ## License
 
-[GNU AGPL-3.0](LICENSE)
-
-## Project Policies
-
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Security Policy](SECURITY.md)
-- [Trademark Policy](TRADEMARK_POLICY.md)
-
-## Compliance Notice
-
-This project is open-source under AGPL-3.0 with strict compliance expectations.
-If you deploy modified versions publicly, you must publish corresponding source code.
-Using this project's name/logo for unofficial commercial offerings is prohibited without permission.
-
-## Ownership Statement
-
-This repository (`qtuanph/chatbot-rag`) is the original work and official repository of the author/owner.
-All branding identity, project name, and official distribution rights remain with the owner.
-Open-source availability under AGPL-3.0 does not transfer ownership of the original project.
+`AGPL-3.0`

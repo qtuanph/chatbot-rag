@@ -18,6 +18,7 @@ engine = create_async_engine(
     max_overflow=_max_overflow,
     pool_recycle=3600,
     pool_timeout=30,
+    connect_args={"options": "-c timezone=Asia/Ho_Chi_Minh"} if "postgresql+psycopg://" in async_url else {},
 )
 
 AsyncSessionLocal = async_sessionmaker(

@@ -1,202 +1,169 @@
 "use client";
 
-import { useState } from "react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { FileText, ThumbsUp, ThumbsDown, Zap } from "lucide-react";
+import { Bot, Coins, FileText, UserRound } from "lucide-react";
+
 import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
-import { chatApi } from "@/lib/api-client";
-import { toast } from "sonner";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { formatNumber, formatVnd } from "@/lib/format";
+import type { ChatUsage } from "@/types/api";
 import type { ChatMessage } from "@/types/chat";
 
 interface ChatMessageProps {
   message: ChatMessage;
   isStreaming?: boolean;
   isThinking?: boolean;
-  stats?: {
-    total_ms: number;
-    ttft_ms: number | null;
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-    estimated_cost_usd?: number;
-  } | null;
+  usage?: ChatUsage | null;
 }
 
-function formatVndFromUsd(usd: number): string {
-  const usdToVnd = 26000;
-  const vnd = Math.max(0, Math.round((usd || 0) * usdToVnd));
-  return new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND",
-    maximumFractionDigits: 0,
-  }).format(vnd);
-}
-
-export function ChatMessage({ message, isStreaming = false, isThinking = false, stats }: ChatMessageProps) {
-  const [showCitations, setShowCitations] = useState(false);
-  const [localFeedback, setLocalFeedback] = useState<number>(message.feedback || 0);
-
-  const handleFeedback = async (value: number) => {
-    const newValue = localFeedback === value ? 0 : value;
-    setLocalFeedback(newValue);
-    try {
-      await chatApi.setMessageFeedback(message.id, newValue);
-    } catch {
-      toast.error("Không thể lưu đánh giá.");
-      setLocalFeedback(message.feedback || 0);
-    }
-  };
-
+export function ChatMessage({ message, isStreaming = false, isThinking = false, usage }: ChatMessageProps) {
   const isUser = message.role === "user";
-  const isLoading = !isUser && (isStreaming && !message.content) || isThinking;
-  const isStreamingContent = Boolean(!isUser && isStreaming && message.content);
+  const showLoading = !isUser && isThinking && !message.content;
+  const citations = Array.from(
+    new Map(
+      (message.citations || []).map((citation) => [
+        `${citation.document_id}-${citation.section_id}-${citation.file_name || citation.title}`,
+        citation,
+      ]),
+    ).values(),
+  );
+  const visibleCitations = citations.slice(0, 4);
+  const hiddenCitationCount = Math.max(citations.length - visibleCitations.length, 0);
 
   return (
-    <div className={`flex gap-3 px-4 py-3 ${isUser ? "justify-end" : ""}`}>
-      {!isUser && (
-        <Avatar className="h-8 w-8 shrink-0">
-          <AvatarFallback className="text-xs bg-primary text-primary-foreground">AI</AvatarFallback>
+    <div className={`flex gap-3 px-4 py-4 ${isUser ? "justify-end" : ""}`}>
+      {!isUser ? (
+        <Avatar className="mt-1 h-9 w-9 shrink-0 ring-1 ring-border/60">
+          <AvatarFallback className="bg-primary/10 text-primary">
+            <Bot className="h-4 w-4" />
+          </AvatarFallback>
         </Avatar>
-      )}
+      ) : null}
 
-      <div className={`max-w-[90%] sm:max-w-[80%] space-y-2 ${isUser ? "items-end" : ""}`}>
-        {isUser && (
-          <div className="rounded-2xl px-4 py-2.5 text-sm leading-relaxed bg-primary text-primary-foreground whitespace-pre-wrap">
-            {message.content}
-          </div>
-        )}
-
-        {!isUser && (
+      <div className={`max-w-[92%] space-y-3 sm:max-w-[80%] ${isUser ? "items-end" : ""}`}>
+        {isUser ? (
           <>
-            {isLoading && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground rounded-2xl bg-muted px-4 py-3">
-                <span className="flex gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce [animation-delay:0ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce [animation-delay:150ms]" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce [animation-delay:300ms]" />
-                </span>
-                Đang tìm kiếm tài liệu...
+            <div className="flex items-center justify-end gap-2">
+              <div className="text-xs font-medium text-muted-foreground">Bạn</div>
+            </div>
+            <div className="whitespace-pre-wrap rounded-[24px] rounded-tr-md bg-primary px-4 py-3 text-sm leading-7 text-primary-foreground shadow-sm">
+              {message.content}
+            </div>
+          </>
+        ) : (
+          <>
+            {showLoading ? (
+              <div className="rounded-[24px] rounded-tl-md border border-border/60 bg-card px-4 py-3 text-sm text-muted-foreground shadow-sm">
+                Đang phân tích tài liệu và dựng ngữ cảnh...
               </div>
-            )}
+            ) : null}
 
-            {message.content && (
-              <div className={`rounded-2xl bg-muted px-4 py-2.5 ${isStreamingContent ? "streaming-active" : ""}`}>
-                <MarkdownRenderer content={message.content} showCursor={isStreamingContent} />
+            {message.content ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="text-xs font-semibold text-foreground/90">Trợ lý AI</div>
+                  {isStreaming ? (
+                    <Badge variant="outline" className="rounded-full border-primary/30 bg-primary/5 text-[11px] text-primary">
+                      Đang trả lời
+                    </Badge>
+                  ) : null}
+                </div>
+                <div
+                  className={
+                    isStreaming
+                      ? "rounded-[24px] rounded-tl-md border border-border/60 bg-card px-4 py-3 shadow-sm streaming-active"
+                      : "rounded-[24px] rounded-tl-md border border-border/60 bg-card px-4 py-3 shadow-sm"
+                  }
+                >
+                  <MarkdownRenderer content={message.content} showCursor={isStreaming} />
+                </div>
               </div>
-            )}
+            ) : null}
 
-            {message.citations && message.citations.length > 0 && !isStreaming && (
-              <div className="mt-2">
-                <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => setShowCitations(!showCitations)}>
-                  <FileText className="h-3 w-3" />
-                  {message.citations.length} nguồn
-                </Button>
-
-                {showCitations && (
-                  <div className="mt-1 flex gap-3">
-                    {/* Citations */}
-                    <div className="flex-1 space-y-1">
-                      {message.citations.map((c, i) => (
-                        <div key={i} className="text-xs p-2 rounded bg-muted/50 border flex items-start gap-2">
-                          <Badge variant="outline" className="shrink-0 text-[10px]">{i + 1}</Badge>
-                          <div>
-                            <span className="font-medium">{c.title}</span>
-                            {c.heading && <span className="text-muted-foreground">{" > "}{c.heading}</span>}
-                            {c.page_range && <span className="text-muted-foreground"> (trang {c.page_range})</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Stats */}
-                    {stats && (
-                      <div className="shrink-0 w-48 space-y-1.5 text-xs p-3 rounded-lg bg-muted/30 border">
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <Zap className="h-3 w-3" />
-                          <span className="font-medium">AI Stats</span>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Time</span>
-                            <span className="font-medium">{(stats.total_ms / 1000).toFixed(2)}s</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">TTFT</span>
-                            <span className="font-medium">{(stats.ttft_ms != null ? (stats.ttft_ms / 1000).toFixed(2) : '0')}s</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">In</span>
-                            <span className="font-medium text-orange-500">{(stats.prompt_tokens ?? 0).toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Out</span>
-                            <span className="font-medium text-emerald-500">{(stats.completion_tokens ?? 0).toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between border-t pt-1 mt-1">
-                            <span className="text-muted-foreground">Total</span>
-                            <span className="font-medium">{(stats.total_tokens ?? 0).toLocaleString()}</span>
-                          </div>
-                          {(stats.estimated_cost_usd ?? 0) > 0 && (
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Chi phí</span>
-                              <span className="font-medium text-green-600">{formatVndFromUsd(stats.estimated_cost_usd ?? 0)}</span>
-                            </div>
-                          )}
-                        </div>
+            {!!citations.length && !isStreaming ? (
+              <div className="space-y-3 rounded-2xl border border-border/70 bg-background/95 p-4 shadow-sm">
+                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <FileText className="h-3.5 w-3.5" />
+                  Tài liệu tham khảo
+                </div>
+                <div className="grid gap-2">
+                  {visibleCitations.map((citation, index) => (
+                    <div
+                      key={`${citation.document_id}-${citation.section_id}-${index}`}
+                      className="rounded-xl border border-border/60 bg-muted/30 p-3 text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="rounded-full">
+                          {index + 1}
+                        </Badge>
+                        <span className="font-medium">{citation.file_name || citation.title}</span>
                       </div>
-                    )}
-                  </div>
-                )}
+                      <div className="mt-1.5 text-muted-foreground">
+                        {citation.heading || citation.title}
+                        {citation.page_range ? ` • trang ${citation.page_range}` : ""}
+                      </div>
+                    </div>
+                  ))}
+                  {hiddenCitationCount > 0 ? (
+                    <div className="text-xs text-muted-foreground">
+                      +{hiddenCitationCount} tài liệu khác đã được dùng trong câu trả lời này
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            )}
+            ) : null}
 
-            {!isUser && !isStreaming && message.content && (
-              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border/30">
-                <span className="text-xs text-muted-foreground">Câu trả lời này:</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`h-7 px-2 gap-1 text-xs ${
-                    localFeedback === 1
-                      ? "text-green-600 bg-green-500/10"
-                      : "text-muted-foreground hover:text-green-600"
-                  }`}
-                  onClick={() => handleFeedback(1)}
-                >
-                  <ThumbsUp className="h-3.5 w-3.5" />
-                  <span>Hữu ích</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`h-7 px-2 gap-1 text-xs ${
-                    localFeedback === -1
-                      ? "text-red-600 bg-red-500/10"
-                      : "text-muted-foreground hover:text-red-600"
-                  }`}
-                  onClick={() => handleFeedback(-1)}
-                >
-                  <ThumbsDown className="h-3.5 w-3.5" />
-                  <span>Không hữu ích</span>
-                </Button>
-                {localFeedback !== 0 && (
-                  <span className="text-xs text-muted-foreground animate-in fade-in">
-                    Đã ghi nhận!
-                  </span>
-                )}
+            {usage && !isStreaming ? (
+              <div className="space-y-3 rounded-2xl border border-border/70 bg-background/95 p-4 shadow-sm">
+                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <Coins className="h-3.5 w-3.5" />
+                  Thống kê lượt trả lời
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                  <div>
+                    <div className="text-muted-foreground">Prompt</div>
+                    <div className="font-medium">{formatNumber(usage.prompt_tokens)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Completion</div>
+                    <div className="font-medium">{formatNumber(usage.completion_tokens)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Tổng token</div>
+                    <div className="font-medium">{formatNumber(usage.total_tokens)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Chi phí</div>
+                    <div className="font-medium">{formatVnd(usage.cost_vnd_rounded)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Model</div>
+                    <div className="font-medium">{usage.model || "chatbot-rag"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Đơn vị</div>
+                    <div className="font-medium">{usage.currency_code}</div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-muted-foreground">Thông tin thêm</div>
+                    <div className="font-medium">
+                      Prompt {formatNumber(usage.prompt_tokens)} • Completion {formatNumber(usage.completion_tokens)}
+                    </div>
+                  </div>
+                </div>
               </div>
-            )}
+            ) : null}
           </>
         )}
       </div>
 
-      {isUser && (
-        <Avatar className="h-8 w-8 shrink-0">
-          <AvatarFallback className="text-xs">Bạn</AvatarFallback>
+      {isUser ? (
+        <Avatar className="mt-1 h-9 w-9 shrink-0 ring-1 ring-border/60">
+          <AvatarFallback className="bg-muted text-foreground">
+            <UserRound className="h-4 w-4" />
+          </AvatarFallback>
         </Avatar>
-      )}
+      ) : null}
     </div>
   );
 }

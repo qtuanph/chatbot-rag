@@ -30,6 +30,7 @@ class DocumentDeleteResponse(BaseModel):
 
 class DocumentSummaryResponse(BaseModel):
     document_id: str
+    tenant_id: str
     title: str
     file_name: str
     file_type: str
@@ -65,6 +66,7 @@ class DocumentRechunkResponse(BaseModel):
 
 class DocumentDetailResponse(BaseModel):
     document_id: str
+    tenant_id: str
     title: str
     file_name: str
     sha256: str

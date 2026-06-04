@@ -1,12 +1,14 @@
-"""Utility functions for ChatService."""
+"""Utility functions for stateless chat flows."""
 
 from __future__ import annotations
+
 import re
 from typing import Any
-import nh3
-from app.core.config import settings
 
-# Vietnamese + English greeting/social patterns
+import nh3
+
+from app.utils.money import build_money_payload, compute_cost_micros_vnd
+
 _GREETING_PATTERNS: list[re.Pattern] = [
     re.compile(r"^(chào|hello|hi|hey|hola|chao|xin chào|chào bạn|chào anh|chào chị)\b", re.IGNORECASE),
     re.compile(r"^(cảm ơn|cám ơn|thank|thanks|thank you|thanks you)\b", re.IGNORECASE),
@@ -43,8 +45,8 @@ def validate_query(query: str) -> None:
         raise ValueError("Query contains potentially unsafe content")
 
 
-def compute_cost(tokens_in: int, tokens_out: int) -> float:
-    return (tokens_in * settings.ai_input_cost_per_1m + tokens_out * settings.ai_output_cost_per_1m) / 1_000_000
+def compute_cost(tokens_in: int, tokens_out: int) -> dict[str, int | str]:
+    return build_money_payload(compute_cost_micros_vnd(tokens_in, tokens_out))
 
 
 def deduplicate_citations(citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -52,28 +54,29 @@ def deduplicate_citations(citations: list[dict[str, Any]]) -> list[dict[str, Any
     if not citations:
         return []
 
-    doc_groups: dict[str, list[dict]] = {}
+    doc_groups: dict[str, list[dict[str, Any]]] = {}
     doc_titles: dict[str, str] = {}
     for citation in citations:
         doc_id = citation.get("document_id", "")
         if doc_id not in doc_groups:
             doc_groups[doc_id] = []
-            doc_titles[doc_id] = citation.get("title", "Tài liệu")
+            doc_titles[doc_id] = str(citation.get("title", "Tài liệu"))
         doc_groups[doc_id].append(citation)
 
-    result = []
+    result: list[dict[str, Any]] = []
     for doc_id, cites in doc_groups.items():
         pages: set[int] = set()
-        for c in cites:
-            pr = c.get("page_range")
-            if pr:
-                try:
-                    parts = str(pr).split("-")
-                    start = int(parts[0].strip())
-                    end = int(parts[-1].strip())
-                    pages.update(range(start, end + 1))
-                except (ValueError, IndexError):
-                    pass
+        for citation in cites:
+            page_range = citation.get("page_range")
+            if not page_range:
+                continue
+            try:
+                parts = str(page_range).split("-")
+                start = int(parts[0].strip())
+                end = int(parts[-1].strip())
+                pages.update(range(start, end + 1))
+            except (ValueError, IndexError):
+                continue
 
         page_display = ""
         if pages:
@@ -81,13 +84,13 @@ def deduplicate_citations(citations: list[dict[str, Any]]) -> list[dict[str, Any
             ranges: list[str] = []
             range_start = sorted_pages[0]
             range_end = sorted_pages[0]
-            for p in sorted_pages[1:]:
-                if p == range_end + 1:
-                    range_end = p
+            for page in sorted_pages[1:]:
+                if page == range_end + 1:
+                    range_end = page
                 else:
                     ranges.append(f"{range_start}" if range_start == range_end else f"{range_start}-{range_end}")
-                    range_start = p
-                    range_end = p
+                    range_start = page
+                    range_end = page
             ranges.append(f"{range_start}" if range_start == range_end else f"{range_start}-{range_end}")
             page_display = ", ".join(ranges)
 

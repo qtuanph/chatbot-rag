@@ -48,7 +48,8 @@ async def login(
         )
     except ValueError as e:
         raise http_errors.unauthorized(str(e)) from None
-    return TokenResponse(access_token=result["access_token"], role=result["role"])
+    return TokenResponse(access_token=result["access_token"], role=result["role"], tenant_id=result.get("tenant_id"))
+
 
 
 @router.post("/auth/logout", response_model=LogoutResponse)
@@ -96,6 +97,7 @@ async def create_user(
             password=payload.password,
             role_name=payload.role,
             admin_user_id=_auth.user_id,
+            tenant_id=payload.tenant_id,
         )
     except ValueError as e:
         msg = str(e)
@@ -103,7 +105,12 @@ async def create_user(
             raise http_errors.conflict(msg) from None
         raise http_errors.bad_request(msg) from None
 
-    return CreateUserResponse(id=result["id"], username=result["username"], role=result["role"])
+    return CreateUserResponse(
+        id=result["id"],
+        username=result["username"],
+        role=result["role"],
+        tenant_id=result.get("tenant_id"),
+    )
 
 
 @router.get("/auth/roles", response_model=list[RoleResponse])
@@ -129,7 +136,10 @@ async def get_users(
     _auth=Depends(require_admin), service: AuthService = Depends(get_auth_service)
 ) -> list[CreateUserResponse]:
     users = await service.list_users()
-    return [CreateUserResponse(id=u["id"], username=u["username"], role=u["role"]) for u in users]
+    return [
+        CreateUserResponse(id=u["id"], username=u["username"], role=u["role"], tenant_id=u.get("tenant_id"))
+        for u in users
+    ]
 
 
 @router.delete("/auth/users/{username}")

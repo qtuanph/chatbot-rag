@@ -20,10 +20,10 @@ TEMPLATES: list[dict] = [
     # Embedding
     {
         "service_type": "embedding",
-        "provider_name": "tei",
-        "display_name": "TEI (Local)",
-        "url": "http://ai-embedding:80/v1",
-        "model": "Alibaba-NLP/gte-multilingual-base",
+        "provider_name": "dmr",
+        "display_name": "Docker Model Runner",
+        "url": "http://model-runner.docker.internal:12434/engines/v1",
+        "model": "ai/qwen3-embedding:0.6B-F16",
     },
     {
         "service_type": "embedding",
@@ -63,10 +63,10 @@ TEMPLATES: list[dict] = [
     # Reranker
     {
         "service_type": "reranker",
-        "provider_name": "tei",
-        "display_name": "TEI (Local)",
-        "url": "http://ai-reranker:80",
-        "model": "Alibaba-NLP/gte-multilingual-reranker-base",
+        "provider_name": "dmr",
+        "display_name": "Docker Model Runner (Fallback)",
+        "url": "http://model-runner.docker.internal:12434",
+        "model": "ai/qwen3-reranker:0.6B",
     },
     {
         "service_type": "reranker",
@@ -181,6 +181,11 @@ class SettingsService:
                     payload["input_type"] = "query"
                     payload["truncate"] = "NONE"
             elif provider["service_type"] == "reranker":
+                if provider.get("provider_name") == "dmr":
+                    return {
+                        "success": False,
+                        "message": "Docker Model Runner reranker fallback đang để dự phòng; hiện project ưu tiên NVIDIA NIM cho reranking.",
+                    }
                 if provider.get("provider_name") == "nvidia":
                     test_url = _resolve_nvidia_rerank_url(url, model)
                 else:

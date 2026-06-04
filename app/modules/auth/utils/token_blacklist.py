@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import redis.asyncio as redis
+from app.utils.datetime_utils import utc_now
 
 
 class TokenBlacklist:
@@ -13,7 +12,7 @@ class TokenBlacklist:
         return f"auth:blacklist:{jti}"
 
     async def revoke(self, jti: str, expires_at: int) -> None:
-        ttl = max(expires_at - int(datetime.now(timezone.utc).timestamp()), 1)
+        ttl = max(expires_at - int(utc_now().timestamp()), 1)
         await self.client.set(self._key(jti), "1", ex=ttl)
 
     async def is_revoked(self, jti: str) -> bool:

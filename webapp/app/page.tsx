@@ -8,7 +8,7 @@ export default async function HomePage() {
     redirect("/login");
   }
 
-  if (session.role === "admin") {
+  if (session.role === "platform_admin") {
     redirect("/admin");
   }
 

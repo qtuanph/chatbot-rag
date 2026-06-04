@@ -35,8 +35,8 @@ def _dispatch_model_usage(
     completion_tokens: int = 0,
     latency_ms: float = 0.0,
     endpoint: str,
+    tenant_id: str | None,
     user_id: str | None,
-    session_id: str | None,
 ) -> None:
     try:
         from app.modules.chat.tasks.usage_tasks import log_model_usage_task
@@ -48,10 +48,9 @@ def _dispatch_model_usage(
             completion_tokens=max(0, int(completion_tokens)),
             endpoint=endpoint,
             latency_ms=max(0.0, float(latency_ms)),
-            cost_usd=0.0,
+            cost_micros_vnd=0,
+            tenant_id=tenant_id,
             user_id=user_id,
-            session_id=session_id,
-            message_id=None,
         )
     except Exception as e:
         logger.warning("Failed to dispatch %s usage: %s", model_type, e)
@@ -89,8 +88,8 @@ def _extract_text_and_metadata_from_payload(payload: dict[str, Any], text_key: s
 async def _hybrid_retrieve_via_qdrant(
     query: str,
     limit: int,
+    tenant_id: str | None = None,
     user_id: str | None = None,
-    session_id: str | None = None,
 ) -> list[NodeWithScore]:
     """Run hybrid retrieval directly via qdrant-client (dense + sparse fusion)."""
     vector_store = get_vector_store()
@@ -120,8 +119,8 @@ async def _hybrid_retrieve_via_qdrant(
         completion_tokens=0,
         latency_ms=embed_latency_ms,
         endpoint="retrieval.embed_query",
+        tenant_id=tenant_id,
         user_id=user_id,
-        session_id=session_id,
     )
 
     sparse_query_fn = getattr(vector_store, "_sparse_query_fn", None) or getattr(vector_store, "sparse_query_fn", None)
@@ -130,6 +129,17 @@ async def _hybrid_retrieve_via_qdrant(
 
     sparse_indices, sparse_values = await asyncio.to_thread(sparse_query_fn, [query])
     sparse_vector = rest.SparseVector(indices=sparse_indices[0], values=sparse_values[0])
+
+    query_filter = None
+    if tenant_id:
+        query_filter = rest.Filter(
+            must=[
+                rest.FieldCondition(
+                    key="tenant_id",
+                    match=rest.MatchValue(value=tenant_id),
+                )
+            ]
+        )
 
     response = await aclient.query_points(
         collection_name=collection_name,
@@ -146,6 +156,7 @@ async def _hybrid_retrieve_via_qdrant(
             ),
         ],
         query=rest.FusionQuery(fusion=rest.Fusion.RRF),
+        query_filter=query_filter,
         with_payload=True,
         with_vectors=False,
         limit=limit,
@@ -167,8 +178,8 @@ async def retrieve_context(
     limit: int = 20,
     positive_point_ids: list[str] | None = None,
     negative_point_ids: list[str] | None = None,
+    tenant_id: str | None = None,
     user_id: str | None = None,
-    session_id: str | None = None,
 ) -> RagContext:
     """Retrieve context using LlamaIndex hybrid (dense + native BM25 RRF) + TEI reranker.
 
@@ -197,8 +208,8 @@ async def retrieve_context(
             nodes = await _hybrid_retrieve_via_qdrant(
                 query=query,
                 limit=settings.retrieval_hybrid_top_k,
+                tenant_id=tenant_id,
                 user_id=user_id,
-                session_id=session_id,
             )
         else:
             if retriever is None:
@@ -223,8 +234,8 @@ async def retrieve_context(
                 completion_tokens=0,
                 latency_ms=rerank_latency_ms,
                 endpoint="retrieval.rerank",
+                tenant_id=tenant_id,
                 user_id=user_id,
-                session_id=session_id,
             )
             if reranked_nodes:
                 nodes = reranked_nodes

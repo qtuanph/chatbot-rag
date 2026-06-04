@@ -1,13 +1,14 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Trash2, Power, TestTube, Key, Globe, Cpu } from "lucide-react";
 import { settingsApi, ApiError } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -23,7 +24,7 @@ const TAB_LABELS: Record<TabKey, string> = {
 };
 
 const PROVIDER_ICONS: Record<string, string> = {
-  tei: "🖥",
+  dmr: "🐳",
   openai: "🟢",
   openrouter: "🔀",
   nvidia: "🟩",
@@ -33,6 +34,8 @@ const PROVIDER_ICONS: Record<string, string> = {
 };
 
 export default function ProvidersPage() {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab") as TabKey;
   const [tab, setTab] = useState<TabKey>(
@@ -78,7 +81,8 @@ export default function ProvidersPage() {
   useEffect(() => {
     const nextTab: TabKey = tabParam && TAB_KEYS.includes(tabParam) ? tabParam : "embedding";
     if (nextTab !== tab) {
-      setTab(nextTab);
+      const timer = window.setTimeout(() => setTab(nextTab), 0);
+      return () => window.clearTimeout(timer);
     }
   }, [tabParam, tab]);
 
@@ -226,11 +230,11 @@ export default function ProvidersPage() {
                 <span className="font-semibold">{p.display_name}</span>
                 {p.is_builtin && (
                   <Badge variant="outline" className="text-xs">
-                    Built-in
+                    Mặc định
                   </Badge>
                 )}
                 {p.is_active && (
-                  <Badge className="bg-green-600 text-xs">Active</Badge>
+                  <Badge className="bg-green-600 text-xs">Đang dùng</Badge>
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-1 font-mono">{p.url || "—"}</p>
@@ -239,21 +243,21 @@ export default function ProvidersPage() {
           </div>
           <div className="flex items-center gap-1">
             {!p.is_active && !llmBuiltin && (
-              <Button variant="ghost" size="icon" onClick={() => handleActivate(p)} title="Activate">
+              <Button variant="ghost" size="icon" onClick={() => handleActivate(p)} title="Kích hoạt">
                 <Power className="h-4 w-4 text-green-600" />
               </Button>
             )}
-            <Button variant="ghost" size="icon" onClick={() => setEditDialog(p)} title="Edit">
+            <Button variant="ghost" size="icon" onClick={() => setEditDialog(p)} title="Chỉnh sửa">
               <Globe className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => handleTest(p)} title="Test connection">
+            <Button variant="ghost" size="icon" onClick={() => handleTest(p)} title="Kiểm tra kết nối">
               <TestTube className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => openKeys(p)} title="API Keys">
+            <Button variant="ghost" size="icon" onClick={() => openKeys(p)} title="API key">
               <Key className="h-4 w-4" />
             </Button>
             {!p.is_builtin && (
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(p)} title="Delete">
+              <Button variant="ghost" size="icon" onClick={() => handleDelete(p)} title="Xóa">
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
             )}
@@ -274,12 +278,29 @@ export default function ProvidersPage() {
         )}
       </div>
 
-            <div className="space-y-3 mt-4">
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          const nextTab = value as TabKey;
+          setTab(nextTab);
+          router.replace(`${pathname}?tab=${nextTab}`);
+        }}
+      >
+        <TabsList>
+          {TAB_KEYS.map((key) => (
+            <TabsTrigger key={key} value={key}>
+              {TAB_LABELS[key]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
+      <div className="mt-4 space-y-3">
         <div className="text-sm text-muted-foreground">
           Đang xem: <span className="font-medium text-foreground">{TAB_LABELS[tab]}</span>
         </div>
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <p className="text-sm text-muted-foreground">Đang tải...</p>
         ) : providers.filter((p) => p.service_type === tab).length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center text-muted-foreground">
@@ -367,10 +388,10 @@ export default function ProvidersPage() {
               <Input id="edit-model" name="edit-model" defaultValue={editDialog?.model} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-api_key">API Key</Label>
-              <Input id="edit-api_key" name="edit-api_key" type="password" defaultValue={editDialog?.api_key} placeholder="Leave empty to keep current" />
+              <Label htmlFor="edit-api_key">API key</Label>
+              <Input id="edit-api_key" name="edit-api_key" type="password" defaultValue={editDialog?.api_key} placeholder="Để trống nếu muốn giữ nguyên" />
               <p className="text-xs text-muted-foreground">
-                Khuyến nghị: quản lý key tại nút <strong>API Keys</strong>. Để trống ở đây sẽ giữ nguyên key hiện tại.
+                Khuyến nghị: quản lý key tại nút <strong>API key</strong>. Để trống ở đây sẽ giữ nguyên key hiện tại.
               </p>
             </div>
             <div className="flex justify-end gap-2">
@@ -385,7 +406,7 @@ export default function ProvidersPage() {
       <Dialog open={!!keyDialog} onOpenChange={() => setKeyDialog(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>API Keys — {keyDialog?.display_name}</DialogTitle>
+            <DialogTitle>API key — {keyDialog?.display_name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="flex gap-2">

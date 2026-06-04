@@ -20,8 +20,8 @@ Broker reliability:
 
 Queue routing:
   - ingestion: workers (GPU-bound embedding tasks)
-  - cleanup: workers (lightweight delete + beat tasks)
-  - default: fallback queue (chat message saves, etc.)
+  - cleanup: workers (lightweight delete + maintenance tasks)
+  - default: fallback queue
 
 Time limits (prevent hung parse tasks):
   - task_soft_time_limit: Raises SoftTimeLimitExceeded → worker catches it,
@@ -36,9 +36,9 @@ from app.core.config import settings
 _ALL_MODULES = [
     "app.modules.documents.tasks",
     "app.modules.documents.cleanup_tasks",
-    "app.modules.chat.tasks",
     "app.modules.system.tasks",
     "app.modules.analytics.audit_worker",
+    "app.modules.chat.tasks.usage_tasks",
 ]
 
 celery_app = Celery(
@@ -75,8 +75,6 @@ celery_app.conf.update(
     task_routes={
         "app.workers.upload_tasks.parse_document_task": {"queue": "ingestion"},
         "app.workers.cleanup_tasks.delete_document_task": {"queue": "cleanup"},
-        "app.workers.cleanup_tasks.cleanup_old_chat_sessions_task": {"queue": "cleanup"},
-        "app.workers.chat_tasks.save_chat_message_task": {"queue": "default"},
         "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task": {"queue": "cleanup"},
         "app.workers.audit_worker.process_audit_stream": {"queue": "default"},
     },
@@ -87,13 +85,9 @@ celery_app.conf.update(
     accept_content=["json"],
     # ── Beat schedule (periodic tasks) ────────────────────────────────────────
     beat_schedule={
-        "cleanup-old-chat-sessions": {
-            "task": "app.workers.cleanup_tasks.cleanup_old_chat_sessions_task",
-            "schedule": settings.chat_session_ttl_days * 86400.0,
-        },
         "cleanup-orphaned-vectors": {
             "task": "app.workers.maintenance_tasks.cleanup_orphaned_vectors_task",
-            "schedule": settings.chat_session_ttl_days * 86400.0,
+            "schedule": 86400.0,
         },
         "process-audit-stream": {
             "task": "app.workers.audit_worker.process_audit_stream",

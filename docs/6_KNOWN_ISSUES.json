@@ -1,6 +1,6 @@
 {
   "document": "Known Issues & Post-Mortems",
-  "version": "2026-05-22",
+  "version": "2026-06-04",
   "schema": {
     "issue_id": "integer",
     "title": "string",
@@ -12,139 +12,83 @@
   "issues": [
     {
       "issue_id": 1,
-      "title": "Event Loop Leakage in AI Provider Singleton",
-      "symptom": "RuntimeError: Event loop is closed when calling AI services from Celery workers after API requests.",
-      "root_cause": "GoogleAIProvider was cached with @lru_cache and held an httpx.AsyncClient bound to the first event loop.",
-      "resolution": "Removed @lru_cache from build_ai_provider() and made GoogleAIProvider loop-aware to reinitialize client on loop mismatch.",
-      "lesson_learned": "Do not cache stateful async clients globally in hybrid Sync/Async systems."
+      "title": "Stateful Async Client Reused Across Event Loops",
+      "symptom": "Celery workers or API requests intermittently crash with event loop mismatch errors.",
+      "root_cause": "A stateful async AI provider client was cached globally and got reused across different event loops.",
+      "resolution": "Removed unsafe global caching and reinitialized clients per valid loop context.",
+      "lesson_learned": "Do not globally cache loop-bound async clients in mixed API + worker systems."
     },
     {
       "issue_id": 2,
-      "title": "Duplicate Celery Beat Execution in Docker Cluster",
-      "symptom": "Periodic tasks (for example cleanup_old_chat_sessions_task) ran multiple times simultaneously.",
-      "root_cause": "Beat (-B) was enabled on all worker nodes, so each replica ran its own scheduler.",
-      "resolution": "Updated entrypoint-worker.sh to enable Beat only when HOSTNAME ends with -0.",
-      "lesson_learned": "Celery Beat must run as a singleton in distributed deployments."
+      "title": "Beat Scheduler Started on Multiple Worker Replicas",
+      "symptom": "Periodic cleanup and maintenance tasks execute multiple times in a cluster.",
+      "root_cause": "Celery Beat was enabled on more than one worker replica.",
+      "resolution": "Limited Beat startup to a single designated worker instance.",
+      "lesson_learned": "Distributed schedulers must run as a singleton."
     },
     {
       "issue_id": 3,
-      "title": "Redis Global Initialization at Import Time",
-      "symptom": "Intermittent crashes during startup/tests.",
-      "root_cause": "redis_client = get_redis_client() executed at module import in app/core/redis.py before FastAPI loop existed.",
-      "resolution": "Removed global redis_client and switched code to get_redis_client() / Depends injection.",
-      "lesson_learned": "Avoid side-effectful infrastructure initialization at module top-level."
+      "title": "Redis-Dependent Objects Created at Import Time",
+      "symptom": "API startup crashes or route import failures when Redis is not ready.",
+      "root_cause": "Redis-backed objects such as rate limiters were constructed at module import time.",
+      "resolution": "Moved construction to dependency injection / runtime factory paths.",
+      "lesson_learned": "Avoid side-effectful infrastructure initialization at import time."
     },
     {
       "issue_id": 4,
-      "title": "Memory Task Logic Mismatch",
-      "symptom": "AttributeError and TypeError in extract_memories_task.",
-      "root_cause": "Task signature was outdated and called missing method extract_memories_async.",
-      "resolution": "Updated task signature to (user_id, user_message, assistant_response) and used extract_memories_from_turn.",
-      "lesson_learned": "Re-verify task-service interfaces after refactors."
+      "title": "Reserved SQLAlchemy Attribute Name",
+      "symptom": "Application startup fails with SQLAlchemy InvalidRequestError related to `metadata`.",
+      "root_cause": "An ORM model used `metadata` as a mapped Python attribute name.",
+      "resolution": "Renamed the Python attribute to `artifact_metadata` while preserving DB column mapping where needed.",
+      "lesson_learned": "Never map reserved SQLAlchemy names directly as ORM attributes."
     },
     {
       "issue_id": 5,
-      "title": "SQLAlchemy Reserved Attribute Crash During Startup",
-      "symptom": "api and workers restart loops with InvalidRequestError: Attribute name 'metadata' is reserved.",
-      "root_cause": "DocumentSection declared ORM attribute metadata, conflicting with Declarative reserved name.",
-      "resolution": "Renamed ORM attribute to artifact_metadata and kept DB column name via mapped_column(name=\"metadata\").",
-      "lesson_learned": "Never use reserved SQLAlchemy names as mapped attributes; alias at app layer."
+      "title": "Qdrant Document ID Drift",
+      "symptom": "Upload appears successful but retrieval/delete by document ID fails or returns zero matches.",
+      "root_cause": "LlamaIndex auto-generated ref_doc_id/doc_id values that no longer matched PostgreSQL document IDs.",
+      "resolution": "Pinned LlamaIndex source document IDs explicitly to the PostgreSQL `document_id`.",
+      "lesson_learned": "Cross-system joins require explicit stable IDs."
     },
     {
       "issue_id": 6,
-      "title": "API Startup Crash From RateLimiter Construction",
-      "symptom": "API restart loop with ValueError: redis_client is required for RateLimiter.",
-      "root_cause": "analytics/memories/tree routes instantiated RateLimiter() at import time without Redis client.",
-      "resolution": "Replaced module-level RateLimiter() with dependency injection: Depends(get_rate_limiter).",
-      "lesson_learned": "Do not construct Redis-dependent objects at import time in route modules."
+      "title": "Double Chunking in Ingestion",
+      "symptom": "Sections are fragmented into overly small chunks and retrieval quality drops.",
+      "root_cause": "Markdown parse logic and the ingestion pipeline both applied chunk splitting.",
+      "resolution": "Kept chunking in one place only: the ingestion pipeline.",
+      "lesson_learned": "Chunking must happen exactly once."
     },
     {
       "issue_id": 7,
-      "title": "Memory Extraction Too Restrictive - AI Loses Context Between Turns",
-      "symptom": "AI gives generic answers ignoring previous context; user has to repeat information across turns.",
-      "root_cause": "should_extract_memory() only triggered extraction when user message matched patterns like 'nhớ', 'remember', 'sai', etc. Normal questions like 'Nói chi tiết hơn được không?' were skipped, so AI lost context.",
-      "resolution": "Removed should_extract_memory() trigger check. Now extracts memories from every chat turn. Added content deduplication in add_memory() to prevent duplicate entries.",
-      "lesson_learned": "Context memory should be extracted proactively, not only on explicit recall keywords. Users should not need to say 'nhớ' to be remembered."
+      "title": "Worker Startup Broke Due to Noisy Hardware Detection Output",
+      "symptom": "Celery worker fails because concurrency/autoscale values are parsed as invalid strings.",
+      "root_cause": "Third-party hardware libraries printed extra text to stdout during shell command substitution.",
+      "resolution": "Captured only the final line and validated numeric values before using them.",
+      "lesson_learned": "Always sanitize subprocess stdout before using it as config."
     },
     {
       "issue_id": 8,
-      "title": "Cache Layer Gaps for 200+ CCU - Missing LLM Response Cache",
-      "symptom": "No LLM response caching; every query hits expensive LLM API even for repeated/similar questions. TTLs too short (30min-1h). Semantic threshold too strict (0.02).",
-      "root_cause": "System only cached RAG context (nodes/sections) but not final LLM response. Cache hit rate very low. Query not normalized reducing exact match hits.",
-      "resolution": "Added LLMResponseCache (2-layer: exact + semantic). Added query normalization. Fixed semantic threshold 0.02→0.08. Increased TTLs: QueryEmbeddingCache 1h→4h, RagResultCache 30min→4h. Added TTL refresh on semantic cache hit.",
-      "lesson_learned": "For 200+ CCU, must cache full LLM response to bypass expensive API calls. Query normalization critical for exact match cache hits."
+      "title": "Allowed Origins Textarea Lost Newlines",
+      "symptom": "Platform admin cannot press Enter to add multiple origins line by line.",
+      "root_cause": "Frontend normalized `allowed_origins` on every keystroke, immediately collapsing blank newline state.",
+      "resolution": "Switched to draft textarea state and only parse lines on load/save.",
+      "lesson_learned": "Keep raw multiline form state until submit time."
     },
     {
       "issue_id": 9,
-      "title": "Dashboard Stats Show 0 Documents Despite Ready Status",
-      "symptom": "Admin dashboard shows 0 total and 0 active documents even after successful ingestion.",
-      "root_cause": "HealthService.get_health_data() was a static method returning only configuration status without querying the DocumentRepository for live counts.",
-      "resolution": "Updated HealthService to accept DocumentRepository via DI and implemented a get_counts() method in the repository to fetch real-time stats.",
-      "lesson_learned": "Aggregated metrics for system overview must be explicitly integrated with their respective repositories."
+      "title": "Frontend Crash on Admin Dashboard Health Card",
+      "symptom": "The `/admin` page renders a blank error screen with `Object.entries(undefined)`.",
+      "root_cause": "Frontend expected `health.checks` while backend returned `health.services`.",
+      "resolution": "Frontend now supports both shapes and uses safe fallbacks when data is missing.",
+      "lesson_learned": "Health/status contracts should tolerate additive backend shape changes."
     },
     {
       "issue_id": 10,
-      "title": "Document Detail 'Load More' Button Stuck/Silent Failure",
-      "symptom": "Clicking 'Load more' in document details fetches no new data, and total count (e.g., 54) doesn't match displayed nodes.",
-      "root_cause": "TreeService.get_document_tree() paginated on root-level sections only, but the total count returned was for ALL sections. If children were expanded, the offset became out of sync with root nodes.",
-      "resolution": "Refactored TreeService to return a flat paginated list of all sections for the table view, ensuring total_nodes and displayed items are consistent.",
-      "lesson_learned": "Ensure pagination logic matches the flat or hierarchical nature of the UI component consuming the data."
-    },
-    {
-      "issue_id": 11,
-      "title": "Celery Worker Crash — AMD ROCm stdout Pollution Corrupts Concurrency Value",
-      "symptom": "workers-1 container restart-loops with: `Error: Invalid value for '-c' / '--concurrency': '/opt/rocm/lib/libamd_smi.so:\\nUnable\\n3' is not a valid integer.`",
-      "root_cause": "entrypoint-worker.sh captured hardware concurrency via `$(python -c '... print(concurrency autoscale)' 2>/dev/null)`. The amdsmi library (AMD ROCm GPU detection) prints warning lines like `/opt/rocm/lib/libamd_smi.so: Unable to...` to STDOUT (not stderr), bypassing the 2>/dev/null redirect. These lines were prepended to the actual integer output, making CONCURRENCY an invalid multi-line string passed to `celery worker -c`.",
-      "resolution": "Added `| tail -n 1` after each Python hardware-detect call to capture only the last printed line (the actual integer). Added regex validation (`^[1-9][0-9]*$`) on CONCURRENCY and AUTOSCALE_MAX with safe fallback values (2/4). Same pattern already existed in entrypoint-api.sh for WORKERS.",
-      "lesson_learned": "Never trust subprocess stdout to be clean when third-party C libraries (GPU drivers, BLAS, etc.) are imported. Always pipe through `tail -n 1` and validate with regex before using as a numeric argument."
-    },
-    {
-      "issue_id": 12,
-      "title": "LlamaParse API 'agentic' Tier Rejection",
-      "symptom": "Ingestion task fails with error code 400: MISSING_VERSION_FOR_TIER when 'tier' is set to 'agentic'.",
-      "root_cause": "The LlamaCloud API key or plan used does not support the 'agentic' tier, or the API endpoint lacks the necessary version metadata for it.",
-      "resolution": "Removed `tier=\"agentic\"` from the LlamaParse initialization in `llamaparse_adapter.py`, falling back to the default parsing tier.",
-      "lesson_learned": "Always verify cloud API tier access levels before hardcoding premium/advanced flags in production ingestion pipelines."
-    },
-    {
-      "issue_id": 13,
-      "title": "Double SentenceSplitter — Section Chunking Applied Twice",
-      "symptom": "Chunks too small (~400 chars), broken context boundaries. OCR header/footer noise creating false section splits.",
-      "root_cause": "parse_from_markdown() applied SentenceSplitter independently, then the LlamaIndex IngestionPipeline applied another SentenceSplitter on top. Result: double-split context fragmentation.",
-      "resolution": "Ensured single chunking pass: IngestionPipeline is the only place SentenceSplitter runs. parse_from_markdown() returns each heading section as one node without splitting.",
-      "lesson_learned": "Chunking should happen exactly once. When piping data through multiple processing stages, verify each stage's transformations don't overlap."
-    },
-    {
-      "issue_id": 14,
-      "title": "LlamaIndex Chat Stream Crash — dict Instead of ChatMessage",
-      "symptom": "SSE chat stream fails with AttributeError: 'dict' object has no attribute 'blocks' when calling OpenAILike.astream_chat().",
-      "root_cause": "ChatService passed raw role/content dicts into LlamaIndex astream_chat, but recent LlamaIndex OpenAI utils expect ChatMessage objects with block-aware structure.",
-      "resolution": "Converted all outbound messages (system + history) to llama_index.core.base.llms.types.ChatMessage and MessageRole before calling astream_chat.",
-      "lesson_learned": "Do not pass provider payload dicts directly into LlamaIndex LLM APIs; always use LlamaIndex native message types."
-    },
-    {
-      "issue_id": 15,
-      "title": "NVIDIA Reranker 401 Storm From Missing SQLite API Key",
-      "symptom": "Every retrieval request logs HTTP 401 from NVIDIA reranker, even though chat continues with fallback nodes.",
-      "root_cause": "Reranker factory instantiated NVIDIA postprocessor with missing API key (\"no-key\") instead of using runtime key resolution and early fallback.",
-      "resolution": "Updated reranker factory to read effective runtime API key and automatically fallback to TEI reranker when NVIDIA key is absent.",
-      "lesson_learned": "Provider adapters must fail fast on missing credentials and switch to a healthy local backend to avoid noisy retry/fallback loops."
-    },
-    {
-      "issue_id": 16,
-      "title": "Qdrant Payload ID Drift Between PostgreSQL document.id and LlamaIndex doc_id/ref_doc_id",
-      "symptom": "Upload/rechunk logs report success, but retrieval and delete-by-document-id fail with 404/0-result because collection filter by current document_id returns no points.",
-      "root_cause": "In ingestion pipeline, LlamaIndex Document was created without id_. LlamaIndex auto-generated random ref_doc_id/doc_id per source node; these IDs were written to Qdrant and no longer matched PostgreSQL documents.id.",
-      "resolution": "Forced Document(id_=document_id, ...) in ingestion conversion so Qdrant doc_id/ref_doc_id are always aligned with PostgreSQL document UUID.",
-      "lesson_learned": "When using LlamaIndex + Qdrant, always pin source document id explicitly; never rely on auto-generated ref_doc_id for cross-system joins."
-    },
-    {
-      "issue_id": 17,
-      "title": "Cohere Reranker Integration Error Due to Protocol Mismatch",
-      "symptom": "Retrieve/rerank requests crashed or failed when the active reranker provider was set to Cohere in SQLite settings.",
-      "root_cause": "Reranker factory (get_reranker()) returned TEIRerankerPostprocessor for cohere provider, which uses the TEI protocol (POST /rerank with texts field) instead of Cohere's native protocol (POST /v1/rerank with documents field), resulting in 404/400 API errors.",
-      "resolution": "Created CohereRerankerPostprocessor implementing Cohere's native /v1/rerank payload and response parsing, and updated get_reranker() to instantiate it correctly when Cohere is selected.",
-      "lesson_learned": "Do not assume different model providers share identical API schemas for reranking; write specific postprocessor adapters for each provider's protocol."
+      "title": "Root Docs Drifted Away From Actual Project State",
+      "symptom": "README, AGENTS, and architecture docs describe single-tenant, TEI-only, session-based behavior that no longer exists.",
+      "root_cause": "Large refactor landed faster than top-level documentation updates.",
+      "resolution": "Rewrote root docs to match the current multi-tenant, stateless, OpenAI-compatible architecture.",
+      "lesson_learned": "Large refactors need documentation closure before release tagging."
     }
   ]
 }

@@ -57,6 +57,7 @@ def init_db() -> None:
         """)
         db.commit()
         _seed_templates(db)
+        _sync_builtin_defaults(db)
     finally:
         db.close()
 
@@ -70,10 +71,10 @@ def _seed_templates(db: sqlite3.Connection) -> None:
         # Embedding
         (
             "embedding",
-            "tei",
-            "TEI (Local)",
-            "http://ai-embedding:80/v1",
-            "Alibaba-NLP/gte-multilingual-base",
+            "dmr",
+            "Docker Model Runner",
+            "http://model-runner.docker.internal:12434/engines/v1",
+            "ai/qwen3-embedding:0.6B-F16",
             "",
             1,
             1,
@@ -107,14 +108,14 @@ def _seed_templates(db: sqlite3.Connection) -> None:
         # Reranker
         (
             "reranker",
-            "tei",
-            "TEI (Local)",
-            "http://ai-reranker:80",
-            "Alibaba-NLP/gte-multilingual-reranker-base",
+            "dmr",
+            "Docker Model Runner (Fallback)",
+            "http://model-runner.docker.internal:12434",
+            "ai/qwen3-reranker:0.6B",
             "",
-            1,
-            1,
             0,
+            1,
+            1,
         ),
         (
             "reranker",
@@ -123,9 +124,9 @@ def _seed_templates(db: sqlite3.Connection) -> None:
             "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking",
             "nvidia/llama-nemotron-rerank-1b-v2",
             "",
-            0,
-            0,
             1,
+            0,
+            0,
         ),
         ("reranker", "cohere", "Cohere", "https://api.cohere.com", "rerank-multilingual-v3.0", "", 0, 0, 2),
         # LLM (9Router built-in)
@@ -137,5 +138,25 @@ def _seed_templates(db: sqlite3.Connection) -> None:
            (service_type, provider_name, display_name, url, model, api_key, is_active, is_builtin, priority)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         templates,
+    )
+    db.commit()
+
+
+def _sync_builtin_defaults(db: sqlite3.Connection) -> None:
+    db.execute(
+        """
+        UPDATE ai_providers
+        SET display_name = ?, url = ?, model = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE service_type = 'embedding' AND is_builtin = 1
+        """,
+        ("Docker Model Runner", "http://model-runner.docker.internal:12434/engines/v1", "ai/qwen3-embedding:0.6B-F16"),
+    )
+    db.execute(
+        """
+        UPDATE ai_providers
+        SET provider_name = ?, display_name = ?, url = ?, model = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE service_type = 'reranker' AND is_builtin = 1 AND provider_name = 'tei'
+        """,
+        ("dmr", "Docker Model Runner (Fallback)", "http://model-runner.docker.internal:12434", "ai/qwen3-reranker:0.6B"),
     )
     db.commit()

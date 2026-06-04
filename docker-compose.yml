@@ -23,10 +23,6 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
-      ai-embedding:
-        condition: service_healthy
-      ai-reranker:
-        condition: service_healthy
       ai-proxy:
         condition: service_healthy
       rustfs:
@@ -40,6 +36,8 @@ services:
     restart: unless-stopped
     networks:
       - internal
+    extra_hosts:
+      - "model-runner.docker.internal:host-gateway"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.api.rule=PathPrefix(`/api/v1`) && !PathPrefix(`/api/v1/auth`)"
@@ -52,7 +50,7 @@ services:
   workers:
     image: chatbot-rag-app:latest
     # Shares the same image as api — no separate build needed
-    # CPU only - embedding done via TEI HTTP, no GPU needed
+    # CPU only - embedding goes through Docker Model Runner HTTP, no local GPU container needed here
     env_file:
       - .env
     environment:
@@ -70,80 +68,13 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
-      ai-embedding:
-        condition: service_healthy
-      ai-reranker:
-        condition: service_healthy
       rustfs:
         condition: service_started
     restart: unless-stopped
     networks:
       - internal
-
-  ai-embedding:
-    image: ghcr.io/huggingface/text-embeddings-inference:turing-1.9
-    container_name: chatbot-rag-ai-embedding
-    env_file:
-      - .env
-    environment:
-      - HF_HUB_ENABLE_HF_TRANSFER=1
-      - MAX_CONCURRENT_REQUESTS=512
-      - MAX_BATCH_TOKENS=16384
-      - MAX_BATCH_REQUESTS=16
-      - MAX_CLIENT_BATCH_SIZE=16
-    command: --model-id Alibaba-NLP/gte-multilingual-base --dtype float16 --max-batch-tokens 16384 --max-batch-requests 16 --max-concurrent-requests 512 --auto-truncate true
-    volumes:
-      - hf-cache:/data
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu, utility, compute]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 60
-      start_period: 300s
-    restart: unless-stopped
-    networks:
-      - internal
-
-  ai-reranker:
-    image: ghcr.io/huggingface/text-embeddings-inference:turing-1.9
-    container_name: chatbot-rag-ai-reranker
-    env_file:
-      - .env
-    environment:
-      - HF_HUB_ENABLE_HF_TRANSFER=1
-      # Tam thoi dung NVIDIA API cho demo. Limit cuc liet de khong dot VRAM, de danh cho embedding
-      - MAX_CONCURRENT_REQUESTS=1
-      - MAX_BATCH_TOKENS=2048
-      - MAX_BATCH_REQUESTS=1
-    command: --model-id Alibaba-NLP/gte-multilingual-reranker-base --dtype float16 --max-batch-tokens 8192 --max-batch-requests 32 --max-client-batch-size 32 --max-concurrent-requests 512 --auto-truncate true
-    volumes:
-      - hf-cache:/data
-    depends_on:
-      ai-embedding:
-        condition: service_healthy
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu, utility, compute]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 60
-      start_period: 300s
-    restart: unless-stopped
-    networks:
-      - internal
+    extra_hosts:
+      - "model-runner.docker.internal:host-gateway"
 
   ai-proxy:
     image: decolua/9router:latest

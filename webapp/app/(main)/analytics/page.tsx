@@ -2,7 +2,11 @@
 
 import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard";
 
-export default function MemberAnalyticsPage() {
-  return <AnalyticsDashboard title="Thống kê của tôi" subtitle="Số liệu AI theo tài khoản của bạn" allowClear={false} />;
+export default function TenantAnalyticsPage() {
+  return (
+    <AnalyticsDashboard
+      title="Thống kê tenant của tôi"
+      subtitle="Theo dõi mức sử dụng AI nội bộ theo đúng tenant hiện tại."
+    />
+  );
 }
-

@@ -31,7 +31,7 @@ def get_reranker(top_k: int | None = None) -> TEIRerankerPostprocessor | NvidiaR
         if name == "nvidia":
             effective_key = runtime.get_reranker_api_key() or cfg.get("api_key") or settings.nvidia_api_key or "no-key"
             if effective_key == "no-key":
-                logger.warning("Active reranker is NVIDIA but API key is missing. Falling back to TEI reranker.")
+                logger.warning("Active reranker is NVIDIA but API key is missing. Falling back to local Docker reranker.")
                 kwargs["base_url"] = settings.ai_reranker_url
                 return TEIRerankerPostprocessor(**kwargs)
             kwargs["base_url"] = cfg.get("url", settings.nvidia_reranker_url)
@@ -52,7 +52,7 @@ def get_reranker(top_k: int | None = None) -> TEIRerankerPostprocessor | NvidiaR
             kwargs["base_url"] = cfg.get("url", settings.ai_reranker_url)
             return TEIRerankerPostprocessor(**kwargs)
 
-    # Fallback: TEI local
+    # Fallback: local Docker-compatible reranker endpoint
     kwargs["base_url"] = settings.ai_reranker_url
     return TEIRerankerPostprocessor(**kwargs)
 

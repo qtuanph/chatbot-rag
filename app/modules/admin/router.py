@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import get_async_session
 from app.modules.analytics.repository import AnalyticsRepository
+from app.modules.analytics.service import AnalyticsService
 from app.modules.chat.repositories.usage_repository import UsageRepository
 from app.api.deps import require_admin, AuthContext
+from app.utils.money import build_money_payload
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,12 @@ async def get_daily_usage(
     repo = UsageRepository(session)
     daily = await repo.get_daily_stats(days=days)
     breakdown = await repo.get_endpoint_breakdown(days=days)
-    return {"daily": daily, "endpoint_breakdown": breakdown, "days": days}
+    normalized_daily = []
+    for row in daily:
+        item = dict(row)
+        item.update(build_money_payload(row["cost_micros_vnd"]))
+        normalized_daily.append(item)
+    return {"daily": normalized_daily, "endpoint_breakdown": breakdown, "days": days}
 
 
 @router.get("/users/usage")
@@ -62,7 +69,12 @@ async def get_users_usage(
     """
     repo = AnalyticsRepository(session)
     items = await repo.get_user_usage_summary(days=30)
-    return {"items": items}
+    normalized = []
+    for item in items:
+        enriched = dict(item)
+        enriched.update(build_money_payload(item["cost_micros_vnd"]))
+        normalized.append(enriched)
+    return {"items": normalized}
 
 
 @router.get("/users/{user_id}/usage")
@@ -74,24 +86,19 @@ async def get_user_usage_detail(
     """Usage detail for a specific user in last 30 days with 3 model types."""
     repo = AnalyticsRepository(session)
     days = 30
-    daily = await repo.get_daily_stats(is_admin=False, user_id=user_id, days_limit=days)
-    by_model_type = await repo.get_model_type_stats(is_admin=False, user_id=user_id, days=days)
+    daily = await repo.get_daily_stats(is_platform_admin=False, user_id=user_id, tenant_id=None, days_limit=days)
+    by_model_type = await repo.get_model_type_stats(is_platform_admin=False, user_id=user_id, tenant_id=None, days=days)
     tokens_in = sum(int(row.get("tokens_in", 0)) for row in daily)
     tokens_out = sum(int(row.get("tokens_out", 0)) for row in daily)
-    total_cost = sum(
-        ((int(row.get("tokens_in", 0)) * settings.ai_input_cost_per_1m) / 1_000_000)
-        + ((int(row.get("tokens_out", 0)) * settings.ai_output_cost_per_1m) / 1_000_000)
-        for row in daily
-    )
+    total_cost_micros = sum(int(row.get("cost_micros_vnd", 0)) for row in by_model_type.values())
 
-    return {
+    result = {
         "user_id": user_id,
         "window_30d": {
             "days": days,
             "tokens_in": tokens_in,
             "tokens_out": tokens_out,
             "total_tokens": tokens_in + tokens_out,
-            "estimated_cost_usd": round(float(total_cost), 6),
             "daily": [
                 {
                     "date": row["date"],
@@ -103,7 +110,21 @@ async def get_user_usage_detail(
             "by_model_type": by_model_type,
         },
         "pricing": {
-            "input_per_1m": settings.ai_input_cost_per_1m,
-            "output_per_1m": settings.ai_output_cost_per_1m,
+            "currency_code": settings.billing_currency_code,
+            "input_price_vnd_per_1m": settings.ai_input_price_vnd_per_1m,
+            "output_price_vnd_per_1m": settings.ai_output_price_vnd_per_1m,
         },
     }
+    result["window_30d"].update(build_money_payload(total_cost_micros))
+    return result
+
+
+@router.get("/tenants/usage")
+async def get_tenants_usage(
+    days: int = Query(30, ge=1, le=365),
+    session: AsyncSession = Depends(get_async_session),
+    auth: AuthContext = Depends(require_admin),
+):
+    """Per-tenant usage summary in the selected time window, sorted by spend descending."""
+    service = AnalyticsService(AnalyticsRepository(session))
+    return await service.get_tenant_usage_summary(days=days)

@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 from app.core.config import settings
-
-
 from app.modules.documents.repositories import DocumentRepository
+from app.utils.datetime_utils import to_vietnam_iso, utc_now
 
 
 class HealthService:
@@ -32,7 +29,7 @@ class HealthService:
                 "vector_db": {"configured": bool(settings.qdrant_url)},
                 "workers": {"broker": "celery+redis"},
             },
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": to_vietnam_iso(utc_now()),
         }
 
         if self.doc_repo:

@@ -15,9 +15,12 @@ from app.modules.auth import router as auth
 from app.modules.chat import router as chat
 from app.modules.chat import memories_router as memories
 from app.modules.documents import router as documents
+from app.modules.inference import router as inference
 from app.modules.settings import router as settings_router
 from app.modules.system import router as system
 from app.modules.admin import router as admin
+from app.modules.tenants import router as tenants
+from app.modules.tenants import self_router as tenant_self_router
 from app.api.middleware import (
     SecurityHeadersMiddleware,
     RequestLoggingMiddleware,
@@ -57,20 +60,14 @@ async def lifespan(application: FastAPI):
             await sem_cache.init_index()
             logger.info("Semantic cache index warmed")
 
-            # 3. Warm Active Doc IDs
+            # 3. Warm Active Doc lookup path
             from app.db.session import AsyncSessionLocal
             from app.modules.documents.repositories import DocumentRepository
 
             async with AsyncSessionLocal() as db_session:
                 doc_repo = DocumentRepository(db_session)
                 ids = await doc_repo.get_latest_active_document_ids()
-                if ids:
-                    from app.modules.documents.utils.duplicate_detector import DuplicateDetector
-
-                    detector = DuplicateDetector(redis)
-                    for doc_id in ids:
-                        await detector.add(doc_id)
-                    logger.info("Active doc IDs warmed: %d docs", len(ids))
+                logger.info("Active doc IDs counted for warmup: %d docs", len(ids))
 
             elapsed = time.time() - start
             logger.info("AI models pre-warmed in %.1fs", elapsed)
@@ -126,9 +123,12 @@ routers = [
     documents.router,
     chat.router,
     memories.router,
+    inference,
     analytics.router,
     settings_router,
     admin,
+    tenants,
+    tenant_self_router,
 ]
 
 for router in routers:

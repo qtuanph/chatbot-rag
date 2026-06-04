@@ -1,4 +1,9 @@
-// Backend API type definitions
+export interface MoneyPayload {
+  currency_code: string;
+  cost_micros_vnd: number;
+  cost_vnd: string;
+  cost_vnd_rounded: number;
+}
 
 export interface LoginRequest {
   username: string;
@@ -9,12 +14,14 @@ export interface TokenResponse {
   access_token: string;
   token_type: string;
   role: string;
+  tenant_id?: string | null;
 }
 
 export interface UserInfo {
   user_id: string;
   username: string;
   role: string;
+  tenant_id?: string | null;
   is_active: boolean;
 }
 
@@ -22,51 +29,14 @@ export interface UserItem {
   id: string;
   username: string;
   role: string;
-}
-
-export interface UserUsageSummaryItem {
-  user_id: string;
-  username: string;
-  tokens_in: number;
-  tokens_out: number;
-  total_tokens: number;
-  cost_usd: number;
-  call_count: number;
-  window_days?: number;
-}
-
-export interface UserUsageWindow {
-  days: number;
-  tokens_in: number;
-  tokens_out: number;
-  total_tokens: number;
-  estimated_cost_usd: number;
-  daily: Array<{
-    date: string;
-    tokens_in: number;
-    tokens_out: number;
-  }>;
-}
-
-export interface UserUsageDetail {
-  user_id: string;
-  window_30d: UserUsageWindow & {
-    by_model_type: {
-      llm: ModelTypeStats;
-      embedding: ModelTypeStats;
-      reranker: ModelTypeStats;
-    };
-  };
-  pricing: {
-    input_per_1m: number;
-    output_per_1m: number;
-  };
+  tenant_id?: string | null;
 }
 
 export interface CreateUserRequest {
   username: string;
   password: string;
   role?: string;
+  tenant_id?: string | null;
 }
 
 export interface RoleItem {
@@ -75,80 +45,143 @@ export interface RoleItem {
   description: string | null;
 }
 
-// Chat
-export interface ChatRequest {
-  query: string;
-  session_id?: string | null;
+export interface TenantItem {
+  id: string;
+  slug: string;
+  name: string;
+  status: string;
+  description?: string | null;
+  monthly_token_quota: number;
+  monthly_request_quota: number;
+  rate_limit_rpm: number;
+  allowed_origins: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TenantCreateRequest {
+  name: string;
+  slug: string;
+  description?: string | null;
+  monthly_token_quota?: number;
+  monthly_request_quota?: number;
+  rate_limit_rpm?: number;
+  allowed_origins?: string[];
+  admin_username?: string;
+  admin_password?: string;
+}
+
+export interface TenantUpdateRequest {
+  slug?: string;
+  name?: string;
+  description?: string | null;
+  status?: string;
+  monthly_token_quota?: number;
+  monthly_request_quota?: number;
+  rate_limit_rpm?: number;
+  allowed_origins?: string[];
+}
+
+export interface TenantSetting {
+  tenant_id: string;
+  chatbot_display_name: string;
+  welcome_message: string;
+  system_instruction: string;
+  updated_at: string;
+}
+
+export interface TenantSettingUpdateRequest {
+  chatbot_display_name?: string;
+  welcome_message?: string;
+  system_instruction?: string;
+}
+
+export interface TenantApiKeyItem {
+  id: string;
+  tenant_id: string;
+  name: string;
+  key_prefix: string;
+  status: string;
+  expires_at?: string | null;
+  last_used_at?: string | null;
+  revoked_at?: string | null;
+  created_at: string;
+}
+
+export interface TenantApiKeyCreateRequest {
+  name: string;
+  expires_at?: string | null;
+}
+
+export interface TenantApiKeyCreateResponse extends TenantApiKeyItem {
+  raw_api_key: string;
+}
+
+export interface TenantUsageSummaryItem extends MoneyPayload {
+  tenant_id: string;
+  tenant_slug: string;
+  tenant_name: string;
+  tokens_in: number;
+  tokens_out: number;
+  total_tokens: number;
+  call_count: number;
+  avg_latency_ms: number;
+  window_days: number;
+}
+
+export interface TenantUsageSummaryResponse {
+  items: TenantUsageSummaryItem[];
+  window_days: number;
+  pricing: {
+    currency_code: string;
+    input_price_vnd_per_1m: number;
+    output_price_vnd_per_1m: number;
+  };
 }
 
 export interface Citation {
   document_id: string;
-  node_id: string;
+  section_id: string;
+  file_name: string;
   title: string;
   heading: string;
-  page_range: string | null;
-  index: number;
+  page_range?: string | null;
+  score?: number | null;
 }
 
-export interface ChatResponse {
-  session_id: string;
-  answer: string;
-  citations: Citation[];
-}
-
-export interface ChatSession {
-  session_id: string;
-  created_at: string;
-  updated_at: string;
-  message_count: number;
-  title: string;
-}
-
-// Chat message from DB (for session restore)
 export interface ChatMessageItem {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
-  citations: Citation[];
-  feedback: number; // 1 for like, -1 for dislike, 0 for none
-  created_at: string;
+  citations?: Citation[];
 }
 
-// SSE streaming events
+export interface ChatUsage extends MoneyPayload {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  model?: string;
+}
+
 export interface ChatStreamChunk {
   chunk: string;
   done: false;
+  thinking?: boolean;
 }
 
 export interface ChatStreamDone {
   chunk: string;
   done: true;
-  session_id: string;
-  message_id: string;
   citations: Citation[];
-  stats?: {
-    total_ms: number;
-    ttft_ms: number | null;
-    chunks: number;
-    chars: number;
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-    estimated_cost_usd: number;
-  };
+  stats?: ChatUsage | null;
+  error?: string;
 }
 
-export interface ChatStreamError {
-  chunk: string;
-  done: true;
-  error: string;
-}
+export type ChatStreamEvent = ChatStreamChunk | ChatStreamDone;
 
-export type ChatStreamEvent = ChatStreamChunk | ChatStreamDone | ChatStreamError;
-
-// Documents
 export interface DocumentSummary {
   document_id: string;
+  tenant_id: string;
   title: string;
   file_name: string;
   file_type: string;
@@ -157,21 +190,24 @@ export interface DocumentSummary {
   status: string;
   stage: string;
   progress_percent: number;
-  status_message: string | null;
+  status_message?: string | null;
   created_at: string;
   updated_at: string;
+  node_count?: number;
 }
 
 export interface DocumentListResponse {
   items: DocumentSummary[];
   total: number;
+  offset?: number;
+  limit?: number;
 }
 
 export interface DocumentDetail {
   document_id: string;
+  tenant_id: string;
   title: string;
   file_name: string;
-  file_path: string;
   sha256: string;
   file_type: string;
   file_size: number;
@@ -179,12 +215,13 @@ export interface DocumentDetail {
   status: string;
   stage: string;
   progress_percent: number;
-  status_message: string | null;
-  parse_error: string | null;
-  metadata: Record<string, unknown>;
-  deleted_at: string | null;
+  status_message?: string | null;
+  parse_error?: string | null;
+  artifact_metadata: Record<string, unknown>;
+  deleted_at?: string | null;
   created_at: string;
   updated_at: string;
+  node_count?: number;
 }
 
 export interface UploadResponse {
@@ -196,21 +233,20 @@ export interface UploadResponse {
 export interface TaskStatus {
   task_id: string;
   status: string;
-  stage: string | null;
+  stage?: string | null;
   progress: { step: string; percent: number };
-  document_id: string | null;
-  status_message: string | null;
-  error: string | null;
-  result: Record<string, unknown> | null;
+  document_id?: string | null;
+  status_message?: string | null;
+  error?: string | null;
+  result?: Record<string, unknown> | null;
 }
 
-// Tree
 export interface TreeNode {
   node_id: string;
   title: string;
   level: number;
   breadcrumb: string;
-  parent_id: string | null;
+  parent_id?: string | null;
   child_count: number;
   text_length: number;
   page_number: number | string;
@@ -248,22 +284,20 @@ export interface TreeSearchResult {
   highlight: string;
 }
 
-// Analytics
-export interface AnalyticsDailyStat {
-  date: string;
-  messages: number;
-  tokens_in: number;
-  tokens_out: number;
-  avg_latency_ms: number;
-  cost_usd: number;
-}
-
 export interface ModelTypeStats {
   tokens_in: number;
   tokens_out: number;
   avg_latency_ms: number;
   call_count: number;
-  cost_usd: number;
+  cost_micros_vnd: number;
+}
+
+export interface AnalyticsDailyStat extends MoneyPayload {
+  date: string;
+  messages: number;
+  tokens_in: number;
+  tokens_out: number;
+  avg_latency_ms: number;
 }
 
 export interface DailyByModelType {
@@ -279,17 +313,16 @@ export interface RecentRequest {
   tokens_in: number;
   tokens_out: number;
   latency_ms: number;
+  cost_micros_vnd: number;
   created_at: string;
 }
 
-export interface AnalyticsStats {
+export interface AnalyticsStats extends MoneyPayload {
   total_messages: number;
-  total_sessions: number;
   total_tokens_in: number;
   total_tokens_out: number;
   total_tokens: number;
   avg_latency_ms: number;
-  estimated_cost_usd: number;
   model_used: string;
   daily: AnalyticsDailyStat[];
   by_model_type: {
@@ -300,11 +333,22 @@ export interface AnalyticsStats {
   daily_by_model_type: DailyByModelType[];
   recent_requests: RecentRequest[];
   pricing: {
-    input_per_1m: number;
-    output_per_1m: number;
-    model: string;
-    note: string;
+    currency_code: string;
+    input_price_vnd_per_1m: number;
+    output_price_vnd_per_1m: number;
+    model?: string;
+    note?: string;
   };
+}
+
+export interface UserUsageSummaryItem extends MoneyPayload {
+  user_id: string;
+  username: string;
+  tokens_in: number;
+  tokens_out: number;
+  total_tokens: number;
+  call_count: number;
+  window_days?: number;
 }
 
 export interface UserUsageWindows {
@@ -317,7 +361,10 @@ export interface UserUsageWindows {
         tokens_in: number;
         tokens_out: number;
         total_tokens: number;
-        estimated_cost_usd: number;
+        currency_code: string;
+        cost_micros_vnd: number;
+        cost_vnd: string;
+        cost_vnd_rounded: number;
       };
       by_model_type: {
         llm: ModelTypeStats;
@@ -327,19 +374,58 @@ export interface UserUsageWindows {
     }
   >;
   pricing: {
-    input_per_1m: number;
-    output_per_1m: number;
+    currency_code: string;
+    input_price_vnd_per_1m: number;
+    output_price_vnd_per_1m: number;
   };
 }
 
-// Health
+export interface UserUsageDetail {
+  user_id: string;
+  window_30d: {
+    days: number;
+    tokens_in: number;
+    tokens_out: number;
+    total_tokens: number;
+    daily: Array<{
+      date: string;
+      tokens_in: number;
+      tokens_out: number;
+    }>;
+    by_model_type: {
+      llm: ModelTypeStats;
+      embedding: ModelTypeStats;
+      reranker: ModelTypeStats;
+    };
+  } & MoneyPayload;
+  pricing: {
+    currency_code: string;
+    input_price_vnd_per_1m: number;
+    output_price_vnd_per_1m: number;
+  };
+}
+
 export interface HealthCheck {
   status: "up" | "down" | "degraded";
   latency_ms?: number;
+  configured?: boolean;
+  provider?: string;
+  model?: string;
+  broker?: string;
   [key: string]: unknown;
 }
 
-// Settings (AI provider management via SQLite)
+export interface HealthData {
+  status: string;
+  timestamp: string;
+  active_docs?: number;
+  total_docs?: number;
+  latest_document_id?: string;
+  target_document_id?: string;
+  checks?: Record<string, HealthCheck>;
+  services?: Record<string, HealthCheck>;
+}
+
 export interface AIProvider {
   id: number;
   service_type: "embedding" | "reranker" | "llm";
@@ -389,14 +475,4 @@ export interface ProviderTemplate {
   display_name: string;
   url: string;
   model: string;
-}
-
-export interface HealthData {
-  status: string;
-  timestamp: string;
-  active_docs: number;
-  total_docs: number;
-  latest_document_id: string;
-  target_document_id: string;
-  checks: Record<string, HealthCheck>;
 }

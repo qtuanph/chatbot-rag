@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.auth import Role, User
+from app.utils.datetime_utils import to_vietnam_datetime
 
 
 class AuthRepository:
@@ -24,10 +25,25 @@ class AuthRepository:
             return None
         return self._user_to_dict(row) if include_hash else self._user_to_dict_safe(row)
 
-    async def create_user(self, *, username: str, password_hash: str, role_id: str) -> dict:
+    async def create_user(self, *, username: str, password_hash: str, role_id: str, commit: bool = True) -> dict:
         user = User(username=username, password_hash=password_hash, role_id=role_id)
         self.session.add(user)
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
+        else:
+            await self.session.flush()
+        await self.session.refresh(user)
+        return self._user_to_dict(user)
+
+    async def create_user_with_tenant(
+        self, *, username: str, password_hash: str, role_id: str, tenant_id: str | None, commit: bool = True
+    ) -> dict:
+        user = User(username=username, password_hash=password_hash, role_id=role_id, tenant_id=tenant_id)
+        self.session.add(user)
+        if commit:
+            await self.session.commit()
+        else:
+            await self.session.flush()
         await self.session.refresh(user)
         return self._user_to_dict(user)
 
@@ -65,6 +81,7 @@ class AuthRepository:
                 "username": u.username,
                 "role": r.name,
                 "role_id": str(r.id),
+                "tenant_id": str(u.tenant_id) if u.tenant_id else None,
                 "is_active": u.is_active,
             }
             for u, r in rows
@@ -79,9 +96,10 @@ class AuthRepository:
             "username": user.username,
             "password_hash": user.password_hash,
             "role_id": str(user.role_id),
+            "tenant_id": str(user.tenant_id) if user.tenant_id else None,
             "is_active": user.is_active,
-            "created_at": user.created_at,
-            "updated_at": user.updated_at,
+            "created_at": to_vietnam_datetime(user.created_at),
+            "updated_at": to_vietnam_datetime(user.updated_at),
         }
 
     @staticmethod
@@ -90,9 +108,10 @@ class AuthRepository:
             "id": str(user.id),
             "username": user.username,
             "role_id": str(user.role_id),
+            "tenant_id": str(user.tenant_id) if user.tenant_id else None,
             "is_active": user.is_active,
-            "created_at": user.created_at,
-            "updated_at": user.updated_at,
+            "created_at": to_vietnam_datetime(user.created_at),
+            "updated_at": to_vietnam_datetime(user.updated_at),
         }
 
     @staticmethod

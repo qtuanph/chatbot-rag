@@ -1,85 +1,56 @@
 {
   "title": "Workflows",
-  "description": "Detailed step-by-step logic for the primary system workflows. See child documents for detailed documentation.",
+  "description": "Chỉ mục các workflow chính của project sau refactor multi-tenant + stateless chat.",
   "index": [
     {
       "id": "ingestion",
       "title": "Document Ingestion",
       "file": "2.1_WORKFLOWS_INGESTION.md",
-      "summary": "13-step pipeline for turning raw files into searchable vectors. Includes re-chunk from saved OCR.",
+      "summary": "Upload -> queue -> parse -> sections -> embed -> Qdrant -> finalize.",
       "key_rules": [
-        "Redis Bloom Filter for O(1) duplicate detection",
-        "Upload returns 202 immediately (async processing)",
-        "Embedding via TEI ai-embedding (gte-multilingual-base, 768-dim)",
-        "Hybrid indexing: dense (768-dim) + sparse (BM25)"
+        "Tenant-aware từ đầu đến cuối",
+        "Worker ingestion chạy solo",
+        "Embedding hiện dùng Docker Model Runner mặc định",
+        "Frontend tài liệu đang poll gần realtime, chưa phải push realtime"
       ]
     },
     {
       "id": "chat",
-      "title": "Chat → Retrieve → Generate → Response",
+      "title": "Chat",
       "file": "2.2_WORKFLOWS_CHAT.md",
-      "summary": "3-layer cache architecture + 6-stage retrieval (embed, hybrid, rerank, reorder, dedup, context assembly).",
+      "summary": "Stateless chat cho webapp nội bộ và public OpenAI-compatible API.",
       "key_rules": [
-        "SemanticCache (Redis Vector) for similarity > 92% (dist < 0.08)",
-        "LLM Response Cache bypasses LLM API entirely (4h TTL)",
-        "Query Embedding Cache skips embedding on repeat queries (4h TTL)",
-        "Sliding Window rate limiting: 30 req/min per user",
-        "History limited to AI_MAX_HISTORY_MESSAGES (default 6) ? no compaction"
+        "Không lưu persisted transcript",
+        "Tenant context là bắt buộc",
+        "Browser phải đi qua /api/bep/*",
+        "Retrieval phải lọc tenant"
       ]
     },
     {
       "id": "delete",
       "title": "Hard Delete",
       "file": "2.3_WORKFLOWS_DELETE.md",
-      "summary": "6-step hard-delete order (STRICT). Sections before DB row for referential integrity.",
+      "summary": "Thứ tự xóa cứng không được thay đổi.",
       "key_rules": [
-        "registry.delete() → vectors → sections → file → DB row → purge",
-        "Sections deleted BEFORE DB row",
-        "Redis Registry marks deleted immediately",
-        "Qdrant vectors removed before PostgreSQL"
+        "vectors trước, sections sau, DB row sau nữa",
+        "giữ đúng hard-delete order"
       ]
     },
     {
       "id": "audit",
-      "title": "Decoupled Audit Logging",
+      "title": "Audit",
       "file": "2.4_WORKFLOWS_AUDIT.md",
-      "summary": "Fire-and-forget logging via Redis Stream. Never blocks API response.",
-      "key_rules": [
-        "API never writes to SecurityAudit table directly",
-        "XADD to Redis Stream returns in < 1ms",
-        "AuditStreamWorker batches every 5-10s",
-        "Redis Stream provides durability until DB ready"
-      ]
+      "summary": "Ghi audit không block request chính."
     },
     {
       "id": "analytics",
-      "title": "Analytics Data Flow",
+      "title": "Analytics",
       "file": "2.5_WORKFLOWS_ANALYTICS.md",
-      "summary": "Token tracking per message, aggregated by user. Admin sees system-wide, member sees own.",
+      "summary": "Analytics theo usage model, tenant, token, chi phí VND.",
       "key_rules": [
-        "tokens_in, tokens_out, latency_ms stored per ChatMessage",
-        "estimated_cost_usd calculated from configurable pricing",
-        "Admin sees system-wide stats, member sees own only",
-        "Rate limited: 60/min per user"
+        "Không còn analytics theo chat session",
+        "Money lưu integer micro-VND"
       ]
-    }
-  ],
-  "error_handling": [
-    {
-      "strategy": "Circuit Breaker",
-      "handling": "Trips to OPEN if Qdrant/GPU fails repeatedly, prevents loop hanging"
-    },
-    {
-      "strategy": "Distributed Lock",
-      "handling": "Redis Mutex prevents race conditions during session hydration"
-    },
-    {
-      "strategy": "Rate Limiter",
-      "handling": "Sliding window protects AI resources from abuse"
-    },
-    {
-      "strategy": "Parse failure",
-      "handling": "status=failed, parse_error set, SoftTimeLimitExceeded handled"
     }
   ]
 }

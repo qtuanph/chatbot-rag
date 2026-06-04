@@ -6,8 +6,8 @@ Embedding, vector store, and retrieval adapters replaced by LlamaIndex.
 from abc import ABC, abstractmethod
 from typing import Any
 from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
 from enum import Enum
+from app.utils.datetime_utils import to_vietnam_iso, utc_now
 
 
 class ParsedNodeType(str, Enum):
@@ -42,7 +42,7 @@ class ParsingMetadata:
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
-        data["created_at"] = datetime.now(timezone.utc).isoformat()
+        data["created_at"] = to_vietnam_iso(utc_now())
         return data
 
 

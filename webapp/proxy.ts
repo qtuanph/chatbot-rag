@@ -10,7 +10,7 @@ export default auth((req) => {
   if (pathname.startsWith("/login")) {
     if (isLoggedIn) {
       return NextResponse.redirect(
-        new URL(role === "admin" ? "/admin" : "/chat", req.nextUrl),
+        new URL(role === "platform_admin" ? "/admin" : "/chat", req.nextUrl),
       );
     }
     return NextResponse.next();
@@ -33,8 +33,8 @@ export default auth((req) => {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Admin routes: require admin role
-  if (pathname.startsWith("/admin") && role !== "admin") {
+  // Admin routes: require platform admin role
+  if (pathname.startsWith("/admin") && role !== "platform_admin") {
     return NextResponse.redirect(new URL("/chat", req.nextUrl));
   }
 

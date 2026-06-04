@@ -26,6 +26,7 @@ PipelineProgressCallback = Callable[[int, int, int], Awaitable[None] | None]
 def _ingested_nodes_to_llama_docs(
     nodes: list[Any],
     document_id: str,
+    tenant_id: str,
     sections_data: list[dict[str, Any]] | None = None,
 ) -> list[Document]:
     """Convert parsed IngestedNodes into LlamaIndex Documents with metadata."""
@@ -38,6 +39,7 @@ def _ingested_nodes_to_llama_docs(
         meta: dict[str, Any] = {
             "node_id": node.node_id,
             "document_id": document_id,
+            "tenant_id": tenant_id,
             "page_number": node.page_number,
             "section_title": node.section_title,
             "parent_id": node.parent_id,
@@ -106,6 +108,7 @@ def build_pipeline(vector_store: QdrantVectorStore) -> LiIngestionPipeline:
 async def run_ingestion_pipeline(
     nodes: list[Any],
     document_id: str,
+    tenant_id: str,
     sections_data: list[dict[str, Any]] | None = None,
     progress_callback: PipelineProgressCallback | None = None,
 ) -> int:
@@ -114,7 +117,7 @@ async def run_ingestion_pipeline(
     Uses IngestionPipeline.arun() with vector_store to auto-index.
     Returns the number of stored nodes.
     """
-    docs = _ingested_nodes_to_llama_docs(nodes, document_id, sections_data)
+    docs = _ingested_nodes_to_llama_docs(nodes, document_id, tenant_id, sections_data)
     if not docs:
         logger.warning("[%s] No documents to index", document_id)
         return 0

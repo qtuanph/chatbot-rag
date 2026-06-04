@@ -61,9 +61,7 @@ class DataSourceQueryAudit(Base):
     user_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    session_id: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True
-    )
+    session_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     sql_text_redacted: Mapped[str] = mapped_column(Text, nullable=False)
     row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)

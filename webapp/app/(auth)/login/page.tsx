@@ -1,23 +1,18 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { toast } from "sonner";
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="flex min-h-screen items-center justify-center">Loading...</div>}>
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center">Đang tải...</div>}>
       <LoginForm />
     </Suspense>
   );
@@ -29,13 +24,13 @@ function LoginForm() {
   const callbackUrl = searchParams.get("callbackUrl");
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setLoading(true);
 
-    const formData = new FormData(e.currentTarget);
-    const username = formData.get("username") as string;
-    const password = formData.get("password") as string;
+    const formData = new FormData(event.currentTarget);
+    const username = String(formData.get("username") || "");
+    const password = String(formData.get("password") || "");
 
     try {
       const result = await signIn("credentials", {
@@ -44,29 +39,25 @@ function LoginForm() {
         redirect: false,
       });
 
-      // next-auth v5: error may be in result.error or in redirect URL
-      const hasError = result?.error || (result?.url && new URL(result.url).searchParams.has("error"));
+      const hasError =
+        result?.error || (result?.url ? new URL(result.url).searchParams.has("error") : false);
+
       if (hasError) {
         toast.error("Sai tên đăng nhập hoặc mật khẩu");
         return;
       }
 
-      // If there's a callback URL, use it; otherwise redirect based on role
       if (callbackUrl) {
         router.push(callbackUrl);
       } else {
-        // Fetch session to get role
-        const res = await fetch("/api/auth/session");
-        const session = await res.json();
-        if (session?.role === "admin") {
-          router.push("/admin");
-        } else {
-          router.push("/chat");
-        }
+        const response = await fetch("/api/auth/session");
+        const session = await response.json();
+        router.push(session?.role === "platform_admin" ? "/admin" : "/chat");
       }
+
       router.refresh();
     } catch {
-      toast.error("Lỗi kết nối. Vui lòng thử lại.");
+      toast.error("Không thể đăng nhập. Vui lòng thử lại.");
     } finally {
       setLoading(false);
     }
@@ -75,22 +66,14 @@ function LoginForm() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl">RAG Chatbot</CardTitle>
-        <CardDescription>
-          Đăng nhập để sử dụng hệ thống hỏi đáp tài liệu
-        </CardDescription>
+        <CardTitle className="text-2xl">RAG Platform</CardTitle>
+        <CardDescription>Đăng nhập để quản lý tenant và kiểm thử chatbot nội bộ.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="username">Tên đăng nhập</Label>
-            <Input
-              id="username"
-              name="username"
-              placeholder="admin"
-              required
-              autoComplete="username"
-            />
+            <Input id="username" name="username" placeholder="admin" autoComplete="username" required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Mật khẩu</Label>
@@ -98,9 +81,9 @@ function LoginForm() {
               id="password"
               name="password"
               type="password"
-              placeholder="••••••"
-              required
+              placeholder="••••••••"
               autoComplete="current-password"
+              required
             />
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
