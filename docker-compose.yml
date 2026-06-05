@@ -220,7 +220,7 @@ services:
       - "traefik.http.services.api-bep-svc.loadbalancer.server.port=3000"
 
   traefik:
-    image: traefik:v3.7.1
+    image: traefik:v3.7.3
     command:
       - "--api.insecure=true"
       - "--ping=true"
