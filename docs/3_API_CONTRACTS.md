@@ -45,6 +45,7 @@ Base API hiện tại:
 |---|---|
 | POST | `/upload` |
 | GET | `/status/{task_id}` |
+| GET | `/documents/stream` |
 | GET | `/documents` |
 | GET | `/documents/{document_id}` |
 | DELETE | `/documents/{document_id}` |

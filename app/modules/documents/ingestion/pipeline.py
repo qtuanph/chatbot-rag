@@ -124,9 +124,10 @@ async def run_ingestion_pipeline(
 
     vector_store: QdrantVectorStore = get_vector_store()
     pipeline = build_pipeline(vector_store=vector_store)
-    # Process one source document node at a time to prevent burst fan-out of chunk embeddings.
-    # Actual embedding micro-batch size is still controlled by settings.embedding_batch_size.
-    batch_size = 1
+    # Process a small configurable batch of source nodes at a time.
+    # This keeps the pipeline stable while allowing noticeably better throughput
+    # than the previous fully-serial `batch_size = 1` behavior.
+    batch_size = max(1, settings.ingestion_pipeline_batch_size)
     total_stored = 0
     write_observed = False
 

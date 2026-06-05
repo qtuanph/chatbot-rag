@@ -36,13 +36,14 @@
   "ingestion": {
     "worker_mode": "celery background task",
     "document_progress_storage": "documents.status/status_stage/progress_percent",
-    "frontend_progress_mode": "polling every ~4 seconds",
-    "is_true_realtime": false,
+    "frontend_progress_mode": "SSE with auto-reconnect",
+    "is_true_realtime": true,
     "ingestion_chunk_size": 1200,
     "ingestion_chunk_overlap": 150,
     "embedding_batch_size": 8,
-    "pipeline_batch_size": 1,
-    "note": "batch_size=1 ở ingestion pipeline là một nguyên nhân làm embed/index chậm"
+    "pipeline_batch_size": 4,
+    "document_progress_stream_interval_seconds": 1.0,
+    "note": "pipeline batch size đã được nới để cải thiện throughput, nhưng vẫn giữ ở mức an toàn cho local runtime"
   },
   "chat": {
     "history_persistence": false,

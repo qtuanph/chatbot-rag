@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { documentsApi } from "@/lib/api-client";
 import { formatDateTimeVN, formatNumber } from "@/lib/format";
-import type { DocumentSummary, TenantItem } from "@/types/api";
+import type { DocumentListResponse, DocumentSummary, TenantItem } from "@/types/api";
 import { TenantSelect } from "@/components/tenants/tenant-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,12 +80,30 @@ export function DocumentCatalog({
   }, [loadDocuments]);
 
   useEffect(() => {
-    if (!hasRunningDocuments) return;
-    const interval = window.setInterval(() => {
-      void loadDocuments();
-    }, 4000);
-    return () => window.clearInterval(interval);
-  }, [hasRunningDocuments, loadDocuments]);
+    if (typeof EventSource === "undefined") {
+      return;
+    }
+
+    const stream = documentsApi.streamList(effectiveTenantId);
+
+    stream.addEventListener("documents", (event) => {
+      try {
+        const payload = JSON.parse(event.data) as DocumentListResponse;
+        setDocuments(payload.items);
+        setLoading(false);
+      } catch (error) {
+        console.error("Không thể parse document stream payload", error);
+      }
+    });
+
+    stream.onerror = () => {
+      console.warn("Document SSE stream gặp lỗi tạm thời, trình duyệt sẽ tự reconnect.");
+    };
+
+    return () => {
+      stream.close();
+    };
+  }, [effectiveTenantId]);
 
   const handleUpload = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {

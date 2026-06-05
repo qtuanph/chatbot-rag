@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import logging
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status, Query
 from typing import TYPE_CHECKING
+from starlette.responses import StreamingResponse
 
 if TYPE_CHECKING:
     from app.utils.rate_limiter import RateLimiter
@@ -36,6 +39,29 @@ from app.modules.documents.services import DocumentService, TreeService
 from app.modules.documents.document_validator import DocumentValidator
 
 router = APIRouter(tags=["documents"])
+logger = logging.getLogger(__name__)
+
+
+def _build_document_list_response(result: dict) -> DocumentListResponse:
+    items = [
+        DocumentSummaryResponse(
+            document_id=row["document_id"],
+            tenant_id=row["tenant_id"],
+            title=row["title"],
+            file_name=row["file_name"],
+            file_type=row["file_type"],
+            file_size=row["file_size"],
+            version=row["version"],
+            status=row["status"],
+            stage=row["stage"],
+            progress_percent=row["progress_percent"],
+            status_message=row["status_message"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+        for row in result["items"]
+    ]
+    return DocumentListResponse(items=items, total=result["total"], offset=result["offset"], limit=result["limit"])
 
 
 @router.post("/upload", response_model=UploadAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -150,25 +176,63 @@ async def list_documents(
         effective_tenant_id = auth.tenant_id
 
     result = await service.list_documents(offset=offset, limit=limit, tenant_id=effective_tenant_id)
-    items = [
-        DocumentSummaryResponse(
-            document_id=row["document_id"],
-            tenant_id=row["tenant_id"],
-            title=row["title"],
-            file_name=row["file_name"],
-            file_type=row["file_type"],
-            file_size=row["file_size"],
-            version=row["version"],
-            status=row["status"],
-            stage=row["stage"],
-            progress_percent=row["progress_percent"],
-            status_message=row["status_message"],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-        )
-        for row in result["items"]
-    ]
-    return DocumentListResponse(items=items, total=result["total"], offset=result["offset"], limit=result["limit"])
+    return _build_document_list_response(result)
+
+
+@router.get("/documents/stream")
+async def stream_documents(
+    request: Request,
+    offset: int = 0,
+    limit: int = 20,
+    tenant_id: str | None = None,
+    auth: AuthContext = Depends(get_auth_context),
+    service: DocumentService = Depends(get_document_service),
+) -> StreamingResponse:
+    offset = max(0, offset)
+    limit = max(1, min(limit, 100))
+
+    effective_tenant_id = tenant_id
+    if auth.role != "platform_admin":
+        if not auth.tenant_id:
+            raise http_errors.forbidden("Tenant context is required")
+        if tenant_id and tenant_id != auth.tenant_id:
+            raise http_errors.forbidden("You can only access documents in your own tenant")
+        effective_tenant_id = auth.tenant_id
+
+    async def event_generator():
+        last_payload = ""
+        keepalive_ticks = 0
+        yield "retry: 1000\n\n"
+
+        while True:
+            if await request.is_disconnected():
+                break
+
+            try:
+                result = await service.list_documents(offset=offset, limit=limit, tenant_id=effective_tenant_id)
+                payload = _build_document_list_response(result).model_dump_json()
+
+                if payload != last_payload:
+                    last_payload = payload
+                    keepalive_ticks = 0
+                    yield f"event: documents\ndata: {payload}\n\n"
+                else:
+                    keepalive_ticks += 1
+                    if keepalive_ticks >= 15:
+                        keepalive_ticks = 0
+                        yield ": keepalive\n\n"
+            except Exception as exc:
+                logger.warning("Document SSE stream loop recovered from error: %s", exc, exc_info=True)
+                yield ": transient-error-recovered\n\n"
+
+            await asyncio.sleep(settings.document_progress_stream_interval)
+
+    headers = {
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
 
 @router.get("/documents/{document_id}", response_model=DocumentDetailResponse)

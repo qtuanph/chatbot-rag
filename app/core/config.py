@@ -80,6 +80,8 @@ class Settings(BaseSettings):
 
     ingestion_chunk_size: int = 1200
     ingestion_chunk_overlap: int = 150
+    ingestion_pipeline_batch_size: int = 4
+    document_progress_stream_interval: float = 1.0
 
     retrieval_chunk_top_k: int = 20
     retrieval_rerank_top_k: int = 10
@@ -211,6 +213,10 @@ class Settings(BaseSettings):
             raise ValueError("VECTOR_STORE must be qdrant")
         if self.embedding_batch_size < 1:
             raise ValueError("EMBEDDING_BATCH_SIZE must be >= 1")
+        if self.ingestion_pipeline_batch_size < 1:
+            raise ValueError("INGESTION_PIPELINE_BATCH_SIZE must be >= 1")
+        if self.document_progress_stream_interval <= 0:
+            raise ValueError("DOCUMENT_PROGRESS_STREAM_INTERVAL must be > 0")
         if self.embedding_vector_size < 1:
             raise ValueError("EMBEDDING_VECTOR_SIZE must be >= 1")
         self.billing_currency_code = str(self.billing_currency_code).strip().upper() or "VND"
