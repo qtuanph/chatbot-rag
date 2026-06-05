@@ -98,8 +98,8 @@ Một container workers hiện chạy theo hướng:
 
 Nếu mục tiêu lên khoảng `200 CCU`, cần ưu tiên:
 
-1. bỏ polling progress cho ingestion
-2. chuyển progress sang SSE
+1. scale API / worker / proxy riêng
+2. giữ progress document trên SSE
 3. tối ưu ingestion batch / concurrency cẩn thận
 4. tách rõ đường chat online và ingestion background
 5. benchmark lại Docker Model Runner local trước khi giữ lâu dài
@@ -112,7 +112,8 @@ Nếu mục tiêu lên khoảng `200 CCU`, cần ưu tiên:
 
 ### Ingestion progress
 
-- nên nâng từ polling 4 giây sang SSE
+- hiện dùng SSE với auto-reconnect
+- không quay về polling ở flow chính
 
 ### Khi nào mới cần WebSocket
 

@@ -229,6 +229,15 @@ export const documentsApi = {
 
   getStatus: (taskId: string): Promise<TaskStatus> =>
     apiFetch<TaskStatus>(`/status/${encodeURIComponent(taskId)}`),
+
+  streamList: (tenantId?: string) => {
+    const params = new URLSearchParams();
+    if (tenantId) {
+      params.set("tenant_id", tenantId);
+    }
+    const query = params.toString();
+    return new EventSource(`/api/bep/documents/stream${query ? `?${query}` : ""}`);
+  },
 };
 
 export const treeApi = {

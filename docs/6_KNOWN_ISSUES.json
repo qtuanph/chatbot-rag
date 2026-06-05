@@ -89,6 +89,14 @@
       "root_cause": "Large refactor landed faster than top-level documentation updates.",
       "resolution": "Rewrote root docs to match the current multi-tenant, stateless, OpenAI-compatible architecture.",
       "lesson_learned": "Large refactors need documentation closure before release tagging."
+    },
+    {
+      "issue_id": 11,
+      "title": "Redis Restart Loop From Corrupted AOF Tail",
+      "symptom": "Redis container keeps restarting and logs `Bad file format reading the append only file appendonly.aof.1.incr.aof`.",
+      "root_cause": "The incremental AOF tail inside the Redis volume became corrupted, so Redis could not finish loading append-only persistence.",
+      "resolution": "Stopped Redis, backed up the volume, repaired the AOF with `redis-check-aof --fix`, then restarted the stack.",
+      "lesson_learned": "When Redis runs with AOF persistence in Docker, abrupt shutdowns can corrupt the AOF tail. Back up first, then repair the AOF instead of blaming application code."
     }
   ]
 }
