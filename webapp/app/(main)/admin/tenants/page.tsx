@@ -15,12 +15,13 @@ import type {
   TenantUpdateRequest,
   UserItem,
 } from "@/types/api";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/layout/page-header";
 import { TenantSettingsForm } from "@/components/tenants/tenant-settings-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 
 const EMPTY_FORM: TenantCreateRequest = {
@@ -298,20 +299,20 @@ export default function AdminTenantsPage() {
   }, []);
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto max-w-7xl space-y-6 p-6">
       <PageHeader
         title="Quản lý tenant"
         description="Chọn tenant để quản lý cấu hình, instruction, API key và tài khoản tenant admin."
         actions={
-          <Button variant="outline" onClick={handleStartCreate}>
+          <Button variant="outline" className="rounded-2xl" onClick={handleStartCreate}>
             <Plus className="mr-2 h-4 w-4" />
             Tạo mới tenant
           </Button>
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <Card>
+      <div className="grid gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
+        <Card className="rounded-3xl border-border/60 shadow-sm">
           <CardHeader>
             <CardTitle>Danh sách tenant</CardTitle>
             <CardDescription>Chọn tenant để xem chi tiết hoặc chuyển sang chế độ tạo mới.</CardDescription>
@@ -323,24 +324,29 @@ export default function AdminTenantsPage() {
               <div className="text-sm text-muted-foreground">Chưa có tenant nào.</div>
             ) : (
               tenants.map((tenant) => (
-                <button
+                <Button
                   key={tenant.id}
                   type="button"
+                  variant="ghost"
                   onClick={() => handleSelectTenant(tenant.id)}
-                  className={`w-full rounded-lg border px-3 py-3 text-left transition ${
-                    !isCreatingTenant && tenant.id === selectedTenantId ? "border-primary bg-primary/5" : "hover:bg-muted"
+                  className={`h-auto w-full justify-start rounded-2xl border px-4 py-3 text-left ${
+                    !isCreatingTenant && tenant.id === selectedTenantId
+                      ? "border-primary/60 bg-primary/5 shadow-sm hover:bg-primary/5"
+                      : "hover:bg-muted/70"
                   }`}
                 >
+                  <div>
                   <div className="font-medium">{tenant.name}</div>
                   <div className="text-xs text-muted-foreground">{tenant.slug}</div>
-                </button>
+                  </div>
+                </Button>
               ))
             )}
           </CardContent>
         </Card>
 
         <div className="space-y-6">
-          <Card>
+          <Card className="rounded-3xl border-border/60 shadow-sm">
             <CardHeader>
               <CardTitle>{!isCreatingTenant && selectedTenant ? `Tenant: ${selectedTenant.name}` : "Tạo tenant mới"}</CardTitle>
               <CardDescription>Khối cấu hình lõi cho quota, rate limit và thông tin tenant.</CardDescription>
@@ -455,14 +461,14 @@ export default function AdminTenantsPage() {
                 </>
               ) : null}
 
-              <div className="md:col-span-2 flex justify-end">
+              <div className="flex justify-end md:col-span-2">
                 {isCreatingTenant ? (
-                  <Button onClick={handleCreateTenant} disabled={savingTenant}>
+                  <Button className="rounded-2xl" onClick={handleCreateTenant} disabled={savingTenant}>
                     <Plus className="mr-2 h-4 w-4" />
                     {savingTenant ? "Đang tạo..." : "Tạo tenant"}
                   </Button>
                 ) : (
-                  <Button onClick={handleUpdateTenant} disabled={savingTenant || !selectedTenantId}>
+                  <Button className="rounded-2xl" onClick={handleUpdateTenant} disabled={savingTenant || !selectedTenantId}>
                     <Save className="mr-2 h-4 w-4" />
                     {savingTenant ? "Đang lưu..." : "Lưu tenant"}
                   </Button>
@@ -472,7 +478,7 @@ export default function AdminTenantsPage() {
           </Card>
 
           {lastCreatedTenantAdmin ? (
-            <Card>
+            <Card className="rounded-3xl border-border/60 shadow-sm">
               <CardHeader>
                 <CardTitle>Tài khoản tenant admin vừa tạo</CardTitle>
                 <CardDescription>
@@ -480,11 +486,11 @@ export default function AdminTenantsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-lg border p-3">
+                <div className="rounded-2xl border p-3">
                   <div className="text-xs text-muted-foreground">Username</div>
                   <div className="font-medium">{lastCreatedTenantAdmin.username}</div>
                 </div>
-                <div className="rounded-lg border p-3">
+                <div className="rounded-2xl border p-3">
                   <div className="text-xs text-muted-foreground">Mật khẩu</div>
                   <div className="font-medium">{lastCreatedTenantAdmin.password}</div>
                 </div>
@@ -500,7 +506,7 @@ export default function AdminTenantsPage() {
                 description="Quản lý tên chatbot, lời chào và instruction riêng của tenant. Các giá trị này được nạp vào system prompt khi chatbot trả lời."
               />
 
-              <Card>
+              <Card className="rounded-3xl border-border/60 shadow-sm">
                 <CardHeader>
                   <CardTitle>API key của tenant</CardTitle>
                   <CardDescription>Raw API key chỉ hiển thị đúng một lần sau khi tạo. Hãy copy và lưu an toàn.</CardDescription>
@@ -517,7 +523,7 @@ export default function AdminTenantsPage() {
                       value={newApiKey.expires_at || ""}
                       onChange={(event) => setNewApiKey({ ...newApiKey, expires_at: event.target.value || null })}
                     />
-                    <Button onClick={handleCreateApiKey} disabled={savingApiKey}>
+                    <Button className="rounded-2xl" onClick={handleCreateApiKey} disabled={savingApiKey}>
                       <KeyRound className="mr-2 h-4 w-4" />
                       {savingApiKey ? "Đang tạo..." : "Tạo API key"}
                     </Button>
@@ -527,12 +533,13 @@ export default function AdminTenantsPage() {
                   </p>
 
                   {rawApiKey ? (
-                    <div className="rounded-lg border border-dashed p-3 text-sm">
+                    <div className="rounded-2xl border border-dashed p-3 text-sm">
                       <div className="mb-2 font-medium">Raw API key mới tạo</div>
                       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                         <code className="overflow-x-auto rounded bg-muted px-3 py-2 text-xs">{rawApiKey}</code>
                         <Button
                           variant="outline"
+                          className="rounded-2xl"
                           onClick={async () => {
                             await navigator.clipboard.writeText(rawApiKey);
                             toast.success("Đã copy API key");
@@ -545,45 +552,43 @@ export default function AdminTenantsPage() {
                     </div>
                   ) : null}
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[760px]">
-                      <thead>
-                        <tr className="border-b border-muted">
-                          <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Tên key</th>
-                          <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Prefix</th>
-                          <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Trạng thái</th>
-                          <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Lần dùng cuối</th>
-                          <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Hết hạn</th>
-                          <th className="py-2 text-right text-xs font-medium text-muted-foreground">Thao tác</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {apiKeys.map((item) => (
-                          <tr key={item.id} className="border-b border-muted/50 last:border-0">
-                            <td className="py-3 pr-4">{item.name}</td>
-                            <td className="py-3 pr-4 font-mono text-xs">{item.key_prefix}</td>
-                            <td className="py-3 pr-4">{item.status}</td>
-                            <td className="py-3 pr-4 text-sm text-muted-foreground">{formatDateTimeVN(item.last_used_at)}</td>
-                            <td className="py-3 pr-4 text-sm text-muted-foreground">{formatDateTimeVN(item.expires_at)}</td>
-                            <td className="py-3 text-right">
-                              {item.status === "active" ? (
-                                <Button size="sm" variant="destructive" onClick={() => handleRevokeApiKey(item.id)}>
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Thu hồi
-                                </Button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">Đã thu hồi</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <Table className="min-w-[760px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="pr-4 text-xs text-muted-foreground">Tên key</TableHead>
+                        <TableHead className="pr-4 text-xs text-muted-foreground">Prefix</TableHead>
+                        <TableHead className="pr-4 text-xs text-muted-foreground">Trạng thái</TableHead>
+                        <TableHead className="pr-4 text-xs text-muted-foreground">Lần dùng cuối</TableHead>
+                        <TableHead className="pr-4 text-xs text-muted-foreground">Hết hạn</TableHead>
+                        <TableHead className="text-right text-xs text-muted-foreground">Thao tác</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {apiKeys.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="pr-4">{item.name}</TableCell>
+                          <TableCell className="pr-4 font-mono text-xs">{item.key_prefix}</TableCell>
+                          <TableCell className="pr-4">{item.status}</TableCell>
+                          <TableCell className="pr-4 text-sm text-muted-foreground">{formatDateTimeVN(item.last_used_at)}</TableCell>
+                          <TableCell className="pr-4 text-sm text-muted-foreground">{formatDateTimeVN(item.expires_at)}</TableCell>
+                          <TableCell className="text-right">
+                            {item.status === "active" ? (
+                              <Button size="sm" variant="destructive" className="rounded-2xl" onClick={() => handleRevokeApiKey(item.id)}>
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Thu hồi
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Đã thu hồi</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="rounded-3xl border-border/60 shadow-sm">
                 <CardHeader>
                   <CardTitle>Tài khoản trong tenant</CardTitle>
                   <CardDescription>Platform admin có thể xem và quản lý ngay các tenant admin thuộc tenant đang chọn.</CardDescription>
@@ -604,37 +609,40 @@ export default function AdminTenantsPage() {
                       onChange={(event) => setTenantAdminPassword(event.target.value)}
                       placeholder="Mật khẩu tenant admin"
                     />
-                    <Button onClick={handleCreateTenantUser} disabled={savingTenantUser}>
+                    <Button className="rounded-2xl" onClick={handleCreateTenantUser} disabled={savingTenantUser}>
                       <Plus className="mr-2 h-4 w-4" />
                       {savingTenantUser ? "Đang tạo..." : "Tạo tenant admin"}
                     </Button>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[640px]">
-                      <thead>
-                        <tr className="border-b border-muted">
-                          <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Username</th>
-                          <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Vai trò</th>
-                          <th className="py-2 text-right text-xs font-medium text-muted-foreground">Thao tác</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {tenantUsers.map((user) => (
-                          <tr key={user.id} className="border-b border-muted/50 last:border-0">
-                            <td className="py-3 pr-4 font-medium">{user.username}</td>
-                            <td className="py-3 pr-4 text-sm">{user.role}</td>
-                            <td className="py-3 text-right">
-                              <Button size="sm" variant="destructive" onClick={() => handleDeleteTenantUser(user.username)}>
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Xóa
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <Table className="min-w-[640px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="pr-4 text-xs text-muted-foreground">Username</TableHead>
+                        <TableHead className="pr-4 text-xs text-muted-foreground">Vai trò</TableHead>
+                        <TableHead className="text-right text-xs text-muted-foreground">Thao tác</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {tenantUsers.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell className="pr-4 font-medium">{user.username}</TableCell>
+                          <TableCell className="pr-4 text-sm">{user.role}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="rounded-2xl"
+                              onClick={() => handleDeleteTenantUser(user.username)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Xóa
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </CardContent>
               </Card>
             </>

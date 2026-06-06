@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react";
 
-import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/layout/page-header";
 import { TenantSettingsForm } from "@/components/tenants/tenant-settings-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,13 +13,13 @@ export default function SettingsPage() {
   const isPlatformAdmin = session?.role === "platform_admin";
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto max-w-5xl space-y-6 p-6">
       <PageHeader
         title="Cài đặt"
         description="Thông tin tài khoản và cấu hình chatbot theo phạm vi quyền hiện tại."
       />
 
-      <Card>
+      <Card className="rounded-3xl border-border/60 shadow-sm">
         <CardHeader>
           <CardTitle>Tài khoản hiện tại</CardTitle>
           <CardDescription>Thông tin phiên đăng nhập đang sử dụng trên webapp.</CardDescription>
@@ -41,7 +41,7 @@ export default function SettingsPage() {
       </Card>
 
       {isPlatformAdmin ? (
-        <Card>
+        <Card className="rounded-3xl border-border/60 shadow-sm">
         <CardHeader>
           <CardTitle>Ghi chú cho Platform Admin</CardTitle>
           <CardDescription>

@@ -3,7 +3,7 @@
 import { useSession } from "next-auth/react";
 
 import { DocumentCatalog } from "@/components/documents/document-catalog";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/layout/page-header";
 
 export default function TenantDocumentsPage() {
   const { data: session } = useSession();

@@ -3,6 +3,8 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
 interface MarkdownRendererProps {
   content: string;
   showCursor?: boolean;
@@ -38,16 +40,23 @@ export function MarkdownRenderer({ content, showCursor = false }: MarkdownRender
           },
           table({ children }) {
             return (
-              <div className="overflow-x-auto my-2">
-                <table className="border-collapse border border-border text-xs">{children}</table>
-              </div>
+              <Table className="my-2 text-xs">{children}</Table>
             );
           },
+          thead({ children }) {
+            return <TableHeader>{children}</TableHeader>;
+          },
+          tbody({ children }) {
+            return <TableBody>{children}</TableBody>;
+          },
+          tr({ children }) {
+            return <TableRow>{children}</TableRow>;
+          },
           th({ children }) {
-            return <th className="border border-border px-2 py-1 bg-muted font-medium text-left">{children}</th>;
+            return <TableHead className="bg-muted font-medium text-left">{children}</TableHead>;
           },
           td({ children }) {
-            return <td className="border border-border px-2 py-1">{children}</td>;
+            return <TableCell>{children}</TableCell>;
           },
         }}
       >
@@ -57,4 +66,3 @@ export function MarkdownRenderer({ content, showCursor = false }: MarkdownRender
     </div>
   );
 }
-

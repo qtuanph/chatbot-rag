@@ -6,13 +6,14 @@ import { toast } from "sonner";
 
 import { authApi, tenantsApi } from "@/lib/api-client";
 import type { CreateUserRequest, RoleItem, TenantItem, UserItem } from "@/types/api";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/layout/page-header";
 import { TenantSelect } from "@/components/tenants/tenant-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const EMPTY_FORM: CreateUserRequest = {
   username: "",
@@ -82,10 +83,10 @@ export default function AdminUsersPage() {
   }, []);
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto max-w-7xl space-y-6 p-6">
       <PageHeader title="Quản lý người dùng" description="Tạo platform admin hoặc tenant admin mới theo đúng tenant scope." />
 
-      <Card>
+      <Card className="rounded-3xl border-border/60 shadow-sm">
         <CardHeader>
           <CardTitle>Tạo user mới</CardTitle>
           <CardDescription>Tenant admin bắt buộc phải gắn với một tenant cụ thể.</CardDescription>
@@ -120,11 +121,13 @@ export default function AdminUsersPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {roles.map((role) => (
-                  <SelectItem key={role.id} value={role.name}>
-                    {role.name}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  {roles.map((role) => (
+                    <SelectItem key={role.id} value={role.name}>
+                      {role.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
@@ -138,7 +141,7 @@ export default function AdminUsersPage() {
             />
           </div>
           <div className="flex justify-end md:col-span-2 xl:col-span-4">
-            <Button onClick={handleCreate} disabled={saving}>
+            <Button className="rounded-2xl" onClick={handleCreate} disabled={saving}>
               <Plus className="mr-2 h-4 w-4" />
               {saving ? "Đang tạo..." : "Tạo user"}
             </Button>
@@ -146,39 +149,39 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-3xl border-border/60 shadow-sm">
         <CardHeader>
           <CardTitle>Danh sách user</CardTitle>
           <CardDescription>Giữ role rõ ràng để webapp và backend đồng bộ hành vi.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px]">
-              <thead>
-                <tr className="border-b border-muted">
-                  <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Username</th>
-                  <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Vai trò</th>
-                  <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Tenant</th>
-                  <th className="py-2 text-right text-xs font-medium text-muted-foreground">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => (
-                  <tr key={user.id} className="border-b border-muted/50 last:border-0">
-                    <td className="py-3 pr-4 font-medium">{user.username}</td>
-                    <td className="py-3 pr-4">{user.role}</td>
-                    <td className="py-3 pr-4 text-sm text-muted-foreground">{user.tenant_id ? tenantNameMap.get(user.tenant_id) || user.tenant_id : "—"}</td>
-                    <td className="py-3 text-right">
-                      <Button size="sm" variant="destructive" onClick={() => handleDelete(user.username)}>
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Xóa
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table className="min-w-[720px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pr-4 text-xs text-muted-foreground">Username</TableHead>
+                <TableHead className="pr-4 text-xs text-muted-foreground">Vai trò</TableHead>
+                <TableHead className="pr-4 text-xs text-muted-foreground">Tenant</TableHead>
+                <TableHead className="text-right text-xs text-muted-foreground">Thao tác</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.map((user) => (
+                <TableRow key={user.id}>
+                  <TableCell className="pr-4 font-medium">{user.username}</TableCell>
+                  <TableCell className="pr-4">{user.role}</TableCell>
+                  <TableCell className="pr-4 text-sm text-muted-foreground">
+                    {user.tenant_id ? tenantNameMap.get(user.tenant_id) || "Không rõ tenant" : "—"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" variant="destructive" className="rounded-2xl" onClick={() => handleDelete(user.username)}>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Xóa
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>

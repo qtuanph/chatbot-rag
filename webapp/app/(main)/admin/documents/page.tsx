@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { tenantsApi } from "@/lib/api-client";
 import type { TenantItem } from "@/types/api";
 import { DocumentCatalog } from "@/components/documents/document-catalog";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/layout/page-header";
 
 export default function AdminDocumentsPage() {
   const [tenants, setTenants] = useState<TenantItem[]>([]);
@@ -25,7 +25,7 @@ export default function AdminDocumentsPage() {
   }, [loadTenants]);
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto max-w-7xl space-y-6 p-6">
       <PageHeader
         title="Quản lý tài liệu tenant"
         description="Chọn tenant ngay trong trang này để upload, retry, rechunk và xóa tài liệu đúng phạm vi."

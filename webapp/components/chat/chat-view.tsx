@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Building2, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
+import { Building2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { chatApi, tenantsApi } from "@/lib/api-client";
@@ -11,9 +11,7 @@ import type { ChatMessage } from "@/types/chat";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessage as ChatBubble } from "@/components/chat/chat-message";
 import { TenantSelect } from "@/components/tenants/tenant-select";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -220,108 +218,68 @@ export function ChatView() {
   );
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto,minmax(0,1fr),auto] bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_32%),linear-gradient(to_bottom,rgba(255,255,255,0.96),rgba(255,255,255,1))] dark:bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.14),transparent_28%),linear-gradient(to_bottom,rgba(9,9,11,0.98),rgba(9,9,11,1))]">
-      <div className="sticky top-0 z-10 border-b border-border/60 bg-background/85 px-4 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px] uppercase tracking-wide">
-                  Chat nội bộ
-                </Badge>
-                <Badge variant="secondary" className="rounded-full px-3 py-1 text-[11px]">
-                  Stateless
-                </Badge>
-                {thinkingMode ? (
-                  <Badge className="rounded-full px-3 py-1 text-[11px]">
-                    Suy luận sâu
-                  </Badge>
-                ) : null}
-              </div>
-              <div>
-                <h2 className="text-2xl font-semibold tracking-tight">
-                  {tenantSetting?.chatbot_display_name || "Chat thử theo tenant"}
-                </h2>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                  {tenantSetting?.welcome_message || "Trò chuyện với trợ lý nội bộ theo đúng tài liệu và instruction của tenant đang chọn."}
-                </p>
-              </div>
+    <div className="grid h-full min-h-0 grid-rows-[auto,minmax(0,1fr),auto] bg-background">
+      <div className="sticky top-0 z-10 border-b border-border/40 bg-background/80 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[#084ea4] text-primary-foreground shadow-[0_4px_14px_-6px_rgba(1,56,123,0.5)]">
+              <span className="text-xs font-bold tracking-tight">SSE</span>
             </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              {isPlatformAdmin ? (
-                <div className="flex min-w-[320px] items-center gap-2 rounded-2xl border border-border/70 bg-card/80 px-3 py-2 shadow-sm">
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
-                  <TenantSelect
-                    tenants={tenantOptions}
-                    value={selectedTenantId}
-                    onValueChange={(tenantId) => setSelectedTenantId(tenantId || "")}
-                    placeholder="Chọn tenant để chat thử"
-                    triggerClassName="border-0 bg-transparent px-0 shadow-none focus:ring-0"
-                  />
-                </div>
-              ) : null}
-              <Button variant="outline" onClick={resetConversation} className="rounded-2xl">
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Làm mới hội thoại
-              </Button>
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-semibold tracking-tight">
+                {tenantSetting?.chatbot_display_name || "Chat thử"}
+              </h2>
+              <p className="truncate text-xs text-muted-foreground">
+                {tenantSetting?.welcome_message || "Hỏi nhanh theo tài liệu của tenant hiện tại."}
+              </p>
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="rounded-2xl border border-border/60 bg-card/80 px-4 py-3 shadow-sm">
-              <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                Phạm vi
+          <div className="flex shrink-0 items-center gap-2">
+            {isPlatformAdmin ? (
+              <div className="flex h-9 items-center gap-1.5 rounded-full border border-border/60 bg-background/80 px-2.5 text-sm transition-colors hover:border-border">
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                <TenantSelect
+                  tenants={tenantOptions}
+                  value={selectedTenantId}
+                  onValueChange={(tenantId) => setSelectedTenantId(tenantId || "")}
+                  placeholder="Chọn tenant"
+                  triggerClassName="h-7 border-0 bg-transparent px-0 text-xs shadow-none focus:ring-0"
+                />
               </div>
-              <div className="mt-2 text-sm font-medium">
-                {isPlatformAdmin ? (effectiveTenantId ? "Đang test đúng tenant đã chọn" : "Chưa chọn tenant để test") : "Chỉ trong tenant của bạn"}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-border/60 bg-card/80 px-4 py-3 shadow-sm">
-              <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <Sparkles className="h-3.5 w-3.5" />
-                Hành vi
-              </div>
-              <div className="mt-2 text-sm font-medium">Ngữ cảnh được bơm từ tài liệu và instruction tenant</div>
-            </div>
-            <div className="rounded-2xl border border-border/60 bg-card/80 px-4 py-3 shadow-sm">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Lưu trữ</div>
-              <div className="mt-2 text-sm font-medium">Không lưu lịch sử sau khi đóng hoặc làm mới</div>
-            </div>
+            ) : null}
+            <Button variant="outline" size="sm" onClick={resetConversation} className="h-9 rounded-full" title="Tạo chat mới">
+              <RefreshCw className="h-4 w-4" data-icon="inline-start" />
+              Chat mới
+            </Button>
           </div>
         </div>
       </div>
 
       <div className="min-h-0 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-6xl flex-col py-6">
+        <div className="mx-auto flex w-full max-w-3xl flex-col py-6">
           {messages.length === 0 ? (
-            <Card className="mx-4 mt-4 border-border/60 bg-card/90 shadow-xl shadow-black/5">
-              <CardHeader>
-                <CardTitle>Bắt đầu một cuộc trò chuyện mới</CardTitle>
-                <CardDescription>
+            <div className="mx-4 mt-12 flex flex-col items-center gap-3 px-6 text-center">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[#084ea4] text-primary-foreground shadow-[0_8px_24px_-10px_rgba(1,56,123,0.5)]">
+                <span className="text-sm font-bold tracking-tight">SSE</span>
+              </div>
+              <div className="space-y-1">
+                <div className="text-lg font-semibold tracking-tight text-foreground">
                   {loadingTenantContext
-                    ? "Đang tải cấu hình tenant..."
+                    ? "Đang tải cấu hình..."
                     : isPlatformAdmin && !effectiveTenantId
-                      ? "Hãy chọn tenant ở khung bên trên trước khi gửi câu hỏi."
-                      : "Anh có thể hỏi về quy trình, tài liệu hướng dẫn, câu hỏi nghiệp vụ và để AI trả lời theo đúng ngữ cảnh tenant."}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 text-sm text-muted-foreground md:grid-cols-3">
-                <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
-                  <div className="font-medium text-foreground">Theo ngữ cảnh tenant</div>
-                  <p className="mt-1 leading-6">Tài liệu, instruction và giới hạn sử dụng đều được áp đúng theo tenant hiện tại.</p>
+                      ? "Chọn tenant để bắt đầu"
+                      : "Bắt đầu một cuộc trò chuyện mới"}
                 </div>
-                <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
-                  <div className="font-medium text-foreground">Không có history DB</div>
-                  <p className="mt-1 leading-6">Hội thoại chỉ tồn tại trong phiên trình duyệt đang mở để nhẹ hơn và an toàn hơn.</p>
-                </div>
-                <div className="rounded-2xl border border-border/60 bg-background/80 p-4">
-                  <div className="font-medium text-foreground">Có trích dẫn rõ ràng</div>
-                  <p className="mt-1 leading-6">Khi AI dùng tài liệu, phần tham khảo sẽ hiện ngay dưới câu trả lời để anh kiểm tra nhanh.</p>
-                </div>
-              </CardContent>
-            </Card>
+                <p className="mx-auto max-w-md text-sm leading-6 text-muted-foreground">
+                  {loadingTenantContext
+                    ? "Vui lòng chờ một chút."
+                    : isPlatformAdmin && !effectiveTenantId
+                      ? "Chọn tenant ở góc trên bên phải trước khi gửi câu hỏi."
+                      : "Hỏi ngắn gọn, AI sẽ tự dùng tài liệu phù hợp để trả lời."}
+                </p>
+              </div>
+            </div>
           ) : (
             <div className="space-y-1">
               {messages.map((message, index) => (

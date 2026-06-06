@@ -2,7 +2,7 @@
 
 import type { TenantItem } from "@/types/api";
 import { cn } from "@/lib/utils";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface TenantSelectProps {
   tenants: TenantItem[];
@@ -27,27 +27,30 @@ export function TenantSelect({
   className,
   triggerClassName,
 }: TenantSelectProps) {
-  const selectedTenant = tenants.find((tenant) => tenant.id === value) || null;
-  const displayLabel = selectedTenant?.name || (includeAll && !value ? allLabel : placeholder);
+  const items = {
+    ...(includeAll ? { __all__: allLabel } : {}),
+    ...Object.fromEntries(tenants.map((tenant) => [tenant.id, tenant.name] as const)),
+  };
 
   return (
     <Select
+      items={items}
       value={value || (includeAll ? "__all__" : undefined)}
       onValueChange={(nextValue) => onValueChange(nextValue === "__all__" ? null : nextValue)}
       disabled={disabled}
     >
-      <SelectTrigger className={cn("w-full", triggerClassName)}>
-        <span className={cn("truncate text-left", !selectedTenant && !(includeAll && !value) && "text-muted-foreground")}>
-          {displayLabel}
-        </span>
+      <SelectTrigger className={cn("w-full min-w-0", triggerClassName)}>
+        <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent className={className}>
-        {includeAll ? <SelectItem value="__all__">{allLabel}</SelectItem> : null}
-        {tenants.map((tenant) => (
-          <SelectItem key={tenant.id} value={tenant.id}>
-            {tenant.name}
-          </SelectItem>
-        ))}
+        <SelectGroup>
+          {includeAll ? <SelectItem value="__all__">{allLabel}</SelectItem> : null}
+          {tenants.map((tenant) => (
+            <SelectItem key={tenant.id} value={tenant.id}>
+              {tenant.name}
+            </SelectItem>
+          ))}
+        </SelectGroup>
       </SelectContent>
     </Select>
   );
