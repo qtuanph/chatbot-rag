@@ -10,6 +10,7 @@ import type { AnalyticsStats, ModelTypeStats, RecentRequest } from "@/types/api"
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type AnalyticsDashboardProps = {
   title: string;
@@ -37,7 +38,7 @@ function ModelTypeCard({
   icon: typeof Brain;
 }) {
   return (
-    <Card>
+    <Card className="rounded-3xl border-border/60 shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="flex items-center gap-2 text-sm font-medium">
           <Icon className="h-4 w-4 text-primary" />
@@ -71,17 +72,17 @@ function ModelTypeCard({
 
 function RequestRow({ row }: { row: RecentRequest }) {
   return (
-    <tr className="border-b border-muted/50 last:border-0">
-      <td className="py-2 pr-4 text-sm font-medium">{row.model_name}</td>
-      <td className="py-2 pr-4 text-sm">{row.model_type}</td>
-      <td className="py-2 pr-4 text-right text-sm">{formatNumber(row.tokens_in)}</td>
-      <td className="py-2 pr-4 text-right text-sm">{formatNumber(row.tokens_out)}</td>
-      <td className="py-2 pr-4 text-right text-sm">{formatLatency(row.latency_ms)}</td>
-      <td className="py-2 pr-4 text-right text-sm">
+    <TableRow>
+      <TableCell className="pr-4 text-sm font-medium">{row.model_name}</TableCell>
+      <TableCell className="pr-4 text-sm">{row.model_type}</TableCell>
+      <TableCell className="pr-4 text-right text-sm">{formatNumber(row.tokens_in)}</TableCell>
+      <TableCell className="pr-4 text-right text-sm">{formatNumber(row.tokens_out)}</TableCell>
+      <TableCell className="pr-4 text-right text-sm">{formatLatency(row.latency_ms)}</TableCell>
+      <TableCell className="pr-4 text-right text-sm">
         <CostText micros={row.cost_micros_vnd} />
-      </td>
-      <td className="py-2 text-right text-xs text-muted-foreground">{formatDateTimeVN(row.created_at)}</td>
-    </tr>
+      </TableCell>
+      <TableCell className="text-right text-xs text-muted-foreground">{formatDateTimeVN(row.created_at)}</TableCell>
+    </TableRow>
   );
 }
 
@@ -142,27 +143,28 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{title}</h1>
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
+          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {DATE_RANGES.map((range) => (
             <Button
               key={range.value}
               size="sm"
+              className="rounded-2xl"
               variant={days === range.value ? "default" : "outline"}
               onClick={() => setDays(range.value)}
             >
               {range.label}
             </Button>
           ))}
-          <Button size="sm" variant="outline" onClick={loadStats} disabled={loading}>
+          <Button size="sm" variant="outline" className="rounded-2xl" onClick={loadStats} disabled={loading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Làm mới
           </Button>
           {allowClear && (
-            <Button size="sm" variant="destructive" onClick={handleClear} disabled={clearing}>
+            <Button size="sm" variant="destructive" className="rounded-2xl" onClick={handleClear} disabled={clearing}>
               <Trash2 className="mr-2 h-4 w-4" />
               {clearing ? "Đang xóa..." : "Xóa usage"}
             </Button>
@@ -171,7 +173,7 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
       </div>
 
       {error && (
-        <Card className="border-destructive/50">
+        <Card className="rounded-3xl border-destructive/50 shadow-sm">
           <CardContent className="pt-6 text-sm text-destructive">{error}</CardContent>
         </Card>
       )}
@@ -179,7 +181,7 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
       {stats && (
         <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Card>
+            <Card className="rounded-3xl border-border/60 shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Tổng request</CardTitle>
               </CardHeader>
@@ -188,7 +190,7 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
                 <p className="text-xs text-muted-foreground">Theo cửa sổ {days} ngày</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="rounded-3xl border-border/60 shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Tổng token</CardTitle>
               </CardHeader>
@@ -199,7 +201,7 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
                 </p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="rounded-3xl border-border/60 shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-sm font-medium">
                   <TimerReset className="h-4 w-4 text-primary" />
@@ -211,7 +213,7 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
                 <p className="text-xs text-muted-foreground">Theo request đã ghi nhận</p>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="rounded-3xl border-border/60 shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Chi phí ước tính</CardTitle>
               </CardHeader>
@@ -230,7 +232,7 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
             <ModelTypeCard title="Reranker" stats={stats.by_model_type.reranker} icon={Network} />
           </div>
 
-          <Card>
+          <Card className="rounded-3xl border-border/60 shadow-sm">
             <CardHeader>
               <CardTitle>Yêu cầu gần đây</CardTitle>
               <CardDescription>
@@ -244,26 +246,24 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
               {stats.recent_requests.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Chưa có request nào trong khoảng thời gian này.</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[760px]">
-                    <thead>
-                      <tr className="border-b border-muted">
-                        <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Model</th>
-                        <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Loại</th>
-                        <th className="py-2 pr-4 text-right text-xs font-medium text-muted-foreground">In</th>
-                        <th className="py-2 pr-4 text-right text-xs font-medium text-muted-foreground">Out</th>
-                        <th className="py-2 pr-4 text-right text-xs font-medium text-muted-foreground">Độ trễ</th>
-                        <th className="py-2 pr-4 text-right text-xs font-medium text-muted-foreground">Chi phí</th>
-                        <th className="py-2 text-right text-xs font-medium text-muted-foreground">Thời điểm</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stats.recent_requests.map((row, index) => (
-                        <RequestRow key={`${row.model_name}-${row.created_at}-${index}`} row={row} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <Table className="min-w-[760px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="pr-4 text-xs text-muted-foreground">Model</TableHead>
+                      <TableHead className="pr-4 text-xs text-muted-foreground">Loại</TableHead>
+                      <TableHead className="pr-4 text-right text-xs text-muted-foreground">In</TableHead>
+                      <TableHead className="pr-4 text-right text-xs text-muted-foreground">Out</TableHead>
+                      <TableHead className="pr-4 text-right text-xs text-muted-foreground">Độ trễ</TableHead>
+                      <TableHead className="pr-4 text-right text-xs text-muted-foreground">Chi phí</TableHead>
+                      <TableHead className="text-right text-xs text-muted-foreground">Thời điểm</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {stats.recent_requests.map((row, index) => (
+                      <RequestRow key={`${row.model_name}-${row.created_at}-${index}`} row={row} />
+                    ))}
+                  </TableBody>
+                </Table>
               )}
             </CardContent>
           </Card>

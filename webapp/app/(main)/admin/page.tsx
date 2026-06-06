@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Activity, Database, FileText, Server } from "lucide-react";
 
 import { healthApi } from "@/lib/api-client";
-import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/layout/page-header";
 import { TenantUsageTable } from "@/components/analytics/tenant-usage-table";
 import type { HealthData } from "@/types/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,14 +48,14 @@ export default function AdminDashboardPage() {
   }, [load]);
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto max-w-7xl space-y-6 p-6">
       <PageHeader
         title="Tổng quan platform"
         description="Theo dõi sức khỏe hệ thống, tài liệu sẵn sàng và tenant usage nổi bật."
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
+        <Card className="rounded-3xl border-border/60 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Trạng thái hệ thống</CardTitle>
           </CardHeader>
@@ -64,7 +64,7 @@ export default function AdminDashboardPage() {
             <p className="text-xs text-muted-foreground">Tổng hợp từ health probes backend</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-3xl border-border/60 shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Tài liệu sẵn sàng</CardTitle>
           </CardHeader>
@@ -92,7 +92,7 @@ export default function AdminDashboardPage() {
                   ? value.broker
                   : "Không có latency";
           return (
-            <Card key={key}>
+            <Card key={key} className="rounded-3xl border-border/60 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium">{LABELS[key] || key}</CardTitle>
                 <Icon className="h-4 w-4 text-muted-foreground" />

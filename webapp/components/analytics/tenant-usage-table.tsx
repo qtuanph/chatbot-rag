@@ -8,6 +8,7 @@ import { formatLatency, formatNumber, formatVnd } from "@/lib/format";
 import type { TenantUsageSummaryItem } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export function TenantUsageTable() {
   const [items, setItems] = useState<TenantUsageSummaryItem[]>([]);
@@ -36,7 +37,7 @@ export function TenantUsageTable() {
   }, [load]);
 
   return (
-    <Card>
+    <Card className="rounded-3xl border-border/60 shadow-sm">
       <CardHeader>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
@@ -48,13 +49,14 @@ export function TenantUsageTable() {
               <Button
                 key={value}
                 size="sm"
+                className="rounded-2xl"
                 variant={days === value ? "default" : "outline"}
                 onClick={() => setDays(value)}
               >
                 {value} ngày
               </Button>
             ))}
-            <Button size="sm" variant="outline" onClick={load} disabled={loading}>
+            <Button size="sm" variant="outline" className="rounded-2xl" onClick={load} disabled={loading}>
               <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               Làm mới
             </Button>
@@ -69,33 +71,31 @@ export function TenantUsageTable() {
         ) : items.length === 0 ? (
           <div className="text-sm text-muted-foreground">Chưa có usage tenant nào trong khoảng này.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[840px]">
-              <thead>
-                <tr className="border-b border-muted">
-                  <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Tenant</th>
-                  <th className="py-2 pr-4 text-right text-xs font-medium text-muted-foreground">Request</th>
-                  <th className="py-2 pr-4 text-right text-xs font-medium text-muted-foreground">Token</th>
-                  <th className="py-2 pr-4 text-right text-xs font-medium text-muted-foreground">Chi phí</th>
-                  <th className="py-2 text-right text-xs font-medium text-muted-foreground">Latency TB</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.tenant_id} className="border-b border-muted/50 last:border-0">
-                    <td className="py-3 pr-4">
-                      <div className="font-medium">{item.tenant_name}</div>
-                      <div className="text-xs text-muted-foreground">{item.tenant_slug}</div>
-                    </td>
-                    <td className="py-3 pr-4 text-right">{formatNumber(item.call_count)}</td>
-                    <td className="py-3 pr-4 text-right">{formatNumber(item.total_tokens)}</td>
-                    <td className="py-3 pr-4 text-right font-medium">{formatVnd(item.cost_vnd_rounded)}</td>
-                    <td className="py-3 text-right">{formatLatency(item.avg_latency_ms)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table className="min-w-[840px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pr-4 text-xs text-muted-foreground">Tenant</TableHead>
+                <TableHead className="pr-4 text-right text-xs text-muted-foreground">Request</TableHead>
+                <TableHead className="pr-4 text-right text-xs text-muted-foreground">Token</TableHead>
+                <TableHead className="pr-4 text-right text-xs text-muted-foreground">Chi phí</TableHead>
+                <TableHead className="text-right text-xs text-muted-foreground">Latency TB</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item) => (
+                <TableRow key={item.tenant_id}>
+                  <TableCell className="pr-4">
+                    <div className="font-medium">{item.tenant_name}</div>
+                    <div className="text-xs text-muted-foreground">{item.tenant_slug}</div>
+                  </TableCell>
+                  <TableCell className="pr-4 text-right">{formatNumber(item.call_count)}</TableCell>
+                  <TableCell className="pr-4 text-right">{formatNumber(item.total_tokens)}</TableCell>
+                  <TableCell className="pr-4 text-right font-medium">{formatVnd(item.cost_vnd_rounded)}</TableCell>
+                  <TableCell className="text-right">{formatLatency(item.avg_latency_ms)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </CardContent>
     </Card>

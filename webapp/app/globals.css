@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-inter);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,105 +49,131 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --card: #ffffff;
+  --card-foreground: #01387b;
+  --popover: #ffffff;
+  --popover-foreground: #01387b;
+  --primary: #01387b;
+  --primary-foreground: #ffffff;
+  --secondary: #eef2f8;
+  --secondary-foreground: #01387b;
+  --muted: #f4f7fb;
+  --muted-foreground: #4e5d72;
+  --accent: #fff0e8;
+  --accent-foreground: #01387b;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --border: #d7dee8;
+  --input: #d7dee8;
+  --ring: #ff5e15;
+  --chart-1: #01387b;
+  --chart-2: #ff5e15;
+  --chart-3: #084ea4;
+  --chart-4: #44c2f9;
+  --chart-5: #ff8154;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #01387b;
+  --sidebar-primary: #01387b;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #fff0e8;
+  --sidebar-accent-foreground: #01387b;
+  --sidebar-border: #d7dee8;
+  --sidebar-ring: #ff5e15;
+  --background: #ffffff;
+  --foreground: #01387b;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: #061a35;
+  --foreground: #f7f8fa;
+  --card: #0a2444;
+  --card-foreground: #f7f8fa;
+  --popover: #0a2444;
+  --popover-foreground: #f7f8fa;
+  --primary: #ff5e15;
+  --primary-foreground: #ffffff;
+  --secondary: #103057;
+  --secondary-foreground: #f7f8fa;
+  --muted: #103057;
+  --muted-foreground: #9fb0c7;
+  --accent: #163b69;
+  --accent-foreground: #f7f8fa;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --border: rgb(255 255 255 / 10%);
+  --input: rgb(255 255 255 / 14%);
+  --ring: #ff5e15;
+  --chart-1: #ff5e15;
+  --chart-2: #44c2f9;
+  --chart-3: #ff8154;
+  --chart-4: #084ea4;
+  --chart-5: #9fb0c7;
+  --sidebar: #0a2444;
+  --sidebar-foreground: #f7f8fa;
+  --sidebar-primary: #ff5e15;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #163b69;
+  --sidebar-accent-foreground: #f7f8fa;
+  --sidebar-border: rgb(255 255 255 / 10%);
+  --sidebar-ring: #ff5e15;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
-    @apply font-sans;
+    @apply font-sans scroll-smooth;
+  }
+  body {
+    @apply bg-background text-foreground antialiased transition-colors duration-300;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 16%, white);
+    color: var(--foreground);
+  }
+  a,
+  button,
+  input,
+  textarea,
+  select,
+  [role="button"] {
+    @apply transition-colors duration-200 ease-out;
+  }
+}
+
+@layer components {
+  .page-enter {
+    animation: page-enter 220ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  /* Thin scrollbar for chat message area */
-  .overflow-y-auto {
-    scrollbar-width: thin;
-    scrollbar-color: oklch(0.7 0 0 / 40%) transparent;
+  .surface-elevated {
+    box-shadow:
+      0 1px 2px rgb(1 56 123 / 0.05),
+      0 8px 24px rgb(1 56 123 / 0.08);
   }
-  .overflow-y-auto:hover {
-    scrollbar-color: oklch(0.55 0 0 / 60%) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
-  .overflow-y-auto::-webkit-scrollbar {
-    width: 6px;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
   }
-  .overflow-y-auto::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .overflow-y-auto::-webkit-scrollbar-thumb {
-    background: oklch(0.7 0 0 / 40%);
-    border-radius: 3px;
-  }
-  .overflow-y-auto:hover::-webkit-scrollbar-thumb {
-    background: oklch(0.55 0 0 / 60%);
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatNumber, formatVnd } from "@/lib/format";
 import type { ChatUsage } from "@/types/api";
 import type { ChatMessage } from "@/types/chat";
+import { cn } from "@/lib/utils";
 
 interface ChatMessageProps {
   message: ChatMessage;
@@ -31,126 +32,98 @@ export function ChatMessage({ message, isStreaming = false, isThinking = false, 
   const hiddenCitationCount = Math.max(citations.length - visibleCitations.length, 0);
 
   return (
-    <div className={`flex gap-3 px-4 py-4 ${isUser ? "justify-end" : ""}`}>
+    <div className={cn("group/message flex gap-3 px-4 py-4", isUser ? "justify-end" : "justify-start")}>
       {!isUser ? (
-        <Avatar className="mt-1 h-9 w-9 shrink-0 ring-1 ring-border/60">
-          <AvatarFallback className="bg-primary/10 text-primary">
+        <Avatar className="mt-0.5 h-8 w-8 shrink-0 ring-1 ring-border/40">
+          <AvatarFallback className="bg-gradient-to-br from-primary to-[#084ea4] text-primary-foreground">
             <Bot className="h-4 w-4" />
           </AvatarFallback>
         </Avatar>
       ) : null}
 
-      <div className={`max-w-[92%] space-y-3 sm:max-w-[80%] ${isUser ? "items-end" : ""}`}>
+      <div className={cn("flex max-w-[92%] min-w-0 flex-col gap-2 sm:max-w-[78%]", isUser ? "items-end" : "items-start")}>
+        <div
+          className={cn(
+            "text-[11px] font-medium tracking-wide uppercase opacity-60",
+            isUser ? "text-muted-foreground" : "text-primary/80",
+          )}
+        >
+          {isUser ? "Bạn" : "SSE Assistant"}
+        </div>
+
         {isUser ? (
-          <>
-            <div className="flex items-center justify-end gap-2">
-              <div className="text-xs font-medium text-muted-foreground">Bạn</div>
-            </div>
-            <div className="whitespace-pre-wrap rounded-[24px] rounded-tr-md bg-primary px-4 py-3 text-sm leading-7 text-primary-foreground shadow-sm">
-              {message.content}
-            </div>
-          </>
+          <div className="rounded-2xl rounded-tr-md bg-primary px-4 py-2.5 text-[15px] leading-6 text-primary-foreground shadow-[0_2px_12px_-6px_rgba(1,56,123,0.4)]">
+            <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          </div>
         ) : (
           <>
             {showLoading ? (
-              <div className="rounded-[24px] rounded-tl-md border border-border/60 bg-card px-4 py-3 text-sm text-muted-foreground shadow-sm">
-                Đang phân tích tài liệu và dựng ngữ cảnh...
+              <div className="rounded-2xl rounded-tl-md bg-muted/60 px-4 py-3 text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="size-1.5 animate-pulse rounded-full bg-primary/60" />
+                  <span className="size-1.5 animate-pulse rounded-full bg-primary/60 [animation-delay:120ms]" />
+                  <span className="size-1.5 animate-pulse rounded-full bg-primary/60 [animation-delay:240ms]" />
+                  Đang suy luận...
+                </span>
               </div>
             ) : null}
 
             {message.content ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="text-xs font-semibold text-foreground/90">Trợ lý AI</div>
-                  {isStreaming ? (
-                    <Badge variant="outline" className="rounded-full border-primary/30 bg-primary/5 text-[11px] text-primary">
-                      Đang trả lời
-                    </Badge>
-                  ) : null}
-                </div>
-                <div
-                  className={
-                    isStreaming
-                      ? "rounded-[24px] rounded-tl-md border border-border/60 bg-card px-4 py-3 shadow-sm streaming-active"
-                      : "rounded-[24px] rounded-tl-md border border-border/60 bg-card px-4 py-3 shadow-sm"
-                  }
-                >
-                  <MarkdownRenderer content={message.content} showCursor={isStreaming} />
-                </div>
+              <div
+                className={cn(
+                  "rounded-2xl rounded-tl-md bg-muted/40 px-4 py-3 text-[15px] leading-6 text-foreground",
+                  isStreaming && "streaming-active",
+                )}
+              >
+                <MarkdownRenderer content={message.content} showCursor={isStreaming} />
               </div>
             ) : null}
 
             {!!citations.length && !isStreaming ? (
-              <div className="space-y-3 rounded-2xl border border-border/70 bg-background/95 p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <FileText className="h-3.5 w-3.5" />
-                  Tài liệu tham khảo
+              <div className="w-full space-y-2 rounded-xl border border-border/50 bg-background/60 p-3">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <FileText className="h-3 w-3" />
+                  Nguồn tham khảo
                 </div>
-                <div className="grid gap-2">
+                <div className="grid gap-1.5">
                   {visibleCitations.map((citation, index) => (
                     <div
                       key={`${citation.document_id}-${citation.section_id}-${index}`}
-                      className="rounded-xl border border-border/60 bg-muted/30 p-3 text-xs"
+                      className="flex items-start gap-2 rounded-lg bg-muted/30 px-2.5 py-2 text-xs transition-colors hover:bg-muted/60"
                     >
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="rounded-full">
-                          {index + 1}
-                        </Badge>
-                        <span className="font-medium">{citation.file_name || citation.title}</span>
-                      </div>
-                      <div className="mt-1.5 text-muted-foreground">
-                        {citation.heading || citation.title}
-                        {citation.page_range ? ` • trang ${citation.page_range}` : ""}
+                      <Badge variant="outline" className="mt-0.5 h-5 shrink-0 rounded-full px-1.5 text-[10px]">
+                        {index + 1}
+                      </Badge>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-foreground">
+                          {citation.file_name || citation.title}
+                        </div>
+                        <div className="mt-0.5 text-muted-foreground">
+                          {citation.heading || citation.title}
+                          {citation.page_range ? ` · trang ${citation.page_range}` : ""}
+                        </div>
                       </div>
                     </div>
                   ))}
                   {hiddenCitationCount > 0 ? (
-                    <div className="text-xs text-muted-foreground">
-                      +{hiddenCitationCount} tài liệu khác đã được dùng trong câu trả lời này
-                    </div>
+                    <div className="px-2.5 text-xs text-muted-foreground">+{hiddenCitationCount} nguồn khác</div>
                   ) : null}
                 </div>
               </div>
             ) : null}
 
             {usage && !isStreaming ? (
-              <div className="space-y-3 rounded-2xl border border-border/70 bg-background/95 p-4 shadow-sm">
-                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <Coins className="h-3.5 w-3.5" />
-                  Thống kê lượt trả lời
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                  <div>
-                    <div className="text-muted-foreground">Prompt</div>
-                    <div className="font-medium">{formatNumber(usage.prompt_tokens)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Completion</div>
-                    <div className="font-medium">{formatNumber(usage.completion_tokens)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Tổng token</div>
-                    <div className="font-medium">{formatNumber(usage.total_tokens)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Chi phí</div>
-                    <div className="font-medium">{formatVnd(usage.cost_vnd_rounded)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Model</div>
-                    <div className="font-medium">{usage.model || "chatbot-rag"}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Đơn vị</div>
-                    <div className="font-medium">{usage.currency_code}</div>
-                  </div>
-                  <div className="col-span-2">
-                    <div className="text-muted-foreground">Thông tin thêm</div>
-                    <div className="font-medium">
-                      Prompt {formatNumber(usage.prompt_tokens)} • Completion {formatNumber(usage.completion_tokens)}
-                    </div>
-                  </div>
-                </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                <Badge variant="secondary" className="gap-1 rounded-full px-2.5 py-0.5 font-normal">
+                  <Coins className="h-3 w-3" />
+                  {formatNumber(usage.total_tokens)} token
+                </Badge>
+                <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 font-normal">
+                  {formatVnd(usage.cost_vnd_rounded)}
+                </Badge>
+                <Badge variant="outline" className="rounded-full px-2.5 py-0.5 font-normal text-muted-foreground">
+                  {usage.model || "chatbot-rag"}
+                </Badge>
               </div>
             ) : null}
           </>
@@ -158,7 +131,7 @@ export function ChatMessage({ message, isStreaming = false, isThinking = false, 
       </div>
 
       {isUser ? (
-        <Avatar className="mt-1 h-9 w-9 shrink-0 ring-1 ring-border/60">
+        <Avatar className="mt-0.5 h-8 w-8 shrink-0 ring-1 ring-border/40">
           <AvatarFallback className="bg-muted text-foreground">
             <UserRound className="h-4 w-4" />
           </AvatarFallback>
