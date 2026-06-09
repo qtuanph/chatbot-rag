@@ -1,8 +1,8 @@
 {
   "document": {
     "id": "7_CURRENT_SETTINGS",
-    "version": "2026-06-04",
-    "purpose": "Snapshot cấu hình hiện tại sau refactor multi-tenant + stateless chat."
+    "version": "2026-06-09",
+    "purpose": "Snapshot cấu hình hiện tại sau refactor multi-tenant, stateless chat, feedback, và UI sync."
   },
   "architecture": {
     "mode": "multi-tenant",
@@ -35,7 +35,7 @@
   },
   "ingestion": {
     "worker_mode": "celery background task",
-    "document_progress_storage": "documents.status/status_stage/progress_percent",
+    "document_progress_storage": "documents.status/stage/progress_percent",
     "frontend_progress_mode": "SSE with auto-reconnect",
     "is_true_realtime": true,
     "ingestion_chunk_size": 1200,
@@ -44,12 +44,13 @@
     "pipeline_batch_size": 4,
     "document_progress_stream_interval_seconds": 1.0,
     "qdrant_payload_indexes": ["tenant_id", "document_id", "section_id"],
-    "note": "pipeline batch size đã được nới để cải thiện throughput, nhưng vẫn giữ ở mức an toàn cho local runtime"
+    "note": "Pipeline batch size đã được nới để cải thiện throughput nhưng vẫn giữ ở mức an toàn cho local runtime."
   },
   "chat": {
     "history_persistence": false,
     "client_context_window_messages": 6,
     "retrieval_history_query_count": 0,
+    "retrieval_history_rule": "latest-only by default; history is for LLM context, not default RAG expansion",
     "retrieval_section_hydration_enabled": true,
     "retrieval_section_hydration_top_k": 6,
     "temperature": 0.3,

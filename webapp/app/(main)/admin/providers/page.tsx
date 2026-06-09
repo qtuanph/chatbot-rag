@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Plus, Trash2, Power, TestTube, Key, Globe, Cpu } from "lucide-react";
 import { settingsApi, ApiError } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -243,23 +245,58 @@ export default function ProvidersPage() {
           </div>
           <div className="flex items-center gap-1">
             {!p.is_active && !llmBuiltin && (
-              <Button variant="ghost" size="icon" onClick={() => handleActivate(p)} title="Kích hoạt">
-                <Power className="h-4 w-4 text-green-600" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button variant="ghost" size="icon-sm" onClick={() => handleActivate(p)}>
+                      <Power className="h-4 w-4 text-green-600" />
+                    </Button>
+                  }
+                />
+                <TooltipContent>Kích hoạt</TooltipContent>
+              </Tooltip>
             )}
-            <Button variant="ghost" size="icon" onClick={() => setEditDialog(p)} title="Chỉnh sửa">
-              <Globe className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => handleTest(p)} title="Kiểm tra kết nối">
-              <TestTube className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => openKeys(p)} title="API key">
-              <Key className="h-4 w-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button variant="ghost" size="icon-sm" onClick={() => setEditDialog(p)}>
+                    <Globe className="h-4 w-4" />
+                  </Button>
+                }
+              />
+              <TooltipContent>Chỉnh sửa</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button variant="ghost" size="icon-sm" onClick={() => handleTest(p)}>
+                    <TestTube className="h-4 w-4" />
+                  </Button>
+                }
+              />
+              <TooltipContent>Kiểm tra kết nối</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button variant="ghost" size="icon-sm" onClick={() => openKeys(p)}>
+                    <Key className="h-4 w-4" />
+                  </Button>
+                }
+              />
+              <TooltipContent>API key</TooltipContent>
+            </Tooltip>
             {!p.is_builtin && (
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(p)} title="Xóa">
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button variant="ghost" size="icon-sm" onClick={() => handleDelete(p)}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  }
+                />
+                <TooltipContent>Xóa</TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -268,7 +305,8 @@ export default function ProvidersPage() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <TooltipProvider>
+      <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Kết nối AI</h1>
         {!llmBuiltin && (
@@ -295,7 +333,7 @@ export default function ProvidersPage() {
         </TabsList>
       </Tabs>
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 flex flex-col gap-3">
         <div className="text-sm text-muted-foreground">
           Đang xem: <span className="font-medium text-foreground">{TAB_LABELS[tab]}</span>
         </div>
@@ -320,10 +358,12 @@ export default function ProvidersPage() {
           <DialogHeader>
             <DialogTitle>Thêm provider — {TAB_LABELS[tab]}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleAdd} className="space-y-4">
+          <form onSubmit={handleAdd}>
+            <FieldGroup>
             {useTemplate && tabTemplates.length > 0 && (
-              <div className="space-y-2">
-                <Label>Chọn mẫu</Label>
+              <Field>
+                <FieldContent>
+                  <FieldLabel>Chọn mẫu</FieldLabel>
                 <div className="grid grid-cols-2 gap-2">
                   {tabTemplates.map((t) => (
                     <Button
@@ -338,36 +378,47 @@ export default function ProvidersPage() {
                     </Button>
                   ))}
                 </div>
+                <FieldDescription>Chọn mẫu có sẵn hoặc chuyển sang nhập thủ công.</FieldDescription>
                 <Button type="button" variant="ghost" size="sm" onClick={() => setUseTemplate(false)}>
                   Nhập thủ công
                 </Button>
-              </div>
+                </FieldContent>
+              </Field>
             )}
             {!useTemplate && (
               <Button type="button" variant="ghost" size="sm" onClick={() => setUseTemplate(true)}>
                 Chọn mẫu
               </Button>
             )}
-            <div className="space-y-2">
-              <Label htmlFor="add-name">Tên hiển thị</Label>
-              <Input id="add-name" value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-url">URL</Label>
-              <Input id="add-url" value={formData.url} onChange={(e) => setFormData({ ...formData, url: e.target.value })} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-model">Model</Label>
-              <Input id="add-model" value={formData.model} onChange={(e) => setFormData({ ...formData, model: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-api_key">API Key</Label>
-              <Input id="add-api_key" type="password" value={formData.api_key} onChange={(e) => setFormData({ ...formData, api_key: e.target.value })} />
-            </div>
+            <Field>
+              <FieldContent>
+                <FieldLabel htmlFor="add-name">Tên hiển thị</FieldLabel>
+                <Input id="add-name" value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} required />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldContent>
+                <FieldLabel htmlFor="add-url">URL</FieldLabel>
+                <Input id="add-url" value={formData.url} onChange={(e) => setFormData({ ...formData, url: e.target.value })} required />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldContent>
+                <FieldLabel htmlFor="add-model">Model</FieldLabel>
+                <Input id="add-model" value={formData.model} onChange={(e) => setFormData({ ...formData, model: e.target.value })} />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldContent>
+                <FieldLabel htmlFor="add-api_key">API Key</FieldLabel>
+                <Input id="add-api_key" type="password" value={formData.api_key} onChange={(e) => setFormData({ ...formData, api_key: e.target.value })} />
+              </FieldContent>
+            </Field>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setAddDialog(false)}>Hủy</Button>
               <Button type="submit">Thêm</Button>
             </div>
+            </FieldGroup>
           </form>
         </DialogContent>
       </Dialog>
@@ -378,26 +429,34 @@ export default function ProvidersPage() {
           <DialogHeader>
             <DialogTitle>Sửa — {editDialog?.display_name}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleUpdate} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-url">URL</Label>
-              <Input id="edit-url" name="edit-url" defaultValue={editDialog?.url} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-model">Model</Label>
-              <Input id="edit-model" name="edit-model" defaultValue={editDialog?.model} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-api_key">API key</Label>
-              <Input id="edit-api_key" name="edit-api_key" type="password" defaultValue={editDialog?.api_key} placeholder="Để trống nếu muốn giữ nguyên" />
-              <p className="text-xs text-muted-foreground">
-                Khuyến nghị: quản lý key tại nút <strong>API key</strong>. Để trống ở đây sẽ giữ nguyên key hiện tại.
-              </p>
-            </div>
+          <form onSubmit={handleUpdate}>
+            <FieldGroup>
+            <Field>
+              <FieldContent>
+                <FieldLabel htmlFor="edit-url">URL</FieldLabel>
+                <Input id="edit-url" name="edit-url" defaultValue={editDialog?.url} required />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldContent>
+                <FieldLabel htmlFor="edit-model">Model</FieldLabel>
+                <Input id="edit-model" name="edit-model" defaultValue={editDialog?.model} />
+              </FieldContent>
+            </Field>
+            <Field>
+              <FieldContent>
+                <FieldLabel htmlFor="edit-api_key">API key</FieldLabel>
+                <Input id="edit-api_key" name="edit-api_key" type="password" defaultValue={editDialog?.api_key} placeholder="Để trống nếu muốn giữ nguyên" />
+                <FieldDescription>
+                  Khuyến nghị: quản lý key tại nút <strong>API key</strong>. Để trống ở đây sẽ giữ nguyên key hiện tại.
+                </FieldDescription>
+              </FieldContent>
+            </Field>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setEditDialog(null)}>Hủy</Button>
               <Button type="submit">Lưu</Button>
             </div>
+            </FieldGroup>
           </form>
         </DialogContent>
       </Dialog>
@@ -408,24 +467,31 @@ export default function ProvidersPage() {
           <DialogHeader>
             <DialogTitle>API key — {keyDialog?.display_name}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <Input
-                type="password"
-                placeholder="Nhập API key mới..."
-                value={newKeyValue}
-                onChange={(e) => setNewKeyValue(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKey())}
-              />
-              <Button onClick={addKey} disabled={!newKeyValue.trim()}>Thêm</Button>
-            </div>
+          <div className="flex flex-col gap-3">
+            <FieldGroup>
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldLabel htmlFor="new-provider-key">API key mới</FieldLabel>
+                  <Input
+                    id="new-provider-key"
+                    type="password"
+                    placeholder="Nhập API key mới..."
+                    value={newKeyValue}
+                    onChange={(e) => setNewKeyValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKey())}
+                  />
+                </FieldContent>
+                <Button onClick={addKey} disabled={!newKeyValue.trim()}>Thêm</Button>
+              </Field>
+            </FieldGroup>
             {keys.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
                 <Key className="mx-auto h-6 w-6 mb-1" />
                 Chưa có API key
               </p>
             ) : (
-              <div className="space-y-2 max-h-60 overflow-y-auto">
+              <ScrollArea className="max-h-60 pr-3">
+                <div className="flex flex-col gap-2">
                 {keys.map((k) => (
                   <div key={k.id} className="flex items-center justify-between border rounded p-2 text-sm">
                     <div className="flex items-center gap-2">
@@ -441,12 +507,14 @@ export default function ProvidersPage() {
                     </Button>
                   </div>
                 ))}
-              </div>
+                </div>
+              </ScrollArea>
             )}
           </div>
         </DialogContent>
       </Dialog>
     </div>
+    </TooltipProvider>
   );
 }
 

@@ -4,16 +4,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { authApi, tenantsApi } from "@/lib/api-client";
-import type { CreateUserRequest, RoleItem, TenantItem, UserItem } from "@/types/api";
 import { PageHeader } from "@/components/layout/page-header";
 import { TenantSelect } from "@/components/tenants/tenant-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldContent, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { authApi, tenantsApi } from "@/lib/api-client";
+import type { CreateUserRequest, RoleItem, TenantItem, UserItem } from "@/types/api";
 
 const EMPTY_FORM: CreateUserRequest = {
   username: "",
@@ -33,12 +33,16 @@ export default function AdminUsersPage() {
 
   const load = useCallback(async () => {
     try {
-      const [userRows, roleRows, tenantRows] = await Promise.all([authApi.getUsers(), authApi.getRoles(), tenantsApi.list()]);
+      const [userRows, roleRows, tenantRows] = await Promise.all([
+        authApi.getUsers(),
+        authApi.getRoles(),
+        tenantsApi.list(),
+      ]);
       setUsers(userRows);
       setRoles(roleRows);
       setTenants(tenantRows);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Không thể tải dữ liệu user";
+      const message = error instanceof Error ? error.message : "Không thể tải dữ liệu người dùng";
       toast.error(message);
     }
   }, []);
@@ -62,9 +66,9 @@ export default function AdminUsersPage() {
       const created = await authApi.createUser(payload);
       setUsers((current) => [...current, created]);
       setForm(EMPTY_FORM);
-      toast.success("Đã tạo user");
+      toast.success("Đã tạo người dùng");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Không thể tạo user";
+      const message = error instanceof Error ? error.message : "Không thể tạo người dùng";
       toast.error(message);
     } finally {
       setSaving(false);
@@ -75,83 +79,101 @@ export default function AdminUsersPage() {
     try {
       await authApi.deleteUser(username);
       setUsers((current) => current.filter((user) => user.username !== username));
-      toast.success("Đã xóa user");
+      toast.success("Đã xóa người dùng");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Không thể xóa user";
+      const message = error instanceof Error ? error.message : "Không thể xóa người dùng";
       toast.error(message);
     }
   }, []);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
+    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6">
       <PageHeader title="Quản lý người dùng" description="Tạo platform admin hoặc tenant admin mới theo đúng tenant scope." />
 
       <Card className="rounded-3xl border-border/60 shadow-sm">
         <CardHeader>
-          <CardTitle>Tạo user mới</CardTitle>
+          <CardTitle>Tạo người dùng mới</CardTitle>
           <CardDescription>Tenant admin bắt buộc phải gắn với một tenant cụ thể.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="space-y-2">
-            <Label htmlFor="username">Tên đăng nhập</Label>
-            <Input id="username" value={form.username} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Mật khẩu</Label>
-            <Input
-              id="password"
-              type="password"
-              value={form.password}
-              onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Vai trò</Label>
-            <Select
-              value={form.role}
-              onValueChange={(value) =>
-                setForm((current) => ({
-                  ...current,
-                  role: value || "tenant_admin",
-                  tenant_id: (value || "tenant_admin") === "tenant_admin" ? current.tenant_id : null,
-                }))
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {roles.map((role) => (
-                    <SelectItem key={role.id} value={role.name}>
-                      {role.name}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Tenant</Label>
-            <TenantSelect
-              tenants={tenants}
-              value={form.tenant_id}
-              onValueChange={(tenantId) => setForm((current) => ({ ...current, tenant_id: tenantId }))}
-              disabled={form.role !== "tenant_admin"}
-            />
-          </div>
-          <div className="flex justify-end md:col-span-2 xl:col-span-4">
-            <Button className="rounded-2xl" onClick={handleCreate} disabled={saving}>
-              <Plus className="mr-2 h-4 w-4" />
-              {saving ? "Đang tạo..." : "Tạo user"}
-            </Button>
-          </div>
+        <CardContent>
+          <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Field>
+              <FieldContent>
+                <FieldLabel htmlFor="username">Tên đăng nhập</FieldLabel>
+                <Input
+                  id="username"
+                  value={form.username}
+                  onChange={(event) => setForm((current) => ({ ...current, username: event.target.value }))}
+                />
+              </FieldContent>
+            </Field>
+
+            <Field>
+              <FieldContent>
+                <FieldLabel htmlFor="password">Mật khẩu</FieldLabel>
+                <Input
+                  id="password"
+                  type="password"
+                  value={form.password}
+                  onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                />
+              </FieldContent>
+            </Field>
+
+            <Field>
+              <FieldContent>
+                <FieldLabel>Vai trò</FieldLabel>
+                <Select
+                  value={form.role}
+                  onValueChange={(value) =>
+                    setForm((current) => ({
+                      ...current,
+                      role: value || "tenant_admin",
+                      tenant_id: (value || "tenant_admin") === "tenant_admin" ? current.tenant_id : null,
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {roles.map((role) => (
+                        <SelectItem key={role.id} value={role.name}>
+                          {role.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </FieldContent>
+            </Field>
+
+            <Field>
+              <FieldContent>
+                <FieldLabel>Tenant</FieldLabel>
+                <TenantSelect
+                  tenants={tenants}
+                  value={form.tenant_id}
+                  onValueChange={(tenantId) => setForm((current) => ({ ...current, tenant_id: tenantId }))}
+                  disabled={form.role !== "tenant_admin"}
+                />
+              </FieldContent>
+            </Field>
+
+            <div className="flex justify-end md:col-span-2 xl:col-span-4">
+              <Button className="rounded-2xl" onClick={handleCreate} disabled={saving}>
+                <Plus className="mr-2 h-4 w-4" />
+                {saving ? "Đang tạo..." : "Tạo người dùng"}
+              </Button>
+            </div>
+          </FieldGroup>
         </CardContent>
       </Card>
 
       <Card className="rounded-3xl border-border/60 shadow-sm">
         <CardHeader>
-          <CardTitle>Danh sách user</CardTitle>
+          <CardTitle>Danh sách người dùng</CardTitle>
           <CardDescription>Giữ role rõ ràng để webapp và backend đồng bộ hành vi.</CardDescription>
         </CardHeader>
         <CardContent>
