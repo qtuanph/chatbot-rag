@@ -1,6 +1,6 @@
 #!/bin/bash
 # Entrypoint for API service (FastAPI + uvicorn)
-# Model download handled exclusively by TEI containers (ai-embedding, ai-reranker) into shared hf-cache volume.
+# Model runtime is handled by Docker Model Runner / external providers; this container should not assume TEI sidecars.
 
 set -e
 

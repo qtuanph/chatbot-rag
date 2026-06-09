@@ -155,7 +155,7 @@ def _sync_builtin_defaults(db: sqlite3.Connection) -> None:
         """
         UPDATE ai_providers
         SET provider_name = ?, display_name = ?, url = ?, model = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE service_type = 'reranker' AND is_builtin = 1 AND provider_name = 'tei'
+        WHERE service_type = 'reranker' AND is_builtin = 1
         """,
         ("dmr", "Docker Model Runner (Fallback)", "http://model-runner.docker.internal:12434", "ai/qwen3-reranker:0.6B"),
     )

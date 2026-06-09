@@ -31,6 +31,12 @@ class AnalyticsService:
         recent_requests = await self.repo.get_recent_requests(
             is_platform_admin=is_platform_admin, user_id=user_id, tenant_id=tenant_id, limit=20
         )
+        feedback_rows = await self.repo.get_feedback_rows(
+            is_platform_admin=is_platform_admin,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            days=days,
+        )
 
         total_tokens_in = totals["tokens_in"]
         total_tokens_out = totals["tokens_out"]
@@ -63,6 +69,7 @@ class AnalyticsService:
             "by_model_type": model_type_stats,
             "daily_by_model_type": daily_by_type,
             "recent_requests": recent_requests,
+            "feedback_summary": self._build_feedback_summary(feedback_rows),
             "pricing": {
                 "currency_code": settings.billing_currency_code,
                 "input_price_vnd_per_1m": settings.ai_input_price_vnd_per_1m,
@@ -111,9 +118,16 @@ class AnalyticsService:
 
     async def get_tenant_usage_summary(self, *, days: int = 30) -> dict:
         items = await self.repo.get_tenant_usage_summary(days=days)
+        feedback_by_tenant = await self.repo.get_tenant_feedback_summary(days=days)
         normalized = []
         for item in items:
             enriched = dict(item)
+            feedback_stats = feedback_by_tenant.get(item["tenant_id"], {"like_count": 0, "dislike_count": 0})
+            total_feedback = int(feedback_stats["like_count"]) + int(feedback_stats["dislike_count"])
+            enriched.update(feedback_stats)
+            enriched["dislike_rate"] = (
+                round(int(feedback_stats["dislike_count"]) / total_feedback, 4) if total_feedback > 0 else 0.0
+            )
             enriched.update(build_money_payload(item["cost_micros_vnd"]))
             normalized.append(enriched)
         return {
@@ -129,3 +143,49 @@ class AnalyticsService:
     @staticmethod
     def _compute_cost_micros(tokens_in: int, tokens_out: int) -> int:
         return compute_cost_micros_vnd(tokens_in, tokens_out)
+
+    @staticmethod
+    def _build_feedback_summary(rows: list[dict]) -> dict:
+        like_count = sum(1 for row in rows if row["feedback_type"] == "like")
+        dislike_count = sum(1 for row in rows if row["feedback_type"] == "dislike")
+        total = like_count + dislike_count
+        top_documents: dict[str, dict] = {}
+        top_sections: dict[str, dict] = {}
+
+        for row in rows:
+            if row["feedback_type"] != "dislike":
+                continue
+            for citation in row.get("citations", []):
+                document_id = str(citation.get("document_id") or "").strip()
+                if document_id:
+                    bucket = top_documents.setdefault(
+                        document_id,
+                        {
+                            "document_id": document_id,
+                            "title": citation.get("title") or citation.get("file_name") or document_id,
+                            "count": 0,
+                        },
+                    )
+                    bucket["count"] += 1
+                section_id = str(citation.get("section_id") or "").strip()
+                if section_id:
+                    section_key = f"{document_id}:{section_id}"
+                    bucket = top_sections.setdefault(
+                        section_key,
+                        {
+                            "document_id": document_id,
+                            "section_id": section_id,
+                            "heading": citation.get("heading") or section_id,
+                            "count": 0,
+                        },
+                    )
+                    bucket["count"] += 1
+
+        return {
+            "total": total,
+            "like_count": like_count,
+            "dislike_count": dislike_count,
+            "dislike_rate": round(dislike_count / total, 4) if total > 0 else 0.0,
+            "top_disliked_documents": sorted(top_documents.values(), key=lambda item: item["count"], reverse=True)[:5],
+            "top_disliked_sections": sorted(top_sections.values(), key=lambda item: item["count"], reverse=True)[:5],
+        }

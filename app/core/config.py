@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     retrieval_hybrid_enabled: bool = True
     retrieval_context_max_chars: int = 30000
     retrieval_long_context_reorder_enabled: bool = True
+    retrieval_history_query_count: int = 0
+    retrieval_section_hydration_enabled: bool = True
+    retrieval_section_hydration_top_k: int = 6
+    qdrant_search_indexed_only: bool = False
 
     database_url: str = "replace-me"
     redis_password: str = ""
@@ -149,10 +153,6 @@ class Settings(BaseSettings):
     qdrant_api_key: str | None = None
     qdrant_collection: str = "documents_vectors"
     qdrant_timeout: int = 30
-
-    chat_session_ttl_days: int = 30
-    chat_history_redis_ttl: int = 86400
-    chat_history_limit: int = 40
 
     ai_temperature: float = 0.3
     ai_max_output_tokens: int = 8192
@@ -229,6 +229,10 @@ class Settings(BaseSettings):
         self.qdrant_url = str(self.qdrant_url).strip() or "http://qdrant:6333"
         if self.qdrant_timeout < 1:
             raise ValueError("QDRANT_TIMEOUT must be >= 1")
+        if self.retrieval_history_query_count < 0 or self.retrieval_history_query_count > 5:
+            raise ValueError("RETRIEVAL_HISTORY_QUERY_COUNT must be between 0 and 5")
+        if self.retrieval_section_hydration_top_k < 1:
+            raise ValueError("RETRIEVAL_SECTION_HYDRATION_TOP_K must be >= 1")
         if self.max_upload_size_mb < 1 or self.max_upload_size_mb > 4096:
             raise ValueError("MAX_UPLOAD_SIZE_MB must be between 1 and 4096")
         if self.max_filename_length < 20 or self.max_filename_length > 512:

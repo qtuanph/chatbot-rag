@@ -1,4 +1,4 @@
-"""LlamaIndex-based retrieval pipeline — hybrid search + reranker (TEI or NVIDIA NIM)."""
+"""LlamaIndex-based retrieval pipeline — hybrid search + reranker."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.models.rag import RagContext, RagNode
 
 logger = logging.getLogger(__name__)
+_payload_indexes_ready = False
 
 
 def _estimate_tokens_from_chars(text: str) -> int:
@@ -92,6 +93,7 @@ async def _hybrid_retrieve_via_qdrant(
     user_id: str | None = None,
 ) -> list[NodeWithScore]:
     """Run hybrid retrieval directly via qdrant-client (dense + sparse fusion)."""
+    global _payload_indexes_ready
     vector_store = get_vector_store()
     aclient = getattr(vector_store, "_aclient", None) or getattr(vector_store, "aclient", None)
     if aclient is None:
@@ -103,6 +105,21 @@ async def _hybrid_retrieve_via_qdrant(
         raise RuntimeError(
             f"Qdrant collection '{collection_name}' does not exist. Please run the ingestion pipeline to build it."
         )
+
+    if not _payload_indexes_ready:
+        for field_name in ("tenant_id", "document_id", "section_id"):
+            try:
+                await aclient.create_payload_index(
+                    collection_name=collection_name,
+                    field_name=field_name,
+                    field_schema=rest.PayloadSchemaType.KEYWORD,
+                    wait=True,
+                )
+            except Exception as exc:
+                message = str(exc).lower()
+                if "already exists" not in message and "duplicate" not in message:
+                    logger.debug("Payload index ensure for %s skipped: %s", field_name, exc)
+        _payload_indexes_ready = True
 
     t0_embed = time.perf_counter()
     dense_vector = await Settings.embed_model.aget_query_embedding(query)
@@ -141,6 +158,8 @@ async def _hybrid_retrieve_via_qdrant(
             ]
         )
 
+    search_params = rest.SearchParams(indexed_only=settings.qdrant_search_indexed_only)
+
     response = await aclient.query_points(
         collection_name=collection_name,
         prefetch=[
@@ -148,15 +167,18 @@ async def _hybrid_retrieve_via_qdrant(
                 query=dense_vector,
                 using=vector_store.dense_vector_name,
                 limit=settings.retrieval_hybrid_top_k,
+                params=search_params,
             ),
             rest.Prefetch(
                 query=sparse_vector,
                 using=vector_store.sparse_vector_name,
                 limit=settings.retrieval_hybrid_top_k,
+                params=search_params,
             ),
         ],
         query=rest.FusionQuery(fusion=rest.Fusion.RRF),
         query_filter=query_filter,
+        search_params=search_params,
         with_payload=True,
         with_vectors=False,
         limit=limit,
@@ -181,7 +203,7 @@ async def retrieve_context(
     tenant_id: str | None = None,
     user_id: str | None = None,
 ) -> RagContext:
-    """Retrieve context using LlamaIndex hybrid (dense + native BM25 RRF) + TEI reranker.
+    """Retrieve context using LlamaIndex hybrid (dense + native BM25 RRF) + reranker.
 
     Args:
         queries: List of query strings (expanded).

@@ -2,18 +2,18 @@
 
 import logging
 
-from app.adapters.reranker.tei_postprocessor import TEIRerankerPostprocessor
+from app.adapters.reranker.local_postprocessor import LocalRerankerPostprocessor
 from app.adapters.reranker.nvidia_postprocessor import NvidiaRerankerPostprocessor
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-def build_reranker() -> TEIRerankerPostprocessor | NvidiaRerankerPostprocessor:
+def build_reranker() -> LocalRerankerPostprocessor | NvidiaRerankerPostprocessor:
     return get_reranker()
 
 
-def get_reranker(top_k: int | None = None) -> TEIRerankerPostprocessor | NvidiaRerankerPostprocessor:
+def get_reranker(top_k: int | None = None) -> LocalRerankerPostprocessor | NvidiaRerankerPostprocessor:
     """Read the active reranker provider from RuntimeProviderManager and instantiate."""
     from app.modules.settings.runtime_manager import RuntimeProviderManager
 
@@ -33,7 +33,8 @@ def get_reranker(top_k: int | None = None) -> TEIRerankerPostprocessor | NvidiaR
             if effective_key == "no-key":
                 logger.warning("Active reranker is NVIDIA but API key is missing. Falling back to local Docker reranker.")
                 kwargs["base_url"] = settings.ai_reranker_url
-                return TEIRerankerPostprocessor(**kwargs)
+                kwargs["model_name"] = settings.dmr_reranker_model
+                return LocalRerankerPostprocessor(**kwargs)
             kwargs["base_url"] = cfg.get("url", settings.nvidia_reranker_url)
             kwargs["model_name"] = cfg.get("model", settings.nvidia_reranker_model)
             kwargs["api_key"] = effective_key
@@ -50,15 +51,17 @@ def get_reranker(top_k: int | None = None) -> TEIRerankerPostprocessor | NvidiaR
             return CohereRerankerPostprocessor(**kwargs)
         else:
             kwargs["base_url"] = cfg.get("url", settings.ai_reranker_url)
-            return TEIRerankerPostprocessor(**kwargs)
+            kwargs["model_name"] = cfg.get("model", settings.dmr_reranker_model)
+            return LocalRerankerPostprocessor(**kwargs)
 
     # Fallback: local Docker-compatible reranker endpoint
     kwargs["base_url"] = settings.ai_reranker_url
-    return TEIRerankerPostprocessor(**kwargs)
+    kwargs["model_name"] = settings.dmr_reranker_model
+    return LocalRerankerPostprocessor(**kwargs)
 
 
 __all__ = [
-    "TEIRerankerPostprocessor",
+    "LocalRerankerPostprocessor",
     "NvidiaRerankerPostprocessor",
     "CohereRerankerPostprocessor",
     "build_reranker",

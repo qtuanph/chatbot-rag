@@ -17,13 +17,13 @@ from app.modules.auth.utils.token_blacklist import TokenBlacklist
 from app.utils.datetime_utils import utc_now
 if TYPE_CHECKING:
     from app.modules.auth.repository import AuthRepository
-    from app.modules.chat.repositories.memory_repository import MemoryRepository
+    from app.modules.chat.repositories.feedback_repository import FeedbackRepository
     from app.modules.analytics.repository import AnalyticsRepository
     from app.modules.documents.repositories import DocumentRepository, SectionRepository
     from app.utils.rate_limiter import RateLimiter
     from app.utils.cache import SemanticCache, QueryEmbeddingCache
     from app.modules.auth.service import AuthService
-    from app.modules.chat.services import MemoryService
+    from app.modules.chat.services import FeedbackService
     from app.modules.analytics.service import AnalyticsService
     from app.modules.documents.services import TreeService, TaskService, CleanupService, DocumentService
     from app.modules.system.service import HealthService
@@ -168,10 +168,10 @@ async def get_analytics_repo(session: AsyncSession = Depends(get_async_session))
     return AnalyticsRepository(session)
 
 
-async def get_memory_repo(session: AsyncSession = Depends(get_async_session)):
-    from app.modules.chat.repositories.memory_repository import MemoryRepository
+async def get_feedback_repo(session: AsyncSession = Depends(get_async_session)):
+    from app.modules.chat.repositories.feedback_repository import FeedbackRepository
 
-    return MemoryRepository(session)
+    return FeedbackRepository(session)
 
 
 async def get_doc_repo(session: AsyncSession = Depends(get_async_session)):
@@ -210,14 +210,10 @@ async def get_analytics_service(repo: AnalyticsRepository = Depends(get_analytic
     return AnalyticsService(repo=repo)
 
 
-async def get_memory_service(
-    memory_repo: MemoryRepository = Depends(get_memory_repo),
-    r_client: Any = Depends(get_redis_client),
-) -> MemoryService:
-    from app.modules.chat.services import MemoryService, UserMemoryService
+async def get_feedback_service(repo: FeedbackRepository = Depends(get_feedback_repo)) -> FeedbackService:
+    from app.modules.chat.services import FeedbackService
 
-    user_memory_service = UserMemoryService(redis_client=r_client, memory_repo=memory_repo)
-    return MemoryService(repo=memory_repo, user_memory_service=user_memory_service)
+    return FeedbackService(repo=repo)
 
 
 async def get_task_service(

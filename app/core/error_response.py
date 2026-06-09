@@ -45,7 +45,7 @@ def build_error_response(
     code: str | None = None,
     details: Any | None = None,
 ) -> dict[str, Any]:
-    """Return a consistent error payload while preserving legacy detail field."""
+    """Return a consistent API error payload."""
     if not message or not message.strip():
         message = f"HTTP {status_code}"
 

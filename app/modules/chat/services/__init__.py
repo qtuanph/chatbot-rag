@@ -1,4 +1,3 @@
-from app.modules.chat.services.memory_service import MemoryService
-from app.modules.chat.services.user_memory_service import UserMemoryService
+from app.modules.chat.services.feedback_service import FeedbackService
 
-__all__ = ["MemoryService", "UserMemoryService"]
+__all__ = ["FeedbackService"]

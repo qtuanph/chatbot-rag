@@ -1,3 +1,3 @@
-from app.modules.chat.repositories.memory_repository import MemoryRepository
+from app.modules.chat.repositories.feedback_repository import FeedbackRepository
 
-__all__ = ["MemoryRepository"]
+__all__ = ["FeedbackRepository"]

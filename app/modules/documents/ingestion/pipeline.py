@@ -138,6 +138,7 @@ async def run_ingestion_pipeline(
             return
         exists = await aclient.collection_exists(collection_name=vector_store.collection_name)
         if exists:
+            await _ensure_payload_indexes()
             return
         await aclient.create_collection(
             collection_name=vector_store.collection_name,
@@ -156,6 +157,29 @@ async def run_ingestion_pipeline(
             document_id,
             vector_store.collection_name,
         )
+        await _ensure_payload_indexes()
+
+    async def _ensure_payload_indexes() -> None:
+        if aclient is None:
+            return
+        indexed_fields = (
+            ("tenant_id", rest.PayloadSchemaType.KEYWORD),
+            ("document_id", rest.PayloadSchemaType.KEYWORD),
+            ("section_id", rest.PayloadSchemaType.KEYWORD),
+        )
+        for field_name, schema in indexed_fields:
+            try:
+                await aclient.create_payload_index(
+                    collection_name=vector_store.collection_name,
+                    field_name=field_name,
+                    field_schema=schema,
+                    wait=True,
+                )
+            except UnexpectedResponse as exc:
+                message = str(exc).lower()
+                if "already exists" in message or "duplicate" in message:
+                    continue
+                raise
 
     async def _count_points() -> int:
         if aclient is None:
