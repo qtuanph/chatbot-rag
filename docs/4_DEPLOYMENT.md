@@ -69,6 +69,7 @@ Không nhầm với dữ liệu riêng của 9Router.
 - `AI_PROXY_DEFAULT_MODEL`
 - `AI_EMBEDDING_URL=http://model-runner.docker.internal:12434/engines/v1`
 - `AI_RERANKER_URL=http://model-runner.docker.internal:12434`
+- `RERANKER_BACKEND=nvidia`
 
 ### Embedding defaults
 
@@ -78,7 +79,7 @@ Không nhầm với dữ liệu riêng của 9Router.
 
 ### Retrieval / ingestion
 
-- `RETRIEVAL_HISTORY_QUERY_COUNT`
+- `RETRIEVAL_HISTORY_QUERY_COUNT` (`0` mặc định = chỉ retrieve theo câu hỏi hiện tại)
 - `RETRIEVAL_SECTION_HYDRATION_ENABLED`
 - `RETRIEVAL_SECTION_HYDRATION_TOP_K`
 - `QDRANT_SEARCH_INDEXED_ONLY`

@@ -5,13 +5,15 @@ import { useSession } from "next-auth/react";
 import { Building2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-import { chatApi, tenantsApi } from "@/lib/api-client";
-import type { ChatStreamEvent, ChatUsage, TenantItem, TenantSetting } from "@/types/api";
-import type { ChatMessage } from "@/types/chat";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessage as ChatBubble } from "@/components/chat/chat-message";
 import { TenantSelect } from "@/components/tenants/tenant-select";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { chatApi, tenantsApi } from "@/lib/api-client";
+import type { ChatStreamEvent, ChatUsage, TenantItem, TenantSetting } from "@/types/api";
+import type { ChatMessage } from "@/types/chat";
 
 const MAX_CONTEXT_MESSAGES = 8;
 
@@ -142,9 +144,10 @@ export function ChatView() {
       setUsage(null);
       setStreaming(true);
 
-      const contextMessages = nextMessages
-        .slice(-MAX_CONTEXT_MESSAGES)
-        .map((message) => ({ role: message.role, content: message.content }));
+      const contextMessages = nextMessages.slice(-MAX_CONTEXT_MESSAGES).map((message) => ({
+        role: message.role,
+        content: message.content,
+      }));
 
       const { controller, fetchStream } = chatApi.chatStream(content, contextMessages, {
         tenantId: effectiveTenantId,
@@ -274,9 +277,7 @@ export function ChatView() {
               <span className="text-xs font-bold tracking-tight">SSE</span>
             </div>
             <div className="min-w-0">
-              <h2 className="truncate text-sm font-semibold tracking-tight">
-                {tenantSetting?.chatbot_display_name || "Chat thử"}
-              </h2>
+              <h2 className="truncate text-sm font-semibold tracking-tight">{tenantSetting?.chatbot_display_name || "Chat thử"}</h2>
               <p className="truncate text-xs text-muted-foreground">
                 {tenantSetting?.welcome_message || "Hỏi nhanh theo tài liệu của tenant hiện tại."}
               </p>
@@ -286,7 +287,7 @@ export function ChatView() {
           <div className="flex shrink-0 items-center gap-2">
             {isPlatformAdmin ? (
               <div className="flex h-9 items-center gap-1.5 rounded-full border border-border/60 bg-background/80 px-2.5 text-sm transition-colors hover:border-border">
-                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                <Building2 className="size-3.5 text-muted-foreground" />
                 <TenantSelect
                   tenants={tenantOptions}
                   value={selectedTenantId}
@@ -297,14 +298,14 @@ export function ChatView() {
               </div>
             ) : null}
             <Button variant="outline" size="sm" onClick={resetConversation} className="h-9 rounded-full" title="Tạo chat mới">
-              <RefreshCw className="h-4 w-4" data-icon="inline-start" />
+              <RefreshCw data-icon="inline-start" />
               Chat mới
             </Button>
           </div>
         </div>
       </div>
 
-      <div className="min-h-0 overflow-y-auto">
+      <ScrollArea className="min-h-0">
         <div className="mx-auto flex w-full max-w-3xl flex-col py-6">
           {messages.length === 0 ? (
             <div className="mx-4 mt-12 flex flex-col items-center gap-3 px-6 text-center">
@@ -346,9 +347,10 @@ export function ChatView() {
           )}
           <div ref={messagesEndRef} />
         </div>
-      </div>
+      </ScrollArea>
 
       <div className="sticky bottom-0 z-10">
+        <Separator />
         <ChatInput
           onSend={sendMessage}
           onStop={() => controllerRef.current?.abort()}

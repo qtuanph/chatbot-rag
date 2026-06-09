@@ -4,6 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Copy, KeyRound, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { PageHeader } from "@/components/layout/page-header";
+import { TenantSettingsForm } from "@/components/tenants/tenant-settings-form";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { authApi, tenantsApi } from "@/lib/api-client";
 import { formatDateTimeVN } from "@/lib/format";
 import type {
@@ -15,14 +24,6 @@ import type {
   TenantUpdateRequest,
   UserItem,
 } from "@/types/api";
-import { PageHeader } from "@/components/layout/page-header";
-import { TenantSettingsForm } from "@/components/tenants/tenant-settings-form";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 
 const EMPTY_FORM: TenantCreateRequest = {
   name: "",
@@ -103,6 +104,7 @@ export default function AdminTenantsPage() {
         tenantsApi.listApiKeys(selectedTenantId),
         authApi.getUsers(),
       ]);
+
       setTenantForm({
         name: tenant.name,
         slug: tenant.slug,
@@ -299,14 +301,14 @@ export default function AdminTenantsPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
+    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6">
       <PageHeader
         title="Quản lý tenant"
         description="Chọn tenant để quản lý cấu hình, instruction, API key và tài khoản tenant admin."
         actions={
           <Button variant="outline" className="rounded-2xl" onClick={handleStartCreate}>
             <Plus className="mr-2 h-4 w-4" />
-            Tạo mới tenant
+            Tạo tenant mới
           </Button>
         }
       />
@@ -317,163 +319,194 @@ export default function AdminTenantsPage() {
             <CardTitle>Danh sách tenant</CardTitle>
             <CardDescription>Chọn tenant để xem chi tiết hoặc chuyển sang chế độ tạo mới.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {loading ? (
-              <div className="text-sm text-muted-foreground">Đang tải tenant...</div>
-            ) : tenants.length === 0 ? (
-              <div className="text-sm text-muted-foreground">Chưa có tenant nào.</div>
-            ) : (
-              tenants.map((tenant) => (
-                <Button
-                  key={tenant.id}
-                  type="button"
-                  variant="ghost"
-                  onClick={() => handleSelectTenant(tenant.id)}
-                  className={`h-auto w-full justify-start rounded-2xl border px-4 py-3 text-left ${
-                    !isCreatingTenant && tenant.id === selectedTenantId
-                      ? "border-primary/60 bg-primary/5 shadow-sm hover:bg-primary/5"
-                      : "hover:bg-muted/70"
-                  }`}
-                >
-                  <div>
-                  <div className="font-medium">{tenant.name}</div>
-                  <div className="text-xs text-muted-foreground">{tenant.slug}</div>
-                  </div>
-                </Button>
-              ))
-            )}
+          <CardContent>
+            <ScrollArea className="max-h-[70vh] pr-3">
+              <div className="flex flex-col gap-2">
+                {loading ? (
+                  <div className="text-sm text-muted-foreground">Đang tải tenant...</div>
+                ) : tenants.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">Chưa có tenant nào.</div>
+                ) : (
+                  tenants.map((tenant) => (
+                    <Button
+                      key={tenant.id}
+                      type="button"
+                      variant="ghost"
+                      onClick={() => handleSelectTenant(tenant.id)}
+                      className={`h-auto w-full justify-start rounded-2xl border px-4 py-3 text-left ${
+                        !isCreatingTenant && tenant.id === selectedTenantId
+                          ? "border-primary/60 bg-primary/5 shadow-sm hover:bg-primary/5"
+                          : "hover:bg-muted/70"
+                      }`}
+                    >
+                      <div>
+                        <div className="font-medium">{tenant.name}</div>
+                        <div className="text-xs text-muted-foreground">{tenant.slug}</div>
+                      </div>
+                    </Button>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
+        <div className="flex flex-col gap-6">
           <Card className="rounded-3xl border-border/60 shadow-sm">
             <CardHeader>
               <CardTitle>{!isCreatingTenant && selectedTenant ? `Tenant: ${selectedTenant.name}` : "Tạo tenant mới"}</CardTitle>
               <CardDescription>Khối cấu hình lõi cho quota, rate limit và thông tin tenant.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="tenant_name">Tên tenant</Label>
-                <Input
-                  id="tenant_name"
-                  value={tenantForm.name || ""}
-                  onChange={(event) => setTenantForm((current) => ({ ...current, name: event.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="tenant_slug">Slug</Label>
-                <Input
-                  id="tenant_slug"
-                  value={tenantForm.slug || ""}
-                  onChange={(event) => setTenantForm((current) => ({ ...current, slug: event.target.value }))}
-                  placeholder="Ví dụ: acme-corp"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Slug là mã định danh ổn định của tenant, gần giống username/public alias của công ty.
-                </p>
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="tenant_description">Mô tả</Label>
-                <Textarea
-                  id="tenant_description"
-                  rows={3}
-                  value={tenantForm.description || ""}
-                  onChange={(event) => setTenantForm((current) => ({ ...current, description: event.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="monthly_request_quota">Quota request / tháng</Label>
-                <Input
-                  id="monthly_request_quota"
-                  type="number"
-                  value={tenantForm.monthly_request_quota ?? 0}
-                  onChange={(event) =>
-                    setTenantForm((current) => ({
-                      ...current,
-                      monthly_request_quota: Number(event.target.value || 0),
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="monthly_token_quota">Quota token / tháng</Label>
-                <Input
-                  id="monthly_token_quota"
-                  type="number"
-                  value={tenantForm.monthly_token_quota ?? 0}
-                  onChange={(event) =>
-                    setTenantForm((current) => ({
-                      ...current,
-                      monthly_token_quota: Number(event.target.value || 0),
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="rate_limit_rpm">Rate limit RPM</Label>
-                <Input
-                  id="rate_limit_rpm"
-                  type="number"
-                  value={tenantForm.rate_limit_rpm ?? 60}
-                  onChange={(event) =>
-                    setTenantForm((current) => ({
-                      ...current,
-                      rate_limit_rpm: Number(event.target.value || 60),
-                    }))
-                  }
-                />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="allowed_origins">Allowed origins</Label>
-                <Textarea
-                  id="allowed_origins"
-                  rows={4}
-                  value={allowedOriginsDraft}
-                  onChange={(event) => setAllowedOriginsDraft(event.target.value)}
-                  placeholder={"https://erp.company-a.vn\nhttps://portal.company-a.vn"}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Đây là danh sách domain được phép gọi widget/API của tenant này. Mỗi dòng một origin.
-                </p>
-              </div>
-
-              {isCreatingTenant ? (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="tenant_admin_username">Tenant admin username</Label>
+            <CardContent>
+              <FieldGroup className="grid gap-4 md:grid-cols-2">
+                <Field>
+                  <FieldContent>
+                    <FieldLabel htmlFor="tenant_name">Tên tenant</FieldLabel>
                     <Input
-                      id="tenant_admin_username"
-                      value={tenantAdminUsername}
-                      onChange={(event) => setTenantAdminUsername(event.target.value)}
-                      placeholder="Ví dụ: acme.admin"
+                      id="tenant_name"
+                      value={tenantForm.name || ""}
+                      onChange={(event) => setTenantForm((current) => ({ ...current, name: event.target.value }))}
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="tenant_admin_password">Tenant admin password</Label>
-                    <Input
-                      id="tenant_admin_password"
-                      type="password"
-                      value={tenantAdminPassword}
-                      onChange={(event) => setTenantAdminPassword(event.target.value)}
-                      placeholder="Ít nhất 6 ký tự"
-                    />
-                  </div>
-                </>
-              ) : null}
+                  </FieldContent>
+                </Field>
 
-              <div className="flex justify-end md:col-span-2">
+                <Field>
+                  <FieldContent>
+                    <FieldLabel htmlFor="tenant_slug">Slug</FieldLabel>
+                    <Input
+                      id="tenant_slug"
+                      value={tenantForm.slug || ""}
+                      onChange={(event) => setTenantForm((current) => ({ ...current, slug: event.target.value }))}
+                      placeholder="Ví dụ: acme-corp"
+                    />
+                    <FieldDescription>
+                      Slug là mã định danh ổn định của tenant, gần giống username hoặc public alias của công ty.
+                    </FieldDescription>
+                  </FieldContent>
+                </Field>
+
+                <Field className="md:col-span-2">
+                  <FieldContent>
+                    <FieldLabel htmlFor="tenant_description">Mô tả</FieldLabel>
+                    <Textarea
+                      id="tenant_description"
+                      rows={3}
+                      value={tenantForm.description || ""}
+                      onChange={(event) => setTenantForm((current) => ({ ...current, description: event.target.value }))}
+                    />
+                  </FieldContent>
+                </Field>
+
+                <Field>
+                  <FieldContent>
+                    <FieldLabel htmlFor="monthly_request_quota">Quota request / tháng</FieldLabel>
+                    <Input
+                      id="monthly_request_quota"
+                      type="number"
+                      value={tenantForm.monthly_request_quota ?? 0}
+                      onChange={(event) =>
+                        setTenantForm((current) => ({
+                          ...current,
+                          monthly_request_quota: Number(event.target.value || 0),
+                        }))
+                      }
+                    />
+                  </FieldContent>
+                </Field>
+
+                <Field>
+                  <FieldContent>
+                    <FieldLabel htmlFor="monthly_token_quota">Quota token / tháng</FieldLabel>
+                    <Input
+                      id="monthly_token_quota"
+                      type="number"
+                      value={tenantForm.monthly_token_quota ?? 0}
+                      onChange={(event) =>
+                        setTenantForm((current) => ({
+                          ...current,
+                          monthly_token_quota: Number(event.target.value || 0),
+                        }))
+                      }
+                    />
+                  </FieldContent>
+                </Field>
+
+                <Field>
+                  <FieldContent>
+                    <FieldLabel htmlFor="rate_limit_rpm">Rate limit RPM</FieldLabel>
+                    <Input
+                      id="rate_limit_rpm"
+                      type="number"
+                      value={tenantForm.rate_limit_rpm ?? 60}
+                      onChange={(event) =>
+                        setTenantForm((current) => ({
+                          ...current,
+                          rate_limit_rpm: Number(event.target.value || 60),
+                        }))
+                      }
+                    />
+                  </FieldContent>
+                </Field>
+
+                <Field className="md:col-span-2">
+                  <FieldContent>
+                    <FieldLabel htmlFor="allowed_origins">Allowed origins</FieldLabel>
+                    <Textarea
+                      id="allowed_origins"
+                      rows={4}
+                      value={allowedOriginsDraft}
+                      onChange={(event) => setAllowedOriginsDraft(event.target.value)}
+                      placeholder={"https://erp.company-a.vn\nhttps://portal.company-a.vn"}
+                    />
+                    <FieldDescription>
+                      Đây là danh sách domain được phép gọi widget hoặc API của tenant này. Mỗi dòng một origin.
+                    </FieldDescription>
+                  </FieldContent>
+                </Field>
+
                 {isCreatingTenant ? (
-                  <Button className="rounded-2xl" onClick={handleCreateTenant} disabled={savingTenant}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    {savingTenant ? "Đang tạo..." : "Tạo tenant"}
-                  </Button>
-                ) : (
-                  <Button className="rounded-2xl" onClick={handleUpdateTenant} disabled={savingTenant || !selectedTenantId}>
-                    <Save className="mr-2 h-4 w-4" />
-                    {savingTenant ? "Đang lưu..." : "Lưu tenant"}
-                  </Button>
-                )}
-              </div>
+                  <>
+                    <Field>
+                      <FieldContent>
+                        <FieldLabel htmlFor="tenant_admin_username">Tenant admin username</FieldLabel>
+                        <Input
+                          id="tenant_admin_username"
+                          value={tenantAdminUsername}
+                          onChange={(event) => setTenantAdminUsername(event.target.value)}
+                          placeholder="Ví dụ: acme.admin"
+                        />
+                      </FieldContent>
+                    </Field>
+
+                    <Field>
+                      <FieldContent>
+                        <FieldLabel htmlFor="tenant_admin_password">Tenant admin password</FieldLabel>
+                        <Input
+                          id="tenant_admin_password"
+                          type="password"
+                          value={tenantAdminPassword}
+                          onChange={(event) => setTenantAdminPassword(event.target.value)}
+                          placeholder="Ít nhất 6 ký tự"
+                        />
+                      </FieldContent>
+                    </Field>
+                  </>
+                ) : null}
+
+                <div className="flex justify-end md:col-span-2">
+                  {isCreatingTenant ? (
+                    <Button className="rounded-2xl" onClick={handleCreateTenant} disabled={savingTenant}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      {savingTenant ? "Đang tạo..." : "Tạo tenant"}
+                    </Button>
+                  ) : (
+                    <Button className="rounded-2xl" onClick={handleUpdateTenant} disabled={savingTenant || !selectedTenantId}>
+                      <Save className="mr-2 h-4 w-4" />
+                      {savingTenant ? "Đang lưu..." : "Lưu tenant"}
+                    </Button>
+                  )}
+                </div>
+              </FieldGroup>
             </CardContent>
           </Card>
 
@@ -511,7 +544,7 @@ export default function AdminTenantsPage() {
                   <CardTitle>API key của tenant</CardTitle>
                   <CardDescription>Raw API key chỉ hiển thị đúng một lần sau khi tạo. Hãy copy và lưu an toàn.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="flex flex-col gap-4">
                   <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_auto]">
                     <Input
                       value={newApiKey.name || ""}
@@ -593,27 +626,44 @@ export default function AdminTenantsPage() {
                   <CardTitle>Tài khoản trong tenant</CardTitle>
                   <CardDescription>Platform admin có thể xem và quản lý ngay các tenant admin thuộc tenant đang chọn.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="flex flex-col gap-4">
                   <p className="text-xs text-muted-foreground">
                     Mật khẩu không có nút “xem lại” vì backend chỉ lưu hash. Nếu cần, hãy tạo user mới với mật khẩu biết trước.
                   </p>
-                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                    <Input
-                      value={tenantAdminUsername}
-                      onChange={(event) => setTenantAdminUsername(event.target.value)}
-                      placeholder="Username tenant admin"
-                    />
-                    <Input
-                      type="password"
-                      value={tenantAdminPassword}
-                      onChange={(event) => setTenantAdminPassword(event.target.value)}
-                      placeholder="Mật khẩu tenant admin"
-                    />
-                    <Button className="rounded-2xl" onClick={handleCreateTenantUser} disabled={savingTenantUser}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      {savingTenantUser ? "Đang tạo..." : "Tạo tenant admin"}
-                    </Button>
-                  </div>
+
+                  <FieldGroup className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                    <Field>
+                      <FieldContent>
+                        <FieldLabel htmlFor="tenant_admin_username_inline">Username tenant admin</FieldLabel>
+                        <Input
+                          id="tenant_admin_username_inline"
+                          value={tenantAdminUsername}
+                          onChange={(event) => setTenantAdminUsername(event.target.value)}
+                          placeholder="Username tenant admin"
+                        />
+                      </FieldContent>
+                    </Field>
+
+                    <Field>
+                      <FieldContent>
+                        <FieldLabel htmlFor="tenant_admin_password_inline">Mật khẩu tenant admin</FieldLabel>
+                        <Input
+                          id="tenant_admin_password_inline"
+                          type="password"
+                          value={tenantAdminPassword}
+                          onChange={(event) => setTenantAdminPassword(event.target.value)}
+                          placeholder="Mật khẩu tenant admin"
+                        />
+                      </FieldContent>
+                    </Field>
+
+                    <div className="flex items-end">
+                      <Button className="rounded-2xl" onClick={handleCreateTenantUser} disabled={savingTenantUser}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        {savingTenantUser ? "Đang tạo..." : "Tạo tenant admin"}
+                      </Button>
+                    </div>
+                  </FieldGroup>
 
                   <Table className="min-w-[640px]">
                     <TableHeader>

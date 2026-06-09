@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, Brain, Square, StopCircle } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 interface ChatInputProps {
@@ -56,7 +59,7 @@ export function ChatInput({
   const canSend = value.trim().length > 0 && !disabled;
 
   return (
-    <div className="border-t border-border/60 bg-background/95 px-4 pt-3 pb-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <div className="bg-background/95 px-4 pt-3 pb-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="mx-auto w-full max-w-3xl">
         <div
           className={cn(
@@ -83,71 +86,87 @@ export function ChatInput({
             rows={1}
           />
 
-          <div className="flex items-center justify-between gap-2 px-2 pb-2">
-            <div className="flex items-center gap-1.5">
-              {onThinkingToggle ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={onThinkingToggle}
-                  className={cn(
-                    "h-8 gap-1.5 rounded-full px-3 text-xs font-medium transition-colors",
-                    thinkingMode
-                      ? "bg-primary/10 text-primary hover:bg-primary/15"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                  title={thinkingMode ? "Đang bật chế độ suy luận sâu" : "Bật chế độ suy luận sâu"}
-                >
-                  <Brain className={cn("h-3.5 w-3.5", thinkingMode && "animate-pulse")} />
-                  <span>Suy luận sâu</span>
-                </Button>
-              ) : null}
-            </div>
+          <TooltipProvider>
+            <div className="flex items-center justify-between gap-2 px-2 pb-2">
+              <div className="flex items-center gap-1.5">
+                {onThinkingToggle ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={thinkingMode ? "secondary" : "ghost"}
+                          onClick={onThinkingToggle}
+                          className={cn("h-8 rounded-full px-3 text-xs font-medium", thinkingMode ? "text-primary" : "text-muted-foreground")}
+                        >
+                          <Brain data-icon="inline-start" className={cn(thinkingMode && "animate-pulse")} />
+                          <span>Suy luận sâu</span>
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>{thinkingMode ? "Đang bật chế độ suy luận sâu" : "Bật chế độ suy luận sâu"}</TooltipContent>
+                  </Tooltip>
+                ) : null}
+              </div>
 
-            <div className="flex items-center gap-1.5">
-              {streaming ? (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  onClick={onStop}
-                  className="h-9 w-9 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  title="Dừng phản hồi"
-                >
-                  <StopCircle className="h-4 w-4" />
-                </Button>
-              ) : null}
+              <div className="flex items-center gap-1.5">
+                {streaming ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={onStop}
+                          className="rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <StopCircle />
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>Dừng phản hồi</TooltipContent>
+                  </Tooltip>
+                ) : null}
 
-              <Button
-                type="button"
-                size="icon"
-                onClick={handleSubmit}
-                disabled={!canSend}
-                aria-label="Gửi tin nhắn"
-                title="Gửi (Enter)"
-                className={cn(
-                  "h-9 w-9 rounded-full transition-all duration-200",
-                  canSend
-                    ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_4px_14px_-4px_rgba(1,56,123,0.5)]"
-                    : "bg-muted text-muted-foreground/60 shadow-none",
-                )}
-              >
-                {streaming ? <Square className="h-3.5 w-3.5 fill-current" /> : <ArrowUp className="h-4 w-4" />}
-              </Button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        size="icon"
+                        onClick={handleSubmit}
+                        disabled={!canSend}
+                        aria-label="Gửi tin nhắn"
+                        className={cn(
+                          "rounded-full transition-all duration-200",
+                          canSend ? "shadow-[0_4px_14px_-4px_rgba(1,56,123,0.5)]" : "bg-muted text-muted-foreground/60 shadow-none",
+                        )}
+                      >
+                        {streaming ? <Square className="fill-current" /> : <ArrowUp />}
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>Gửi (Enter)</TooltipContent>
+                </Tooltip>
+              </div>
             </div>
-          </div>
+          </TooltipProvider>
         </div>
 
         <div className="mt-2 flex items-center justify-center gap-2 px-1 text-[11px] text-muted-foreground/80">
-          <span>Enter để gửi</span>
-          <span className="size-1 rounded-full bg-muted-foreground/40" />
-          <span>Shift + Enter để xuống dòng</span>
-          <span className="size-1 rounded-full bg-muted-foreground/40" />
-          <span className="inline-flex items-center gap-1">
-            <span className="size-1.5 rounded-full bg-emerald-500/70" />
+          <Badge variant="outline" className="rounded-full px-2 py-0.5 font-normal">
+            Enter để gửi
+          </Badge>
+          <Separator orientation="vertical" className="h-3" />
+          <Badge variant="outline" className="rounded-full px-2 py-0.5 font-normal">
+            Shift + Enter để xuống dòng
+          </Badge>
+          <Separator orientation="vertical" className="h-3" />
+          <Badge variant="secondary" className="rounded-full px-2 py-0.5 font-normal">
             Stateless
-          </span>
+          </Badge>
         </div>
       </div>
     </div>

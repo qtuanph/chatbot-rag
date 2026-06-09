@@ -4,16 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileUp, RefreshCw, RotateCcw, Trash2, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 
-import { documentsApi } from "@/lib/api-client";
-import { formatDateTimeVN, formatNumber } from "@/lib/format";
-import type { DocumentListResponse, DocumentSummary, TenantItem } from "@/types/api";
 import { TenantSelect } from "@/components/tenants/tenant-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldContent, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { documentsApi } from "@/lib/api-client";
+import { formatDateTimeVN, formatNumber } from "@/lib/format";
+import type { DocumentListResponse, DocumentSummary, TenantItem } from "@/types/api";
 
 interface DocumentCatalogProps {
   title: string;
@@ -189,16 +189,18 @@ export function DocumentCatalog({
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           {!readOnly && tenantOptions.length > 0 ? (
-            <div className="flex min-w-[260px] items-center gap-2">
-              <Label className="shrink-0">Tenant</Label>
-              <TenantSelect
-                tenants={tenantOptions}
-                value={selectedTenantId}
-                onValueChange={(tenantId) => onSelectedTenantIdChange?.(tenantId || "")}
-                includeAll
-                triggerClassName="w-[300px]"
-              />
-            </div>
+            <Field orientation="horizontal" className="min-w-[260px] items-center gap-3">
+              <FieldLabel>Tenant</FieldLabel>
+              <FieldContent>
+                <TenantSelect
+                  tenants={tenantOptions}
+                  value={selectedTenantId}
+                  onValueChange={(tenantId) => onSelectedTenantIdChange?.(tenantId || "")}
+                  includeAll
+                  triggerClassName="w-[300px]"
+                />
+              </FieldContent>
+            </Field>
           ) : null}
 
           <div className="flex items-center gap-2">
@@ -212,11 +214,7 @@ export function DocumentCatalog({
                   disabled={readOnly || uploading}
                   className="hidden"
                 />
-                <Button
-                  className="rounded-2xl"
-                  disabled={!canUpload || uploading}
-                  onClick={() => fileInputRef.current?.click()}
-                >
+                <Button className="rounded-2xl" disabled={!canUpload || uploading} onClick={() => fileInputRef.current?.click()}>
                   <FileUp className="mr-2 h-4 w-4" />
                   {uploading ? "Đang upload..." : "Upload tài liệu"}
                 </Button>

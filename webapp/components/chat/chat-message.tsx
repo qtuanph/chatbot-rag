@@ -5,10 +5,12 @@ import { Bot, Coins, FileText, ThumbsDown, ThumbsUp, UserRound } from "lucide-re
 import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatNumber, formatVnd } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type { ChatUsage } from "@/types/api";
 import type { ChatMessage } from "@/types/chat";
-import { cn } from "@/lib/utils";
 
 interface ChatMessageProps {
   message: ChatMessage;
@@ -47,7 +49,7 @@ export function ChatMessage({
       {!isUser ? (
         <Avatar className="mt-0.5 h-8 w-8 shrink-0 ring-1 ring-border/40">
           <AvatarFallback className="bg-gradient-to-br from-primary to-[#084ea4] text-primary-foreground">
-            <Bot className="h-4 w-4" />
+            <Bot />
           </AvatarFallback>
         </Avatar>
       ) : null}
@@ -55,7 +57,7 @@ export function ChatMessage({
       <div className={cn("flex max-w-[92%] min-w-0 flex-col gap-2 sm:max-w-[78%]", isUser ? "items-end" : "items-start")}>
         <div
           className={cn(
-            "text-[11px] font-medium tracking-wide uppercase opacity-60",
+            "text-[11px] font-medium uppercase tracking-wide opacity-60",
             isUser ? "text-muted-foreground" : "text-primary/80",
           )}
         >
@@ -91,9 +93,9 @@ export function ChatMessage({
             ) : null}
 
             {!!citations.length && !isStreaming ? (
-              <div className="w-full space-y-2 rounded-xl border border-border/50 bg-background/60 p-3">
-                <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  <FileText className="h-3 w-3" />
+              <div className="w-full rounded-xl border border-border/50 bg-background/60 p-3">
+                <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <FileText className="size-3" />
                   Nguồn tham khảo
                 </div>
                 <div className="grid gap-1.5">
@@ -106,9 +108,7 @@ export function ChatMessage({
                         {index + 1}
                       </Badge>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium text-foreground">
-                          {citation.file_name || citation.title}
-                        </div>
+                        <div className="truncate font-medium text-foreground">{citation.file_name || citation.title}</div>
                         <div className="mt-0.5 text-muted-foreground">
                           {citation.heading || citation.title}
                           {citation.page_range ? ` · trang ${citation.page_range}` : ""}
@@ -126,7 +126,7 @@ export function ChatMessage({
             {usage && !isStreaming ? (
               <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                 <Badge variant="secondary" className="gap-1 rounded-full px-2.5 py-0.5 font-normal">
-                  <Coins className="h-3 w-3" />
+                  <Coins className="size-3" />
                   {formatNumber(usage.total_tokens)} token
                 </Badge>
                 <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 font-normal">
@@ -139,32 +139,52 @@ export function ChatMessage({
             ) : null}
 
             {!isStreaming && message.content ? (
-              <div className="flex items-center gap-1.5 pt-1">
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex h-8 items-center justify-center rounded-full border border-border/60 px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted",
-                    feedback === "like" && "border-primary/40 bg-primary/10 text-primary",
-                  )}
-                  onClick={() => onFeedback?.(message.id, "like")}
-                  disabled={!onFeedback || feedbackDisabled}
-                  title="Hữu ích"
-                >
-                  <ThumbsUp className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex h-8 items-center justify-center rounded-full border border-border/60 px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted",
-                    feedback === "dislike" && "border-destructive/40 bg-destructive/10 text-destructive",
-                  )}
-                  onClick={() => onFeedback?.(message.id, "dislike")}
-                  disabled={!onFeedback || feedbackDisabled}
-                  title="Chưa hữu ích"
-                >
-                  <ThumbsDown className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              <TooltipProvider>
+                <div className="flex items-center gap-1.5 pt-1">
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-sm"
+                          className={cn(
+                            "rounded-full text-muted-foreground",
+                            feedback === "like" && "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+                          )}
+                          onClick={() => onFeedback?.(message.id, "like")}
+                          disabled={!onFeedback || feedbackDisabled}
+                        >
+                          <ThumbsUp />
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>Hữu ích</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-sm"
+                          className={cn(
+                            "rounded-full text-muted-foreground",
+                            feedback === "dislike" &&
+                              "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive",
+                          )}
+                          onClick={() => onFeedback?.(message.id, "dislike")}
+                          disabled={!onFeedback || feedbackDisabled}
+                        >
+                          <ThumbsDown />
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>Chưa hữu ích</TooltipContent>
+                  </Tooltip>
+                </div>
+              </TooltipProvider>
             ) : null}
           </>
         )}
@@ -173,7 +193,7 @@ export function ChatMessage({
       {isUser ? (
         <Avatar className="mt-0.5 h-8 w-8 shrink-0 ring-1 ring-border/40">
           <AvatarFallback className="bg-muted text-foreground">
-            <UserRound className="h-4 w-4" />
+            <UserRound />
           </AvatarFallback>
         </Avatar>
       ) : null}

@@ -4,14 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { Save } from "lucide-react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { tenantsApi } from "@/lib/api-client";
 import { formatDateTimeVN } from "@/lib/format";
 import type { TenantSetting, TenantSettingUpdateRequest } from "@/types/api";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 
 type TenantSettingsFormProps =
   | {
@@ -101,40 +101,54 @@ export function TenantSettingsForm(props: TenantSettingsFormProps) {
           {props.description || "Quản lý tên chatbot, lời chào và instruction riêng của tenant."}
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex flex-col gap-4">
         {loading ? (
           <div className="text-sm text-muted-foreground">Đang tải cấu hình...</div>
         ) : (
           <>
-            <div className="space-y-2">
-              <Label htmlFor="chatbot_display_name">Tên chatbot</Label>
-              <Input
-                id="chatbot_display_name"
-                value={form.chatbot_display_name || ""}
-                onChange={(event) => setForm((current) => ({ ...current, chatbot_display_name: event.target.value }))}
-                placeholder="Ví dụ: Trợ lý nội bộ Công ty A"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="welcome_message">Lời chào</Label>
-              <Textarea
-                id="welcome_message"
-                value={form.welcome_message || ""}
-                onChange={(event) => setForm((current) => ({ ...current, welcome_message: event.target.value }))}
-                placeholder="Ví dụ: Xin chào, tôi có thể hỗ trợ gì cho anh/chị?"
-                rows={3}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="system_instruction">Instruction tenant</Label>
-              <Textarea
-                id="system_instruction"
-                value={form.system_instruction || ""}
-                onChange={(event) => setForm((current) => ({ ...current, system_instruction: event.target.value }))}
-                placeholder="Mô tả cách AI nên trả lời cho tenant này..."
-                rows={10}
-              />
-            </div>
+            <FieldGroup>
+              <Field>
+                <FieldContent>
+                  <FieldLabel htmlFor="chatbot_display_name">Tên chatbot</FieldLabel>
+                  <Input
+                    id="chatbot_display_name"
+                    value={form.chatbot_display_name || ""}
+                    onChange={(event) => setForm((current) => ({ ...current, chatbot_display_name: event.target.value }))}
+                    placeholder="Ví dụ: Trợ lý nội bộ Công ty A"
+                  />
+                </FieldContent>
+              </Field>
+
+              <Field>
+                <FieldContent>
+                  <FieldLabel htmlFor="welcome_message">Lời chào</FieldLabel>
+                  <Textarea
+                    id="welcome_message"
+                    value={form.welcome_message || ""}
+                    onChange={(event) => setForm((current) => ({ ...current, welcome_message: event.target.value }))}
+                    placeholder="Ví dụ: Xin chào, tôi có thể hỗ trợ gì cho anh/chị?"
+                    rows={3}
+                  />
+                </FieldContent>
+              </Field>
+
+              <Field>
+                <FieldContent>
+                  <FieldLabel htmlFor="system_instruction">Instruction tenant</FieldLabel>
+                  <Textarea
+                    id="system_instruction"
+                    value={form.system_instruction || ""}
+                    onChange={(event) => setForm((current) => ({ ...current, system_instruction: event.target.value }))}
+                    placeholder="Mô tả cách AI nên trả lời cho tenant này..."
+                    rows={10}
+                  />
+                  <FieldDescription>
+                    Nội dung này sẽ được ghép vào system instruction của chatbot trong phạm vi tenant hiện tại.
+                  </FieldDescription>
+                </FieldContent>
+              </Field>
+            </FieldGroup>
+
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>Cập nhật lần cuối: {formatDateTimeVN(setting?.updated_at)}</span>
               <Button onClick={handleSave} disabled={saving}>
