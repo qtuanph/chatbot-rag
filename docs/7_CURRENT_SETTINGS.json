@@ -43,20 +43,26 @@
     "embedding_batch_size": 8,
     "pipeline_batch_size": 4,
     "document_progress_stream_interval_seconds": 1.0,
+    "qdrant_payload_indexes": ["tenant_id", "document_id", "section_id"],
     "note": "pipeline batch size đã được nới để cải thiện throughput, nhưng vẫn giữ ở mức an toàn cho local runtime"
   },
   "chat": {
     "history_persistence": false,
     "client_context_window_messages": 6,
+    "retrieval_history_query_count": 0,
+    "retrieval_section_hydration_enabled": true,
+    "retrieval_section_hydration_top_k": 6,
     "temperature": 0.3,
     "max_output_tokens": 8192,
     "internal_chat_route": "/api/v1/chat/stream",
+    "feedback_route": "/api/v1/chat/feedback",
     "public_chat_route": "/api/v1/public/v1/chat/completions"
   },
   "usage_tracking": {
     "currency_code": "VND",
     "cost_storage": "cost_micros_vnd",
-    "tracked_model_types": ["llm", "embedding", "reranker"]
+    "tracked_model_types": ["llm", "embedding", "reranker"],
+    "feedback_tracking": true
   },
   "storage": {
     "database": "PostgreSQL",

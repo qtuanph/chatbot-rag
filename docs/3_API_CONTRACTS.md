@@ -1,6 +1,6 @@
 # 3 — API Contracts
 
-Tài liệu route-level ở mức đủ dùng và bám code hiện tại.
+Tài liệu route-level bám theo backend hiện tại.
 
 ## Quy tắc bảo mật quan trọng
 
@@ -17,7 +17,7 @@ Browser -> /api/bep/* -> Next.js route handler -> backend /api/v1/*
 ### Token rule
 
 - backend bearer token không lộ ra browser
-- `/api/auth/*` là route nội bộ NextAuth, không tính là bypass
+- `/api/auth/*` là route nội bộ NextAuth, không tính là bypass business API
 
 ## Prefix
 
@@ -60,15 +60,7 @@ Base API hiện tại:
 | Method | Path |
 |---|---|
 | POST | `/chat/stream` |
-
-### Memories
-
-| Method | Path |
-|---|---|
-| GET | `/memories` |
-| POST | `/memories` |
-| PATCH | `/memories/{memory_id}` |
-| DELETE | `/memories/{memory_id}` |
+| POST | `/chat/feedback` |
 
 ### Analytics
 
@@ -163,6 +155,12 @@ Backend tự resolve tenant từ key, không tin tenant do client tự truyền.
 - `platform_admin` phải chọn tenant khi test
 - `tenant_admin` tự gắn tenant từ JWT
 
+`/chat/feedback` dùng để ghi nhận `like` / `dislike` cho câu trả lời AI:
+
+- không phụ thuộc persisted chat history
+- frontend phải gửi lại `query_text`, `assistant_answer`, `citations`
+- backend tự gắn `tenant_id`, `user_id`, và runtime stack metadata
+
 ## Error handling
 
 ### General
@@ -185,9 +183,8 @@ Backend tự resolve tenant từ key, không tin tenant do client tự truyền.
 | `429` | rate limit / quota |
 | `500` | lỗi server |
 
-## Điểm đã đổi sau refactor
+## Những contract đã bỏ
 
-- không còn coi chat session history là contract chính
-- bổ sung public OpenAI-compatible API
-- bổ sung tenant admin / platform admin
-- tenant management và tenant API keys là first-class API
+- memories CRUD (`/memories`)
+- persisted chat session contract
+- session analytics contract
