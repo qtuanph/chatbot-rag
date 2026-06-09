@@ -30,6 +30,8 @@ export function ChatView() {
   const [streaming, setStreaming] = useState(false);
   const [thinkingMode, setThinkingMode] = useState(false);
   const [usage, setUsage] = useState<ChatUsage | null>(null);
+  const [feedbackByMessageId, setFeedbackByMessageId] = useState<Record<string, "like" | "dislike">>({});
+  const [feedbackSubmittingId, setFeedbackSubmittingId] = useState<string | null>(null);
   const [tenantOptions, setTenantOptions] = useState<TenantItem[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState<string>("");
   const [tenantSetting, setTenantSetting] = useState<TenantSetting | null>(null);
@@ -115,6 +117,7 @@ export function ChatView() {
     setMessages([]);
     setUsage(null);
     setStreaming(false);
+    setFeedbackByMessageId({});
   }, []);
 
   const sendMessage = useCallback(
@@ -217,6 +220,51 @@ export function ChatView() {
     [effectiveTenantId, messages],
   );
 
+  const handleFeedback = useCallback(
+    async (messageId: string, feedbackType: "like" | "dislike") => {
+      if (!effectiveTenantId) {
+        toast.error("Chưa có tenant để ghi nhận đánh giá");
+        return;
+      }
+
+      const assistantIndex = messages.findIndex((message) => message.id === messageId && message.role === "assistant");
+      if (assistantIndex < 0) return;
+
+      const assistantMessage = messages[assistantIndex];
+      const queryText =
+        [...messages.slice(0, assistantIndex)]
+          .reverse()
+          .find((message) => message.role === "user" && message.content.trim())?.content || "";
+
+      if (!queryText.trim() || !assistantMessage.content.trim()) {
+        toast.error("Chưa đủ dữ liệu để gửi đánh giá");
+        return;
+      }
+
+      try {
+        setFeedbackSubmittingId(messageId);
+        await chatApi.submitFeedback({
+          tenant_id: effectiveTenantId,
+          feedback_type: feedbackType,
+          query_text: queryText,
+          assistant_answer: assistantMessage.content,
+          citations: assistantMessage.citations || [],
+          metadata: {
+            source: "internal_chat",
+            assistant_message_id: messageId,
+          },
+        });
+        setFeedbackByMessageId((current) => ({ ...current, [messageId]: feedbackType }));
+        toast.success(feedbackType === "like" ? "Đã ghi nhận phản hồi tốt" : "Đã ghi nhận phản hồi chưa tốt");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Không thể gửi đánh giá");
+      } finally {
+        setFeedbackSubmittingId((current) => (current === messageId ? null : current));
+      }
+    },
+    [effectiveTenantId, messages],
+  );
+
   return (
     <div className="grid h-full min-h-0 grid-rows-[auto,minmax(0,1fr),auto] bg-background">
       <div className="sticky top-0 z-10 border-b border-border/40 bg-background/80 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -289,6 +337,9 @@ export function ChatView() {
                   isStreaming={streaming && index === messages.length - 1 && message.role === "assistant"}
                   isThinking={streaming && index === messages.length - 1 && message.role === "assistant"}
                   usage={index === messages.length - 1 && message.role === "assistant" ? usage : null}
+                  feedback={feedbackByMessageId[message.id] || null}
+                  feedbackDisabled={feedbackSubmittingId === message.id}
+                  onFeedback={message.role === "assistant" ? handleFeedback : undefined}
                 />
               ))}
             </div>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Brain, Cpu, Network, RefreshCw, TimerReset, Trash2 } from "lucide-react";
+import { Brain, Cpu, Network, RefreshCw, ThumbsDown, TimerReset, Trash2 } from "lucide-react";
 
 import { analyticsApi } from "@/lib/api-client";
 import { formatDateTimeVN, formatLatency, formatNumber, formatVnd, microsVndToRoundedVnd } from "@/lib/format";
@@ -180,7 +180,7 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
 
       {stats && (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <Card className="rounded-3xl border-border/60 shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">Tổng request</CardTitle>
@@ -221,6 +221,20 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
                 <div className="text-2xl font-bold">{formatVnd(stats.cost_vnd_rounded)}</div>
                 <p className="text-xs text-muted-foreground">
                   {stats.currency_code} • model {stats.pricing.model}
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="rounded-3xl border-border/60 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                  <ThumbsDown className="h-4 w-4 text-primary" />
+                  Tỷ lệ dislike
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{Math.round(stats.feedback_summary.dislike_rate * 100)}%</div>
+                <p className="text-xs text-muted-foreground">
+                  {formatNumber(stats.feedback_summary.dislike_count)} dislike • {formatNumber(stats.feedback_summary.like_count)} like
                 </p>
               </CardContent>
             </Card>
@@ -265,6 +279,53 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
                   </TableBody>
                 </Table>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-3xl border-border/60 shadow-sm">
+            <CardHeader>
+              <CardTitle>Phản hồi chất lượng</CardTitle>
+              <CardDescription>
+                Theo dõi dislike để biết tài liệu nào cần cải thiện retrieval hoặc instruction.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-6 lg:grid-cols-2">
+              <div className="space-y-3">
+                <div className="text-sm font-medium">Tài liệu bị dislike nhiều</div>
+                {stats.feedback_summary.top_disliked_documents.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Chưa có dislike nào trong cửa sổ hiện tại.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {stats.feedback_summary.top_disliked_documents.map((item) => (
+                      <div
+                        key={item.document_id}
+                        className="flex items-center justify-between rounded-2xl border border-border/60 px-3 py-2"
+                      >
+                        <div className="min-w-0 truncate pr-3 text-sm font-medium">{item.title}</div>
+                        <div className="shrink-0 text-xs text-muted-foreground">{formatNumber(item.count)} dislike</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-3">
+                <div className="text-sm font-medium">Section bị dislike nhiều</div>
+                {stats.feedback_summary.top_disliked_sections.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Chưa có section nào cần ưu tiên xử lý.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {stats.feedback_summary.top_disliked_sections.map((item) => (
+                      <div
+                        key={`${item.document_id}-${item.section_id}`}
+                        className="flex items-center justify-between rounded-2xl border border-border/60 px-3 py-2"
+                      >
+                        <div className="min-w-0 truncate pr-3 text-sm font-medium">{item.heading}</div>
+                        <div className="shrink-0 text-xs text-muted-foreground">{formatNumber(item.count)} dislike</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </>

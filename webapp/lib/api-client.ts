@@ -4,6 +4,8 @@ import type {
   AIProviderUpdate,
   ApiKeyItem,
   AnalyticsStats,
+  ChatFeedbackRequest,
+  ChatFeedbackResponse,
   CreateUserRequest,
   DocumentDetail,
   DocumentListResponse,
@@ -283,6 +285,12 @@ export const chatApi = {
 
     return { controller, fetchStream };
   },
+
+  submitFeedback: (data: ChatFeedbackRequest): Promise<ChatFeedbackResponse> =>
+    apiFetch<ChatFeedbackResponse>("/chat/feedback", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };
 
 export const analyticsApi = {
