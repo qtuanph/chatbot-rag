@@ -1,6 +1,6 @@
 {
   "title": "Workflows",
-  "description": "Chỉ mục các workflow chính của project sau refactor multi-tenant + stateless chat.",
+  "description": "Chỉ mục các workflow chính của project ở trạng thái multi-tenant + stateless chat hiện tại.",
   "index": [
     {
       "id": "ingestion",
@@ -9,9 +9,9 @@
       "summary": "Upload -> queue -> parse -> sections -> embed -> Qdrant -> finalize.",
       "key_rules": [
         "Tenant-aware từ đầu đến cuối",
-        "Worker ingestion chạy solo",
-        "Embedding hiện dùng Docker Model Runner mặc định",
-        "Frontend tài liệu đang poll gần realtime, chưa phải push realtime"
+        "Progress dùng SSE với auto-reconnect",
+        "Embedding mặc định dùng Docker Model Runner",
+        "Qdrant payload phải có tenant_id, document_id, section_id"
       ]
     },
     {
@@ -23,18 +23,14 @@
         "Không lưu persisted transcript",
         "Tenant context là bắt buộc",
         "Browser phải đi qua /api/bep/*",
-        "Retrieval phải lọc tenant"
+        "Feedback like/dislike được lưu riêng"
       ]
     },
     {
       "id": "delete",
       "title": "Hard Delete",
       "file": "2.3_WORKFLOWS_DELETE.md",
-      "summary": "Thứ tự xóa cứng không được thay đổi.",
-      "key_rules": [
-        "vectors trước, sections sau, DB row sau nữa",
-        "giữ đúng hard-delete order"
-      ]
+      "summary": "Thứ tự xóa cứng không được thay đổi."
     },
     {
       "id": "audit",
@@ -46,11 +42,7 @@
       "id": "analytics",
       "title": "Analytics",
       "file": "2.5_WORKFLOWS_ANALYTICS.md",
-      "summary": "Analytics theo usage model, tenant, token, chi phí VND.",
-      "key_rules": [
-        "Không còn analytics theo chat session",
-        "Money lưu integer micro-VND"
-      ]
+      "summary": "Analytics theo usage model, tenant, token, cost VND và feedback."
     }
   ]
 }

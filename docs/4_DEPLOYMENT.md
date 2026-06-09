@@ -1,6 +1,6 @@
 # 4 — Deployment
 
-Tài liệu deployment ở mức thực dụng, bám `docker-compose.yml` hiện tại.
+Tài liệu deployment bám theo `docker-compose.yml` hiện tại.
 
 ## Topology hiện tại
 
@@ -16,15 +16,14 @@ Tài liệu deployment ở mức thực dụng, bám `docker-compose.yml` hiện
 | `qdrant` | vector DB |
 | `traefik` | reverse proxy |
 
-## Điểm khác so với bản cũ
+## Runtime decisions
 
-Deployment hiện tại **không còn dựa vào TEI container local như mặc định chính**.
-
-### Mặc định hiện tại
-
-- embedding mặc định: Docker Model Runner qua `model-runner.docker.internal`
+- `qdrant` giữ `latest` theo quyết định runtime hiện tại
+- embedding mặc định: Docker Model Runner
 - reranker mặc định: NVIDIA NIM
-- local reranker Docker Model Runner chỉ là fallback
+- local reranker chỉ là fallback
+
+Project không còn lấy TEI local làm default runtime chính.
 
 ## Cổng và routing
 
@@ -47,7 +46,7 @@ Deployment hiện tại **không còn dựa vào TEI container local như mặc 
 | `9router-data` | dữ liệu 9Router |
 | `settings-data` | `settings.db` của project |
 
-## settings.db
+## `settings.db`
 
 `settings.db` là SQLite riêng của project, dùng cho:
 
@@ -55,7 +54,7 @@ Deployment hiện tại **không còn dựa vào TEI container local như mặc 
 - active embedding / reranker / llm metadata
 - key pool của provider nếu cần
 
-Không nhầm với SQLite/data riêng của 9Router.
+Không nhầm với dữ liệu riêng của 9Router.
 
 ## Env quan trọng
 
@@ -77,34 +76,46 @@ Không nhầm với SQLite/data riêng của 9Router.
 - `EMBEDDING_HF_MODEL=ai/qwen3-embedding:0.6B-F16`
 - `EMBEDDING_VECTOR_SIZE=1024`
 
+### Retrieval / ingestion
+
+- `RETRIEVAL_HISTORY_QUERY_COUNT`
+- `RETRIEVAL_SECTION_HYDRATION_ENABLED`
+- `RETRIEVAL_SECTION_HYDRATION_TOP_K`
+- `QDRANT_SEARCH_INDEXED_ONLY`
+- `INGESTION_PIPELINE_BATCH_SIZE`
+
 ## Worker model
 
-### `workers`
+`workers` hiện phụ trách:
 
-Một container workers hiện chạy theo hướng:
+- document ingestion
+- usage logging
+- background cleanup
 
-- ingest là đường nặng nhất
-- ingestion thực tế vẫn tuần tự/thiên về an toàn
-- phần này là một trong các nguyên nhân làm embedding chậm
+Pipeline ingest:
 
-## Health
+- chạy batch theo config
+- tự ensure Qdrant payload indexes
+- phát progress qua SSE path của backend
+
+## Health probes
 
 | Probe | Ý nghĩa |
 |---|---|
 | `/api/v1/health` | health backend |
 | `/api/v1/public/v1/health` | health public inference |
 
-## Gợi ý scale cho tương lai
+## Scale guidance
 
-Nếu mục tiêu lên khoảng `200 CCU`, cần ưu tiên:
+Nếu mục tiêu lên cỡ `200 CCU`, nên ưu tiên:
 
-1. scale API / worker / proxy riêng
-2. giữ progress document trên SSE
-3. tối ưu ingestion batch / concurrency cẩn thận
-4. tách rõ đường chat online và ingestion background
-5. benchmark lại Docker Model Runner local trước khi giữ lâu dài
+1. scale riêng `api`, `workers`, `ai-proxy`
+2. giữ document progress trên SSE
+3. tối ưu ingestion batch / concurrency
+4. tách rõ chat online và ingestion background
+5. benchmark lại local model runtime trước khi giữ lâu dài
 
-## Gợi ý realtime
+## Realtime guidance
 
 ### Chat
 
@@ -114,10 +125,3 @@ Nếu mục tiêu lên khoảng `200 CCU`, cần ưu tiên:
 
 - hiện dùng SSE với auto-reconnect
 - không quay về polling ở flow chính
-
-### Khi nào mới cần WebSocket
-
-- khi thật sự cần hai chiều
-- ví dụ collaborative control, cancel/reprioritize tasks trực tiếp, nhiều tín hiệu song song
-
-Nếu chỉ server -> client để báo tiến độ, **SSE là lựa chọn hợp lý hơn**.
