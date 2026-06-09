@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Coins, FileText, UserRound } from "lucide-react";
+import { Bot, Coins, FileText, ThumbsDown, ThumbsUp, UserRound } from "lucide-react";
 
 import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -15,9 +15,20 @@ interface ChatMessageProps {
   isStreaming?: boolean;
   isThinking?: boolean;
   usage?: ChatUsage | null;
+  feedback?: "like" | "dislike" | null;
+  feedbackDisabled?: boolean;
+  onFeedback?: (messageId: string, feedbackType: "like" | "dislike") => void;
 }
 
-export function ChatMessage({ message, isStreaming = false, isThinking = false, usage }: ChatMessageProps) {
+export function ChatMessage({
+  message,
+  isStreaming = false,
+  isThinking = false,
+  usage,
+  feedback = null,
+  feedbackDisabled = false,
+  onFeedback,
+}: ChatMessageProps) {
   const isUser = message.role === "user";
   const showLoading = !isUser && isThinking && !message.content;
   const citations = Array.from(
@@ -124,6 +135,35 @@ export function ChatMessage({ message, isStreaming = false, isThinking = false, 
                 <Badge variant="outline" className="rounded-full px-2.5 py-0.5 font-normal text-muted-foreground">
                   {usage.model || "chatbot-rag"}
                 </Badge>
+              </div>
+            ) : null}
+
+            {!isStreaming && message.content ? (
+              <div className="flex items-center gap-1.5 pt-1">
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 items-center justify-center rounded-full border border-border/60 px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted",
+                    feedback === "like" && "border-primary/40 bg-primary/10 text-primary",
+                  )}
+                  onClick={() => onFeedback?.(message.id, "like")}
+                  disabled={!onFeedback || feedbackDisabled}
+                  title="Hữu ích"
+                >
+                  <ThumbsUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-8 items-center justify-center rounded-full border border-border/60 px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted",
+                    feedback === "dislike" && "border-destructive/40 bg-destructive/10 text-destructive",
+                  )}
+                  onClick={() => onFeedback?.(message.id, "dislike")}
+                  disabled={!onFeedback || feedbackDisabled}
+                  title="Chưa hữu ích"
+                >
+                  <ThumbsDown className="h-3.5 w-3.5" />
+                </button>
               </div>
             ) : null}
           </>

@@ -163,6 +163,23 @@ export interface ChatUsage extends MoneyPayload {
   model?: string;
 }
 
+export interface ChatFeedbackRequest {
+  tenant_id?: string | null;
+  feedback_type: "like" | "dislike";
+  query_text: string;
+  assistant_answer: string;
+  citations: Citation[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface ChatFeedbackResponse {
+  id: string;
+  tenant_id: string;
+  user_id?: string | null;
+  feedback_type: "like" | "dislike";
+  created_at: string;
+}
+
 export interface ChatStreamChunk {
   chunk: string;
   done: false;
@@ -332,6 +349,23 @@ export interface AnalyticsStats extends MoneyPayload {
   };
   daily_by_model_type: DailyByModelType[];
   recent_requests: RecentRequest[];
+  feedback_summary: {
+    total: number;
+    like_count: number;
+    dislike_count: number;
+    dislike_rate: number;
+    top_disliked_documents: Array<{
+      document_id: string;
+      title: string;
+      count: number;
+    }>;
+    top_disliked_sections: Array<{
+      document_id: string;
+      section_id: string;
+      heading: string;
+      count: number;
+    }>;
+  };
   pricing: {
     currency_code: string;
     input_price_vnd_per_1m: number;
