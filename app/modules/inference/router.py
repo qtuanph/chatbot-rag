@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app.api.deps import get_tenant_api_context, TenantApiContext
 from app.core import http_errors
 from app.db.session import get_async_session
+from app.modules.documents.repositories.section_repository import SectionRepository
 from app.modules.inference.schemas import ChatCompletionsRequest
 from app.modules.inference.service import PublicInferenceService
 from app.modules.tenants.repository import TenantRepository
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/public/v1", tags=["public-inference"])
 
 
 def get_public_inference_service(session=Depends(get_async_session)) -> PublicInferenceService:
-    return PublicInferenceService(TenantRepository(session))
+    return PublicInferenceService(TenantRepository(session), SectionRepository(session))
 
 
 @router.get("/health")
@@ -52,6 +53,7 @@ async def create_chat_completion(
                     messages=messages,
                     temperature=payload.temperature,
                     max_tokens=payload.max_tokens,
+                    user_id=None,
                 ),
                 media_type="text/event-stream",
                 headers={
@@ -66,6 +68,7 @@ async def create_chat_completion(
             messages=messages,
             temperature=payload.temperature,
             max_tokens=payload.max_tokens,
+            user_id=None,
         )
         return JSONResponse(
             {

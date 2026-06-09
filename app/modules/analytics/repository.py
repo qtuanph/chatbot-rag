@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.auth import User
 from app.models.tenant import Tenant
+from app.models.feedback import ChatFeedback
 from app.models.usage import AiModelUsage
 from app.utils.datetime_utils import to_vietnam_iso, utc_now
 
@@ -327,3 +328,66 @@ class AnalyticsRepository:
             }
             for row in rows
         ]
+
+    async def get_feedback_rows(
+        self,
+        *,
+        is_platform_admin: bool,
+        user_id: str,
+        tenant_id: str | None,
+        days: int = 30,
+    ) -> list[dict]:
+        cutoff = utc_now() - timedelta(days=days)
+        stmt = (
+            select(
+                ChatFeedback.tenant_id,
+                ChatFeedback.user_id,
+                ChatFeedback.feedback_type,
+                ChatFeedback.document_ids,
+                ChatFeedback.section_ids,
+                ChatFeedback.citations,
+                ChatFeedback.created_at,
+            )
+            .where(ChatFeedback.created_at >= cutoff)
+            .order_by(ChatFeedback.created_at.desc())
+        )
+        if not is_platform_admin:
+            if tenant_id:
+                stmt = stmt.where(ChatFeedback.tenant_id == tenant_id)
+            else:
+                stmt = stmt.where(ChatFeedback.user_id == user_id)
+        rows = (await self.session.execute(stmt)).all()
+        return [
+            {
+                "tenant_id": str(row.tenant_id),
+                "user_id": str(row.user_id) if row.user_id else None,
+                "feedback_type": row.feedback_type,
+                "document_ids": list(row.document_ids or []),
+                "section_ids": list(row.section_ids or []),
+                "citations": list(row.citations or []),
+                "created_at": to_vietnam_iso(row.created_at) or "",
+            }
+            for row in rows
+        ]
+
+    async def get_tenant_feedback_summary(self, days: int = 30) -> dict[str, dict]:
+        cutoff = utc_now() - timedelta(days=days)
+        stmt = (
+            select(
+                ChatFeedback.tenant_id,
+                ChatFeedback.feedback_type,
+                func.count(ChatFeedback.id).label("count"),
+            )
+            .where(ChatFeedback.created_at >= cutoff)
+            .group_by(ChatFeedback.tenant_id, ChatFeedback.feedback_type)
+        )
+        rows = (await self.session.execute(stmt)).all()
+        result: dict[str, dict] = {}
+        for row in rows:
+            tenant_id = str(row.tenant_id)
+            bucket = result.setdefault(tenant_id, {"like_count": 0, "dislike_count": 0})
+            if row.feedback_type == "like":
+                bucket["like_count"] = int(row.count or 0)
+            elif row.feedback_type == "dislike":
+                bucket["dislike_count"] = int(row.count or 0)
+        return result

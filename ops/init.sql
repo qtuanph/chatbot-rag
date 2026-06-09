@@ -322,21 +322,6 @@ SELECT r.id, NULL, 'admin', '$2b$12$Zu/0SxKObaExq.O16nsgXOxP6VVhPMTaYG0Gy1vQecXf
 FROM roles r WHERE r.name = 'platform_admin'
 ON CONFLICT (username) DO NOTHING;
 
--- User memories: persistent facts/preferences learned from conversations
-CREATE TABLE IF NOT EXISTS user_memories (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    memory_type VARCHAR(20) NOT NULL DEFAULT 'instruction',
-    content TEXT NOT NULL,
-    is_active BOOLEAN DEFAULT true NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS ix_user_memories_user_active ON user_memories(user_id, is_active);
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE user_memories TO app_rw;
-
 -- ============= AI Model Usage Quota Tracking =============
 CREATE TABLE IF NOT EXISTS ai_model_usage (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -368,5 +353,31 @@ CREATE INDEX IF NOT EXISTS idx_ai_model_usage_model_type ON ai_model_usage(model
 
 GRANT ALL ON ai_model_usage TO app_rw;
 
+-- ============= Chat Feedback =============
+CREATE TABLE IF NOT EXISTS chat_feedback (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    feedback_type VARCHAR(16) NOT NULL,
+    query_text TEXT NOT NULL,
+    assistant_answer TEXT NOT NULL,
+    llm_model VARCHAR(255) NOT NULL,
+    embedding_model VARCHAR(255),
+    reranker_model VARCHAR(255),
+    document_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    section_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    citations JSONB NOT NULL DEFAULT '[]'::jsonb,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_feedback_tenant_id ON chat_feedback(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_chat_feedback_user_id ON chat_feedback(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_feedback_type ON chat_feedback(feedback_type);
+CREATE INDEX IF NOT EXISTS idx_chat_feedback_created_at ON chat_feedback(created_at DESC);
+
+GRANT ALL ON chat_feedback TO app_rw;
+
 DROP TABLE IF EXISTS chat_messages CASCADE;
 DROP TABLE IF EXISTS chat_sessions CASCADE;
+DROP TABLE IF EXISTS user_memories CASCADE;

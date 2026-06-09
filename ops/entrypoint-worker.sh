@@ -1,6 +1,6 @@
 #!/bin/bash
 # Entrypoint for Celery workers.
-# Model download handled exclusively by TEI containers (ai-embedding, ai-reranker).
+# Model runtime is handled by Docker Model Runner / external providers.
 # Runs 2 worker nodes in 1 container:
 #   node-ingestion: solo pool, GPU, ingestion queue only
 #   node-default:    prefork pool, CPU, cleanup+default queues, Beat scheduler
