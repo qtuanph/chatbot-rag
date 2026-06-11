@@ -28,6 +28,44 @@ def _estimate_tokens_from_chars(text: str) -> int:
     return max(0, len(text or "") // 3)
 
 
+def _query_terms(query: str) -> list[str]:
+    return [term for term in str(query or "").strip().split() if term]
+
+
+def _is_keyword_style_query(query: str) -> bool:
+    cleaned = str(query or "").strip()
+    if not cleaned:
+        return False
+    if "\n" in cleaned:
+        return False
+    if len(cleaned) > settings.retrieval_rerank_skip_query_max_chars:
+        return False
+    return len(_query_terms(cleaned)) <= settings.retrieval_rerank_skip_query_max_terms
+
+
+def _should_skip_rerank(query: str, nodes: list[NodeWithScore]) -> tuple[bool, str]:
+    if not settings.retrieval_rerank_skip_enabled:
+        return False, "disabled"
+    if not nodes:
+        return False, "no-nodes"
+    if not _is_keyword_style_query(query):
+        return False, "not-keyword-style"
+    if len(nodes) == 1:
+        return True, "single-result"
+
+    top1 = float(nodes[0].score or 0.0)
+    top2 = float(nodes[1].score or 0.0)
+    if top1 <= 0:
+        return False, "non-positive-top1"
+    if top2 <= 0:
+        return True, "top2-missing-or-zero"
+
+    dominance_ratio = top1 / max(top2, 1e-9)
+    if dominance_ratio >= settings.retrieval_rerank_skip_dominance_ratio:
+        return True, f"dominant-top1:{dominance_ratio:.2f}"
+    return False, f"weak-dominance:{dominance_ratio:.2f}"
+
+
 def _dispatch_model_usage(
     *,
     model_name: str,
@@ -218,7 +256,7 @@ async def retrieve_context(
     if index is not None:
         retriever = index.as_retriever(similarity_top_k=settings.retrieval_hybrid_top_k)
 
-    reranker = get_reranker(top_k=limit)
+    reranker = None
     reorder = LongContextReorder() if settings.retrieval_long_context_reorder_enabled else None
 
     all_nodes: list[NodeWithScore] = []
@@ -237,34 +275,40 @@ async def retrieve_context(
             if retriever is None:
                 raise RuntimeError("Dense retriever is not initialized")
             nodes = await retriever.aretrieve(query)
-        try:
-            t0_rerank = time.perf_counter()
-            reranked_nodes = await reranker.postprocess_nodes(nodes, qb)
-            rerank_latency_ms = (time.perf_counter() - t0_rerank) * 1000
-            rerank_model_name = (
-                getattr(reranker, "model_name", None)
-                or getattr(reranker, "base_url", None)
-                or reranker.__class__.__name__
-            )
-            rerank_prompt_tokens = _estimate_tokens_from_chars(query) + _estimate_tokens_from_chars(
-                "".join((n.node.text or "") for n in nodes)
-            )
-            _dispatch_model_usage(
-                model_name=str(rerank_model_name),
-                model_type="reranker",
-                prompt_tokens=rerank_prompt_tokens,
-                completion_tokens=0,
-                latency_ms=rerank_latency_ms,
-                endpoint="retrieval.rerank",
-                tenant_id=tenant_id,
-                user_id=user_id,
-            )
-            if reranked_nodes:
-                nodes = reranked_nodes
-            else:
-                logger.info("Reranker returned empty nodes for query='%s'; fallback to pre-rerank nodes.", query)
-        except Exception:
-            logger.warning("Reranker failed for query='%s'; fallback to pre-rerank nodes.", query, exc_info=True)
+        skip_rerank, skip_reason = _should_skip_rerank(query, nodes)
+        if skip_rerank:
+            logger.info("Skip reranker for query='%s' (%s).", query, skip_reason)
+        else:
+            try:
+                if reranker is None:
+                    reranker = get_reranker(top_k=limit)
+                t0_rerank = time.perf_counter()
+                reranked_nodes = await reranker.postprocess_nodes(nodes, qb)
+                rerank_latency_ms = (time.perf_counter() - t0_rerank) * 1000
+                rerank_model_name = (
+                    getattr(reranker, "model_name", None)
+                    or getattr(reranker, "base_url", None)
+                    or reranker.__class__.__name__
+                )
+                rerank_prompt_tokens = _estimate_tokens_from_chars(query) + _estimate_tokens_from_chars(
+                    "".join((n.node.text or "") for n in nodes)
+                )
+                _dispatch_model_usage(
+                    model_name=str(rerank_model_name),
+                    model_type="reranker",
+                    prompt_tokens=rerank_prompt_tokens,
+                    completion_tokens=0,
+                    latency_ms=rerank_latency_ms,
+                    endpoint="retrieval.rerank",
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                )
+                if reranked_nodes:
+                    nodes = reranked_nodes
+                else:
+                    logger.info("Reranker returned empty nodes for query='%s'; fallback to pre-rerank nodes.", query)
+            except Exception:
+                logger.warning("Reranker failed for query='%s'; fallback to pre-rerank nodes.", query, exc_info=True)
         if reorder is not None:
             nodes = reorder.postprocess_nodes(nodes, qb)
         for n in nodes:
