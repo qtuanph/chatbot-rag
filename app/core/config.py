@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     retrieval_history_query_count: int = 0
     retrieval_section_hydration_enabled: bool = True
     retrieval_section_hydration_top_k: int = 6
+    retrieval_rerank_skip_enabled: bool = True
+    retrieval_rerank_skip_query_max_chars: int = 48
+    retrieval_rerank_skip_query_max_terms: int = 8
+    retrieval_rerank_skip_dominance_ratio: float = 1.35
     qdrant_search_indexed_only: bool = False
 
     database_url: str = "replace-me"
@@ -233,6 +237,12 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_HISTORY_QUERY_COUNT must be between 0 and 5")
         if self.retrieval_section_hydration_top_k < 1:
             raise ValueError("RETRIEVAL_SECTION_HYDRATION_TOP_K must be >= 1")
+        if self.retrieval_rerank_skip_query_max_chars < 1:
+            raise ValueError("RETRIEVAL_RERANK_SKIP_QUERY_MAX_CHARS must be >= 1")
+        if self.retrieval_rerank_skip_query_max_terms < 1:
+            raise ValueError("RETRIEVAL_RERANK_SKIP_QUERY_MAX_TERMS must be >= 1")
+        if self.retrieval_rerank_skip_dominance_ratio <= 1.0:
+            raise ValueError("RETRIEVAL_RERANK_SKIP_DOMINANCE_RATIO must be > 1.0")
         if self.max_upload_size_mb < 1 or self.max_upload_size_mb > 4096:
             raise ValueError("MAX_UPLOAD_SIZE_MB must be between 1 and 4096")
         if self.max_filename_length < 20 or self.max_filename_length > 512:
