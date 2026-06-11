@@ -1,0 +1,32 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "03:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 20
+    groups:
+      all-python-dependencies:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "python"
+
+  - package-ecosystem: "npm"
+    directory: "/webapp"
+    schedule:
+      interval: "daily"
+      time: "03:15"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 20
+    groups:
+      all-webapp-dependencies:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "webapp"
+      - "npm"
