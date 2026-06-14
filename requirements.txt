@@ -1,4 +1,4 @@
-fastapi==0.136.3
+fastapi==0.137.0
 llama-index-core==0.14.22
 llama-index-vector-stores-qdrant==0.10.1
 llama-index-embeddings-openai==0.6.0
@@ -10,16 +10,16 @@ sqlalchemy==2.0.50
 psycopg[binary]==3.3.4
 redis==8.0.0
 celery==5.6.3
-boto3==1.43.25
+boto3==1.43.29
 httpx==0.28.1
 PyJWT==2.13.0
 bcrypt==5.0.0
-docling==2.99.0
+docling==2.102.1
 qdrant-client==1.18.0
 fastembed==0.8.0
 nh3==0.3.5
 docling-hierarchical-pdf==0.1.8
 psutil==7.2.2
 nvidia-ml-py==13.610.43
-msgpack==1.1.2
+msgpack==1.2.0
 hiredis==3.4.0
