@@ -29,8 +29,6 @@ const EMPTY_FORM: TenantCreateRequest = {
   name: "",
   slug: "",
   description: "",
-  monthly_request_quota: 0,
-  monthly_token_quota: 0,
   rate_limit_rpm: 60,
   allowed_origins: [],
 };

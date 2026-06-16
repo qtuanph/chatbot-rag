@@ -1,4 +1,4 @@
-"""LlamaIndex global initialization: embed model, LLM, vector store."""
+"""LlamaIndex global initialization: embed model, LLM, and dual Qdrant stores."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai_like import OpenAILike
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client import AsyncQdrantClient, QdrantClient
+from qdrant_client.http import models as rest
 
 from app.core.config import settings
 
@@ -73,32 +74,78 @@ def init_llama_index() -> None:
 
 
 @lru_cache(maxsize=1)
-def get_vector_store() -> QdrantVectorStore:
-    """Return a singleton QdrantVectorStore.
-
-    Note: current llama-index qdrant adapter initializes fastembed sparse encoders
-    whenever enable_hybrid=True, so we pin sparse model to Qdrant/bm25 for
-    lightweight and stable sparse generation.
-    """
-    return build_vector_store(enable_hybrid=settings.retrieval_hybrid_enabled)
-
-
-def build_vector_store(enable_hybrid: bool) -> QdrantVectorStore:
-    """Build a QdrantVectorStore with explicit hybrid mode."""
-    client = QdrantClient(
+def get_qdrant_client() -> QdrantClient:
+    return QdrantClient(
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key or None,
         timeout=settings.qdrant_timeout,
     )
-    aclient = AsyncQdrantClient(
+
+
+@lru_cache(maxsize=1)
+def get_async_qdrant_client() -> AsyncQdrantClient:
+    return AsyncQdrantClient(
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key or None,
         timeout=settings.qdrant_timeout,
     )
+
+
+def get_payload_indexes() -> list[dict[str, rest.PayloadSchemaType]]:
+    return [
+        {"field_name": "tenant_id", "field_schema": rest.PayloadSchemaType.KEYWORD},
+        {"field_name": "document_id", "field_schema": rest.PayloadSchemaType.KEYWORD},
+        {"field_name": "section_id", "field_schema": rest.PayloadSchemaType.KEYWORD},
+        {"field_name": "section_code", "field_schema": rest.PayloadSchemaType.KEYWORD},
+        {"field_name": "parent_section_id", "field_schema": rest.PayloadSchemaType.KEYWORD},
+        {"field_name": "document_title", "field_schema": rest.PayloadSchemaType.TEXT},
+        {"field_name": "heading", "field_schema": rest.PayloadSchemaType.TEXT},
+        {"field_name": "breadcrumb_text", "field_schema": rest.PayloadSchemaType.TEXT},
+        {"field_name": "level", "field_schema": rest.PayloadSchemaType.INTEGER},
+        {"field_name": "order_index", "field_schema": rest.PayloadSchemaType.INTEGER},
+        {"field_name": "node_kind", "field_schema": rest.PayloadSchemaType.KEYWORD},
+    ]
+
+
+def build_vector_store(*, collection_name: str, enable_hybrid: bool) -> QdrantVectorStore:
+    """Build a Qdrant vector store for a specific collection."""
     return QdrantVectorStore(
-        collection_name=settings.qdrant_collection,
-        client=client,
-        aclient=aclient,
+        collection_name=collection_name,
+        client=get_qdrant_client(),
+        aclient=get_async_qdrant_client(),
         enable_hybrid=enable_hybrid,
         fastembed_sparse_model="Qdrant/bm25" if enable_hybrid else None,
+        payload_indexes=get_payload_indexes(),
+        flat_metadata=False,
     )
+
+
+@lru_cache(maxsize=1)
+def get_section_vector_store() -> QdrantVectorStore:
+    return build_vector_store(
+        collection_name=settings.qdrant_section_collection,
+        enable_hybrid=settings.retrieval_hybrid_enabled,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_chunk_vector_store() -> QdrantVectorStore:
+    return build_vector_store(
+        collection_name=settings.qdrant_chunk_collection,
+        enable_hybrid=settings.retrieval_hybrid_enabled,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_vector_store() -> QdrantVectorStore:
+    """Backward-compatible alias for the chunk vector store."""
+    return get_chunk_vector_store()
+
+
+async def delete_document_vectors(document_id: str) -> None:
+    """Delete vectors for one document from both section and chunk collections."""
+    for vector_store in (get_section_vector_store(), get_chunk_vector_store()):
+        try:
+            await vector_store.adelete(ref_doc_id=document_id)
+        except Exception:
+            continue

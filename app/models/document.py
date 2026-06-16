@@ -44,7 +44,7 @@ class Document(Base, TimestampMixin):
 
 
 class DocumentSection(Base, TimestampMixin):
-    """Level 1 hierarchical storage for 2-stage retrieval (RAG v2)."""
+    """Canonical section graph stored in PostgreSQL."""
 
     __tablename__ = "document_sections"
 
@@ -59,6 +59,7 @@ class DocumentSection(Base, TimestampMixin):
     )
     section_id: Mapped[str] = mapped_column(String(255), nullable=False)
     parent_section_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    section_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
     title: Mapped[str] = mapped_column(String(1000), nullable=False)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     section_type: Mapped[str] = mapped_column(String(50), server_default=text("'section'"))
@@ -69,6 +70,7 @@ class DocumentSection(Base, TimestampMixin):
     table_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     chunk_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     breadcrumb: Mapped[dict] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    breadcrumb_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     artifact_metadata: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), name="metadata"
     )

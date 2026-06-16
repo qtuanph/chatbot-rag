@@ -4,8 +4,10 @@
 
 set -e
 
-HF_HOME="${HF_HOME:-/home/qtuanph/.cache/huggingface}"
-mkdir -p "$HF_HOME" /app/data
+export HF_HOME="${HF_HOME:-/home/qtuanph/.cache/huggingface}"
+export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-$HF_HOME}"
+export FASTEMBED_CACHE_PATH="${FASTEMBED_CACHE_PATH:-$HF_HOME/fastembed}"
+mkdir -p "$HF_HOME" "$FASTEMBED_CACHE_PATH" /app/data
 
 # Initialize SQLite settings database with provider templates
 echo "Initializing settings database..."
@@ -14,6 +16,7 @@ python -c "from app.modules.settings.database import init_db; init_db()" 2>/dev/
 # Load HF_TOKEN from Docker secret (preferred) or fall back to env var
 if [ -f "/run/secrets/hf_token" ]; then
     export HF_TOKEN=$(cat /run/secrets/hf_token | tr -d '\r\n')
+    export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
     echo "HF_TOKEN loaded from Docker secret"
 fi
 
@@ -37,5 +40,5 @@ exec uvicorn app.main:app \
     --workers "$WORKERS" \
     --loop uvloop \
     --http httptools \
-    --timeout-keep-alive 75 \
+    --timeout-keep-alive 90 \
     --log-level info

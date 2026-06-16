@@ -51,6 +51,7 @@ async def create_chat_completion(
                 service.stream_complete(
                     tenant_id=api_context.tenant_id,
                     messages=messages,
+                    thinking_mode=payload.thinking_mode,
                     temperature=payload.temperature,
                     max_tokens=payload.max_tokens,
                     user_id=None,
@@ -66,6 +67,7 @@ async def create_chat_completion(
         result = await service.complete(
             tenant_id=api_context.tenant_id,
             messages=messages,
+            thinking_mode=payload.thinking_mode,
             temperature=payload.temperature,
             max_tokens=payload.max_tokens,
             user_id=None,

@@ -133,6 +133,15 @@ Base API hiện tại:
 | GET | `/public/v1/models` |
 | POST | `/public/v1/chat/completions` |
 
+Public chat request hiện hỗ trợ các field chính:
+
+- `model`
+- `messages`
+- `stream`
+- `thinking_mode`
+- `temperature`
+- `max_tokens`
+
 ## Quy tắc role
 
 | Role | Ý nghĩa |

@@ -1,107 +1,278 @@
-"""LlamaIndex-based ingestion pipeline — split, embed, and index with Qdrant native BM25."""
+"""Structured ingestion pipeline for canonical sections + dual Qdrant indexes."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
-import multiprocessing
+import uuid
 from typing import Any, Awaitable, Callable
 
-from llama_index.core import Document, Settings as LlamaSettings
-from llama_index.core.ingestion import IngestionPipeline as LiIngestionPipeline
-from llama_index.core.node_parser import MarkdownNodeParser, SentenceSplitter
+from llama_index.core import Document as LlamaDocument
+from llama_index.core import Settings as LlamaSettings
+from llama_index.core import StorageContext, VectorStoreIndex
+from llama_index.core.node_parser import HierarchicalNodeParser, SentenceWindowNodeParser
+from llama_index.core.postprocessor import MetadataReplacementPostProcessor
+from llama_index.core.schema import IndexNode, NodeRelationship, TextNode
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client.http import models as rest
 from qdrant_client.http.exceptions import UnexpectedResponse
 
-import asyncio
 from app.core.config import settings
-from app.core.llama_index import get_vector_store
-from app.core.hardware import hardware
+from app.core.llama_index import (
+    delete_document_vectors,
+    get_async_qdrant_client,
+    get_chunk_vector_store,
+    get_payload_indexes,
+    get_section_vector_store,
+    init_llama_index,
+)
 
 logger = logging.getLogger(__name__)
 
-PipelineProgressCallback = Callable[[int, int, int], Awaitable[None] | None]
+WINDOW_METADATA_KEY = "window"
+ORIGINAL_TEXT_METADATA_KEY = "original_text"
+SECTION_ROUTE_PREFIX = "section::"
+PipelineProgressCallback = Callable[[str, int, int, int], Awaitable[None] | None]
 
 
-def _ingested_nodes_to_llama_docs(
-    nodes: list[Any],
+def _section_parent_node_id(document_id: str, section_id: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"section-parent::{document_id}::{section_id}"))
+
+
+def _section_index_node_id(document_id: str, section_id: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"section-index::{document_id}::{section_id}"))
+
+
+def _section_index_id(section_id: str) -> str:
+    return f"{SECTION_ROUTE_PREFIX}{section_id}"
+
+
+def _chunk_node_id(document_id: str, section_id: str, idx: int) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"chunk::{document_id}::{section_id}::{idx:05d}"))
+
+
+def _iter_batches(nodes: list[Any], batch_size: int) -> list[list[Any]]:
+    return [nodes[index : index + batch_size] for index in range(0, len(nodes), batch_size)]
+
+
+def _base_metadata(section: dict[str, Any], document_id: str, tenant_id: str) -> dict[str, Any]:
+    breadcrumb = section.get("breadcrumb") or []
+    breadcrumb_text = section.get("breadcrumb_text") or " > ".join(breadcrumb)
+    document_title = breadcrumb[0] if breadcrumb else section.get("title", "")
+    return {
+        "tenant_id": tenant_id,
+        "document_id": document_id,
+        "section_id": section["section_id"],
+        "section_code": section.get("section_code"),
+        "parent_section_id": section.get("parent_section_id"),
+        "document_title": document_title,
+        "heading": section.get("title", ""),
+        "breadcrumb_text": breadcrumb_text,
+        "breadcrumb": breadcrumb,
+        "level": int(section.get("level", 1) or 1),
+        "order_index": int(section.get("order_index", 0) or 0),
+    }
+
+
+def _parser_metadata(section: dict[str, Any], document_id: str, tenant_id: str) -> dict[str, Any]:
+    return {
+        "tenant_id": tenant_id,
+        "document_id": document_id,
+        "section_id": section["section_id"],
+        "section_code": section.get("section_code"),
+        "heading": section.get("title", ""),
+        "level": int(section.get("level", 1) or 1),
+    }
+
+
+def _section_display_text(section: dict[str, Any]) -> str:
+    breadcrumb_text = section.get("breadcrumb_text") or " > ".join(section.get("breadcrumb") or [])
+    code = section.get("section_code")
+    code_block = f"Mã mục: {code}\n" if code else ""
+    content = str(section.get("content") or "").strip()
+    preview = content[:1500] if len(content) > 1500 else content
+    return (
+        f"Tiêu đề: {section.get('title', '')}\n"
+        f"{code_block}"
+        f"Đường dẫn: {breadcrumb_text}\n\n"
+        f"{preview}"
+    ).strip()
+
+
+def _build_section_index_nodes(
+    sections_data: list[dict[str, Any]],
     document_id: str,
     tenant_id: str,
-    sections_data: list[dict[str, Any]] | None = None,
-) -> list[Document]:
-    """Convert parsed IngestedNodes into LlamaIndex Documents with metadata."""
-    section_map = {s["section_id"]: s for s in (sections_data or [])}
-
-    docs = []
-    for node in nodes:
-        # Keep only compact scalar metadata. Large nested fields can break
-        # SentenceSplitter with "metadata length > chunk size".
-        meta: dict[str, Any] = {
-            "node_id": node.node_id,
-            "document_id": document_id,
-            "tenant_id": tenant_id,
-            "page_number": node.page_number,
-            "section_title": node.section_title,
-            "parent_id": node.parent_id,
-            "order": node.order,
-        }
-
-        node_meta = node.metadata or {}
-        sec_id = node_meta.get("section_id")
-        if sec_id and sec_id in section_map:
-            sec = section_map[sec_id]
-            breadcrumb = sec.get("breadcrumb") or node_meta.get("breadcrumb") or []
-            document_title = breadcrumb[0] if isinstance(breadcrumb, list) and breadcrumb else ""
-            meta.update(
-                {
-                    "section_level": sec.get("level", node_meta.get("section_level")),
-                    "order_index": sec.get("order_index", node.order),
-                    "document_title": document_title,
-                    "section_id": sec_id,
-                }
+) -> list[IndexNode]:
+    section_nodes: list[IndexNode] = []
+    for section in sections_data:
+        metadata = _base_metadata(section, document_id, tenant_id)
+        metadata["node_kind"] = "section"
+        section_nodes.append(
+            IndexNode(
+                id_=_section_index_node_id(document_id, section["section_id"]),
+                index_id=_section_index_id(section["section_id"]),
+                text=_section_display_text(section),
+                metadata=metadata,
             )
-        else:
-            breadcrumb = node_meta.get("breadcrumb") or []
-            document_title = breadcrumb[0] if isinstance(breadcrumb, list) and breadcrumb else ""
-            if document_title:
-                meta["document_title"] = document_title
-            if sec_id:
-                meta["section_id"] = sec_id
-
-        # Improve lexical/BM25 recall for heading-based queries (e.g., "mục 2.1", "mục 3")
-        # by ensuring section title is included in indexed text.
-        text_for_index = node.text
-        if node.section_title and node.section_title not in (node.text or ""):
-            text_for_index = f"{node.section_title}\n{node.text}"
-
-        # Important: force LlamaIndex ref_doc_id/doc_id to match our real document UUID.
-        # If omitted, LlamaIndex generates random IDs per source Document, causing
-        # Qdrant payload doc_id/ref_doc_id to drift from PostgreSQL document.id.
-        docs.append(Document(id_=document_id, text=text_for_index, metadata=meta))
-
-    return docs
+        )
+    return section_nodes
 
 
-def build_pipeline(vector_store: QdrantVectorStore) -> LiIngestionPipeline:
-    """Build a LlamaIndex ingestion pipeline.
+def _build_chunk_nodes(
+    sections_data: list[dict[str, Any]],
+    document_id: str,
+    tenant_id: str,
+) -> tuple[list[TextNode], list[TextNode]]:
+    parent_nodes: list[TextNode] = []
+    chunk_nodes: list[TextNode] = []
+    hierarchical_parser = HierarchicalNodeParser.from_defaults(
+        chunk_sizes=settings.retrieval_hierarchical_chunk_sizes,
+        chunk_overlap=settings.retrieval_chunk_overlap,
+        include_prev_next_rel=False,
+    )
 
-    Handles the full flow: heading-based node parsing → sentence splitting
-    → embedding via Settings.embed_model → indexing into QdrantVectorStore.
-    """
-    from app.core.llama_index import init_llama_index
+    for section in sections_data:
+        content = str(section.get("content") or "").strip()
+        if not content:
+            continue
 
-    init_llama_index()
-
-    return LiIngestionPipeline(
-        transformations=[
-            MarkdownNodeParser(),
-            SentenceSplitter(
-                chunk_size=settings.ingestion_chunk_size,
-                chunk_overlap=settings.ingestion_chunk_overlap,
+        metadata = _base_metadata(section, document_id, tenant_id)
+        parser_metadata = _parser_metadata(section, document_id, tenant_id)
+        sentence_parser = SentenceWindowNodeParser.from_defaults(
+            window_size=settings.retrieval_sentence_window_size,
+            window_metadata_key=WINDOW_METADATA_KEY,
+            original_text_metadata_key=ORIGINAL_TEXT_METADATA_KEY,
+            include_prev_next_rel=False,
+            id_func=lambda idx, doc, section_id=section["section_id"]: _chunk_node_id(
+                document_id, section_id, idx
             ),
-            LlamaSettings.embed_model,
-        ],
-        vector_store=vector_store,
+        )
+        document = LlamaDocument(
+            id_=document_id,
+            text=content,
+            metadata=parser_metadata,
+        )
+
+        sentence_nodes = sentence_parser.get_nodes_from_documents([document])
+        try:
+            hierarchical_nodes = hierarchical_parser.get_nodes_from_documents([document])
+            hierarchical_leaf_count = sum(1 for node in hierarchical_nodes if not node.child_nodes)
+            hierarchy_fallback_used = False
+        except RecursionError:
+            logger.warning(
+                "[%s] Hierarchical chunk parsing hit recursion depth for section %s; "
+                "continuing with sentence-window chunks only",
+                document_id,
+                section["section_id"],
+            )
+            hierarchical_leaf_count = len(sentence_nodes)
+            hierarchy_fallback_used = True
+
+        parent_node = TextNode(
+            id_=_section_parent_node_id(document_id, section["section_id"]),
+            text=content,
+            metadata={**metadata, "node_kind": "section_parent"},
+        )
+
+        child_refs = []
+        for node in sentence_nodes:
+            node.metadata.update(metadata)
+            node.metadata["node_kind"] = "chunk"
+            node.relationships[NodeRelationship.PARENT] = parent_node.as_related_node_info()
+            child_refs.append(node.as_related_node_info())
+            chunk_nodes.append(node)
+
+        parent_node.relationships[NodeRelationship.CHILD] = child_refs
+        parent_nodes.append(parent_node)
+
+        section["chunk_count"] = len(sentence_nodes)
+        artifact_metadata = dict(section.get("artifact_metadata") or {})
+        artifact_metadata["chunk_node_ids"] = [node.node_id for node in sentence_nodes]
+        artifact_metadata["parent_node_id"] = parent_node.node_id
+        artifact_metadata["hierarchical_leaf_count"] = hierarchical_leaf_count
+        artifact_metadata["hierarchical_chunk_sizes"] = list(settings.retrieval_hierarchical_chunk_sizes)
+        artifact_metadata["hierarchy_fallback_used"] = hierarchy_fallback_used
+        section["artifact_metadata"] = artifact_metadata
+
+    return parent_nodes, chunk_nodes
+
+
+async def _ensure_collection(vector_store: QdrantVectorStore) -> None:
+    aclient = get_async_qdrant_client()
+    payload_indexes = get_payload_indexes()
+    exists = await aclient.collection_exists(collection_name=vector_store.collection_name)
+    if exists:
+        for payload_index in payload_indexes:
+            try:
+                await aclient.create_payload_index(
+                    collection_name=vector_store.collection_name,
+                    field_name=payload_index["field_name"],
+                    field_schema=payload_index["field_schema"],
+                    wait=True,
+                )
+            except UnexpectedResponse as exc:
+                message = str(exc).lower()
+                if "already exists" in message or "duplicate" in message:
+                    continue
+                raise
+        return
+
+    dense_name = vector_store.dense_vector_name
+    sparse_name = vector_store.sparse_vector_name
+    vectors_config: Any
+    if dense_name:
+        vectors_config = {
+            dense_name: rest.VectorParams(
+                size=settings.embedding_vector_size,
+                distance=rest.Distance.COSINE,
+            )
+        }
+    else:
+        vectors_config = rest.VectorParams(
+            size=settings.embedding_vector_size,
+            distance=rest.Distance.COSINE,
+        )
+
+    sparse_vectors_config = None
+    if vector_store.enable_hybrid and sparse_name:
+        sparse_vectors_config = {sparse_name: rest.SparseVectorParams()}
+
+    await aclient.create_collection(
+        collection_name=vector_store.collection_name,
+        vectors_config=vectors_config,
+        sparse_vectors_config=sparse_vectors_config,
+    )
+
+    for payload_index in payload_indexes:
+        try:
+            await aclient.create_payload_index(
+                collection_name=vector_store.collection_name,
+                field_name=payload_index["field_name"],
+                field_schema=payload_index["field_schema"],
+                wait=True,
+            )
+        except UnexpectedResponse as exc:
+            message = str(exc).lower()
+            if "already exists" in message or "duplicate" in message:
+                continue
+            raise
+
+
+def _index_nodes_sync(
+    *,
+    nodes: list[Any],
+    vector_store: QdrantVectorStore,
+    storage_context: StorageContext,
+) -> None:
+    VectorStoreIndex(
+        nodes=nodes,
+        use_async=False,
+        store_nodes_override=True,
+        embed_model=LlamaSettings.embed_model,
+        insert_batch_size=max(settings.embedding_batch_size, 1),
+        storage_context=storage_context,
+        show_progress=False,
     )
 
 
@@ -111,160 +282,70 @@ async def run_ingestion_pipeline(
     tenant_id: str,
     sections_data: list[dict[str, Any]] | None = None,
     progress_callback: PipelineProgressCallback | None = None,
-) -> int:
-    """Run the full ingestion pipeline: convert → split → embed → store.
+) -> tuple[int, list[dict[str, Any]]]:
+    """Run the structured dual-index ingestion pipeline."""
+    init_llama_index()
+    sections_data = [dict(section) for section in (sections_data or [])]
+    if not sections_data:
+        logger.warning("[%s] No canonical sections to index", document_id)
+        return 0, sections_data
 
-    Uses IngestionPipeline.arun() with vector_store to auto-index.
-    Returns the number of stored nodes.
-    """
-    docs = _ingested_nodes_to_llama_docs(nodes, document_id, tenant_id, sections_data)
-    if not docs:
-        logger.warning("[%s] No documents to index", document_id)
-        return 0
+    section_store = get_section_vector_store()
+    chunk_store = get_chunk_vector_store()
+    await _ensure_collection(section_store)
+    await _ensure_collection(chunk_store)
+    await delete_document_vectors(document_id)
 
-    vector_store: QdrantVectorStore = get_vector_store()
-    pipeline = build_pipeline(vector_store=vector_store)
-    # Process a small configurable batch of source nodes at a time.
-    # This keeps the pipeline stable while allowing noticeably better throughput
-    # than the previous fully-serial `batch_size = 1` behavior.
-    batch_size = max(1, settings.ingestion_pipeline_batch_size)
-    total_stored = 0
-    write_observed = False
+    section_index_nodes = _build_section_index_nodes(sections_data, document_id, tenant_id)
+    parent_nodes, chunk_nodes = _build_chunk_nodes(sections_data, document_id, tenant_id)
+    total_nodes = len(section_index_nodes) + len(chunk_nodes)
+    insert_batch_size = max(settings.embedding_batch_size, 1)
 
-    aclient = getattr(vector_store, "_aclient", None) or getattr(vector_store, "aclient", None)
+    if progress_callback:
+        maybe_awaitable = progress_callback("prepare", 0, total_nodes, 0)
+        if maybe_awaitable is not None:
+            await maybe_awaitable
 
-    async def _ensure_collection() -> None:
-        if aclient is None:
-            return
-        exists = await aclient.collection_exists(collection_name=vector_store.collection_name)
-        if exists:
-            await _ensure_payload_indexes()
-            return
-        await aclient.create_collection(
-            collection_name=vector_store.collection_name,
-            vectors_config={
-                vector_store.dense_vector_name: rest.VectorParams(
-                    size=settings.embedding_vector_size,
-                    distance=rest.Distance.COSINE,
-                )
-            },
-            sparse_vectors_config={
-                vector_store.sparse_vector_name: rest.SparseVectorParams(),
-            },
+    section_storage = StorageContext.from_defaults(vector_store=section_store)
+    stored = 0
+    for batch in _iter_batches(section_index_nodes, insert_batch_size):
+        await asyncio.to_thread(
+            _index_nodes_sync,
+            nodes=batch,
+            vector_store=section_store,
+            storage_context=section_storage,
         )
-        logger.warning(
-            "[%s] Auto-created missing Qdrant collection '%s' during ingestion.",
-            document_id,
-            vector_store.collection_name,
-        )
-        await _ensure_payload_indexes()
-
-    async def _ensure_payload_indexes() -> None:
-        if aclient is None:
-            return
-        indexed_fields = (
-            ("tenant_id", rest.PayloadSchemaType.KEYWORD),
-            ("document_id", rest.PayloadSchemaType.KEYWORD),
-            ("section_id", rest.PayloadSchemaType.KEYWORD),
-        )
-        for field_name, schema in indexed_fields:
-            try:
-                await aclient.create_payload_index(
-                    collection_name=vector_store.collection_name,
-                    field_name=field_name,
-                    field_schema=schema,
-                    wait=True,
-                )
-            except UnexpectedResponse as exc:
-                message = str(exc).lower()
-                if "already exists" in message or "duplicate" in message:
-                    continue
-                raise
-
-    async def _count_points() -> int:
-        if aclient is None:
-            return -1
-        try:
-            res = await aclient.count(
-                collection_name=vector_store.collection_name,
-                exact=True,
-            )
-        except UnexpectedResponse as e:
-            if "doesn't exist" in str(e):
-                await _ensure_collection()
-                res = await aclient.count(
-                    collection_name=vector_store.collection_name,
-                    exact=True,
-                )
-            else:
-                raise
-        return int(res.count if res is not None else 0)
-
-    await _ensure_collection()
-
-    for start in range(0, len(docs), batch_size):
-        batch = docs[start : start + batch_size]
-        before_count = await _count_points()
-
-        retries = 3
-        backoff = 2
-        stored_nodes = None
-        for attempt in range(retries):
-            try:
-                num_workers = settings.embed_parallelism
-                if num_workers <= 0:
-                    num_workers = min(4, hardware.embed_parallelism)
-                # Celery prefork workers are daemon processes and cannot spawn child processes.
-                # LlamaIndex arun(num_workers>1) uses ProcessPoolExecutor under the hood.
-                # Force single-worker mode inside daemon context to avoid:
-                # "daemonic processes are not allowed to have children".
-                if multiprocessing.current_process().daemon:
-                    stored_nodes = await pipeline.arun(documents=batch)
-                else:
-                    stored_nodes = await pipeline.arun(
-                        documents=batch,
-                        num_workers=num_workers,
-                    )
-                break
-            except Exception as e:
-                if attempt == retries - 1:
-                    raise
-                wait_time = backoff**attempt
-                logger.warning(
-                    "[%s] Ingestion pipeline failed attempt %d/%d, retrying in %ds: %s",
-                    document_id,
-                    attempt + 1,
-                    retries,
-                    wait_time,
-                    e,
-                )
-                await asyncio.sleep(wait_time)
-
-        after_count = await _count_points()
-        if before_count >= 0 and after_count >= 0 and after_count > before_count:
-            write_observed = True
-        total_stored += len(stored_nodes) if stored_nodes else 0
-        processed_docs = min(start + batch_size, len(docs))
+        stored += len(batch)
         if progress_callback:
-            try:
-                maybe_awaitable = progress_callback(processed_docs, len(docs), total_stored)
-                if maybe_awaitable is not None:
-                    await maybe_awaitable
-            except Exception:
-                logger.warning("[%s] Failed to publish ingestion progress callback", document_id, exc_info=True)
-        logger.info(
-            "[%s] Pipeline batch %d-%d/%d: %d nodes stored",
-            document_id,
-            start + 1,
-            min(start + batch_size, len(docs)),
-            len(docs),
-            len(stored_nodes),
-        )
+            maybe_awaitable = progress_callback("section", stored, total_nodes, stored)
+            if maybe_awaitable is not None:
+                await maybe_awaitable
 
-    logger.info("[%s] Pipeline complete: %d docs -> %d nodes stored in Qdrant", document_id, len(docs), total_stored)
-    if total_stored > 0 and not write_observed:
-        raise RuntimeError(
-            f"[{document_id}] Embedding pipeline completed but no vectors were persisted to Qdrant. "
-            "Check vector_store wiring and Qdrant write path."
+    chunk_storage = StorageContext.from_defaults(vector_store=chunk_store)
+    chunk_storage.docstore.add_documents(parent_nodes + chunk_nodes, allow_update=True)
+    chunk_stored = 0
+    for batch in _iter_batches(chunk_nodes, insert_batch_size):
+        await asyncio.to_thread(
+            _index_nodes_sync,
+            nodes=batch,
+            vector_store=chunk_store,
+            storage_context=chunk_storage,
         )
-    return total_stored
+        chunk_stored += len(batch)
+        stored += len(batch)
+        if progress_callback:
+            maybe_awaitable = progress_callback("chunk", chunk_stored, total_nodes, stored)
+            if maybe_awaitable is not None:
+                await maybe_awaitable
+
+    logger.info(
+        "[%s] Structured ingestion complete: %d section nodes, %d chunk nodes",
+        document_id,
+        len(section_index_nodes),
+        len(chunk_nodes),
+    )
+    return stored, sections_data
+
+
+def build_context_postprocessor() -> MetadataReplacementPostProcessor:
+    return MetadataReplacementPostProcessor(target_metadata_key=WINDOW_METADATA_KEY)

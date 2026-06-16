@@ -12,6 +12,7 @@ class ChatCompletionsRequest(BaseModel):
     model: str | None = None
     messages: list[OpenAIMessage] = Field(min_length=1)
     stream: bool = False
+    thinking_mode: bool = False
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1, le=32768)
     metadata: dict[str, str | int | float | bool | None] | None = None

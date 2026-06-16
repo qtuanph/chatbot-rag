@@ -1,30 +1,36 @@
-"""LlamaIndex-based retrieval pipeline — hybrid search + reranker."""
+"""Structured retrieval pipeline: section route + sentence-window chunks + reranker."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import Any
 
-from llama_index.core import QueryBundle, Settings, VectorStoreIndex
-from llama_index.core.schema import NodeWithScore
+from llama_index.core import QueryBundle, VectorStoreIndex
+from llama_index.core import StorageContext
 from llama_index.core.postprocessor import LongContextReorder
-from llama_index.core.schema import TextNode
-from qdrant_client.http import models as rest
+from llama_index.core.retrievers import AutoMergingRetriever, RecursiveRetriever
+from llama_index.core.schema import NodeRelationship, NodeWithScore, RelatedNodeInfo, TextNode
+from llama_index.core.vector_stores.types import MetadataFilter, MetadataFilters, VectorStoreQueryMode
 
-from app.core.llama_index import get_vector_store
 from app.adapters.reranker import get_reranker
 from app.core.config import settings
+from app.core.llama_index import get_chunk_vector_store, get_section_vector_store
+from app.db.session import AsyncSessionLocal
 from app.models.rag import RagContext, RagNode
+from app.modules.documents.ingestion.pipeline import build_context_postprocessor
+from app.modules.documents.repositories.section_repository import SectionRepository
 
-logger = logging.getLogger(__name__)
-_payload_indexes_ready = False
+logger = logging.getLogger("uvicorn.error")
+
+SECTION_CODE_QUERY_RE = re.compile(r"\b\d+(?:\.\d+)+\b")
+SECTION_ROUTE_ROOT_ID = "sections_root"
 
 
 def _estimate_tokens_from_chars(text: str) -> int:
-    # Keep consistent with docs/7_CURRENT_SETTINGS.json (chars / 3).
     return max(0, len(text or "") // 3)
 
 
@@ -32,15 +38,15 @@ def _query_terms(query: str) -> list[str]:
     return [term for term in str(query or "").strip().split() if term]
 
 
-def _is_keyword_style_query(query: str) -> bool:
+def _should_prioritize_section_route(query: str) -> bool:
     cleaned = str(query or "").strip()
     if not cleaned:
         return False
-    if "\n" in cleaned:
-        return False
-    if len(cleaned) > settings.retrieval_rerank_skip_query_max_chars:
-        return False
-    return len(_query_terms(cleaned)) <= settings.retrieval_rerank_skip_query_max_terms
+    if SECTION_CODE_QUERY_RE.search(cleaned):
+        return True
+    if len(cleaned) <= settings.retrieval_route_section_max_chars and len(_query_terms(cleaned)) <= settings.retrieval_route_section_max_terms:
+        return True
+    return False
 
 
 def _should_skip_rerank(query: str, nodes: list[NodeWithScore]) -> tuple[bool, str]:
@@ -48,8 +54,11 @@ def _should_skip_rerank(query: str, nodes: list[NodeWithScore]) -> tuple[bool, s
         return False, "disabled"
     if not nodes:
         return False, "no-nodes"
-    if not _is_keyword_style_query(query):
-        return False, "not-keyword-style"
+    cleaned = str(query or "").strip()
+    if len(cleaned) > settings.retrieval_rerank_skip_query_max_chars:
+        return False, "long-query"
+    if len(_query_terms(cleaned)) > settings.retrieval_rerank_skip_query_max_terms:
+        return False, "many-terms"
     if len(nodes) == 1:
         return True, "single-result"
 
@@ -59,11 +68,10 @@ def _should_skip_rerank(query: str, nodes: list[NodeWithScore]) -> tuple[bool, s
         return False, "non-positive-top1"
     if top2 <= 0:
         return True, "top2-missing-or-zero"
-
-    dominance_ratio = top1 / max(top2, 1e-9)
-    if dominance_ratio >= settings.retrieval_rerank_skip_dominance_ratio:
-        return True, f"dominant-top1:{dominance_ratio:.2f}"
-    return False, f"weak-dominance:{dominance_ratio:.2f}"
+    ratio = top1 / max(top2, 1e-9)
+    if ratio >= settings.retrieval_rerank_skip_dominance_ratio:
+        return True, f"dominant-top1:{ratio:.2f}"
+    return False, f"weak-dominance:{ratio:.2f}"
 
 
 def _dispatch_model_usage(
@@ -91,145 +99,169 @@ def _dispatch_model_usage(
             tenant_id=tenant_id,
             user_id=user_id,
         )
-    except Exception as e:
-        logger.warning("Failed to dispatch %s usage: %s", model_type, e)
+    except Exception as exc:
+        logger.warning("Failed to dispatch %s usage: %s", model_type, exc)
 
 
-def _extract_text_and_metadata_from_payload(payload: dict[str, Any], text_key: str) -> tuple[str, dict[str, Any]]:
-    """Extract usable text/metadata from Qdrant payload written by LlamaIndex.
-
-    Newer payloads may not expose plain `text`; instead text/metadata lives in
-    `_node_content` JSON. This helper normalizes both shapes.
-    """
-    text = payload.get(text_key) or payload.get("text") or ""
-    metadata = {k: v for k, v in payload.items() if k not in {text_key, "text"}}
-
-    if text:
-        return str(text), metadata
-
-    raw_node = payload.get("_node_content")
-    if isinstance(raw_node, str) and raw_node:
-        try:
-            parsed = json.loads(raw_node)
-            parsed_text = parsed.get("text") or ""
-            parsed_meta = parsed.get("metadata") or {}
-            if isinstance(parsed_meta, dict):
-                merged_meta = dict(parsed_meta)
-                merged_meta.update(metadata)
-                metadata = merged_meta
-            text = str(parsed_text or "")
-        except Exception as parse_err:
-            logger.debug("Failed to parse _node_content from payload: %s", parse_err)
-
-    return str(text), metadata
+def _preview_text(text: str, limit: int = 240) -> str:
+    normalized = " ".join(str(text or "").split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[:limit]}..."
 
 
-async def _hybrid_retrieve_via_qdrant(
-    query: str,
-    limit: int,
-    tenant_id: str | None = None,
-    user_id: str | None = None,
-) -> list[NodeWithScore]:
-    """Run hybrid retrieval directly via qdrant-client (dense + sparse fusion)."""
-    global _payload_indexes_ready
-    vector_store = get_vector_store()
-    aclient = getattr(vector_store, "_aclient", None) or getattr(vector_store, "aclient", None)
-    if aclient is None:
-        raise RuntimeError("Qdrant async client is not initialized")
-    collection_name = vector_store.collection_name
-
-    exists = await aclient.collection_exists(collection_name=collection_name)
-    if not exists:
-        raise RuntimeError(
-            f"Qdrant collection '{collection_name}' does not exist. Please run the ingestion pipeline to build it."
+def _serialize_nodes_for_debug(nodes: list[NodeWithScore], limit: int = 5) -> list[dict[str, Any]]:
+    serialized: list[dict[str, Any]] = []
+    for node_with_score in nodes[:limit]:
+        metadata = node_with_score.node.metadata or {}
+        serialized.append(
+            {
+                "node_id": node_with_score.node.node_id,
+                "score": round(float(node_with_score.score or 0.0), 6),
+                "document_id": metadata.get("document_id"),
+                "document_title": metadata.get("document_title"),
+                "section_id": metadata.get("section_id"),
+                "section_code": metadata.get("section_code"),
+                "heading": metadata.get("heading"),
+                "node_kind": metadata.get("node_kind"),
+                "preview": _preview_text(node_with_score.node.get_content()),
+            }
         )
+    return serialized
 
-    if not _payload_indexes_ready:
-        for field_name in ("tenant_id", "document_id", "section_id"):
-            try:
-                await aclient.create_payload_index(
-                    collection_name=collection_name,
-                    field_name=field_name,
-                    field_schema=rest.PayloadSchemaType.KEYWORD,
-                    wait=True,
-                )
-            except Exception as exc:
-                message = str(exc).lower()
-                if "already exists" not in message and "duplicate" not in message:
-                    logger.debug("Payload index ensure for %s skipped: %s", field_name, exc)
-        _payload_indexes_ready = True
 
-    t0_embed = time.perf_counter()
-    dense_vector = await Settings.embed_model.aget_query_embedding(query)
-    embed_latency_ms = (time.perf_counter() - t0_embed) * 1000
-    embed_model_name = (
-        getattr(Settings.embed_model, "model_name", None)
-        or getattr(Settings.embed_model, "model", None)
-        or "unknown"
-    )
-    _dispatch_model_usage(
-        model_name=str(embed_model_name),
-        model_type="embedding",
-        prompt_tokens=_estimate_tokens_from_chars(query),
-        completion_tokens=0,
-        latency_ms=embed_latency_ms,
-        endpoint="retrieval.embed_query",
-        tenant_id=tenant_id,
-        user_id=user_id,
-    )
+def _emit_debug(event: str, **payload: Any) -> None:
+    message = json.dumps({"event": event, **payload}, ensure_ascii=False)
+    logger.info(message)
+    print(message, flush=True)
 
-    sparse_query_fn = getattr(vector_store, "_sparse_query_fn", None) or getattr(vector_store, "sparse_query_fn", None)
-    if sparse_query_fn is None:
-        raise RuntimeError("Qdrant sparse query function is not available")
 
-    sparse_indices, sparse_values = await asyncio.to_thread(sparse_query_fn, [query])
-    sparse_vector = rest.SparseVector(indices=sparse_indices[0], values=sparse_values[0])
-
-    query_filter = None
+def _tenant_filters(tenant_id: str | None, *, section_id: str | None = None) -> MetadataFilters | None:
+    filters: list[MetadataFilter] = []
     if tenant_id:
-        query_filter = rest.Filter(
-            must=[
-                rest.FieldCondition(
-                    key="tenant_id",
-                    match=rest.MatchValue(value=tenant_id),
-                )
-            ]
+        filters.append(MetadataFilter(key="tenant_id", value=tenant_id))
+    if section_id:
+        filters.append(MetadataFilter(key="section_id", value=section_id))
+    if not filters:
+        return None
+    return MetadataFilters(filters=filters)
+
+
+def _query_mode() -> VectorStoreQueryMode:
+    return VectorStoreQueryMode.HYBRID if settings.retrieval_hybrid_enabled else VectorStoreQueryMode.DEFAULT
+
+
+async def _load_tenant_sections(tenant_id: str | None) -> list[dict[str, Any]]:
+    if not tenant_id:
+        return []
+    async with AsyncSessionLocal() as session:
+        repo = SectionRepository(session)
+        return await repo.get_sections_by_tenant(tenant_id)
+
+
+def _build_parent_storage_context(sections: list[dict[str, Any]]) -> StorageContext:
+    storage_context = StorageContext.from_defaults()
+    parent_nodes: list[TextNode] = []
+    for section in sections:
+        artifact_metadata = dict(section.get("artifact_metadata") or {})
+        child_ids = [str(node_id) for node_id in artifact_metadata.get("chunk_node_ids", []) if str(node_id)]
+        parent_node_id = artifact_metadata.get("parent_node_id") or f"section-parent::{section['document_id']}::{section['section_id']}"
+        metadata = {
+            "tenant_id": section.get("tenant_id"),
+            "document_id": section.get("document_id"),
+            "section_id": section.get("section_id"),
+            "section_code": section.get("section_code"),
+            "parent_section_id": section.get("parent_section_id"),
+            "document_title": (section.get("breadcrumb") or [section.get("title")])[0],
+            "heading": section.get("title"),
+            "breadcrumb_text": section.get("breadcrumb_text"),
+            "breadcrumb": section.get("breadcrumb") or [],
+            "level": section.get("level"),
+            "order_index": section.get("order_index"),
+            "node_kind": "section_parent",
+        }
+        parent_node = TextNode(
+            id_=str(parent_node_id),
+            text=str(section.get("content") or ""),
+            metadata=metadata,
         )
+        if child_ids:
+            parent_node.relationships[NodeRelationship.CHILD] = [
+                RelatedNodeInfo(node_id=node_id) for node_id in child_ids
+            ]
+        parent_nodes.append(parent_node)
+    storage_context.docstore.add_documents(parent_nodes, allow_update=True)
+    return storage_context
 
-    search_params = rest.SearchParams(indexed_only=settings.qdrant_search_indexed_only)
 
-    response = await aclient.query_points(
-        collection_name=collection_name,
-        prefetch=[
-            rest.Prefetch(
-                query=dense_vector,
-                using=vector_store.dense_vector_name,
-                limit=settings.retrieval_hybrid_top_k,
-                params=search_params,
-            ),
-            rest.Prefetch(
-                query=sparse_vector,
-                using=vector_store.sparse_vector_name,
-                limit=settings.retrieval_hybrid_top_k,
-                params=search_params,
-            ),
-        ],
-        query=rest.FusionQuery(fusion=rest.Fusion.RRF),
-        query_filter=query_filter,
-        search_params=search_params,
-        with_payload=True,
-        with_vectors=False,
-        limit=limit,
+def _build_chunk_index() -> VectorStoreIndex:
+    return VectorStoreIndex.from_vector_store(get_chunk_vector_store())
+
+
+def _build_section_index() -> VectorStoreIndex:
+    return VectorStoreIndex.from_vector_store(get_section_vector_store())
+
+
+def _build_section_recursive_retriever(
+    *,
+    tenant_id: str | None,
+    sections: list[dict[str, Any]],
+) -> RecursiveRetriever:
+    section_index = _build_section_index()
+    chunk_index = _build_chunk_index()
+    common_kwargs = {
+        "vector_store_query_mode": _query_mode(),
+        "similarity_top_k": settings.retrieval_section_top_k,
+        "hybrid_top_k": settings.retrieval_section_top_k,
+        "sparse_top_k": settings.retrieval_section_top_k,
+    }
+    retriever_dict: dict[str, Any] = {
+        SECTION_ROUTE_ROOT_ID: section_index.as_retriever(
+            filters=_tenant_filters(tenant_id),
+            **common_kwargs,
+        )
+    }
+    for section in sections:
+        retriever_dict[f"section::{section['section_id']}"] = chunk_index.as_retriever(
+            filters=_tenant_filters(tenant_id, section_id=str(section["section_id"])),
+            vector_store_query_mode=_query_mode(),
+            similarity_top_k=settings.retrieval_recursive_top_k,
+            hybrid_top_k=settings.retrieval_recursive_top_k,
+            sparse_top_k=settings.retrieval_recursive_top_k,
+        )
+    return RecursiveRetriever(root_id=SECTION_ROUTE_ROOT_ID, retriever_dict=retriever_dict)
+
+
+def _build_auto_merging_retriever(
+    *,
+    tenant_id: str | None,
+    storage_context: StorageContext,
+) -> AutoMergingRetriever:
+    chunk_index = _build_chunk_index()
+    vector_retriever = chunk_index.as_retriever(
+        filters=_tenant_filters(tenant_id),
+        vector_store_query_mode=_query_mode(),
+        similarity_top_k=settings.retrieval_chunk_top_k,
+        hybrid_top_k=settings.retrieval_chunk_top_k,
+        sparse_top_k=settings.retrieval_chunk_top_k,
+    )
+    return AutoMergingRetriever(
+        vector_retriever=vector_retriever,
+        storage_context=storage_context,
+        simple_ratio_thresh=settings.retrieval_auto_merge_ratio_threshold,
+        verbose=False,
     )
 
-    nodes: list[NodeWithScore] = []
-    text_key = getattr(vector_store, "text_key", "text")
-    for point in response.points:
-        payload = point.payload or {}
-        text, metadata = _extract_text_and_metadata_from_payload(payload, text_key)
-        node = TextNode(id_=str(point.id), text=text, metadata=metadata)
-        nodes.append(NodeWithScore(node=node, score=float(point.score or 0.0)))
-    return nodes
+
+def _dedupe_nodes(nodes: list[NodeWithScore]) -> list[NodeWithScore]:
+    deduped: list[NodeWithScore] = []
+    seen: set[str] = set()
+    for node in nodes:
+        if node.node.node_id in seen:
+            continue
+        seen.add(node.node.node_id)
+        deduped.append(node)
+    return deduped
 
 
 async def retrieve_context(
@@ -241,49 +273,65 @@ async def retrieve_context(
     tenant_id: str | None = None,
     user_id: str | None = None,
 ) -> RagContext:
-    """Retrieve context using LlamaIndex hybrid (dense + native BM25 RRF) + reranker.
+    del session, positive_point_ids, negative_point_ids
 
-    Args:
-        queries: List of query strings (expanded).
-        limit: Max nodes to return after reranking.
+    if not queries:
+        return RagContext(nodes=[], sections=None, confidence={"node_count": 0})
 
-    Returns:
-        RagContext with scored nodes.
-    """
-    vector_store = get_vector_store()
-    index = VectorStoreIndex.from_vector_store(vector_store) if not settings.retrieval_hybrid_enabled else None
-    retriever = None
-    if index is not None:
-        retriever = index.as_retriever(similarity_top_k=settings.retrieval_hybrid_top_k)
-
-    reranker = None
+    sections = await _load_tenant_sections(tenant_id)
+    storage_context = _build_parent_storage_context(sections)
+    recursive_retriever = _build_section_recursive_retriever(tenant_id=tenant_id, sections=sections)
+    auto_merging_retriever = _build_auto_merging_retriever(tenant_id=tenant_id, storage_context=storage_context)
+    replacement_postprocessor = build_context_postprocessor()
     reorder = LongContextReorder() if settings.retrieval_long_context_reorder_enabled else None
 
+    reranker = None
     all_nodes: list[NodeWithScore] = []
-    seen_ids: set[str] = set()
 
     for query in queries:
         qb = QueryBundle(query_str=query)
-        if settings.retrieval_hybrid_enabled:
-            nodes = await _hybrid_retrieve_via_qdrant(
+        query_nodes: list[NodeWithScore] = []
+
+        if _should_prioritize_section_route(query):
+            t0_section = time.perf_counter()
+            section_nodes = await asyncio.to_thread(recursive_retriever.retrieve, qb)
+            query_nodes.extend(section_nodes)
+            _emit_debug(
+                "RAG_SECTION_ROUTE",
                 query=query,
-                limit=settings.retrieval_hybrid_top_k,
                 tenant_id=tenant_id,
-                user_id=user_id,
+                latency_ms=round((time.perf_counter() - t0_section) * 1000, 2),
+                nodes=_serialize_nodes_for_debug(section_nodes),
             )
-        else:
-            if retriever is None:
-                raise RuntimeError("Dense retriever is not initialized")
-            nodes = await retriever.aretrieve(query)
-        skip_rerank, skip_reason = _should_skip_rerank(query, nodes)
-        if skip_rerank:
-            logger.info("Skip reranker for query='%s' (%s).", query, skip_reason)
-        else:
+
+        t0_semantic = time.perf_counter()
+        semantic_nodes = await asyncio.to_thread(auto_merging_retriever.retrieve, qb)
+        query_nodes.extend(semantic_nodes)
+        _emit_debug(
+            "RAG_SEMANTIC_ROUTE",
+            query=query,
+            tenant_id=tenant_id,
+            latency_ms=round((time.perf_counter() - t0_semantic) * 1000, 2),
+            nodes=_serialize_nodes_for_debug(semantic_nodes),
+        )
+
+        query_nodes = _dedupe_nodes(query_nodes)
+        query_nodes = replacement_postprocessor.postprocess_nodes(query_nodes, qb)
+        _emit_debug(
+            "RAG_RETRIEVE",
+            query=query,
+            tenant_id=tenant_id,
+            retrieved=len(query_nodes),
+            nodes=_serialize_nodes_for_debug(query_nodes),
+        )
+
+        skip_rerank, skip_reason = _should_skip_rerank(query, query_nodes)
+        if not skip_rerank:
             try:
                 if reranker is None:
                     reranker = get_reranker(top_k=limit)
                 t0_rerank = time.perf_counter()
-                reranked_nodes = await reranker.postprocess_nodes(nodes, qb)
+                reranked_nodes = await reranker.postprocess_nodes(query_nodes, qb)
                 rerank_latency_ms = (time.perf_counter() - t0_rerank) * 1000
                 rerank_model_name = (
                     getattr(reranker, "model_name", None)
@@ -291,7 +339,7 @@ async def retrieve_context(
                     or reranker.__class__.__name__
                 )
                 rerank_prompt_tokens = _estimate_tokens_from_chars(query) + _estimate_tokens_from_chars(
-                    "".join((n.node.text or "") for n in nodes)
+                    "".join(node.node.get_content() for node in query_nodes)
                 )
                 _dispatch_model_usage(
                     model_name=str(rerank_model_name),
@@ -303,46 +351,85 @@ async def retrieve_context(
                     tenant_id=tenant_id,
                     user_id=user_id,
                 )
+                _emit_debug(
+                    "RAG_RERANK",
+                    query=query,
+                    tenant_id=tenant_id,
+                    model=str(rerank_model_name),
+                    latency_ms=round(rerank_latency_ms, 2),
+                    before=_serialize_nodes_for_debug(query_nodes),
+                    after=_serialize_nodes_for_debug(reranked_nodes or []),
+                )
                 if reranked_nodes:
-                    nodes = reranked_nodes
-                else:
-                    logger.info("Reranker returned empty nodes for query='%s'; fallback to pre-rerank nodes.", query)
+                    query_nodes = reranked_nodes
             except Exception:
                 logger.warning("Reranker failed for query='%s'; fallback to pre-rerank nodes.", query, exc_info=True)
-        if reorder is not None:
-            nodes = reorder.postprocess_nodes(nodes, qb)
-        for n in nodes:
-            if n.node.node_id not in seen_ids:
-                seen_ids.add(n.node.node_id)
-                all_nodes.append(n)
+        else:
+            logger.info("Skip reranker for query='%s' (%s).", query, skip_reason)
 
-    all_nodes.sort(key=lambda n: n.score or 0, reverse=True)
+        if reorder is not None:
+            query_nodes = reorder.postprocess_nodes(query_nodes, qb)
+            _emit_debug("RAG_REORDER", query=query, tenant_id=tenant_id, nodes=_serialize_nodes_for_debug(query_nodes))
+
+        all_nodes.extend(query_nodes)
+
+    all_nodes = _dedupe_nodes(all_nodes)
+    all_nodes.sort(key=lambda node: node.score or 0.0, reverse=True)
     all_nodes = all_nodes[:limit]
 
-    rag_nodes = []
-    for n in all_nodes:
-        meta = n.node.metadata or {}
-        section_full_text = meta.get("section_content") or n.node.text
-        breadcrumb = meta.get("breadcrumb") or []
-        document_title = meta.get("document_title")
-        if not document_title and isinstance(breadcrumb, list) and breadcrumb:
-            document_title = str(breadcrumb[0])
-        heading = meta.get("section_title")
-        if not heading and isinstance(breadcrumb, list) and breadcrumb:
-            heading = str(breadcrumb[-1])
+    rag_nodes: list[RagNode] = []
+    for node_with_score in all_nodes:
+        node = node_with_score.node
+        metadata = node.metadata or {}
+        full_text = node.get_content()
         rag_nodes.append(
             RagNode(
-                node_id=n.node.node_id,
-                parent_id=meta.get("parent_id"),
-                document_id=meta.get("document_id", ""),
-                document_title=document_title or "",
-                heading=heading or "",
-                summary=meta.get("section_content", n.node.text[:200]),
-                full_text=section_full_text,
-                page_range=str(meta.get("page_number", "")),
-                section_id=meta.get("section_id"),
-                score=n.score or 0.0,
+                node_id=node.node_id,
+                parent_id=node.parent_node.node_id if node.parent_node is not None else metadata.get("parent_section_id"),
+                document_id=str(metadata.get("document_id") or ""),
+                document_title=str(metadata.get("document_title") or ""),
+                heading=str(metadata.get("heading") or ""),
+                summary=full_text[:400],
+                full_text=full_text,
+                page_range=None,
+                section_id=str(metadata.get("section_id") or "") or None,
+                section_code=str(metadata.get("section_code") or "") or None,
+                breadcrumb=tuple(metadata.get("breadcrumb") or []),
+                node_kind=str(metadata.get("node_kind") or "chunk"),
+                score=float(node_with_score.score or 0.0),
             )
         )
 
-    return RagContext(nodes=rag_nodes, sections=None, confidence=None)
+    top_score = float(all_nodes[0].score or 0.0) if all_nodes else 0.0
+    second_score = float(all_nodes[1].score or 0.0) if len(all_nodes) > 1 else 0.0
+    dominance_ratio = top_score / max(second_score, 1e-9) if second_score > 0 else (999.0 if top_score > 0 else 0.0)
+    confidence = {
+        "node_count": len(rag_nodes),
+        "top_score": top_score,
+        "second_score": second_score,
+        "dominance_ratio": dominance_ratio,
+        "unique_document_count": len({node.document_id for node in rag_nodes if node.document_id}),
+    }
+
+    _emit_debug(
+        "RAG_FINAL",
+        tenant_id=tenant_id,
+        limit=limit,
+        confidence=confidence,
+        nodes=[
+            {
+                "node_id": node.node_id,
+                "score": round(float(node.score or 0.0), 6),
+                "document_id": node.document_id,
+                "document_title": node.document_title,
+                "section_id": node.section_id,
+                "section_code": node.section_code,
+                "heading": node.heading,
+                "node_kind": node.node_kind,
+                "preview": _preview_text(node.full_text or node.summary or ""),
+            }
+            for node in rag_nodes[:5]
+        ],
+    )
+
+    return RagContext(nodes=rag_nodes, sections=None, confidence=confidence)

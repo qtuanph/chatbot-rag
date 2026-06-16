@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, Brain, Square, StopCircle } from "lucide-react";
+import { ArrowUp, Brain, StopCircle } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -144,7 +144,7 @@ export function ChatInput({
                           canSend ? "shadow-[0_4px_14px_-4px_rgba(1,56,123,0.5)]" : "bg-muted text-muted-foreground/60 shadow-none",
                         )}
                       >
-                        {streaming ? <Square className="fill-current" /> : <ArrowUp />}
+                        <ArrowUp />
                       </Button>
                     }
                   />

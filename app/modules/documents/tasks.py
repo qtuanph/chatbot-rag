@@ -207,10 +207,9 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                 await _rechunk_progress("rechunking", 25, "[2/4] Đang dọn dẹp dữ liệu cũ...")
 
                 try:
-                    from app.core.llama_index import get_vector_store
+                    from app.core.llama_index import delete_document_vectors
 
-                    vs = get_vector_store()
-                    await vs.adelete(ref_doc_id=document_id)
+                    await delete_document_vectors(document_id)
                     await section_repo.delete_sections(document_id)
                     logger.info("[%s] Cleaned old vectors and sections", document_id)
                 except Exception as clean_err:
@@ -233,13 +232,15 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                         f"[4/4] Đã embed {processed_docs}/{total_docs} chunk, đang ghi vector vào Qdrant...",
                     )
 
-                stored = await run_ingestion_pipeline(
+                stored, updated_sections = await run_ingestion_pipeline(
                     nodes,
                     document_id,
                     str(document["tenant_id"]),
                     sections_data,
                     progress_callback=_on_rechunk_pipeline_progress,
                 )
+                if updated_sections:
+                    await section_repo.store_sections(document_id, str(document["tenant_id"]), updated_sections)
                 logger.info("[%s] Rechunk complete: %d nodes stored in Qdrant", document_id, stored)
 
                 for sec in sections_data:
@@ -254,14 +255,14 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                         "rechunk": True,
                         "source": "ocr_output.md",
                         "node_count": stored,
-                        "section_count": len(sections_data),
+                        "section_count": len(updated_sections or sections_data),
                     },
                     node_count=stored,
                     total_text_chars=sum(len(n.text) for n in nodes),
                     progress_percent=100,
                 )
 
-                return {"node_count": stored, "section_count": len(sections_data)}
+                return {"node_count": stored, "section_count": len(updated_sections or sections_data)}
 
             except Exception as e:
                 logger.error("[%s] Rechunk failed: %s", document_id, e)

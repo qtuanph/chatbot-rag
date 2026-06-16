@@ -1,5 +1,5 @@
 """
-Ingestion Pipeline: Parse → Validate → Store Sections → Embed & Index.
+Ingestion Pipeline: Parse -> Validate -> Store Sections -> Embed & Index.
 Uses LlamaParse/cloud markdown parsing + LlamaIndex for chunking + embedding + Qdrant indexing.
 """
 
@@ -8,15 +8,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, Callable, Any
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Callable
 
 from app.adapters.base import IngestedNode, ParsingMetadata
+from app.adapters.parsers.docx_converter import convert_docx_to_pdf, is_docx
 from app.adapters.parsers.llamaparse_adapter import LlamaParseParser
-from app.adapters.parsers.docx_converter import is_docx, convert_docx_to_pdf
-from app.modules.documents.validators import HierarchyValidator, ValidationReport
 from app.modules.documents.ingestion.pipeline import run_ingestion_pipeline
 from app.modules.documents.repositories import SectionRepository
+from app.modules.documents.validators import HierarchyValidator, ValidationReport
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -197,25 +197,38 @@ class IngestionService:
         sections_data = getattr(ctx.parse_metadata, "sections_data", None) or []
         embedding_start = 40
         embedding_end = 95
+        section_total = len(sections_data)
+        chunk_total = sum(int(section.get("chunk_count", 0) or 0) for section in sections_data)
 
-        async def _on_pipeline_progress(processed_docs: int, total_docs: int, total_stored: int) -> None:
+        async def _on_pipeline_progress(phase: str, phase_processed: int, total_docs: int, total_stored: int) -> None:
             if total_docs <= 0:
                 return
-            ratio = processed_docs / total_docs
+            ratio = total_stored / total_docs
             percent = embedding_start + int((embedding_end - embedding_start) * ratio)
+            if phase == "section":
+                message = f"Đang index section {phase_processed}/{section_total}, chuẩn bị chuyển sang chunk..."
+            elif phase == "chunk":
+                message = f"Đang index chunk {phase_processed}/{chunk_total}, dữ liệu đang được ghi vào Qdrant..."
+            else:
+                message = "Đang chuẩn bị dữ liệu index cho Qdrant..."
             await report(
                 "embedding",
                 min(embedding_end, max(embedding_start, percent)),
-                f"Đã embed {processed_docs}/{total_docs} chunk, đang ghi vào Qdrant...",
+                message,
             )
 
-        stored = await run_ingestion_pipeline(
+        stored, updated_sections = await run_ingestion_pipeline(
             ctx.nodes,
             ctx.document_id,
             ctx.tenant_id,
             sections_data,
             progress_callback=_on_pipeline_progress,
         )
+        if updated_sections and self.db_session:
+            repo = self.section_repo or SectionRepository(self.db_session)
+            await repo.store_sections(ctx.document_id, ctx.tenant_id, updated_sections)
+            ctx.parse_metadata.sections_data = updated_sections
+            ctx.section_count = len(updated_sections)
 
         await report("embedding", 95, "Embedding xong, đang hoàn tất ghi và xác nhận dữ liệu trong Qdrant...")
         logger.info("[%s] LlamaIndex pipeline stored %d nodes", ctx.document_id, stored)

@@ -1,8 +1,8 @@
 {
   "document": {
     "id": "7_CURRENT_SETTINGS",
-    "version": "2026-06-09",
-    "purpose": "Snapshot cấu hình hiện tại sau refactor multi-tenant, stateless chat, feedback, và UI sync."
+    "version": "2026-06-13",
+    "purpose": "Snapshot cấu hình hiện tại sau rebuild RAG structure-aware dual index."
   },
   "architecture": {
     "mode": "multi-tenant",
@@ -22,35 +22,56 @@
       "url": "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking",
       "model": "nvidia/llama-nemotron-rerank-1b-v2"
     },
-    "reranker_local_fallback": {
-      "provider": "dmr",
-      "url": "http://model-runner.docker.internal:12434",
-      "model": "ai/qwen3-reranker:0.6B"
-    },
     "llm_default": {
       "provider": "9router",
       "url": "http://ai-proxy:2908",
       "model": "chatbot-rag"
     }
   },
+  "storage": {
+    "database": "PostgreSQL",
+    "vector_db": "Qdrant v1.18.2",
+    "cache_queue": "Redis",
+    "object_storage": "RustFS",
+    "settings_db": "/app/data/settings.db"
+  },
+  "qdrant": {
+    "section_collection": "documents_sections",
+    "chunk_collection": "documents_chunks",
+    "payload_indexes": [
+      "tenant_id",
+      "document_id",
+      "section_id",
+      "section_code",
+      "parent_section_id",
+      "document_title",
+      "heading",
+      "breadcrumb_text",
+      "level",
+      "order_index",
+      "node_kind"
+    ]
+  },
   "ingestion": {
     "worker_mode": "celery background task",
-    "document_progress_storage": "documents.status/stage/progress_percent",
+    "canonical_source_of_truth": "document_sections",
     "frontend_progress_mode": "SSE with auto-reconnect",
     "is_true_realtime": true,
-    "ingestion_chunk_size": 1200,
-    "ingestion_chunk_overlap": 150,
-    "embedding_batch_size": 8,
-    "pipeline_batch_size": 4,
-    "document_progress_stream_interval_seconds": 1.0,
-    "qdrant_payload_indexes": ["tenant_id", "document_id", "section_id"],
-    "note": "Pipeline batch size đã được nới để cải thiện throughput nhưng vẫn giữ ở mức an toàn cho local runtime."
+    "retrieval_hierarchical_chunk_sizes": [2048, 768],
+    "retrieval_sentence_window_size": 3,
+    "embedding_batch_size": 16,
+    "pipeline_batch_size": 8
   },
   "chat": {
     "history_persistence": false,
     "client_context_window_messages": 6,
     "retrieval_history_query_count": 0,
-    "retrieval_history_rule": "latest-only by default; history is for LLM context, not default RAG expansion",
+    "retrieval_section_top_k": 8,
+    "retrieval_recursive_top_k": 8,
+    "retrieval_chunk_top_k": 20,
+    "retrieval_auto_merge_ratio_threshold": 0.5,
+    "retrieval_route_section_max_chars": 96,
+    "retrieval_route_section_max_terms": 12,
     "retrieval_section_hydration_enabled": true,
     "retrieval_section_hydration_top_k": 6,
     "retrieval_rerank_skip_enabled": true,
@@ -69,18 +90,14 @@
     "tracked_model_types": ["llm", "embedding", "reranker"],
     "feedback_tracking": true
   },
-  "storage": {
-    "database": "PostgreSQL",
-    "vector_db": "Qdrant",
-    "cache_queue": "Redis",
-    "object_storage": "RustFS",
-    "settings_db": "/app/data/settings.db"
-  },
   "deployment": {
     "reverse_proxy": "Traefik",
     "webapp_proxy_base": "/api/bep",
     "api_internal_url": "http://api:8000/api/v1",
     "ai_proxy_service": "ai-proxy",
-    "docker_model_runner_host": "model-runner.docker.internal"
+    "docker_model_runner_host": "model-runner.docker.internal",
+    "hf_token_source": "docker secret hf_token",
+    "fastembed_cache_path": "/home/qtuanph/.cache/huggingface/fastembed",
+    "worker_prewarm_sparse_model": "Qdrant/bm25"
   }
 }

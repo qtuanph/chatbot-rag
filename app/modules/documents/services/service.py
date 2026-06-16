@@ -10,7 +10,7 @@ from uuid import uuid4
 from app.adapters.storage import build_storage
 from app.core.celery_app import celery_app
 from app.core.config import settings
-from app.core.llama_index import get_vector_store
+from app.core.llama_index import delete_document_vectors
 from app.modules.documents.repositories import DocumentRepository, SectionRepository
 from app.modules.documents.services.task_service import TaskService
 from app.modules.documents.services.tree_service import TreeService
@@ -206,8 +206,7 @@ class DocumentService:
         filename = doc["file_name"]
 
         try:
-            vs = get_vector_store()
-            await vs.adelete(ref_doc_id=document_id)
+            await delete_document_vectors(document_id)
             await self.section_repo.delete_sections(document_id)
         except Exception as exc:
             logger.warning("Retry: partial cleanup failed for document %s: %s", document_id, exc)

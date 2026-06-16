@@ -44,6 +44,7 @@ Mỗi tenant tối thiểu cần:
 - `base_url`
 - `api_key`
 - `model`
+- `messages`
 
 ### Ví dụ
 
@@ -78,10 +79,64 @@ Content-Type: application/json
   "messages": [
     { "role": "user", "content": "Cách tạo phiếu nhập kho?" }
   ],
+  "thinking_mode": false,
   "stream": false,
   "temperature": 0.2,
   "max_tokens": 1024
 }
+```
+
+### Các trường cần cho tích hợp
+
+| Field | Required | Ý nghĩa |
+|---|---|---|
+| `model` | yes | giữ cố định là `chatbot-rag` |
+| `messages` | yes | message hiện tại hoặc vài message gần nhất |
+| `stream` | no | bật SSE để nhận text dần |
+| `thinking_mode` | no | bật marker thinking start/end khi stream |
+
+`temperature` và `max_tokens` hiện backend có nhận, nhưng với hướng tích hợp managed hiện tại, tenant software không bắt buộc phải gửi.
+
+## Python SDK example
+
+Tenant software can call the platform with the OpenAI Python SDK using only:
+
+- `base_url`
+- `api_key`
+- `model`
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://your-domain.com/api/v1/public/v1",
+    api_key="YOUR_TENANT_API_KEY",
+)
+
+completion = client.chat.completions.create(
+    model="chatbot-rag",
+    messages=[
+        {"role": "user", "content": "Muốn backup số liệu thì vào mục nào?"}
+    ],
+    stream=True,
+    extra_body={"thinking_mode": True},
+)
+
+for chunk in completion:
+    data = chunk.model_dump()
+
+    if data.get("thinking") is True:
+        print("[thinking:start]")
+        continue
+    if data.get("thinking") is False:
+        print("[thinking:end]")
+        continue
+
+    if not chunk.choices:
+        continue
+    delta = chunk.choices[0].delta
+    if delta.content:
+        print(delta.content, end="")
 ```
 
 ## Response mẫu
@@ -116,12 +171,18 @@ Content-Type: application/json
 Nếu `stream=true`, backend trả SSE:
 
 ```text
+data: {"thinking": true, "done": false}
+
 data: {...chunk...}
 
 data: {...chunk...}
+
+data: {"thinking": false, "done": false}
 
 data: [DONE]
 ```
+
+`thinking_mode` hiện tại chỉ phát marker trạng thái để UI biết lúc nào chatbot đang ở pha suy luận. Nó không trả full chain-of-thought hay reasoning text riêng.
 
 ## Luồng nghiệp vụ đúng
 

@@ -25,14 +25,16 @@ async def _verify_deletion_async(document_id: str, file_path: str | None, storag
     client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
     qdrant_count = 0
     try:
-        exists = await asyncio.to_thread(client.collection_exists, collection_name=settings.qdrant_collection)
-        if exists:
+        for collection_name in (settings.qdrant_section_collection, settings.qdrant_chunk_collection):
+            exists = await asyncio.to_thread(client.collection_exists, collection_name=collection_name)
+            if not exists:
+                continue
             result = await asyncio.to_thread(
                 client.count,
-                collection_name=settings.qdrant_collection,
+                collection_name=collection_name,
                 count_filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
             )
-            qdrant_count = result.count if result else 0
+            qdrant_count += result.count if result else 0
     except ApiException as e:
         # Collection may be absent during/after cleanup; treat as no remaining vectors.
         logger.warning("[%s] Qdrant verify warning: %s", document_id, e)
