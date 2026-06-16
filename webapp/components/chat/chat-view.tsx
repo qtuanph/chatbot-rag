@@ -26,6 +26,19 @@ function createMessage(role: "user" | "assistant", content: string): ChatMessage
   };
 }
 
+function createWelcomeMessage(setting: TenantSetting | null): ChatMessage | null {
+  const content = setting?.welcome_message?.trim();
+  if (!content) return null;
+
+  return {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    content,
+    citations: [],
+    kind: "welcome",
+  };
+}
+
 export function ChatView() {
   const { data: session } = useSession();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -41,6 +54,9 @@ export function ChatView() {
   const controllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const previousTenantIdRef = useRef<string | null | undefined>(undefined);
+  const activeAssistantIdRef = useRef<string | null>(null);
+  const pendingStreamTextRef = useRef("");
+  const flushTimerRef = useRef<number | null>(null);
   const isPlatformAdmin = session?.role === "platform_admin";
 
   const effectiveTenantId = useMemo(() => {
@@ -90,12 +106,16 @@ export function ChatView() {
     return () => {
       controllerRef.current?.abort();
       controllerRef.current = null;
+      if (flushTimerRef.current !== null) {
+        window.clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
     };
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages]);
+    messagesEndRef.current?.scrollIntoView({ behavior: streaming ? "auto" : "smooth", block: "end" });
+  }, [messages, streaming]);
 
   useEffect(() => {
     if (previousTenantIdRef.current === undefined) {
@@ -107,15 +127,57 @@ export function ChatView() {
       previousTenantIdRef.current = effectiveTenantId;
       controllerRef.current?.abort();
       controllerRef.current = null;
+      activeAssistantIdRef.current = null;
+      pendingStreamTextRef.current = "";
+      if (flushTimerRef.current !== null) {
+        window.clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
       setMessages([]);
       setUsage(null);
       setStreaming(false);
     }
   }, [effectiveTenantId]);
 
+  const visibleMessages = useMemo(() => {
+    if (messages.length > 0) return messages;
+    if (loadingTenantContext || !effectiveTenantId) return messages;
+
+    const welcomeMessage = createWelcomeMessage(tenantSetting);
+    return welcomeMessage ? [welcomeMessage] : messages;
+  }, [effectiveTenantId, loadingTenantContext, messages, tenantSetting]);
+
+  const flushPendingStreamText = useCallback(() => {
+    const assistantId = activeAssistantIdRef.current;
+    const pendingText = pendingStreamTextRef.current;
+    if (!assistantId || !pendingText) return;
+
+    pendingStreamTextRef.current = "";
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === assistantId ? { ...message, content: `${message.content}${pendingText}` } : message,
+      ),
+    );
+  }, []);
+
+  const scheduleStreamFlush = useCallback(() => {
+    if (flushTimerRef.current !== null) return;
+
+    flushTimerRef.current = window.setTimeout(() => {
+      flushTimerRef.current = null;
+      flushPendingStreamText();
+    }, 33);
+  }, [flushPendingStreamText]);
+
   const resetConversation = useCallback(() => {
     controllerRef.current?.abort();
     controllerRef.current = null;
+    activeAssistantIdRef.current = null;
+    pendingStreamTextRef.current = "";
+    if (flushTimerRef.current !== null) {
+      window.clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
     setMessages([]);
     setUsage(null);
     setStreaming(false);
@@ -131,6 +193,8 @@ export function ChatView() {
 
       const nextMessages = [...messages, createMessage("user", content)];
       const assistantId = crypto.randomUUID();
+      activeAssistantIdRef.current = assistantId;
+      pendingStreamTextRef.current = "";
 
       setMessages([
         ...nextMessages,
@@ -144,10 +208,13 @@ export function ChatView() {
       setUsage(null);
       setStreaming(true);
 
-      const contextMessages = nextMessages.slice(-MAX_CONTEXT_MESSAGES).map((message) => ({
-        role: message.role,
-        content: message.content,
-      }));
+      const contextMessages = nextMessages
+        .filter((message) => message.kind !== "welcome")
+        .slice(-MAX_CONTEXT_MESSAGES)
+        .map((message) => ({
+          role: message.role,
+          content: message.content,
+        }));
 
       const { controller, fetchStream } = chatApi.chatStream(content, contextMessages, {
         tenantId: effectiveTenantId,
@@ -183,11 +250,8 @@ export function ChatView() {
 
             if (!event.done) {
               if ("chunk" in event && event.chunk) {
-                setMessages((current) =>
-                  current.map((message) =>
-                    message.id === assistantId ? { ...message, content: `${message.content}${event.chunk}` } : message,
-                  ),
-                );
+                pendingStreamTextRef.current += event.chunk;
+                scheduleStreamFlush();
               }
               continue;
             }
@@ -196,6 +260,11 @@ export function ChatView() {
               throw new Error(event.error);
             }
 
+            if (flushTimerRef.current !== null) {
+              window.clearTimeout(flushTimerRef.current);
+              flushTimerRef.current = null;
+            }
+            flushPendingStreamText();
             setMessages((current) =>
               current.map((message) =>
                 message.id === assistantId
@@ -216,11 +285,18 @@ export function ChatView() {
           setMessages((current) => current.filter((message) => message.id !== assistantId));
         }
       } finally {
+        if (flushTimerRef.current !== null) {
+          window.clearTimeout(flushTimerRef.current);
+          flushTimerRef.current = null;
+        }
+        flushPendingStreamText();
         controllerRef.current = null;
+        activeAssistantIdRef.current = null;
+        pendingStreamTextRef.current = "";
         setStreaming(false);
       }
     },
-    [effectiveTenantId, messages],
+    [effectiveTenantId, flushPendingStreamText, messages, scheduleStreamFlush],
   );
 
   const handleFeedback = useCallback(
@@ -286,14 +362,14 @@ export function ChatView() {
 
           <div className="flex shrink-0 items-center gap-2">
             {isPlatformAdmin ? (
-              <div className="flex h-9 items-center gap-1.5 rounded-full border border-border/60 bg-background/80 px-2.5 text-sm transition-colors hover:border-border">
-                <Building2 className="size-3.5 text-muted-foreground" />
+              <div className="flex items-center gap-2">
+                <Building2 className="size-4 text-muted-foreground" />
                 <TenantSelect
                   tenants={tenantOptions}
                   value={selectedTenantId}
                   onValueChange={(tenantId) => setSelectedTenantId(tenantId || "")}
                   placeholder="Chọn tenant"
-                  triggerClassName="h-7 border-0 bg-transparent px-0 text-xs shadow-none focus:ring-0"
+                  triggerClassName="h-9 min-w-[220px] rounded-full bg-background text-sm shadow-none"
                 />
               </div>
             ) : null}
@@ -307,7 +383,7 @@ export function ChatView() {
 
       <ScrollArea className="min-h-0">
         <div className="mx-auto flex w-full max-w-3xl flex-col py-6">
-          {messages.length === 0 ? (
+          {visibleMessages.length === 0 ? (
             <div className="mx-4 mt-12 flex flex-col items-center gap-3 px-6 text-center">
               <div className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[#084ea4] text-primary-foreground shadow-[0_8px_24px_-10px_rgba(1,56,123,0.5)]">
                 <span className="text-sm font-bold tracking-tight">SSE</span>
@@ -331,13 +407,13 @@ export function ChatView() {
             </div>
           ) : (
             <div className="space-y-1">
-              {messages.map((message, index) => (
+              {visibleMessages.map((message, index) => (
                 <ChatBubble
                   key={message.id}
                   message={message}
-                  isStreaming={streaming && index === messages.length - 1 && message.role === "assistant"}
-                  isThinking={streaming && index === messages.length - 1 && message.role === "assistant"}
-                  usage={index === messages.length - 1 && message.role === "assistant" ? usage : null}
+                  isStreaming={streaming && index === visibleMessages.length - 1 && message.role === "assistant"}
+                  isThinking={streaming && index === visibleMessages.length - 1 && message.role === "assistant"}
+                  usage={index === visibleMessages.length - 1 && message.role === "assistant" ? usage : null}
                   feedback={feedbackByMessageId[message.id] || null}
                   feedbackDisabled={feedbackSubmittingId === message.id}
                   onFeedback={message.role === "assistant" ? handleFeedback : undefined}

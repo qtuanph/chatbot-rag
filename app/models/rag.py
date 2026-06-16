@@ -15,6 +15,9 @@ class RagNode:
     full_text: str
     page_range: str | None
     section_id: str | None = None
+    section_code: str | None = None
+    breadcrumb: tuple[str, ...] = ()
+    node_kind: str = "chunk"
     score: float = 0.0
 
 

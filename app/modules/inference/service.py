@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
@@ -8,14 +9,19 @@ from typing import Any
 
 from llama_index.core import Settings
 from llama_index.core.base.llms.types import ChatMessage, MessageRole
+from llama_index.core.evaluation import FaithfulnessEvaluator
+from llama_index.core.response_synthesizers import ResponseMode, get_response_synthesizer
+from llama_index.core.schema import NodeWithScore, TextNode
 
 from app.core.config import settings
 from app.modules.chat.retrieval.pipeline import retrieve_context
 from app.modules.chat.retrieval.usage_tracker import track_usage
-from app.modules.chat.utils.chat_utils import compute_cost
+from app.modules.chat.utils.chat_utils import compute_cost, is_greeting
 from app.models.rag import RagContext, RagNode
 from app.modules.documents.repositories.section_repository import SectionRepository
 from app.modules.tenants.repository import TenantRepository
+
+logger = logging.getLogger("uvicorn.error")
 
 
 @dataclass
@@ -46,19 +52,18 @@ class PublicInferenceService:
         *,
         tenant_id: str,
         messages: list[dict[str, str]],
+        thinking_mode: bool = False,
         temperature: float | None = None,
         max_tokens: int | None = None,
         user_id: str | None = None,
     ) -> CompletionResult:
         user_query = self._latest_user_query(messages)
         setting = await self._get_tenant_setting(tenant_id)
-        context = await retrieve_context(
-            self._build_retrieval_queries(messages),
-            limit=settings.retrieval_rerank_top_k,
+        context = await self._resolve_context(
             tenant_id=tenant_id,
+            messages=messages,
             user_id=user_id,
         )
-        context = await self._hydrate_context(context)
         llm_messages = self._build_messages(messages, setting, context)
         llm = Settings.llm
         previous_temperature = getattr(llm, "temperature", None)
@@ -81,8 +86,9 @@ class PublicInferenceService:
             content = str(message.content or "")
         if not content and hasattr(response, "text"):
             content = str(response.text or "")
+        content = await self._ensure_grounded_answer(user_query=user_query, answer=content.strip(), context=context)
         result = CompletionResult(
-            content=content.strip(),
+            content=content,
             citations=self._build_citations(context),
             usage=self._normalize_usage(usage),
             model=getattr(llm, "model", settings.ai_proxy_default_model or "chatbot-rag"),
@@ -96,18 +102,17 @@ class PublicInferenceService:
         *,
         tenant_id: str,
         messages: list[dict[str, str]],
+        thinking_mode: bool = False,
         temperature: float | None = None,
         max_tokens: int | None = None,
         user_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         setting = await self._get_tenant_setting(tenant_id)
-        context = await retrieve_context(
-            self._build_retrieval_queries(messages),
-            limit=settings.retrieval_rerank_top_k,
+        context = await self._resolve_context(
             tenant_id=tenant_id,
+            messages=messages,
             user_id=user_id,
         )
-        context = await self._hydrate_context(context)
         llm_messages = self._build_messages(messages, setting, context)
         llm = Settings.llm
         previous_temperature = getattr(llm, "temperature", None)
@@ -122,30 +127,52 @@ class PublicInferenceService:
         completion_id = f"chatcmpl-{created}"
         usage_info: dict[str, Any] = {}
         collected_text = ""
+        user_query = self._latest_user_query(messages)
         try:
+            if thinking_mode:
+                yield f"data: {json.dumps({'thinking': True, 'done': False})}\n\n"
             response = await llm.astream_chat(llm_messages)
             async for chunk in response:
                 delta = chunk.delta if hasattr(chunk, "delta") else str(chunk)
-                collected_text += delta
+                if delta:
+                    collected_text += delta
+                    payload = {
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": model_name,
+                        "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}],
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
                 if hasattr(chunk, "additional_kwargs") and isinstance(chunk.additional_kwargs, dict):
                     usage_info.update(chunk.additional_kwargs)
-                payload = {
-                    "id": completion_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": model_name,
-                    "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}],
-                }
-                yield f"data: {json.dumps(payload)}\n\n"
         finally:
             if temperature is not None:
                 llm.temperature = previous_temperature
             if max_tokens is not None:
                 llm.max_tokens = previous_max_tokens
 
+        final_text = collected_text.strip()
+        if final_text:
+            grounded_text = await self._ensure_grounded_answer(
+                user_query=user_query,
+                answer=final_text,
+                context=context,
+            )
+            if grounded_text != final_text:
+                self._emit_debug(
+                    "RAG_STREAM_GUARD",
+                    query=user_query,
+                    decision="post-stream-mismatch",
+                    original_preview=self._preview_text(final_text),
+                    grounded_preview=self._preview_text(grounded_text),
+                )
+
         normalized_usage = self._normalize_usage(usage_info)
         provider = type("UsageProxy", (), {"last_usage": normalized_usage, "model_name": model_name})()
         track_usage(provider, endpoint="public.chat.completions", tenant_id=tenant_id)
+        if thinking_mode:
+            yield f"data: {json.dumps({'thinking': False, 'done': False})}\n\n"
         final_payload = {
             "id": completion_id,
             "object": "chat.completion.chunk",
@@ -198,6 +225,26 @@ class PublicInferenceService:
                 queries.append(previous)
         return queries[: history_count + 1]
 
+    async def _resolve_context(
+        self,
+        *,
+        tenant_id: str,
+        messages: list[dict[str, str]],
+        user_id: str | None,
+    ) -> RagContext:
+        user_query = self._latest_user_query(messages)
+        if is_greeting(user_query):
+            self._emit_debug("RAG_BYPASS", tenant_id=tenant_id, query=user_query, reason="greeting")
+            return RagContext(nodes=[], sections=None, confidence={"node_count": 0, "bypass_reason": "greeting"})
+
+        context = await retrieve_context(
+            self._build_retrieval_queries(messages),
+            limit=settings.retrieval_rerank_top_k,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
+        return await self._hydrate_context(context)
+
     async def _hydrate_context(self, context: RagContext) -> RagContext:
         if not settings.retrieval_section_hydration_enabled or not context.nodes:
             return context
@@ -238,18 +285,52 @@ class PublicInferenceService:
                     full_text=full_text,
                     page_range=str(page_range) if page_range else None,
                     section_id=node.section_id,
+                    section_code=node.section_code,
+                    breadcrumb=node.breadcrumb,
+                    node_kind=node.node_kind,
                     score=node.score,
                 )
             )
         return RagContext(nodes=hydrated_nodes, sections=context.sections, confidence=context.confidence)
 
+    @staticmethod
+    def _preview_text(text: str, limit: int = 240) -> str:
+        normalized = " ".join(str(text or "").split())
+        if len(normalized) <= limit:
+            return normalized
+        return f"{normalized[:limit]}..."
+
+    def _context_debug_payload(self, context: RagContext, limit: int = 5) -> list[dict[str, Any]]:
+        return [
+            {
+                "node_id": node.node_id,
+                "score": round(float(node.score or 0.0), 6),
+                "document_id": node.document_id,
+                "document_title": node.document_title,
+                "section_id": node.section_id,
+                "heading": node.heading,
+                "page_range": node.page_range,
+                "preview": self._preview_text(node.full_text or node.summary or ""),
+            }
+            for node in context.nodes[:limit]
+        ]
+
+    @staticmethod
+    def _emit_debug(event: str, **payload: Any) -> None:
+        message = json.dumps({"event": event, **payload}, ensure_ascii=False)
+        logger.info(message)
+        print(message, flush=True)
+
     def _build_messages(self, messages: list[dict[str, str]], setting: dict[str, Any], context) -> list[ChatMessage]:
         context_blocks = []
-        for node in context.nodes:
+        for idx, node in enumerate(context.nodes[:8], start=1):
             title = node.document_title or "Document"
             heading = node.heading or "Relevant section"
+            section_code = f" [{node.section_code}]" if node.section_code else ""
             page = f" (page {node.page_range})" if node.page_range else ""
-            context_blocks.append(f"{title} - {heading}{page}\n{node.full_text}")
+            breadcrumb = " > ".join(node.breadcrumb or ())
+            breadcrumb_line = f"\nĐường dẫn: {breadcrumb}" if breadcrumb else ""
+            context_blocks.append(f"[Nguồn {idx}] {title} - {heading}{section_code}{page}{breadcrumb_line}\n{node.full_text}")
 
         system_prompt = (
             "Bạn là trợ lý doanh nghiệp hoạt động trong đúng phạm vi tenant hiện tại. "
@@ -261,6 +342,13 @@ class PublicInferenceService:
             system_prompt += f"\n\nInstruction riêng của tenant:\n{tenant_instruction}"
         if context_blocks:
             system_prompt += "\n\nNgữ cảnh truy xuất:\n" + "\n\n".join(context_blocks[:10])
+        system_prompt += (
+            "\n\nQUY TẮC BẮT BUỘC:"
+            "\n- Không được bịa menu, nút, báo cáo, mã trạng thái, trường dữ liệu hoặc quy trình."
+            "\n- Chỉ được nêu tên chức năng, đường dẫn menu, bước thao tác khi chúng xuất hiện rõ trong ngữ cảnh truy xuất."
+            "\n- Nếu tài liệu không xác nhận đủ, phải trả lời là chưa đủ căn cứ để hướng dẫn chi tiết."
+            "\n- Với câu hỏi thao tác phần mềm, ưu tiên trả lời ngắn, đúng, bám sát tài liệu; không suy diễn từ kinh nghiệm chung."
+        )
 
         llm_messages = [ChatMessage(role=MessageRole.SYSTEM, content=system_prompt)]
         recent_messages = messages[-settings.ai_max_history_messages :]
@@ -268,6 +356,13 @@ class PublicInferenceService:
             llm_messages.append(
                 ChatMessage(role=_to_llama_role(message["role"]), content=message.get("content", "").strip())
             )
+        self._emit_debug(
+            "RAG_PROMPT",
+            tenant_instruction=bool(tenant_instruction),
+            context_nodes=len(context.nodes),
+            recent_messages=len(recent_messages),
+            context=self._context_debug_payload(context),
+        )
         return llm_messages
 
     @staticmethod
@@ -280,6 +375,8 @@ class PublicInferenceService:
                     "document_id": node.document_id,
                     "title": node.document_title,
                     "heading": node.heading,
+                    "section_code": node.section_code,
+                    "breadcrumb": list(node.breadcrumb or ()),
                     "page_range": node.page_range,
                     "node_id": node.node_id,
                 }
@@ -298,3 +395,197 @@ class PublicInferenceService:
         }
         result.update(compute_cost(prompt_tokens, completion_tokens))
         return result
+
+    def _build_insufficient_evidence_answer(self, context: RagContext) -> str:
+        headings = []
+        for node in context.nodes[:4]:
+            heading = (node.heading or "").strip()
+            if heading and heading not in headings:
+                headings.append(heading)
+        if headings:
+            joined = "; ".join(headings)
+            return (
+                "Tài liệu truy xuất hiện chưa đủ căn cứ để mình hướng dẫn thao tác chi tiết mà không suy diễn. "
+                f"Mình chỉ xác nhận được các mục liên quan sau: {joined}. "
+                "Bạn hãy hỏi theo đúng tên chức năng hoặc mục trong phần mềm để mình trả lời bám sát tài liệu hơn."
+            )
+        return (
+            "Tài liệu truy xuất hiện chưa đủ căn cứ để mình hướng dẫn thao tác chi tiết mà không suy diễn. "
+            "Bạn hãy nêu rõ tên chức năng, phân hệ hoặc mục màn hình cần làm để mình trả lời đúng theo tài liệu."
+        )
+
+    async def _ensure_grounded_answer(self, *, user_query: str, answer: str, context: RagContext) -> str:
+        if not answer.strip():
+            return answer.strip()
+        confidence = context.confidence or {}
+        if confidence.get("bypass_reason") == "greeting":
+            self._emit_debug("RAG_GROUNDING", query=user_query, decision="bypass-greeting")
+            return answer.strip()
+
+        contexts = [
+            "\n".join(part for part in [node.document_title, node.heading, node.full_text] if part).strip()
+            for node in context.nodes
+            if (node.full_text or "").strip() or (node.heading or "").strip()
+        ]
+        if not contexts:
+            self._emit_debug("RAG_GROUNDING", query=user_query, decision="no-context", fallback="insufficient-evidence")
+            return self._build_insufficient_evidence_answer(context)
+
+        if not self._should_run_grounding_verification(context):
+            self._emit_debug(
+                "RAG_GROUNDING",
+                query=user_query,
+                decision="skip-verification",
+                confidence=context.confidence or {},
+            )
+            return answer.strip()
+
+        evaluation = await self._evaluate_faithfulness(
+            user_query=user_query,
+            answer=answer.strip(),
+            contexts=contexts,
+        )
+        if evaluation is None:
+            self._emit_debug("RAG_GROUNDING", query=user_query, decision="evaluator-unavailable", keep="original")
+            return answer.strip()
+
+        if self._is_faithful(evaluation):
+            self._emit_debug(
+                "RAG_GROUNDING",
+                query=user_query,
+                decision="faithful",
+                score=getattr(evaluation, "score", None),
+                passing=getattr(evaluation, "passing", None),
+            )
+            return answer.strip()
+
+        self._emit_debug(
+            "RAG_GROUNDING",
+            query=user_query,
+            decision="repair-needed",
+            score=getattr(evaluation, "score", None),
+            passing=getattr(evaluation, "passing", None),
+            answer_preview=self._preview_text(answer),
+        )
+        repaired_answer = await self._synthesize_grounded_answer(user_query=user_query, context=context)
+        if repaired_answer:
+            repaired_evaluation = await self._evaluate_faithfulness(
+                user_query=user_query,
+                answer=repaired_answer,
+                contexts=contexts,
+            )
+            if repaired_evaluation is None or self._is_faithful(repaired_evaluation):
+                self._emit_debug(
+                    "RAG_GROUNDING",
+                    query=user_query,
+                    decision="repair-succeeded",
+                    repaired_preview=self._preview_text(repaired_answer),
+                    repaired_score=getattr(repaired_evaluation, "score", None) if repaired_evaluation is not None else None,
+                    repaired_passing=getattr(repaired_evaluation, "passing", None) if repaired_evaluation is not None else None,
+                )
+                return repaired_answer
+            self._emit_debug(
+                "RAG_GROUNDING",
+                query=user_query,
+                decision="repair-failed",
+                repaired_preview=self._preview_text(repaired_answer),
+                repaired_score=getattr(repaired_evaluation, "score", None),
+                repaired_passing=getattr(repaired_evaluation, "passing", None),
+            )
+
+        self._emit_debug("RAG_GROUNDING", query=user_query, decision="fallback-insufficient-evidence")
+        return self._build_insufficient_evidence_answer(context)
+
+    @staticmethod
+    def _should_run_grounding_verification(context: RagContext) -> bool:
+        confidence = context.confidence or {}
+        node_count = int(confidence.get("node_count", len(context.nodes)) or len(context.nodes))
+        top_score = float(confidence.get("top_score", 0.0) or 0.0)
+        dominance_ratio = float(confidence.get("dominance_ratio", 0.0) or 0.0)
+        unique_document_count = int(confidence.get("unique_document_count", 0) or 0)
+
+        if node_count == 0:
+            return True
+        if node_count <= 2 and unique_document_count <= 1 and top_score > 0 and dominance_ratio >= settings.retrieval_rerank_skip_dominance_ratio:
+            return False
+        return True
+
+    async def _evaluate_faithfulness(
+        self,
+        *,
+        user_query: str,
+        answer: str,
+        contexts: list[str],
+    ) -> Any | None:
+        try:
+            evaluator = FaithfulnessEvaluator(llm=Settings.llm, raise_error=False)
+            return await evaluator.aevaluate(
+                query=user_query,
+                response=answer,
+                contexts=contexts,
+            )
+        except Exception:
+            return None
+
+    @staticmethod
+    def _is_faithful(evaluation: Any) -> bool:
+        if getattr(evaluation, "invalid_result", False):
+            return False
+        if getattr(evaluation, "passing", None) is False:
+            return False
+        score = getattr(evaluation, "score", None)
+        if score is not None and float(score) <= 0:
+            return False
+        return True
+
+    async def _synthesize_grounded_answer(self, *, user_query: str, context: RagContext) -> str | None:
+        nodes = self._to_source_nodes(context)
+        if not nodes:
+            return None
+
+        try:
+            synthesizer = get_response_synthesizer(
+                llm=Settings.llm,
+                response_mode=ResponseMode.REFINE,
+                structured_answer_filtering=True,
+                use_async=True,
+            )
+            response = await synthesizer.asynthesize(
+                query=user_query,
+                nodes=nodes,
+            )
+        except Exception:
+            logger.warning("RAG_SYNTHESIZE query=%r failed", user_query, exc_info=True)
+            return None
+
+        response_text = getattr(response, "response", None) or getattr(response, "response_txt", None) or str(response)
+        cleaned = str(response_text or "").strip()
+        self._emit_debug(
+            "RAG_SYNTHESIZE",
+            query=user_query,
+            nodes=len(nodes),
+            response_preview=self._preview_text(cleaned),
+        )
+        return cleaned or None
+
+    @staticmethod
+    def _to_source_nodes(context: RagContext) -> list[NodeWithScore]:
+        source_nodes: list[NodeWithScore] = []
+        for node in context.nodes:
+            text = str(node.full_text or "").strip()
+            if not text:
+                continue
+            text_node = TextNode(
+                id_=node.node_id,
+                text=text,
+                metadata={
+                    "document_id": node.document_id,
+                    "document_title": node.document_title,
+                    "heading": node.heading,
+                    "section_id": node.section_id,
+                    "page_range": node.page_range,
+                },
+            )
+            source_nodes.append(NodeWithScore(node=text_node, score=float(node.score or 0.0)))
+        return source_nodes
+        

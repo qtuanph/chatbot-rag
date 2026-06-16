@@ -7,7 +7,7 @@ import logging
 from typing import Any, TYPE_CHECKING
 
 from app.adapters.storage import build_storage
-from app.core.llama_index import build_vector_store
+from app.core.llama_index import delete_document_vectors
 
 if TYPE_CHECKING:
     from app.modules.documents.repositories import DocumentRepository, SectionRepository
@@ -29,13 +29,10 @@ class CleanupService:
     async def hard_delete_document(self, document_id: str) -> dict[str, bool]:
         """Hard-delete document. Order (per AGENTS.md): Vectors → Sections → File → DB."""
         storage = build_storage()
-        # Cleanup path only needs delete by ref_doc_id; disable hybrid to avoid
-        # unnecessary sparse model initialization/download.
-        vector_store = build_vector_store(enable_hybrid=False)
 
         # 1. Vectors (Qdrant via LlamaIndex)
         try:
-            await vector_store.adelete(ref_doc_id=document_id)
+            await delete_document_vectors(document_id)
         except Exception as e:
             logger.warning("[%s] Vector delete warning: %s", document_id, e)
 

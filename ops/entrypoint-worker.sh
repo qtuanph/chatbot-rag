@@ -7,10 +7,11 @@
 
 set -e
 
-HF_HOME="${HF_HOME:-/home/qtuanph/.cache/huggingface}"
-export FASTEMBED_CACHE_PATH="${FASTEMBED_CACHE_PATH:-/home/qtuanph/.cache/fastembed}"
-mkdir -p "$FASTEMBED_CACHE_PATH" /app/data
-chown -R 1000:1000 "$FASTEMBED_CACHE_PATH" 2>/dev/null || true
+export HF_HOME="${HF_HOME:-/home/qtuanph/.cache/huggingface}"
+export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-$HF_HOME}"
+export FASTEMBED_CACHE_PATH="${FASTEMBED_CACHE_PATH:-$HF_HOME/fastembed}"
+mkdir -p "$HF_HOME" "$FASTEMBED_CACHE_PATH" /app/data
+chown -R 1000:1000 "$HF_HOME" "$FASTEMBED_CACHE_PATH" 2>/dev/null || true
 
 # Initialize SQLite settings database with provider templates
 python -c "from app.modules.settings.database import init_db; init_db()" 2>/dev/null && echo "Settings DB ready" || echo "Settings DB init skipped (may already exist)"
@@ -18,8 +19,17 @@ python -c "from app.modules.settings.database import init_db; init_db()" 2>/dev/
 # Load HF_TOKEN from Docker secret (preferred) or fall back to env var
 if [ -f "/run/secrets/hf_token" ]; then
     export HF_TOKEN=$(cat /run/secrets/hf_token | tr -d '\r\n')
+    export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
     echo "HF_TOKEN loaded from Docker secret"
 fi
+
+echo "Prewarming FastEmbed sparse model cache..."
+python - <<'PY'
+from fastembed.sparse.sparse_text_embedding import SparseTextEmbedding
+
+SparseTextEmbedding(model_name="Qdrant/bm25")
+print("FastEmbed sparse model cache ready")
+PY
 
 MAX_TASKS=${CELERY_MAX_TASKS_PER_CHILD:-$(python -c "from app.core.config import settings; print(settings.celery_max_tasks_per_child)" 2>/dev/null | tail -n 1 || echo "50")}
 

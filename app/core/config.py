@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     api_v1_prefix: str = "/api/v1"
-    api_timeout_keep_alive: int = 75
+    api_timeout_keep_alive: int = 90
     ai_embedding_url: str = "http://model-runner.docker.internal:12434/engines/v1"
     ai_reranker_url: str = "http://model-runner.docker.internal:12434"
     reranker_backend: str = "nvidia"  # "nvidia" (primary) | "dmr" (Docker Model Runner fallback)
@@ -55,6 +55,13 @@ class Settings(BaseSettings):
 
     retrieval_chunk_size: int = 600
     retrieval_chunk_overlap: int = 120
+    retrieval_hierarchical_chunk_sizes: Any = [2048, 768]
+    retrieval_sentence_window_size: int = 3
+    retrieval_section_top_k: int = 8
+    retrieval_recursive_top_k: int = 8
+    retrieval_auto_merge_ratio_threshold: float = 0.5
+    retrieval_route_section_max_chars: int = 96
+    retrieval_route_section_max_terms: int = 12
 
     ingestion_min_non_empty_nodes: int = 1
     ingestion_min_total_text_chars: int = 80
@@ -78,9 +85,24 @@ class Settings(BaseSettings):
             return [lang.strip() for lang in v.split(",") if lang.strip()]
         return v
 
+    @field_validator("retrieval_hierarchical_chunk_sizes", mode="before")
+    @classmethod
+    def parse_hierarchical_chunk_sizes(cls, v: Any) -> list[int]:
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    import json
+
+                    return [int(item) for item in json.loads(v)]
+                except Exception:
+                    pass
+            return [int(item.strip()) for item in v.split(",") if item.strip()]
+        return [int(item) for item in v]
+
     ingestion_chunk_size: int = 1200
     ingestion_chunk_overlap: int = 150
-    ingestion_pipeline_batch_size: int = 4
+    ingestion_pipeline_batch_size: int = 8
     document_progress_stream_interval: float = 1.0
 
     retrieval_chunk_top_k: int = 20
@@ -148,7 +170,7 @@ class Settings(BaseSettings):
     embedding_model: str = "dmr"
     embedding_hf_model: str = "ai/qwen3-embedding:0.6B-F16"
     embedding_vector_size: int = 1024
-    embedding_batch_size: int = 8
+    embedding_batch_size: int = 16
     embed_parallelism: int = 0
     embedding_api_base: str = "http://model-runner.docker.internal:12434/engines/v1"
     embedding_api_key: str = ""
@@ -156,7 +178,9 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://qdrant:6333"
     qdrant_api_key: str | None = None
     qdrant_collection: str = "documents_vectors"
-    qdrant_timeout: int = 30
+    qdrant_section_collection: str = "documents_sections"
+    qdrant_chunk_collection: str = "documents_chunks"
+    qdrant_timeout: int = 60
 
     ai_temperature: float = 0.3
     ai_max_output_tokens: int = 8192
@@ -235,6 +259,22 @@ class Settings(BaseSettings):
             raise ValueError("QDRANT_TIMEOUT must be >= 1")
         if self.retrieval_history_query_count < 0 or self.retrieval_history_query_count > 5:
             raise ValueError("RETRIEVAL_HISTORY_QUERY_COUNT must be between 0 and 5")
+        if len(self.retrieval_hierarchical_chunk_sizes) < 1:
+            raise ValueError("RETRIEVAL_HIERARCHICAL_CHUNK_SIZES must not be empty")
+        if any(size < 64 for size in self.retrieval_hierarchical_chunk_sizes):
+            raise ValueError("RETRIEVAL_HIERARCHICAL_CHUNK_SIZES values must be >= 64")
+        if self.retrieval_sentence_window_size < 0:
+            raise ValueError("RETRIEVAL_SENTENCE_WINDOW_SIZE must be >= 0")
+        if self.retrieval_section_top_k < 1:
+            raise ValueError("RETRIEVAL_SECTION_TOP_K must be >= 1")
+        if self.retrieval_recursive_top_k < 1:
+            raise ValueError("RETRIEVAL_RECURSIVE_TOP_K must be >= 1")
+        if self.retrieval_auto_merge_ratio_threshold <= 0 or self.retrieval_auto_merge_ratio_threshold > 1:
+            raise ValueError("RETRIEVAL_AUTO_MERGE_RATIO_THRESHOLD must be in (0, 1]")
+        if self.retrieval_route_section_max_chars < 1:
+            raise ValueError("RETRIEVAL_ROUTE_SECTION_MAX_CHARS must be >= 1")
+        if self.retrieval_route_section_max_terms < 1:
+            raise ValueError("RETRIEVAL_ROUTE_SECTION_MAX_TERMS must be >= 1")
         if self.retrieval_section_hydration_top_k < 1:
             raise ValueError("RETRIEVAL_SECTION_HYDRATION_TOP_K must be >= 1")
         if self.retrieval_rerank_skip_query_max_chars < 1:

@@ -9,7 +9,9 @@ services:
     env_file:
       - .env
     environment:
-      - FASTEMBED_CACHE_PATH=/tmp/fastembed
+      - HF_HOME=/home/qtuanph/.cache/huggingface
+      - HUGGINGFACE_HUB_CACHE=/home/qtuanph/.cache/huggingface
+      - FASTEMBED_CACHE_PATH=/home/qtuanph/.cache/huggingface/fastembed
     secrets:
       - hf_token
     volumes:
@@ -54,7 +56,9 @@ services:
     env_file:
       - .env
     environment:
-      - FASTEMBED_CACHE_PATH=/tmp/fastembed
+      - HF_HOME=/home/qtuanph/.cache/huggingface
+      - HUGGINGFACE_HUB_CACHE=/home/qtuanph/.cache/huggingface
+      - FASTEMBED_CACHE_PATH=/home/qtuanph/.cache/huggingface/fastembed
     secrets:
       - hf_token
     volumes:
@@ -170,7 +174,7 @@ services:
       - internal
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.18.2
     ports:
       - "127.0.0.1:6333:6333"
     volumes:

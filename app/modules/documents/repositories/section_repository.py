@@ -30,6 +30,7 @@ class SectionRepository(BaseRepository[DocumentSection]):
                         document_id=document_id,
                         section_id=sec["section_id"],
                         parent_section_id=sec.get("parent_section_id"),
+                        section_code=sec.get("section_code"),
                         title=sec["title"],
                         content=sec.get("content"),
                         section_type=sec.get("section_type", "section"),
@@ -40,6 +41,7 @@ class SectionRepository(BaseRepository[DocumentSection]):
                         table_count=sec.get("table_count", 0),
                         chunk_count=sec.get("chunk_count", 0),
                         breadcrumb=sec.get("breadcrumb", []),
+                        breadcrumb_text=sec.get("breadcrumb_text"),
                         artifact_metadata=sec.get("artifact_metadata", {}),
                     )
                     self.session.add(db_section)
@@ -67,6 +69,17 @@ class SectionRepository(BaseRepository[DocumentSection]):
     async def get_sections_by_document(self, document_id: str) -> list[dict[str, Any]]:
         """Get all sections for a document, ordered by order_index."""
         stmt = select(self.model).where(self.model.document_id == document_id).order_by(self.model.order_index)
+        result = await self.session.execute(stmt)
+        rows = result.scalars().all()
+        return [self._to_dict(s) for s in rows]
+
+    async def get_sections_by_tenant(self, tenant_id: str) -> list[dict[str, Any]]:
+        """Get all sections for a tenant, ordered by document and order."""
+        stmt = (
+            select(self.model)
+            .where(self.model.tenant_id == tenant_id)
+            .order_by(self.model.document_id, self.model.order_index)
+        )
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
         return [self._to_dict(s) for s in rows]
@@ -172,5 +185,6 @@ class SectionRepository(BaseRepository[DocumentSection]):
         data["tenant_id"] = str(section.tenant_id)
         data["document_id"] = str(section.document_id)
         data["breadcrumb"] = section.breadcrumb or []
+        data["breadcrumb_text"] = section.breadcrumb_text
         data["artifact_metadata"] = section.artifact_metadata or {}
         return data

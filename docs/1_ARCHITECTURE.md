@@ -1,10 +1,8 @@
 # 1 — Architecture
 
-Tài liệu này mô tả kiến trúc hiện tại của `chatbot-rag` sau đợt refactor multi-tenant + stateless chat.
+Tài liệu này mô tả kiến trúc hiện tại của `chatbot-rag` sau đợt rebuild RAG theo hướng structure-aware, multi-tenant, stateless chat.
 
 ## Tổng quan
-
-Project gồm 3 lớp chính:
 
 ```text
 Browser -> Next.js webapp -> /api/bep/* proxy -> FastAPI backend
@@ -12,7 +10,7 @@ Browser -> Next.js webapp -> /api/bep/* proxy -> FastAPI backend
                                       +-> NextAuth session/JWT
 ```
 
-Backend đi theo CSR:
+Backend tuân theo CSR:
 
 ```text
 Route (HTTP only) -> Service (business logic) -> Repository (data access)
@@ -24,16 +22,16 @@ Route (HTTP only) -> Service (business logic) -> Repository (data access)
 
 - `platform_admin` quản trị toàn hệ thống
 - `tenant_admin` chỉ thao tác trong tenant của mình
-- mọi dữ liệu tenant-scoped phải đi cùng `tenant_id`
+- mọi dữ liệu tenant-scoped phải luôn đi cùng `tenant_id`
 
 ### Chat model
 
 Chat hiện tại là **stateless**:
 
 - không còn `chat_sessions` / `chat_messages`
-- frontend chỉ giữ transcript trong memory của tab hiện tại
-- đóng chat hoặc refresh là mất transcript
-- backend chỉ nhận `messages` gần nhất, rồi tự inject instruction + RAG context
+- transcript chỉ sống trong memory của tab frontend
+- refresh/đóng tab là mất transcript
+- backend chỉ nhận recent `messages`, rồi tự inject instruction + RAG context
 
 ### Feedback model
 
@@ -43,7 +41,7 @@ Feedback chat được lưu riêng trong `chat_feedback`:
 - `query_text`
 - `assistant_answer`
 - `citations`
-- runtime metadata (`llm_model`, `embedding_model`, `reranker_model`)
+- `llm_model`, `embedding_model`, `reranker_model`
 
 Feedback không phụ thuộc persisted transcript.
 
@@ -51,8 +49,8 @@ Feedback không phụ thuộc persisted transcript.
 
 | Store | Vai trò |
 |---|---|
-| PostgreSQL | auth, tenant, documents, sections, usage, feedback |
-| Qdrant | vector store + hybrid retrieval payload |
+| PostgreSQL | auth, tenant, documents, canonical sections, usage, feedback |
+| Qdrant | dual index cho retrieval |
 | Redis | queue, cache, rate limit, audit stream |
 | RustFS | file gốc và artifact ingest |
 | SQLite `settings.db` | provider settings và runtime selection |
@@ -62,45 +60,77 @@ Feedback không phụ thuộc persisted transcript.
 - LLM chính đi qua `9Router`
 - Embedding local mặc định đi qua Docker Model Runner
 - Reranker mặc định là NVIDIA NIM
-- local reranker chỉ là fallback, không phải happy path mặc định
+- local reranker chỉ là fallback
 
-Route layer không được gọi provider SDK trực tiếp.
+Route layer không được gọi SDK/provider trực tiếp.
+
+## Canonical section graph
+
+Sau khi parse, tài liệu được normalize thành `document_sections` trong PostgreSQL với các field chính:
+
+- `document_id`
+- `section_id`
+- `parent_section_id`
+- `section_code`
+- `title`
+- `breadcrumb`
+- `breadcrumb_text`
+- `level`
+- `order_index`
+- `content`
+
+Đây là source of truth cho cấu trúc tài liệu.
 
 ## Retrieval architecture
 
-Retrieval hiện tại gồm:
+Retrieval hiện tại là **dual index + structure-aware**:
 
-1. chuẩn hóa query từ các user message gần nhất
-2. embed query
-3. hybrid retrieve trong Qdrant
+1. canonical section graph được lưu trong PostgreSQL
+2. build **section index** trong Qdrant cho heading / numbered section retrieval
+3. build **chunk index** trong Qdrant cho sentence-window evidence retrieval
 4. filter nghiêm ngặt theo `tenant_id`
-5. hydrate full section từ PostgreSQL cho top node
-6. rerank top-k
-7. assemble context và gọi LLM
+5. route truy vấn:
+   - section route cho numbered / heading-style query
+   - semantic route cho free-form query
+6. dùng `RecursiveRetriever` để mở rộng section -> chunk theo `section_id`
+7. dùng `AutoMergingRetriever` để gộp nhiều chunk về parent section khi đủ tỷ lệ
+8. thay sentence hit bằng local window context trước khi synthesis
+9. rerank sau khi candidate đã được làm sạch theo cấu trúc
+10. hydrate full section từ PostgreSQL cho top node nếu cần
+
+### Qdrant collections
+
+- `documents_sections`
+- `documents_chunks`
 
 ### Qdrant payload
 
-Payload chuẩn hiện tại có:
+Payload chuẩn:
 
 - `tenant_id`
 - `document_id`
 - `section_id`
-
-Collection bootstrap và retrieval path đều tự ensure payload index cho các field này.
+- `section_code`
+- `parent_section_id`
+- `document_title`
+- `heading`
+- `breadcrumb_text`
+- `level`
+- `order_index`
+- `node_kind`
 
 ## Ingestion architecture
 
-Luồng ingest:
-
 ```text
-Upload -> persist document row -> enqueue Celery task -> parse -> sectionize -> embed -> Qdrant -> finalize
+Upload -> persist document row -> enqueue Celery task
+-> parse -> canonical section graph -> dual index Qdrant -> finalize
 ```
 
 Điểm quan trọng:
 
 - ingest chạy nền qua `workers`
-- batch ingest là config-driven
-- pipeline tự ensure collection + payload indexes trước khi ghi
+- pipeline tự ensure 2 collection + payload indexes trước khi ghi
+- `document_sections` trong PostgreSQL là source of truth
 - progress tài liệu dùng SSE, không dùng polling làm đường chính nữa
 
 ## Auth boundary
@@ -134,22 +164,12 @@ Upload -> persist document row -> enqueue Celery task -> parse -> sectionize -> 
 
 Thứ tự xóa cứng bắt buộc:
 
-1. `registry.delete()`
-2. xóa vector
-3. xóa sections
-4. xóa file storage
-5. xóa DB row
-6. purge registry
+1. xóa vectors
+2. xóa sections
+3. xóa file storage
+4. xóa DB row
 
 Không được đảo thứ tự này.
-
-## Những gì đã bỏ hẳn
-
-- persisted chat history
-- session sidebar kiểu cũ
-- analytics dựa trên `chat_sessions`
-- `user_memories` và memories CRUD
-- boundary ownership kiểu cũ lấy `user_id` làm chính
 
 ## Runtime shape hiện tại
 

@@ -27,14 +27,8 @@ export function TenantSelect({
   className,
   triggerClassName,
 }: TenantSelectProps) {
-  const items = {
-    ...(includeAll ? { __all__: allLabel } : {}),
-    ...Object.fromEntries(tenants.map((tenant) => [tenant.id, tenant.name] as const)),
-  };
-
   return (
     <Select
-      items={items}
       value={value || (includeAll ? "__all__" : undefined)}
       onValueChange={(nextValue) => onValueChange(nextValue === "__all__" ? null : nextValue)}
       disabled={disabled}

@@ -18,14 +18,12 @@ Tài liệu deployment bám theo `docker-compose.yml` hiện tại.
 
 ## Runtime decisions
 
-- `qdrant` giữ `latest` theo quyết định runtime hiện tại
+- `qdrant` pin ở `qdrant/qdrant:v1.18.2`
 - embedding mặc định: Docker Model Runner
 - reranker mặc định: NVIDIA NIM
 - local reranker chỉ là fallback
 
-Project không còn lấy TEI local làm default runtime chính.
-
-## Cổng và routing
+## Ports và routing
 
 | Thành phần | Ghi chú |
 |---|---|
@@ -46,17 +44,14 @@ Project không còn lấy TEI local làm default runtime chính.
 | `9router-data` | dữ liệu 9Router |
 | `settings-data` | `settings.db` của project |
 
-## `settings.db`
-
-`settings.db` là SQLite riêng của project, dùng cho:
-
-- provider settings
-- active embedding / reranker / llm metadata
-- key pool của provider nếu cần
-
-Không nhầm với dữ liệu riêng của 9Router.
-
 ## Env quan trọng
+
+## Hugging Face / FastEmbed cache
+
+- `HF_TOKEN` được nạp từ Docker secret `hf_token`
+- container export thêm `HUGGING_FACE_HUB_TOKEN` để tương thích với các lib HF
+- `FASTEMBED_CACHE_PATH` được trỏ vào volume `hf-cache`, không dùng `/tmp`
+- worker startup prewarm `Qdrant/bm25` để giảm cold-start ingestion
 
 ### API / proxy
 
@@ -77,9 +72,23 @@ Không nhầm với dữ liệu riêng của 9Router.
 - `EMBEDDING_HF_MODEL=ai/qwen3-embedding:0.6B-F16`
 - `EMBEDDING_VECTOR_SIZE=1024`
 
+### Qdrant
+
+- `QDRANT_URL`
+- `QDRANT_API_KEY`
+- `QDRANT_SECTION_COLLECTION=documents_sections`
+- `QDRANT_CHUNK_COLLECTION=documents_chunks`
+
 ### Retrieval / ingestion
 
-- `RETRIEVAL_HISTORY_QUERY_COUNT` (`0` mặc định = chỉ retrieve theo câu hỏi hiện tại)
+- `RETRIEVAL_HIERARCHICAL_CHUNK_SIZES`
+- `RETRIEVAL_SENTENCE_WINDOW_SIZE`
+- `RETRIEVAL_SECTION_TOP_K`
+- `RETRIEVAL_RECURSIVE_TOP_K`
+- `RETRIEVAL_CHUNK_TOP_K`
+- `RETRIEVAL_AUTO_MERGE_RATIO_THRESHOLD`
+- `RETRIEVAL_ROUTE_SECTION_MAX_CHARS`
+- `RETRIEVAL_ROUTE_SECTION_MAX_TERMS`
 - `RETRIEVAL_SECTION_HYDRATION_ENABLED`
 - `RETRIEVAL_SECTION_HYDRATION_TOP_K`
 - `RETRIEVAL_RERANK_SKIP_ENABLED`
@@ -91,7 +100,7 @@ Không nhầm với dữ liệu riêng của 9Router.
 
 ## Worker model
 
-`workers` hiện phụ trách:
+`workers` phụ trách:
 
 - document ingestion
 - usage logging
@@ -99,8 +108,9 @@ Không nhầm với dữ liệu riêng của 9Router.
 
 Pipeline ingest:
 
-- chạy batch theo config
-- tự ensure Qdrant payload indexes
+- parse -> canonical sections
+- build section index
+- build chunk index
 - phát progress qua SSE path của backend
 
 ## Health probes
@@ -110,23 +120,13 @@ Pipeline ingest:
 | `/api/v1/health` | health backend |
 | `/api/v1/public/v1/health` | health public inference |
 
-## Scale guidance
-
-Nếu mục tiêu lên cỡ `200 CCU`, nên ưu tiên:
-
-1. scale riêng `api`, `workers`, `ai-proxy`
-2. giữ document progress trên SSE
-3. tối ưu ingestion batch / concurrency
-4. tách rõ chat online và ingestion background
-5. benchmark lại local model runtime trước khi giữ lâu dài
-
 ## Realtime guidance
 
 ### Chat
 
-- tiếp tục dùng SSE là hợp lý
+- tiếp tục dùng SSE
 
 ### Ingestion progress
 
-- hiện dùng SSE với auto-reconnect
+- dùng SSE với auto-reconnect
 - không quay về polling ở flow chính

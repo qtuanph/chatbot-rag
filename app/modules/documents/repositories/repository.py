@@ -39,7 +39,7 @@ class DocumentRepository(BaseRepository[Document]):
             if progress_percent is not None:
                 document.progress_percent = max(0, min(100, int(progress_percent)))
             if status_message is not None:
-                document.status_message = status_message
+                document.status_message = status_message[:500]
             document.status_updated_at = utc_now()
             document.updated_at = utc_now()
             await self.session.commit()

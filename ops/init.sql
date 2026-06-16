@@ -262,6 +262,7 @@ CREATE TABLE IF NOT EXISTS document_sections (
     document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     section_id VARCHAR(255) NOT NULL,
     parent_section_id VARCHAR(255),
+    section_code VARCHAR(120),
     title VARCHAR(1000) NOT NULL,
     content TEXT,
     section_type VARCHAR(50) DEFAULT 'section',
@@ -272,15 +273,19 @@ CREATE TABLE IF NOT EXISTS document_sections (
     table_count INTEGER DEFAULT 0,
     chunk_count INTEGER DEFAULT 0,
     breadcrumb JSONB DEFAULT '[]'::jsonb,
+    breadcrumb_text TEXT,
     metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     CONSTRAINT uq_document_section UNIQUE (document_id, section_id)
 );
 ALTER TABLE document_sections ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE document_sections ADD COLUMN IF NOT EXISTS section_code VARCHAR(120);
+ALTER TABLE document_sections ADD COLUMN IF NOT EXISTS breadcrumb_text TEXT;
 CREATE INDEX IF NOT EXISTS idx_sections_document_id ON document_sections(document_id);
 CREATE INDEX IF NOT EXISTS idx_sections_tenant_id ON document_sections(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_sections_parent ON document_sections(parent_section_id);
+CREATE INDEX IF NOT EXISTS idx_sections_code ON document_sections(section_code);
 CREATE INDEX IF NOT EXISTS idx_sections_level ON document_sections(level);
 CREATE INDEX IF NOT EXISTS idx_sections_order ON document_sections(document_id, order_index);
 

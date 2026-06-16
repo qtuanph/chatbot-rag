@@ -8,7 +8,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from app.adapters.storage import build_storage
-from app.core.llama_index import get_vector_store
+from app.core.llama_index import delete_document_vectors
 
 if TYPE_CHECKING:
     from app.modules.documents.repositories import DocumentRepository, SectionRepository
@@ -27,7 +27,6 @@ class RecoveryService:
         self.doc_repo = doc_repo
         self.section_repo = section_repo
         self.redis = redis_client
-        self.vector_store = get_vector_store()
         self.storage = build_storage()
 
     async def check_stuck_processing(self, timeout_minutes: int = 30) -> list[str]:
@@ -63,18 +62,21 @@ class RecoveryService:
 
             def _get_vector_count():
                 client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
-                res = client.count(
-                    collection_name=settings.qdrant_collection,
-                    count_filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
-                )
-                return res.count if res else 0
+                total = 0
+                for collection_name in (settings.qdrant_section_collection, settings.qdrant_chunk_collection):
+                    res = client.count(
+                        collection_name=collection_name,
+                        count_filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
+                    )
+                    total += res.count if res else 0
+                return total
 
             vector_count = await asyncio.to_thread(_get_vector_count)
         except Exception:
             vector_count = 0
 
         try:
-            await self.vector_store.adelete(ref_doc_id=document_id)
+            await delete_document_vectors(document_id)
         except Exception as e:
             logger.warning("[%s] Failed to delete vectors in recovery: %s", document_id, e)
 
@@ -125,14 +127,17 @@ class RecoveryService:
 
             def _scroll_sync():
                 client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
-                points, _ = client.scroll(
-                    collection_name=settings.qdrant_collection,
-                    scroll_filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
-                    with_payload=True,
-                    with_vector=False,
-                    limit=10000,
-                )
-                return points
+                all_points = []
+                for collection_name in (settings.qdrant_section_collection, settings.qdrant_chunk_collection):
+                    points, _ = client.scroll(
+                        collection_name=collection_name,
+                        scroll_filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
+                        with_payload=True,
+                        with_vector=False,
+                        limit=10000,
+                    )
+                    all_points.extend(points)
+                return all_points
 
             def _extract_section_id(payload: dict) -> str | None:
                 import json
@@ -175,10 +180,11 @@ class RecoveryService:
 
                 def _delete_sync():
                     client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
-                    client.delete(
-                        collection_name=settings.qdrant_collection,
-                        points_selector=models.PointIdsList(points=orphaned),
-                    )
+                    for collection_name in (settings.qdrant_section_collection, settings.qdrant_chunk_collection):
+                        client.delete(
+                            collection_name=collection_name,
+                            points_selector=models.PointIdsList(points=orphaned),
+                        )
 
                 await asyncio.to_thread(_delete_sync)
                 report["cleaned"] = len(orphaned)
@@ -195,11 +201,14 @@ class RecoveryService:
 
             def _count_sync():
                 client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
-                result = client.count(
-                    collection_name=settings.qdrant_collection,
-                    count_filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
-                )
-                return result.count if result else 0
+                total = 0
+                for collection_name in (settings.qdrant_section_collection, settings.qdrant_chunk_collection):
+                    result = client.count(
+                        collection_name=collection_name,
+                        count_filter={"must": [{"key": "document_id", "match": {"value": document_id}}]},
+                    )
+                    total += result.count if result else 0
+                return total
 
             report["total_vectors"] = await asyncio.to_thread(_count_sync)
             section_count = await self.section_repo.count_by_document(document_id)
