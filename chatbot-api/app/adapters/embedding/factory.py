@@ -1,0 +1,65 @@
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from app.adapters.embedding.adapter import EmbeddingAdapter
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+def get_embedding_adapter(provider: dict[str, Any] | None = None) -> EmbeddingAdapter:
+    """Create an ``EmbeddingAdapter`` from a provider dict.
+
+    If ``provider`` is ``None`` the active embedding provider is loaded
+    from the settings database.  Falls back to env-var defaults when
+    no active provider exists.
+    """
+    if provider is None:
+        provider = _load_active_provider()
+
+    if provider:
+        api_base = (provider.get("url") or settings.embedding_api_base).rstrip("/")
+        api_key = _resolve_key(provider) or provider.get("api_key") or settings.embedding_api_key or ""
+        model = provider.get("model") or settings.embedding_hf_model
+        config = provider.get("config") or {}
+    else:
+        api_base = settings.embedding_api_base
+        api_key = settings.embedding_api_key or ""
+        model = settings.embedding_hf_model
+        config = {}
+
+    return EmbeddingAdapter(
+        api_base=api_base,
+        api_key=api_key,
+        model=model,
+        config=config,
+    )
+
+
+def _load_active_provider() -> dict[str, Any] | None:
+    try:
+        from app.modules.settings.repository import SettingsRepository
+
+        repo = SettingsRepository()
+        try:
+            return repo.get_active_provider("embedding")
+        finally:
+            repo.close()
+    except Exception as exc:
+        logger.warning("Failed to load active embedding provider: %s", exc)
+        return None
+
+
+def _resolve_key(provider: dict[str, Any]) -> str | None:
+    try:
+        from app.modules.settings.repository import SettingsRepository
+
+        repo = SettingsRepository()
+        try:
+            return repo.get_next_key(provider["id"])
+        finally:
+            repo.close()
+    except Exception:
+        return None

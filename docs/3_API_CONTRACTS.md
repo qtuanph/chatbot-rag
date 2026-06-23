@@ -23,7 +23,7 @@ Browser -> /api/bep/* -> Next.js route handler -> backend /api/v1/*
 
 Base API hiện tại:
 
-`/api/v1`
+`/v1`
 
 ## Nhóm route chính
 
@@ -129,9 +129,9 @@ Base API hiện tại:
 
 | Method | Path |
 |---|---|
-| GET | `/public/v1/health` |
-| GET | `/public/v1/models` |
-| POST | `/public/v1/chat/completions` |
+| GET | `/health` |
+| GET | `/models` |
+| POST | `/chat/completions` |
 
 Public chat request hiện hỗ trợ các field chính:
 

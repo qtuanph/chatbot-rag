@@ -57,6 +57,7 @@ The result is a platform that is useful not just as a demo chatbot, but as a fou
 - no product dependency on persisted chat sessions
 - frontend holds recent transcript in memory only
 - backend receives recent `messages`, injects tenant instruction and retrieved context, then answers
+- premium glassmorphism chat interface for smooth testing
 
 ### OpenAI-compatible public API
 - easy integration for tenant applications
@@ -126,7 +127,7 @@ flowchart LR
 ### Internal request flow
 
 ```text
-Browser -> /api/bep/* -> Next.js Route Handler -> FastAPI
+Browser -> Next.js Webapp (Cloudflare Pages) -> /api/bep/* -> Next.js Route Handler -> FastAPI
 ```
 
 ### Public integration flow
@@ -232,7 +233,7 @@ At a high level:
 ## Public API Example
 
 ```http
-POST /api/v1/public/v1/chat/completions
+POST /v1/chat/completions
 Authorization: Bearer <tenant_api_key>
 Content-Type: application/json
 ```
@@ -254,18 +255,27 @@ Content-Type: application/json
 
 ---
 
-## Quick Start
+### Quick Start
 
+**Backend (API):**
 ```bash
+cd chatbot-api
 cp .env.example .env
-DOCKER_BUILDKIT=1 docker compose build
+docker compose build
 docker compose up -d
 ```
 
-### Useful local endpoints
+**Frontend (Webapp):**
+```bash
+cd chatbot-webapp
+npm install
+npm run dev
+```
 
-- **Web app:** `http://localhost`
-- **Backend health:** `http://localhost/api/v1/health`
+### Useful endpoints
+
+- **Web app (Local):** `http://localhost:3000`
+- **Backend API:** `https://api.qtuanph.dev/v1/health`
 - **Qdrant dashboard:** `http://localhost:6333/dashboard`
 - **9Router:** `http://localhost:2908`
 - **Traefik dashboard:** `http://localhost:8080`

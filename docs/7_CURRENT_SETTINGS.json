@@ -1,8 +1,8 @@
 {
   "document": {
     "id": "7_CURRENT_SETTINGS",
-    "version": "2026-06-13",
-    "purpose": "Snapshot cấu hình hiện tại sau rebuild RAG structure-aware dual index."
+    "version": "2026-06-23",
+    "purpose": "Snapshot cấu hình hiện tại sau embedding adapter refactor."
   },
   "architecture": {
     "mode": "multi-tenant",
@@ -60,7 +60,10 @@
     "retrieval_hierarchical_chunk_sizes": [2048, 768],
     "retrieval_sentence_window_size": 3,
     "embedding_batch_size": 16,
-    "pipeline_batch_size": 8
+    "pipeline_batch_size": 8,
+    "embedding_adapter": "app.adapters.embedding",
+    "sparse_auto_detect": true,
+    "sparse_fallback": "Qdrant/bm25"
   },
   "chat": {
     "history_persistence": false,
@@ -98,6 +101,7 @@
     "docker_model_runner_host": "model-runner.docker.internal",
     "hf_token_source": "docker secret hf_token",
     "fastembed_cache_path": "/home/qtuanph/.cache/huggingface/fastembed",
-    "worker_prewarm_sparse_model": "Qdrant/bm25"
+    "worker_prewarm_sparse_model": "Qdrant/bm25",
+    "native_sparse_inject": true
   }
 }

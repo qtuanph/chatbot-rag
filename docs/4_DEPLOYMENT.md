@@ -56,7 +56,7 @@ Tài liệu deployment bám theo `docker-compose.yml` hiện tại.
 ### API / proxy
 
 - `NEXT_PUBLIC_API_URL=/api/bep`
-- `API_INTERNAL_URL=http://api:8000/api/v1`
+- `API_INTERNAL_URL=https://api.qtuanph.dev/v1`
 
 ### AI
 
@@ -117,8 +117,7 @@ Pipeline ingest:
 
 | Probe | Ý nghĩa |
 |---|---|
-| `/api/v1/health` | health backend |
-| `/api/v1/public/v1/health` | health public inference |
+| `/v1/health` | health backend & public inference |
 
 ## Realtime guidance
 
