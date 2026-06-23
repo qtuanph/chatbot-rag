@@ -1,7 +1,7 @@
 version: 2
 updates:
   - package-ecosystem: "pip"
-    directory: "/"
+    directory: "/chatbot-api"
     schedule:
       interval: "daily"
       time: "03:00"
@@ -16,7 +16,7 @@ updates:
       - "python"
 
   - package-ecosystem: "npm"
-    directory: "/webapp"
+    directory: "/chatbot-webapp"
     schedule:
       interval: "daily"
       time: "03:15"
