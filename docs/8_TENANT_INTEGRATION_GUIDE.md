@@ -49,7 +49,7 @@ Mỗi tenant tối thiểu cần:
 ### Ví dụ
 
 ```text
-base_url = https://your-domain.com/api/v1/public/v1
+base_url = https://api.qtuanph.dev
 api_key  = <tenant_api_key>
 model    = chatbot-rag
 ```
@@ -57,10 +57,10 @@ model    = chatbot-rag
 ## Endpoint chính
 
 | Method | Path | Mục đích |
-|---|---|
-| GET | `/public/v1/health` | kiểm tra sống |
-| GET | `/public/v1/models` | danh sách model logic |
-| POST | `/public/v1/chat/completions` | gửi chat |
+|---|---|---|
+| GET | `/v1/health` | kiểm tra sống |
+| GET | `/v1/models` | danh sách model logic |
+| POST | `/v1/chat/completions` | gửi chat |
 
 ## Auth
 
@@ -109,7 +109,7 @@ Tenant software can call the platform with the OpenAI Python SDK using only:
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://your-domain.com/api/v1/public/v1",
+    base_url="https://api.qtuanph.dev/v1",
     api_key="YOUR_TENANT_API_KEY",
 )
 

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tenant Chat Demo</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: #f3f4f6;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 90vh;
+        }
+        .header {
+            background: #111827;
+            color: white;
+            padding: 16px 20px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 1.25rem;
+        }
+        .settings {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 0.875rem;
+        }
+        .settings input {
+            padding: 6px 10px;
+            border: 1px solid #4b5563;
+            background: #1f2937;
+            color: white;
+            border-radius: 4px;
+        }
+        .chat-box {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .message {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+        .user-msg {
+            align-self: flex-end;
+            background: #2563eb;
+            color: white;
+            border-bottom-right-radius: 0;
+        }
+        .bot-msg {
+            align-self: flex-start;
+            background: #f3f4f6;
+            color: #111827;
+            border-bottom-left-radius: 0;
+            border: 1px solid #e5e7eb;
+        }
+        .system-msg {
+            align-self: center;
+            font-size: 0.8rem;
+            color: #6b7280;
+            background: none;
+        }
+        .input-area {
+            padding: 16px;
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            gap: 10px;
+        }
+        .input-area input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 1rem;
+            outline: none;
+        }
+        .input-area input:focus {
+            border-color: #2563eb;
+        }
+        .input-area button {
+            padding: 0 24px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .input-area button:hover {
+            background: #1d4ed8;
+        }
+        .input-area button:disabled {
+            background: #93c5fd;
+            cursor: not-allowed;
+        }
+        .typing {
+            opacity: 0.7;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Tenant Integration Demo</h1>
+        <div class="settings">
+            <div>
+                <label>API Endpoint:</label>
+                <input type="text" id="apiEndpoint" value="https://api.qtuanph.dev/v1/chat/completions" style="width: 100%; box-sizing: border-box;" />
+            </div>
+            <div>
+                <label>API Key:</label>
+                <input type="text" id="apiKey" value="trg_fkbZ8COIca3X9F7Kmp3BwKaypJ1oiksc6dlW1dSdzeI" style="width: 100%; box-sizing: border-box;" />
+            </div>
+        </div>
+    </div>
+    
+    <div class="chat-box" id="chatBox">
+        <div class="message system-msg">Chat initialized. Gửi tin nhắn để kiểm tra kết nối với Public API.</div>
+    </div>
+    
+    <div class="input-area">
+        <input type="text" id="messageInput" placeholder="Nhập câu hỏi của bạn..." autocomplete="off" />
+        <button id="sendBtn">Gửi</button>
+    </div>
+</div>
+
+<script>
+    const chatBox = document.getElementById('chatBox');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const apiEndpointInput = document.getElementById('apiEndpoint');
+    const apiKeyInput = document.getElementById('apiKey');
+
+    // Mảng lưu lịch sử chat (stateless => gửi lại toàn bộ array mỗi lần request)
+    let messages = [
+        { role: 'system', content: 'You are a helpful assistant.' }
+    ];
+
+    function appendMessage(role, content) {
+        const div = document.createElement('div');
+        div.className = `message ${role === 'user' ? 'user-msg' : 'bot-msg'}`;
+        div.textContent = content;
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        return div;
+    }
+
+    async function sendMessage() {
+        const text = messageInput.value.trim();
+        if (!text) return;
+
+        const endpoint = apiEndpointInput.value.trim();
+        const apiKey = apiKeyInput.value.trim();
+
+        // Cập nhật UI
+        appendMessage('user', text);
+        messages.push({ role: 'user', content: text });
+        messageInput.value = '';
+        
+        sendBtn.disabled = true;
+        const botMessageDiv = appendMessage('bot', 'Đang xử lý...');
+        botMessageDiv.classList.add('typing');
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'default', // Nếu hệ thống yêu cầu model cụ thể, hãy sửa ở đây
+                    messages: messages,
+                    stream: true,
+                    temperature: 0.7,
+                    max_tokens: 1000
+                })
+            });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errText}`);
+            }
+
+            // Xử lý luồng stream (Server-Sent Events format)
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+            let botReply = '';
+            botMessageDiv.textContent = '';
+            botMessageDiv.classList.remove('typing');
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                    if (line.trim() === 'data: [DONE]') continue;
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            if (data.choices && data.choices[0].delta && data.choices[0].delta.content) {
+                                botReply += data.choices[0].delta.content;
+                                botMessageDiv.textContent = botReply;
+                                chatBox.scrollTop = chatBox.scrollHeight;
+                            }
+                        } catch (e) {
+                            console.warn("Parse stream chunk error:", e, line);
+                        }
+                    }
+                }
+            }
+
+            // Lưu reply vào lịch sử
+            messages.push({ role: 'assistant', content: botReply });
+
+        } catch (error) {
+            console.error(error);
+            botMessageDiv.textContent = `[Lỗi] ${error.message}`;
+            botMessageDiv.classList.remove('typing');
+            botMessageDiv.style.color = '#dc2626';
+            botMessageDiv.style.borderColor = '#fca5a5';
+            botMessageDiv.style.background = '#fef2f2';
+        } finally {
+            sendBtn.disabled = false;
+            messageInput.focus();
+        }
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendMessage();
+    });
+</script>
+
+</body>
+</html>

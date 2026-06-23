@@ -123,5 +123,14 @@
       "resolution": "Split parser metadata from retrieval metadata. Chunk parsers now receive only a minimal metadata subset, and full retrieval metadata is attached after node generation. A guarded fallback keeps sentence-window chunking alive if hierarchical support hits recursion depth.",
       "lesson_learned": "Parser metadata and retrieval metadata serve different purposes; keeping parser metadata intentionally small makes ingestion much more stable."
     }
+    ,
+    {
+      "issue_id": 15,
+      "title": "Cached Async Qdrant Client Reused Across Celery Worker Event Loops",
+      "symptom": "Worker ingestion fails with \"Event loop is closed\" / \"ResponseHandlingException: Event loop is closed\" when calling Qdrant. The first task succeeds but subsequent tasks crash.",
+      "root_cause": "`get_async_qdrant_client()`, `get_section_vector_store()`, and `get_chunk_vector_store()` in `app/core/llama_index.py` were decorated with `@lru_cache(maxsize=1)`. Celery workers use `asyncio.run()` which creates a fresh event loop per task. The cached `AsyncQdrantClient` held a reference to the old (closed) event loop's internal `httpx.AsyncClient`, causing the crash on the next task.",
+      "resolution": "Removed `@lru_cache` from `get_async_qdrant_client()`, `get_section_vector_store()`, `get_chunk_vector_store()`, and `get_vector_store()`. The sync `get_qdrant_client()` kept its cache since it has no event loop dependency.",
+      "lesson_learned": "Never cache async clients that internally manage HTTP sessions (httpx.AsyncClient, aiohttp.ClientSession, etc.) in mixed sync+async environments where event loops are created per-task (Celery + asyncio.run()). Each asyncio.run() invocation must get a fresh async client."
+    }
   ]
 }

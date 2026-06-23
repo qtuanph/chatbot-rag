@@ -160,11 +160,13 @@ Tất cả source file phải dùng **LF (`\n`)**, không dùng CRLF.
 
 ### Build
 ```bash
+cd chatbot-api
 DOCKER_BUILDKIT=1 docker compose build
 ```
 
 ### Run
 ```bash
+cd chatbot-api
 docker compose up -d
 ```
 
