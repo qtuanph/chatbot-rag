@@ -13,9 +13,9 @@ export default function IntroductionGuidePage() {
   return (
     <div className="space-y-6">
       <div>
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">RAG Platform</h1>
-          <Badge variant="default" className="text-xs">v1.0</Badge>
+        <div className="flex items-center gap-2">
+          <h1 className="text-3xl font-bold tracking-tight">Giới thiệu nền tảng</h1>
+          <Badge variant="default" className="text-xs">{process.env.NEXT_PUBLIC_APP_VERSION || "v1.0"}</Badge>
         </div>
         <p className="text-sm text-muted-foreground mt-1">
           Nền tảng hỏi đáp tài liệu tự động (Retrieval-Augmented Generation) dành cho hệ thống Doanh nghiệp Đa người dùng.
