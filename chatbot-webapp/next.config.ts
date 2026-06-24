@@ -18,7 +18,6 @@ const nextConfig: NextConfig = {
   },
   output: "standalone",
   productionBrowserSourceMaps: false,
-  cacheComponents: true,
   turbopack: {
     root: __dirname,
   },
