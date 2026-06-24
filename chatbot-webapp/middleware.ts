@@ -9,11 +9,22 @@ export default auth((req) => {
   let response: NextResponse | undefined;
 
   // Public routes
-  if (pathname.startsWith("/login")) {
+  if (pathname === "/login") {
     if (isLoggedIn) {
       response = NextResponse.redirect(
         new URL(role === "platform_admin" ? "/admin" : "/chat", req.nextUrl),
       );
+    }
+  }
+
+  // Root route
+  else if (pathname === "/") {
+    if (isLoggedIn) {
+      response = NextResponse.redirect(
+        new URL(role === "platform_admin" ? "/admin" : "/chat", req.nextUrl),
+      );
+    } else {
+      response = NextResponse.redirect(new URL("/login", req.nextUrl));
     }
   }
 
