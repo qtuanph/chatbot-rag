@@ -1,7 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -19,8 +18,6 @@ const TAB_LABELS: Record<string, string> = {
   reranker: "Reranker",
   llm: "LLM",
 };
-
-const VALID_TABS = ["embedding", "reranker", "llm"];
 
 const PROVIDER_COLORS: Record<string, string> = {
   dmr: "bg-sky-500/15 text-sky-600 dark:text-sky-400",
@@ -52,9 +49,8 @@ function ProviderIcon({ providerName }: { providerName: string }) {
   );
 }
 
-export default function ProvidersTabPage({ params }: { params: Promise<{ tab: string }> }) {
-  const { tab } = use(params);
-  const router = useRouter();
+export function ProviderPage({ serviceType }: { serviceType: "embedding" | "reranker" | "llm" }) {
+  const tab = serviceType;
 
   const [providers, setProviders] = useState<AIProvider[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,20 +69,9 @@ export default function ProvidersTabPage({ params }: { params: Promise<{ tab: st
     api_key: "",
   });
 
-  const isValidTab = VALID_TABS.includes(tab);
-
   useEffect(() => {
-    if (!isValidTab) {
-      router.replace("/admin/providers/embedding");
-    }
-  }, [isValidTab, router]);
-
-  useEffect(() => {
-    if (!isValidTab) return;
     settingsApi.listProviders(tab).then(setProviders).catch(() => toast.error("Không thể tải danh sách providers")).finally(() => setLoading(false));
-  }, [tab, isValidTab]);
-
-  if (!isValidTab) return null;
+  }, [tab]);
 
   const llmBuiltin = tab === "llm";
 
