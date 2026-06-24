@@ -351,8 +351,8 @@ export default function AdminTenantsPage() {
                 <FieldContent>
                   <FieldLabel htmlFor="create_slug" className="flex items-center gap-1">
                     Slug
-                    <TooltipProvider>
-                      <Tooltip delayDuration={100}>
+                    <TooltipProvider delay={100}>
+                      <Tooltip>
                         <TooltipTrigger type="button"><Info className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
                         <TooltipContent>Mã định danh dùng trên URL (tự động đổi dấu cách thành dấu gạch ngang).</TooltipContent>
                       </Tooltip>
@@ -438,8 +438,8 @@ export default function AdminTenantsPage() {
                     <FieldContent>
                       <FieldLabel htmlFor="sheet_slug" className="flex items-center gap-1">
                         Slug
-                        <TooltipProvider>
-                          <Tooltip delayDuration={100}>
+                        <TooltipProvider delay={100}>
+                          <Tooltip>
                             <TooltipTrigger type="button"><Info className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
                             <TooltipContent>Mã định danh dùng trên URL (tự động đổi dấu cách thành dấu gạch ngang).</TooltipContent>
                           </Tooltip>
