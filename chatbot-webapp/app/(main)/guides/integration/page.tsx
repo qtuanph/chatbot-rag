@@ -2,91 +2,117 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Code2Icon, TerminalIcon, CpuIcon } from "lucide-react";
+import { Code2Icon, TerminalIcon, CpuIcon, WebhookIcon, NetworkIcon } from "lucide-react";
 
 export default function IntegrationGuidePage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-12">
       <div>
-        <h1 className="text-2xl font-bold">Tích hợp phần mềm</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Tích hợp phần mềm (Dev Guide)</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Sử dụng Nền tảng RAG như một API (OpenAI Drop-in Replacement).
+          Sử dụng Nền tảng RAG như một API Backend độc lập (Drop-in Replacement cho OpenAI).
         </p>
       </div>
 
       <Alert className="bg-blue-50 border-blue-200">
         <CpuIcon className="h-4 w-4 text-blue-600" />
-        <AlertTitle className="text-blue-800 font-bold text-sm">OpenAI Tương thích 100%</AlertTitle>
-        <AlertDescription className="text-blue-700 text-xs">
-          Bạn không cần học API mới! Nếu phần mềm của bạn đã hỗ trợ ChatGPT/OpenAI, bạn chỉ việc đổi <code>Base URL</code> và <code>API Key</code> là xong.
+        <AlertTitle className="text-blue-800 font-bold">OpenAI Tương thích 100%</AlertTitle>
+        <AlertDescription className="text-blue-700 text-sm leading-6">
+          Bạn không cần học cú pháp API mới! Nếu phần mềm của bạn đã hỗ trợ ChatGPT/OpenAI, bạn chỉ việc đổi <code>Base URL</code> và truyền <code>API Key</code> do hệ thống này cấp là chạy được ngay lập tức.
         </AlertDescription>
       </Alert>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Thông tin kết nối cơ bản</h2>
-        <Card>
+        <h2 className="text-xl font-semibold border-b pb-2 flex items-center gap-2">
+          <NetworkIcon className="w-5 h-5" />
+          Thông số Kết nối (Connection Config)
+        </h2>
+        <Card className="shadow-sm">
           <CardContent className="pt-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <p className="text-sm font-semibold text-slate-500 mb-1">Base URL</p>
-                <code className="bg-slate-100 text-pink-600 px-2 py-1 rounded">https://api.qtuanph.dev/v1</code>
+                <code className="bg-slate-100 text-pink-600 px-2 py-1 rounded text-sm block overflow-hidden text-ellipsis whitespace-nowrap">
+                  http://localhost:2908/v1
+                </code>
+                <p className="text-xs text-muted-foreground mt-1">Thay bằng Domain thật nếu chạy trên server.</p>
               </div>
               <div>
                 <p className="text-sm font-semibold text-slate-500 mb-1">Model Name</p>
-                <code className="bg-slate-100 text-pink-600 px-2 py-1 rounded">chatbot-rag</code> 
-                <span className="text-sm text-muted-foreground ml-2">(Có thể truyền bất kỳ text nào)</span>
+                <code className="bg-slate-100 text-pink-600 px-2 py-1 rounded text-sm block">chatbot-rag</code> 
+                <p className="text-xs text-muted-foreground mt-1">Luôn để <code>chatbot-rag</code>. Hệ thống sẽ tự map sang LLM thực tế ở cấu hình Admin.</p>
               </div>
               <div className="md:col-span-2">
-                <p className="text-sm font-semibold text-slate-500 mb-1">API Key</p>
-                <div className="bg-slate-100 p-2 rounded text-sm text-slate-700 border border-slate-200 break-all">
-                  <code>trg_... (Lấy trong phần Cài đặt Tenant)</code>
+                <p className="text-sm font-semibold text-slate-500 mb-1">API Key (Header: Authorization)</p>
+                <div className="bg-slate-100 p-3 rounded text-sm text-slate-700 border border-slate-200 break-all font-mono">
+                  Bearer trg_xxxxxxxxxxxxxxxxxxxxxx
                 </div>
+                <p className="text-xs text-muted-foreground mt-1">Bắt buộc phải có chữ <code>Bearer</code>. Lấy Key này trong phần <strong>Quản trị &gt; Tenants &gt; API Keys</strong>.</p>
               </div>
             </div>
           </CardContent>
         </Card>
       </section>
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
+      <section className="space-y-4 mt-8">
+        <h2 className="text-xl font-semibold border-b pb-2 flex items-center gap-2">
+          <WebhookIcon className="w-5 h-5 text-indigo-500" />
+          Cơ chế Chat phi trạng thái (Stateless Chat)
+        </h2>
+        <Card className="bg-indigo-50/30 border-indigo-100 shadow-sm">
+          <CardContent className="pt-6 space-y-4 text-sm text-slate-700 leading-6">
+            <p>
+              Giống như OpenAI, hệ thống của chúng tôi <strong>KHÔNG LƯU LẠI</strong> lịch sử hội thoại trên Server để đảm bảo tốc độ cực cao và tránh phình to database.
+            </p>
+            <p>
+              Khi Dev gọi API, Dev <strong>phải gửi kèm toàn bộ lịch sử chat cũ</strong> trong mảng <code>messages</code>. Nền tảng sẽ tự động rút trích câu hỏi cuối cùng của User, tìm kiếm tài liệu (RAG), tự động nhồi ngữ cảnh vào câu prompt (Instruction injection) và ném cho AI đọc.
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="space-y-4 mt-8">
+        <h2 className="text-xl font-semibold border-b pb-2 flex items-center gap-2">
           <Code2Icon className="w-5 h-5" />
-          Code Mẫu Tích Hợp
+          Code Mẫu Tích Hợp (SDK Examples)
         </h2>
         
         <Tabs defaultValue="python" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6">
-            <TabsTrigger value="python">Python (OpenAI SDK)</TabsTrigger>
-            <TabsTrigger value="node">Node.js (OpenAI SDK)</TabsTrigger>
-            <TabsTrigger value="fetch">Raw Fetch API (JS)</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 mb-6 bg-slate-100">
+            <TabsTrigger value="python" className="data-[state=active]:bg-white">Python (OpenAI SDK)</TabsTrigger>
+            <TabsTrigger value="node" className="data-[state=active]:bg-white">Node.js (OpenAI SDK)</TabsTrigger>
+            <TabsTrigger value="fetch" className="data-[state=active]:bg-white">Raw Fetch API (cURL)</TabsTrigger>
           </TabsList>
           
           <TabsContent value="python">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Dùng thư viện OpenAI của Python</CardTitle>
-                <CardDescription className="text-xs">Cài đặt: <code>pip install openai</code></CardDescription>
+            <Card className="border-slate-200">
+              <CardHeader className="bg-slate-50 border-b pb-4">
+                <CardTitle className="text-base font-semibold">Tích hợp bằng Python</CardTitle>
+                <CardDescription className="text-xs">Cài đặt SDK bằng lệnh: <code>pip install openai</code></CardDescription>
               </CardHeader>
-              <CardContent>
-                <pre className="bg-slate-950 text-slate-50 p-4 rounded-lg overflow-x-auto text-sm">
+              <CardContent className="p-0">
+                <pre className="bg-slate-950 text-emerald-400 p-6 overflow-x-auto text-sm leading-relaxed rounded-b-lg">
 {`from openai import OpenAI
 
+# Khởi tạo Client, trỏ Base URL về server của chúng ta
 client = OpenAI(
-    base_url="https://api.qtuanph.dev/v1",
-    api_key="YOUR_TENANT_API_KEY", # Ví dụ: trg_fkbZ...
+    base_url="http://localhost:2908/v1",
+    api_key="YOUR_TENANT_API_KEY", # Lấy mã trg_... từ màn hình API Keys
 )
 
+# Gửi request Chat
 completion = client.chat.completions.create(
     model="chatbot-rag",
     messages=[
         {"role": "user", "content": "Muốn backup số liệu thì vào mục nào?"}
     ],
-    stream=True # Bật tính năng gõ từng chữ
+    stream=True # Khuyên dùng: Bật stream để lấy kết quả tức thời
 )
 
-# Nhận phản hồi real-time
+# Nhận phản hồi real-time in ra terminal
+print("AI: ", end="")
 for chunk in completion:
     if chunk.choices and chunk.choices[0].delta.content:
         print(chunk.choices[0].delta.content, end="")
@@ -97,27 +123,32 @@ for chunk in completion:
           </TabsContent>
 
           <TabsContent value="node">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Dùng thư viện OpenAI của Node.js / React</CardTitle>
-                <CardDescription className="text-xs">Cài đặt: <code>npm install openai</code></CardDescription>
+            <Card className="border-slate-200">
+              <CardHeader className="bg-slate-50 border-b pb-4">
+                <CardTitle className="text-base font-semibold">Tích hợp bằng Node.js / React / Next.js</CardTitle>
+                <CardDescription className="text-xs">Cài đặt SDK bằng lệnh: <code>npm install openai</code></CardDescription>
               </CardHeader>
-              <CardContent>
-                <pre className="bg-slate-950 text-slate-50 p-4 rounded-lg overflow-x-auto text-sm">
+              <CardContent className="p-0">
+                <pre className="bg-slate-950 text-emerald-400 p-6 overflow-x-auto text-sm leading-relaxed rounded-b-lg">
 {`import OpenAI from "openai";
 
 const openai = new OpenAI({
-  baseURL: "https://api.qtuanph.dev/v1",
-  apiKey: "YOUR_TENANT_API_KEY", // Thay bằng Key của bạn
+  baseURL: "http://localhost:2908/v1",
+  apiKey: "YOUR_TENANT_API_KEY", 
 });
 
 async function main() {
   const stream = await openai.chat.completions.create({
     model: "chatbot-rag",
-    messages: [{ role: "user", content: "Chính sách nhân sự mới nhất?" }],
+    messages: [
+      { role: "user", content: "Xin chào!" },
+      { role: "assistant", content: "Chào bạn, tôi có thể giúp gì?" },
+      { role: "user", content: "Quy định nghỉ phép năm nay?" } // Câu hỏi mới
+    ],
     stream: true,
   });
 
+  process.stdout.write("AI: ");
   for await (const chunk of stream) {
     process.stdout.write(chunk.choices[0]?.delta?.content || "");
   }
@@ -130,30 +161,33 @@ main();`}
           </TabsContent>
 
           <TabsContent value="fetch">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Gốc (Không dùng SDK)</CardTitle>
-                <CardDescription className="text-xs">Gọi REST API thuần cho các ngôn ngữ không có SDK (Java, PHP, C#...)</CardDescription>
+            <Card className="border-slate-200">
+              <CardHeader className="bg-slate-50 border-b pb-4">
+                <CardTitle className="text-base font-semibold">Gọi API gốc (Không dùng thư viện SDK)</CardTitle>
+                <CardDescription className="text-xs">Dành cho Java, C#, PHP hoặc khi bạn muốn test nhanh qua Postman / cURL.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <pre className="bg-slate-950 text-slate-50 p-4 rounded-lg overflow-x-auto text-sm">
-{`fetch("https://api.qtuanph.dev/v1/chat/completions", {
+              <CardContent className="p-0">
+                <pre className="bg-slate-950 text-emerald-400 p-6 overflow-x-auto text-sm leading-relaxed rounded-b-lg">
+{`fetch("http://localhost:2908/v1/chat/completions", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "Authorization": "Bearer YOUR_TENANT_API_KEY"
+    "Authorization": "Bearer YOUR_TENANT_API_KEY" // <== Cực kỳ quan trọng
   },
   body: JSON.stringify({
     model: "chatbot-rag",
     messages: [
       { role: "user", content: "Xin chào" }
     ],
-    stream: false, // Để false để lấy kết quả 1 cục JSON cho dễ parse
+    stream: false, // Để false sẽ trả về 1 cục JSON thay vì stream từng chữ
     temperature: 0.7
   })
 })
 .then(response => response.json())
-.then(data => console.log(data.choices[0].message.content));`}
+.then(data => {
+  console.log("Câu trả lời của AI:", data.choices[0].message.content);
+})
+.catch(err => console.error("Lỗi:", err));`}
                 </pre>
               </CardContent>
             </Card>
@@ -161,20 +195,21 @@ main();`}
         </Tabs>
       </section>
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <TerminalIcon className="w-5 h-5" />
+      <section className="space-y-4 mt-8">
+        <h2 className="text-xl font-semibold border-b pb-2 flex items-center gap-2">
+          <TerminalIcon className="w-5 h-5 text-emerald-500" />
           Hiệu ứng gõ phím mượt mà (SSE - Server Sent Events)
         </h2>
-        <Card className="bg-slate-50/50">
+        <Card className="shadow-sm">
           <CardContent className="pt-6 space-y-4 leading-6 text-sm text-slate-700">
             <p>
-              Nếu AI mất 10 giây để đọc tài liệu và suy nghĩ câu trả lời, người dùng sẽ phải đợi mòn mỏi. 
-              Đó là lý do bạn nên dùng thuộc tính <code>stream: true</code>.
+              <strong>Vấn đề:</strong> Nếu AI mất 10 giây để đọc tài liệu và suy nghĩ câu trả lời dài 1000 chữ, người dùng sẽ phải nhìn màn hình loading trống không rất ức chế.
             </p>
             <p>
-              Khi truyền <code>stream: true</code>, server sẽ gửi trả dữ liệu từng mảnh một (chunks) ngay khi AI vừa suy nghĩ ra chữ đó. Nhờ vậy, chữ sẽ chạy rẹt rẹt trên màn hình giống hệt ChatGPT mà không có độ trễ. 
-              Các bộ SDK chính thức như `openai-python` đã tự động đóng gói việc giải mã stream này, bạn chỉ việc dùng vòng lặp `for` như code mẫu phía trên là xong!
+              <strong>Giải pháp:</strong> Bạn PHẢI truyền tham số <code>stream: true</code> trong code. Khi đó, Server backend sẽ trả dữ liệu về dạng luồng (SSE). AI nghĩ ra được chữ nào, Backend sẽ ngay lập tức đẩy chữ đó về Frontend của bạn.
+            </p>
+            <p>
+              Kết quả là chữ sẽ <strong>chạy rẹt rẹt trên màn hình giống hệt ChatGPT</strong> mà không có độ trễ. Các bộ SDK chính thức như <code>openai-python</code> hoặc thư viện <code>ai</code> của Vercel (Next.js) đã tự động giải mã luồng Stream này giùm bạn.
             </p>
           </CardContent>
         </Card>

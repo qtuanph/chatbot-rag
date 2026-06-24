@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_APP_VERSION: getGitVersion(),
   },
   output: "standalone",
+  productionBrowserSourceMaps: false,
   cacheComponents: true,
   turbopack: {
     root: __dirname,

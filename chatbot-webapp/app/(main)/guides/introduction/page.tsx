@@ -1,74 +1,112 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { 
   Building2Icon, 
   DatabaseIcon, 
   BrainCircuitIcon, 
   ShieldCheckIcon,
-  MessageSquareTextIcon
+  MessageSquareTextIcon,
+  ArrowRightIcon,
+  InfoIcon
 } from "lucide-react";
 
 export default function IntroductionGuidePage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-12">
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-3xl font-bold tracking-tight">Giới thiệu nền tảng</h1>
           <Badge variant="default" className="text-xs">{process.env.NEXT_PUBLIC_APP_VERSION || "v1.0"}</Badge>
         </div>
         <p className="text-sm text-muted-foreground mt-1">
-          Nền tảng hỏi đáp tài liệu tự động (Retrieval-Augmented Generation) dành cho hệ thống Doanh nghiệp Đa người dùng.
+          Tài liệu Vận hành & Tích hợp dành cho Nền tảng hỏi đáp tài liệu tự động (RAG) đa khách hàng.
         </p>
       </div>
 
+      <Alert className="bg-blue-50 border-blue-200">
+        <InfoIcon className="h-4 w-4 text-blue-600" />
+        <AlertTitle className="text-blue-800 font-bold">Dành cho ai?</AlertTitle>
+        <AlertDescription className="text-blue-700 text-sm leading-6">
+          Tài liệu này được thiết kế chuẩn mực dành cho cả hai nhóm:
+          <br/>- <strong>Nhóm BA / Vận hành / Product Manager:</strong> Đọc để hiểu nguyên lý hoạt động, cách phân quyền, thao tác click chuột để tải file và quản lý khách hàng.
+          <br/>- <strong>Nhóm Dev / Kỹ sư tích hợp:</strong> Đọc để nắm kiến trúc API, cơ chế Fallback (Dự phòng lỗi), cách mã hoá Token và gọi REST API.
+        </AlertDescription>
+      </Alert>
+
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold">RAG là gì?</h2>
+        <h2 className="text-xl font-semibold">1. RAG (Retrieval-Augmented Generation) là gì?</h2>
         <Card className="bg-slate-50/50">
-          <CardContent className="pt-6">
-            <p className="text-sm text-slate-700">
-              <strong>RAG (Retrieval-Augmented Generation)</strong> là công nghệ kết hợp giữa Tìm kiếm dữ liệu (Retrieval) và Trí tuệ nhân tạo (Generation). 
-              Thay vì để AI tự "bịa" ra câu trả lời dựa trên kiến thức chung có sẵn, nền tảng RAG sẽ tự động tìm kiếm các đoạn thông tin chính xác nhất từ tài liệu nội bộ của công ty bạn, sau đó đưa cho AI để tổng hợp thành một câu trả lời chính xác, có căn cứ và không bịa đặt (hallucination).
+          <CardContent className="pt-6 space-y-4 text-sm text-slate-700 leading-6">
+            <p>
+              Thay vì để AI tự &quot;bịa&quot; ra câu trả lời dựa trên kiến thức chung có sẵn trên mạng, nền tảng RAG hoạt động theo luồng:
+            </p>
+            <div className="flex flex-col md:flex-row items-center gap-4 bg-white p-4 rounded-lg border border-slate-200 justify-center">
+              <div className="text-center font-medium bg-blue-100 text-blue-800 px-4 py-2 rounded">Người dùng hỏi</div>
+              <ArrowRightIcon className="text-slate-400 hidden md:block" />
+              <div className="text-center font-medium bg-purple-100 text-purple-800 px-4 py-2 rounded">Máy tìm kiếm tài liệu (Vector DB)</div>
+              <ArrowRightIcon className="text-slate-400 hidden md:block" />
+              <div className="text-center font-medium bg-emerald-100 text-emerald-800 px-4 py-2 rounded">AI đọc tài liệu & Trả lời</div>
+            </div>
+            <p>
+              Nhờ vậy, câu trả lời luôn <strong>chính xác 100% theo tài liệu nội bộ</strong> của công ty, hoàn toàn không có hiện tượng ảo giác (hallucination).
             </p>
           </CardContent>
         </Card>
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Kiến trúc Multi-tenant (Đa khách hàng)</h2>
+        <h2 className="text-xl font-semibold">2. Sơ đồ Phân quyền (Roles)</h2>
         <p className="text-sm text-muted-foreground mb-4">
-          Hệ thống được thiết kế dưới dạng SaaS, cho phép một nền tảng duy nhất phục vụ nhiều tổ chức/công ty khác nhau một cách hoàn toàn biệt lập và bảo mật.
+          Hệ thống được thiết kế dưới dạng SaaS Multi-tenant, cho phép một nền tảng duy nhất phục vụ nhiều công ty khác nhau hoàn toàn biệt lập và bảo mật. Có 2 vai trò cốt lõi cực kỳ rạch ròi:
         </p>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
+          <Card className="border-t-4 border-t-primary shadow-sm hover:shadow-md transition-shadow">
             <CardHeader>
               <ShieldCheckIcon className="w-8 h-8 text-primary mb-2" />
               <CardTitle>Platform Admin</CardTitle>
-              <CardDescription>Quản trị viên Hệ thống (Chủ nền tảng)</CardDescription>
+              <CardDescription>Quản trị viên Hạ tầng (Chủ nền tảng)</CardDescription>
             </CardHeader>
             <CardContent>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-primary" /> Có toàn quyền kiểm soát toàn bộ hệ thống.</li>
-                <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-primary" /> Tạo và quản lý các Tenant (Công ty khách hàng).</li>
-                <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-primary" /> Quản lý hệ thống AI Model, Vector DB (Qdrant).</li>
-                <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-primary" /> Xem báo cáo tổng thể mọi hoạt động.</li>
+              <ul className="space-y-3 text-sm text-slate-700">
+                <li className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" /> 
+                  <span><strong>Không gian làm việc:</strong> Có toàn quyền kiểm soát hệ thống kỹ thuật.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" /> 
+                  <span><strong>Quản lý Khách hàng:</strong> Tạo mới các Tenant (Công ty) và cấp phát Quota (Giới hạn tài nguyên).</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" /> 
+                  <span><strong>Quản lý AI:</strong> Cấu hình kết nối tới OpenAI, NVIDIA, hoặc Docker Model Runner nội bộ. Quản lý chung chìa khoá AI của toàn hệ thống.</span>
+                </li>
               </ul>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-t-4 border-t-emerald-500 shadow-sm hover:shadow-md transition-shadow">
             <CardHeader>
               <Building2Icon className="w-8 h-8 text-emerald-500 mb-2" />
               <CardTitle>Tenant Admin</CardTitle>
-              <CardDescription>Quản trị viên Doanh nghiệp</CardDescription>
+              <CardDescription>Quản trị viên Doanh nghiệp (Khách hàng)</CardDescription>
             </CardHeader>
             <CardContent>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Chỉ thao tác trong giới hạn không gian của công ty mình.</li>
-                <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Upload và quản lý tài liệu nội bộ riêng biệt.</li>
-                <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Tạo API Key để kết nối phần mềm của riêng họ.</li>
-                <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Xem thống kê số lượng chat của nhân viên.</li>
+              <ul className="space-y-3 text-sm text-slate-700">
+                <li className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" /> 
+                  <span><strong>Không gian làm việc:</strong> Bị khoá chặt trong Tenant của mình. Không nhìn thấy dữ liệu của công ty khác.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" /> 
+                  <span><strong>Quản lý Dữ liệu:</strong> Tự Upload PDF, Word nội bộ. Hệ thống sẽ phân tích và lưu riêng biệt.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" /> 
+                  <span><strong>Cấp phát API:</strong> Tự sinh các mã API Key để đưa cho đội Dev của họ nhúng chatbot vào ứng dụng riêng.</span>
+                </li>
               </ul>
             </CardContent>
           </Card>
@@ -76,38 +114,23 @@ export default function IntroductionGuidePage() {
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Các thành phần cốt lõi</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="shadow-sm border-t-4 border-t-blue-500">
-            <CardHeader className="pb-3">
-              <DatabaseIcon className="w-6 h-6 text-blue-500 mb-1" />
-              <CardTitle className="text-lg">Vector Database</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Hệ thống sử dụng **Qdrant** làm cơ sở dữ liệu Vector. Mọi tài liệu PDF, DOCX tải lên đều được cắt nhỏ và biến thành các chuỗi số (Vector), giúp AI tìm kiếm thần tốc dựa trên ngữ nghĩa thay vì chỉ khớp từ khoá.
-            </CardContent>
-          </Card>
-          
-          <Card className="shadow-sm border-t-4 border-t-purple-500">
-            <CardHeader className="pb-3">
-              <BrainCircuitIcon className="w-6 h-6 text-purple-500 mb-1" />
-              <CardTitle className="text-lg">AI Providers</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Tích hợp linh hoạt với các mô hình LLM mạnh nhất hiện nay thông qua chuẩn OpenAI. Hỗ trợ Reranker siêu cấp để sàng lọc và đưa ra đoạn văn bản liên quan nhất trước khi đưa vào AI.
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm border-t-4 border-t-orange-500">
-            <CardHeader className="pb-3">
-              <MessageSquareTextIcon className="w-6 h-6 text-orange-500 mb-1" />
-              <CardTitle className="text-lg">API First</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Thay vì bắt người dùng phải vào Web này để Chat, Nền tảng hoạt động như một **API Core Server**. Các lập trình viên có thể dễ dàng nhúng tính năng Chatbot vào phần mềm nội bộ, App di động của công ty.
-            </CardContent>
-          </Card>
-        </div>
+        <h2 className="text-xl font-semibold">3. Kiến trúc API-First</h2>
+        <Card className="shadow-sm">
+          <CardContent className="pt-6 space-y-4 text-sm text-slate-700 leading-6">
+            <div className="flex items-start gap-4">
+              <MessageSquareTextIcon className="w-10 h-10 text-orange-500 shrink-0" />
+              <div>
+                <h3 className="font-semibold text-base mb-1">Bộ não vô hình (Headless Backend)</h3>
+                <p>
+                  Khác với ChatGPT có giao diện chat đồ sộ, nền tảng này được xây dựng theo kiến trúc <strong>API-First</strong>. Giao diện bạn đang xem (Webapp) thực chất chỉ là trang <strong>Quản trị viên (Admin Panel)</strong> để cấu hình dữ liệu và theo dõi luồng chạy.
+                </p>
+                <p className="mt-2">
+                  Sức mạnh thực sự nằm ở các điểm phát sóng (API Endpoints). Các lập trình viên (Dev) của khách hàng sẽ sử dụng các API này để &quot;cấy&quot; bộ não AI vào bất kỳ đâu họ muốn: <em>App bán hàng trên điện thoại, Zalo Mini App, Phần mềm quản lý nhân sự (HRM) trên máy tính...</em>
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </section>
     </div>
   );
