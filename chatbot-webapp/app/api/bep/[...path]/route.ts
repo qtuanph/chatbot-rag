@@ -2,6 +2,7 @@ import { getToken } from "next-auth/jwt";
 import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
 
+export const runtime = "edge";
 const API_INTERNAL = process.env.API_INTERNAL_URL!;
 
 // MIGRATED: Removed export const runtime = "nodejs" (default, not needed)
