@@ -6,39 +6,46 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth;
   const role = req.auth?.role;
 
+  let response: NextResponse | undefined;
+
   // Public routes
   if (pathname.startsWith("/login")) {
     if (isLoggedIn) {
-      return NextResponse.redirect(
+      response = NextResponse.redirect(
         new URL(role === "platform_admin" ? "/admin" : "/chat", req.nextUrl),
       );
     }
-    return NextResponse.next();
-  }
-
-  // API routes (next-auth)
-  if (pathname.startsWith("/api/auth")) {
-    return NextResponse.next();
-  }
-
-  // API gateway proxy — Route Handler handles auth internally via getToken()
-  if (pathname.startsWith("/api/bep")) {
-    return NextResponse.next();
   }
 
   // Protected routes: redirect to login if not authenticated
-  if (!isLoggedIn) {
+  else if (!isLoggedIn && !pathname.startsWith("/api/auth") && !pathname.startsWith("/api/bep")) {
     const loginUrl = new URL("/login", req.nextUrl);
     loginUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(loginUrl);
+    response = NextResponse.redirect(loginUrl);
   }
 
   // Admin routes: require platform admin role
-  if (pathname.startsWith("/admin") && role !== "platform_admin") {
-    return NextResponse.redirect(new URL("/chat", req.nextUrl));
+  else if (pathname.startsWith("/admin") && role !== "platform_admin") {
+    response = NextResponse.redirect(new URL("/chat", req.nextUrl));
   }
 
-  return NextResponse.next();
+  if (!response) {
+    response = NextResponse.next();
+  }
+
+  // Add security headers
+  const isDevelopment = process.env.NODE_ENV !== "production";
+  const connectSrc = isDevelopment ? "'self' ws: http://localhost:* ws://localhost:*" : "'self'";
+
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("Permissions-Policy", "geolocation=(), microphone=(), camera=(), payment=()");
+  response.headers.set("X-DNS-Prefetch-Control", "on");
+  response.headers.set("Content-Security-Policy", `default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ${connectSrc};`);
+  response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+
+  return response;
 });
 
 export const config = {
