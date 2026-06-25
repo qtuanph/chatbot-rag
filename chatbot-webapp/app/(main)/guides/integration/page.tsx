@@ -35,7 +35,7 @@ export default function IntegrationGuidePage() {
               <div>
                 <p className="text-sm font-semibold text-slate-500 mb-1">Base URL</p>
                 <code className="bg-slate-100 text-pink-600 px-2 py-1 rounded text-sm block overflow-hidden text-ellipsis whitespace-nowrap">
-                  http://localhost:2908/v1
+                  https://api.qtuanph.dev/v1
                 </code>
                 <p className="text-xs text-muted-foreground mt-1">Thay bằng Domain thật nếu chạy trên server.</p>
               </div>
@@ -98,7 +98,7 @@ export default function IntegrationGuidePage() {
 
 # Khởi tạo Client, trỏ Base URL về server của chúng ta
 client = OpenAI(
-    base_url="http://localhost:2908/v1",
+    base_url="https://api.qtuanph.dev/v1",
     api_key="YOUR_TENANT_API_KEY", # Lấy mã trg_... từ màn hình API Keys
 )
 
@@ -133,7 +133,7 @@ for chunk in completion:
 {`import OpenAI from "openai";
 
 const openai = new OpenAI({
-  baseURL: "http://localhost:2908/v1",
+  baseURL: "https://api.qtuanph.dev/v1",
   apiKey: "YOUR_TENANT_API_KEY", 
 });
 
@@ -168,7 +168,7 @@ main();`}
               </CardHeader>
               <CardContent className="p-0">
                 <pre className="bg-slate-950 text-emerald-400 p-6 overflow-x-auto text-sm leading-relaxed rounded-b-lg">
-{`fetch("http://localhost:2908/v1/chat/completions", {
+{`fetch("https://api.qtuanph.dev/v1/chat/completions", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
