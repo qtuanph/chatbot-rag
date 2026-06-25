@@ -25,10 +25,24 @@ def get_embedding_adapter(provider: dict[str, Any] | None = None) -> EmbeddingAd
         model = provider.get("model") or settings.embedding_hf_model
         config = provider.get("config") or {}
     else:
-        api_base = settings.embedding_api_base
-        api_key = settings.embedding_api_key or ""
-        model = settings.embedding_hf_model
-        config = {}
+        from app.modules.settings.repository import SettingsRepository
+
+        repo = SettingsRepository()
+        try:
+            dmr = repo.get_builtin_provider("embedding", "dmr")
+        finally:
+            repo.close()
+
+        if dmr:
+            api_base = (dmr.get("url") or settings.embedding_api_base).rstrip("/")
+            api_key = dmr.get("api_key") or settings.embedding_api_key or ""
+            model = dmr.get("model") or settings.embedding_hf_model
+            config = dmr.get("config") or {}
+        else:
+            api_base = settings.embedding_api_base
+            api_key = settings.embedding_api_key or ""
+            model = settings.embedding_hf_model
+            config = {}
 
     return EmbeddingAdapter(
         api_base=api_base,
