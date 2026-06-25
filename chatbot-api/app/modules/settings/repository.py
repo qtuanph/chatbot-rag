@@ -124,6 +124,13 @@ class SettingsRepository:
         ).fetchone()
         return _row_to_provider(row) if row else None
 
+    def get_builtin_provider(self, service_type: str, provider_name: str) -> dict[str, Any] | None:
+        row = self.db.execute(
+            "SELECT * FROM ai_providers WHERE service_type = ? AND provider_name = ? AND is_builtin = 1 LIMIT 1",
+            (service_type, provider_name),
+        ).fetchone()
+        return _row_to_provider(row) if row else None
+
     def update_provider_test_status(self, provider_id: int, success: bool, error_message: str = "") -> None:
         now = _now_iso()
         self.db.execute(
