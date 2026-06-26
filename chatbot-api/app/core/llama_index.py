@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import threading
 from functools import lru_cache
+from typing import Any
+from pydantic import PrivateAttr
 
 from llama_index.core import Settings
 from llama_index.embeddings.openai import OpenAIEmbedding
@@ -22,13 +24,27 @@ _embed_sync_semaphore = threading.Semaphore(8)
 class SequentialOpenAIEmbedding(OpenAIEmbedding):
     """OpenAI-compatible embedding model that serializes embedding requests."""
 
+    _query_cache: Any = PrivateAttr(default=None)
+
+    def __init__(self, query_cache: Any = None, **kwargs):
+        super().__init__(**kwargs)
+        self._query_cache = query_cache
+
     async def _aget_text_embedding(self, text: str):
         async with _embed_async_semaphore:
             return await super()._aget_text_embedding(text)
 
     async def _aget_query_embedding(self, query: str):
+        if self._query_cache:
+            cached = await self._query_cache.get(query)
+            if cached:
+                return cached
+
         async with _embed_async_semaphore:
-            return await super()._aget_query_embedding(query)
+            res = await super()._aget_query_embedding(query)
+            if self._query_cache:
+                await self._query_cache.set(query, res)
+            return res
 
     def _get_text_embedding(self, text: str):
         with _embed_sync_semaphore:
@@ -47,13 +63,14 @@ class SequentialOpenAIEmbedding(OpenAIEmbedding):
             return super()._get_text_embeddings(texts)
 
 
-def init_llama_index() -> None:
+def init_llama_index(query_cache: Any = None) -> None:
     """Initialize global LlamaIndex settings at application startup."""
     Settings.embed_model = SequentialOpenAIEmbedding(
         model_name=settings.embedding_hf_model,
         api_base=settings.embedding_api_base,
         api_key=settings.embedding_api_key or "no-key",
         embed_batch_size=settings.embedding_batch_size,
+        query_cache=query_cache,
     )
 
     Settings.llm = OpenAILike(

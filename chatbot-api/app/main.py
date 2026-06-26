@@ -20,7 +20,7 @@ from app.modules.system import router as system
 from app.modules.admin import router as admin
 from app.modules.tenants import router as tenants
 from app.modules.tenants import self_router as tenant_self_router
-from app.api.middleware import (
+from app.core.middleware import (
     SecurityHeadersMiddleware,
     RequestLoggingMiddleware,
     RateLimitMiddleware,
@@ -36,9 +36,13 @@ logger = logging.getLogger(__name__)
 async def lifespan(application: FastAPI):
     logger.info("Application started: %s [env=%s]", settings.app_name, settings.app_env)
 
+    from app.core.redis import get_redis_client
+    from app.utils.cache import SemanticCache, QueryEmbeddingCache
     from app.core.llama_index import init_llama_index
 
-    init_llama_index()
+    redis = get_redis_client()
+    query_cache = QueryEmbeddingCache(redis, model_name=settings.embedding_hf_model)
+    init_llama_index(query_cache=query_cache)
 
     import asyncio
     import time
@@ -51,10 +55,6 @@ async def lifespan(application: FastAPI):
             await embed_model.aget_text_embedding("warmup")
             logger.info("Embedding model warmed")
 
-            from app.core.redis import get_redis_client
-            from app.utils.cache import SemanticCache
-
-            redis = get_redis_client()
             sem_cache = SemanticCache(vector_dim=settings.embedding_vector_size, client=redis)
             await sem_cache.init_index()
             logger.info("Semantic cache index warmed")

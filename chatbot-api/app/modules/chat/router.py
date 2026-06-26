@@ -8,7 +8,10 @@ import logging
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
-from app.api.deps import AuthContext, get_auth_context, get_feedback_service, get_rate_limiter
+from app.modules.auth.deps import get_auth_context
+from app.modules.auth.context import AuthContext
+from app.modules.chat.deps import get_feedback_service
+from app.core.deps import get_rate_limiter
 from app.core import http_errors
 from app.core.config import settings
 from app.modules.inference.router import get_public_inference_service
