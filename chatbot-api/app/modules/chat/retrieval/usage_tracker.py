@@ -31,6 +31,7 @@ def track_usage(
 
     prompt_tokens = usage.get("prompt_tokens", 0)
     completion_tokens = usage.get("completion_tokens", 0)
+    latency_ms = usage.get("latency_ms", 0.0)
     model_name = (
         usage.get("model")
         or usage.get("model_name")
@@ -49,11 +50,12 @@ def track_usage(
             model_name=model_name,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
+            latency_ms=latency_ms,
             endpoint=endpoint,
             cost_micros_vnd=cost_micros_vnd,
             tenant_id=tenant_id,
             user_id=user_id,
         )
-        logger.debug("Usage tracked: %s | %d tokens | %s", endpoint, total_tokens, model_name)
+        logger.debug("Usage tracked: %s | %d tokens | %.1fms | %s", endpoint, total_tokens, latency_ms, model_name)
     except Exception as e:
         logger.warning("Failed to dispatch usage tracking: %s", e)

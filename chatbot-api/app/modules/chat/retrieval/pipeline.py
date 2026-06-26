@@ -9,7 +9,7 @@ import re
 import time
 from typing import Any
 
-from llama_index.core import QueryBundle, VectorStoreIndex
+from llama_index.core import QueryBundle, VectorStoreIndex, Settings as LlamaSettings
 from llama_index.core import StorageContext
 from llama_index.core.postprocessor import LongContextReorder
 from llama_index.core.retrievers import AutoMergingRetriever, RecursiveRetriever
@@ -297,6 +297,31 @@ async def retrieve_context(
     for query in queries:
         qb = QueryBundle(query_str=query)
         query_nodes: list[NodeWithScore] = []
+
+        if not qb.embedding:
+            try:
+                t0_embed = time.perf_counter()
+                embed_model = LlamaSettings.embed_model
+                qb.embedding = await embed_model.aget_query_embedding(query)
+                embed_latency_ms = (time.perf_counter() - t0_embed) * 1000
+                embed_model_name = (
+                    getattr(embed_model, "model_name", None)
+                    or getattr(embed_model, "base_url", None)
+                    or embed_model.__class__.__name__
+                )
+                embed_prompt_tokens = _estimate_tokens_from_chars(query)
+                _dispatch_model_usage(
+                    model_name=str(embed_model_name),
+                    model_type="embedding",
+                    prompt_tokens=embed_prompt_tokens,
+                    completion_tokens=0,
+                    latency_ms=embed_latency_ms,
+                    endpoint="retrieval.embed",
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                )
+            except Exception as e:
+                logger.warning("Failed to manual embed for usage tracking: %s", e)
 
         if _should_prioritize_section_route(query):
             t0_section = time.perf_counter()

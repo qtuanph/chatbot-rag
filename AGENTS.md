@@ -171,14 +171,17 @@ docker compose up -d
 ```
 
 ### Current runtime shape
+**Docker Backend (`chatbot-api/docker-compose.yml`)**
 - `api` — FastAPI
 - `workers` — Celery worker
-- `webapp` — Next.js
-- `qdrant`
-- `postgres`
-- `redis`
-- `rustfs`
+- `qdrant` — Vector database
+- `postgres` — Relational database
+- `redis` — Cache & Message Broker
+- `rustfs` — Object Storage
 - `ai-proxy` — 9Router
+
+**Standalone Frontend**
+- `webapp` — Next.js (chạy độc lập ngoài Docker)
 
 ### Model runtime
 - Embedding local mặc định: Docker Model Runner API

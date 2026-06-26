@@ -161,6 +161,7 @@ export interface ChatUsage extends MoneyPayload {
   completion_tokens: number;
   total_tokens: number;
   model?: string;
+  latency_ms?: number;
 }
 
 export interface ChatFeedbackRequest {

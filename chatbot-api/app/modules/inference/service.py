@@ -88,6 +88,7 @@ class PublicInferenceService:
             llm.temperature = temperature
         if max_tokens is not None:
             llm.max_tokens = max_tokens
+        t0 = time.perf_counter()
         try:
             response = await llm.achat(llm_messages)
         finally:
@@ -95,7 +96,10 @@ class PublicInferenceService:
                 llm.temperature = previous_temperature
             if max_tokens is not None:
                 llm.max_tokens = previous_max_tokens
+        
+        latency_ms = (time.perf_counter() - t0) * 1000
         usage = getattr(response, "additional_kwargs", {}) or {}
+        usage["latency_ms"] = latency_ms
         content = ""
         message = getattr(response, "message", None)
         if message is not None and hasattr(message, "content"):
@@ -176,6 +180,7 @@ class PublicInferenceService:
         collected_text = ""
         user_query = self._latest_user_query(messages)
         try:
+            t0 = time.perf_counter()
             if thinking_mode:
                 yield f"data: {json.dumps({'thinking': True, 'done': False})}\n\n"
             response = await llm.astream_chat(llm_messages)
@@ -198,6 +203,7 @@ class PublicInferenceService:
                 llm.temperature = previous_temperature
             if max_tokens is not None:
                 llm.max_tokens = previous_max_tokens
+            usage_info["latency_ms"] = (time.perf_counter() - t0) * 1000
 
         final_text = collected_text.strip()
         if final_text:
@@ -452,10 +458,12 @@ class PublicInferenceService:
         prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
         completion_tokens = int(usage.get("completion_tokens", 0) or 0)
         total_tokens = int(usage.get("total_tokens", prompt_tokens + completion_tokens) or 0)
+        latency_ms = float(usage.get("latency_ms", 0.0) or 0.0)
         result = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "latency_ms": latency_ms,
         }
         result.update(compute_cost(prompt_tokens, completion_tokens))
         return result
