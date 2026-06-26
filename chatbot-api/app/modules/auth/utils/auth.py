@@ -16,19 +16,21 @@ def hash_password(password: str) -> str:
     return hashed_password.decode("utf-8")
 
 
-def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
-    to_encode = data.copy()
+import uuid
+
+def create_access_token(
+    *, subject: str, role: str, tenant_id: str | None = None, expires_delta: timedelta | None = None
+) -> str:
+    to_encode = {"sub": subject, "role": role, "jti": str(uuid.uuid4())}
+    if tenant_id:
+        to_encode["tenant_id"] = tenant_id
+
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        # Default fallback to 60 minutes if not set in config
-        expire_minutes = getattr(settings, "access_token_expire_minutes", 60)
+        expire_minutes = getattr(settings, "jwt_expire_minutes", 60)
         expire = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
     to_encode.update({"exp": expire})
 
-    # Use config secret_key, fallback to a secure default if testing
-    secret = getattr(settings, "secret_key", "secret")
-    algorithm = getattr(settings, "algorithm", "HS256")
-
-    encoded_jwt = jwt.encode(to_encode, secret, algorithm=algorithm)
+    encoded_jwt = jwt.encode(to_encode, settings.jwt_secret, algorithm=settings.jwt_algorithm)
     return encoded_jwt

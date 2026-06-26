@@ -1,13 +1,13 @@
 "use client";
 
-import { Bot, Coins, FileText, ThumbsDown, ThumbsUp, UserRound } from "lucide-react";
+import { Bot, Clock, Coins, FileText, ThumbsDown, ThumbsUp, UserRound } from "lucide-react";
 
 import { MarkdownRenderer } from "@/components/chat/markdown-renderer";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatNumber, formatVnd } from "@/lib/format";
+import { formatLatency, formatNumber, formatVnd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ChatUsage } from "@/types/api";
 import type { ChatMessage } from "@/types/chat";
@@ -134,6 +134,12 @@ export function ChatMessage({
                 <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 font-normal">
                   {formatVnd(usage.cost_vnd_rounded)}
                 </Badge>
+                {usage.latency_ms ? (
+                  <Badge variant="secondary" className="gap-1 rounded-full px-2.5 py-0.5 font-normal">
+                    <Clock className="size-3" />
+                    {formatLatency(usage.latency_ms)}
+                  </Badge>
+                ) : null}
                 <Badge variant="outline" className="rounded-full px-2.5 py-0.5 font-normal text-muted-foreground">
                   {usage.model || "chatbot-rag"}
                 </Badge>
