@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import AuthContext, get_auth_context, get_tenant_service
+from app.modules.auth.deps import get_auth_context
+from app.modules.auth.context import AuthContext
+from app.modules.tenants.deps import get_tenant_service
 from app.core import http_errors
 from app.modules.tenants.schemas import TenantResponse, TenantSettingResponse, TenantSettingUpdateRequest
 from app.modules.tenants.service import TenantService

@@ -4,8 +4,10 @@ import time
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from app.api.deps import get_tenant_api_context, TenantApiContext
+from app.modules.tenants.deps import get_tenant_api_context
+from app.modules.tenants.context import TenantApiContext
 from app.core import http_errors
+from app.core.deps import get_semantic_cache
 from app.db.session import get_async_session
 from app.modules.documents.repositories.section_repository import SectionRepository
 from app.modules.inference.schemas import ChatCompletionsRequest
@@ -15,8 +17,10 @@ from app.modules.tenants.repository import TenantRepository
 router = APIRouter(prefix="", tags=["public-inference"])
 
 
-def get_public_inference_service(session=Depends(get_async_session)) -> PublicInferenceService:
-    return PublicInferenceService(TenantRepository(session), SectionRepository(session))
+def get_public_inference_service(
+    session=Depends(get_async_session), semantic_cache=Depends(get_semantic_cache)
+) -> PublicInferenceService:
+    return PublicInferenceService(TenantRepository(session), SectionRepository(session), semantic_cache=semantic_cache)
 
 
 # ── OpenAI-compatible endpoints ────────────────────────────────────

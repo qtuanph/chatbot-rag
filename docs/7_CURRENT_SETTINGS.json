@@ -85,7 +85,7 @@
     "max_output_tokens": 8192,
     "internal_chat_route": "/api/v1/chat/stream",
     "feedback_route": "/api/v1/chat/feedback",
-    "public_chat_route": "/api/v1/public/v1/chat/completions"
+    "public_chat_route": "/api/v1/chat/completions"
   },
   "usage_tracking": {
     "currency_code": "VND",

@@ -116,6 +116,22 @@ class SemanticCache(BaseRedisCache):
         except Exception as e:
             logger.error("Failed to store semantic cache (Async): %s", e)
 
+    async def delete(self, query_text: str) -> None:
+        """Invalidate a semantic cache entry (Async)."""
+        try:
+            key = self._build_key(query_text)
+            await self._r.delete(key)
+        except Exception as e:
+            logger.error("Failed to delete semantic cache (Async): %s", e)
+
+    async def extend_ttl(self, query_text: str, ttl_seconds: int) -> None:
+        """Extend the TTL of a semantic cache entry (Async)."""
+        try:
+            key = self._build_key(query_text)
+            await self._r.expire(key, ttl_seconds)
+        except Exception as e:
+            logger.error("Failed to extend semantic cache TTL (Async): %s", e)
+
     def init_index_sync(self) -> None:
         """Initialize the RediSearch index (Sync)."""
         try:

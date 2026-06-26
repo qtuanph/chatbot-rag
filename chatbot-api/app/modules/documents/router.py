@@ -14,14 +14,12 @@ from starlette.responses import StreamingResponse
 if TYPE_CHECKING:
     from app.utils.rate_limiter import RateLimiter
 
-from app.api.deps import (
-    AuthContext,
-    get_document_service,
-    require_admin,
-    get_rate_limiter,
-    get_tree_service,
-    get_auth_context,
-)
+from app.modules.auth.deps import require_admin, get_auth_context
+from app.modules.auth.context import AuthContext
+from app.utils.permissions import resolve_strict_tenant_scope, resolve_loose_tenant_scope
+from app.modules.documents.deps import get_document_service, get_tree_service
+from app.core.deps import get_rate_limiter, get_pagination, PaginationParams
+from app.core.http_errors import handle_domain_errors
 from app.core.config import settings
 from app.core import http_errors
 from app.modules.documents.schemas import (
@@ -153,51 +151,36 @@ async def get_status(
 
 @router.get("/documents", response_model=DocumentListResponse)
 async def list_documents(
-    offset: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Depends(get_pagination),
     tenant_id: str | None = None,
     auth: AuthContext = Depends(get_auth_context),
     service: DocumentService = Depends(get_document_service),
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> DocumentListResponse:
-    offset = max(0, offset)
-    limit = max(1, min(limit, 100))
     if not await rate_limiter.is_allowed(
         f"documents:{auth.user_id}", limit=settings.effective_rate_limit(30), window_ms=60000
     ):
         raise http_errors.too_many_requests("Too many document list requests")
 
-    effective_tenant_id = tenant_id
-    if auth.role != "platform_admin":
-        if not auth.tenant_id:
-            raise http_errors.forbidden("Tenant context is required")
-        if tenant_id and tenant_id != auth.tenant_id:
-            raise http_errors.forbidden("You can only access documents in your own tenant")
-        effective_tenant_id = auth.tenant_id
+    effective_tenant_id = resolve_strict_tenant_scope(auth, tenant_id)
 
-    result = await service.list_documents(offset=offset, limit=limit, tenant_id=effective_tenant_id)
+    with handle_domain_errors():
+        result = await service.list_documents(
+            offset=pagination.offset, limit=pagination.limit, tenant_id=effective_tenant_id
+        )
     return _build_document_list_response(result)
 
 
 @router.get("/documents/stream")
 async def stream_documents(
     request: Request,
-    offset: int = 0,
-    limit: int = 20,
+    pagination: PaginationParams = Depends(get_pagination),
     tenant_id: str | None = None,
     auth: AuthContext = Depends(get_auth_context),
     service: DocumentService = Depends(get_document_service),
 ) -> StreamingResponse:
-    offset = max(0, offset)
-    limit = max(1, min(limit, 100))
 
-    effective_tenant_id = tenant_id
-    if auth.role != "platform_admin":
-        if not auth.tenant_id:
-            raise http_errors.forbidden("Tenant context is required")
-        if tenant_id and tenant_id != auth.tenant_id:
-            raise http_errors.forbidden("You can only access documents in your own tenant")
-        effective_tenant_id = auth.tenant_id
+    effective_tenant_id = resolve_strict_tenant_scope(auth, tenant_id)
 
     async def event_generator():
         last_payload = ""
@@ -209,7 +192,10 @@ async def stream_documents(
                 break
 
             try:
-                result = await service.list_documents(offset=offset, limit=limit, tenant_id=effective_tenant_id)
+                with handle_domain_errors():
+                    result = await service.list_documents(
+                        offset=pagination.offset, limit=pagination.limit, tenant_id=effective_tenant_id
+                    )
                 payload = _build_document_list_response(result).model_dump_json()
 
                 if payload != last_payload:
@@ -242,7 +228,7 @@ async def get_document_detail(
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentDetailResponse:
     try:
-        tenant_scope = None if auth.role == "platform_admin" else auth.tenant_id
+        tenant_scope = resolve_loose_tenant_scope(auth)
         doc = await service.get_document_detail(document_id, tenant_id=tenant_scope)
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None
@@ -356,7 +342,7 @@ async def get_document_tree(
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
     try:
-        tenant_scope = None if auth.role == "platform_admin" else auth.tenant_id
+        tenant_scope = resolve_loose_tenant_scope(auth)
         return await service.get_document_tree(
             document_id=document_id,
             offset=offset,
@@ -380,7 +366,7 @@ async def get_node_details(
     ):
         raise http_errors.too_many_requests("Too many node detail requests")
     try:
-        tenant_scope = None if auth.role == "platform_admin" else auth.tenant_id
+        tenant_scope = resolve_loose_tenant_scope(auth)
         return await service.get_node_details(document_id=document_id, node_id=node_id, tenant_id=tenant_scope)
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None
@@ -399,7 +385,7 @@ async def search_nodes(
     ):
         raise http_errors.too_many_requests("Too many tree search requests")
     try:
-        tenant_scope = None if auth.role == "platform_admin" else auth.tenant_id
+        tenant_scope = resolve_loose_tenant_scope(auth)
         return await service.search_nodes(document_id=document_id, query=query, tenant_id=tenant_scope)
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None

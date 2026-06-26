@@ -12,7 +12,8 @@ from app.db.session import get_async_session
 from app.modules.analytics.repository import AnalyticsRepository
 from app.modules.analytics.service import AnalyticsService
 from app.modules.chat.repositories.usage_repository import UsageRepository
-from app.api.deps import require_admin, AuthContext
+from app.modules.auth.deps import require_admin
+from app.modules.auth.context import AuthContext
 from app.utils.money import build_money_payload
 
 logger = logging.getLogger(__name__)

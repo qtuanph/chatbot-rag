@@ -10,7 +10,7 @@ from app.modules.settings.schemas import (
     TestResult,
 )
 from app.modules.settings.service import SettingsService
-from app.api.deps import require_admin
+from app.modules.auth.deps import require_admin
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 

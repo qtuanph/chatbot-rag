@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from fastapi import HTTPException, status
 
 
@@ -42,3 +43,15 @@ def internal_server_error(detail: str) -> HTTPException:
 
 def service_unavailable(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail)
+
+
+@contextlib.contextmanager
+def handle_domain_errors():
+    """Catch ValueErrors from the domain layer and translate to HTTP 400/404."""
+    try:
+        yield
+    except ValueError as e:
+        msg = str(e).lower()
+        if "not found" in msg:
+            raise not_found(str(e))
+        raise bad_request(str(e))

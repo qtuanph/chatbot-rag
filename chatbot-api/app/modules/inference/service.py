@@ -44,9 +44,12 @@ def _to_llama_role(role: str) -> MessageRole:
 
 
 class PublicInferenceService:
-    def __init__(self, tenant_repo: TenantRepository, section_repo: SectionRepository) -> None:
+    def __init__(
+        self, tenant_repo: TenantRepository, section_repo: SectionRepository, semantic_cache: Any = None
+    ) -> None:
         self.tenant_repo = tenant_repo
         self.section_repo = section_repo
+        self.semantic_cache = semantic_cache
 
     async def complete(
         self,
@@ -59,6 +62,18 @@ class PublicInferenceService:
         user_id: str | None = None,
     ) -> CompletionResult:
         user_query = self._latest_user_query(messages)
+        query_vector = None
+        if self.semantic_cache and user_query:
+            embed_model = Settings.embed_model
+            query_vector = await embed_model.aget_query_embedding(user_query)
+            cached = await self.semantic_cache.get(query_vector)
+            if cached:
+                usage = cached.get("usage", {})
+                usage["cached"] = True
+                return CompletionResult(
+                    content=cached["content"], citations=cached["citations"], usage=usage, model=cached["model"]
+                )
+
         setting = await self._get_tenant_setting(tenant_id)
         context = await self._resolve_context(
             tenant_id=tenant_id,
@@ -94,6 +109,17 @@ class PublicInferenceService:
             usage=self._normalize_usage(usage),
             model=getattr(llm, "model", settings.ai_proxy_default_model or "chatbot-rag"),
         )
+        if self.semantic_cache and user_query and query_vector:
+            await self.semantic_cache.set(
+                user_query,
+                query_vector,
+                {
+                    "content": result.content,
+                    "citations": result.citations,
+                    "usage": result.usage,
+                    "model": result.model,
+                },
+            )
         provider = type("UsageProxy", (), {"last_usage": result.usage, "model_name": result.model})()
         track_usage(provider, endpoint="public.chat.completions", tenant_id=tenant_id)
         return result
@@ -108,6 +134,26 @@ class PublicInferenceService:
         max_tokens: int | None = None,
         user_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
+        user_query = self._latest_user_query(messages)
+        query_vector = None
+        if self.semantic_cache and user_query:
+            embed_model = Settings.embed_model
+            query_vector = await embed_model.aget_query_embedding(user_query)
+            cached = await self.semantic_cache.get(query_vector)
+            if cached:
+                created = int(time.time())
+                completion_id = f"chatcmpl-{created}"
+                model_name = cached["model"]
+
+                # Yield content block
+                yield f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_name, 'choices': [{'index': 0, 'delta': {'content': cached['content']}, 'finish_reason': None}]})}\n\n"
+
+                # Yield citations & stats
+                usage = cached.get("usage", {})
+                usage["cached"] = True
+                yield f"data: {json.dumps({'done': True, 'citations': cached['citations'], 'stats': usage | {'model': model_name}})}\n\n"
+                return
+
         setting = await self._get_tenant_setting(tenant_id)
         context = await self._resolve_context(
             tenant_id=tenant_id,
@@ -169,9 +215,27 @@ class PublicInferenceService:
                     grounded_preview=self._preview_text(grounded_text),
                 )
 
-        normalized_usage = self._normalize_usage(usage_info)
-        provider = type("UsageProxy", (), {"last_usage": normalized_usage, "model_name": model_name})()
-        track_usage(provider, endpoint="public.chat.completions", tenant_id=tenant_id)
+        result = CompletionResult(
+            content=grounded_text,
+            citations=self._build_citations(context),
+            usage=self._normalize_usage(usage_info),
+            model=model_name,
+        )
+        if self.semantic_cache and user_query and query_vector:
+            await self.semantic_cache.set(
+                user_query,
+                query_vector,
+                {
+                    "content": result.content,
+                    "citations": result.citations,
+                    "usage": result.usage,
+                    "model": result.model,
+                },
+            )
+        provider = type("UsageProxy", (), {"last_usage": result.usage, "model_name": result.model})()
+        track_usage(provider, endpoint="public.chat.stream", tenant_id=tenant_id)
+        yield f"data: {json.dumps({'done': True, 'citations': result.citations, 'stats': result.usage | {'model': result.model}})}\n\n"
+
         if thinking_mode:
             yield f"data: {json.dumps({'thinking': False, 'done': False})}\n\n"
         final_payload = {
@@ -180,8 +244,8 @@ class PublicInferenceService:
             "created": created,
             "model": model_name,
             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-            "citations": self._build_citations(context),
-            "usage": normalized_usage,
+            "citations": result.citations,
+            "usage": result.usage,
         }
         yield f"data: {json.dumps(final_payload)}\n\n"
         yield "data: [DONE]\n\n"

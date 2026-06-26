@@ -2,7 +2,9 @@
 
 from fastapi import APIRouter, Depends
 
-from app.api.deps import AuthContext, get_health_service, require_admin
+from app.modules.auth.deps import require_admin
+from app.modules.auth.context import AuthContext
+from app.modules.system.deps import get_health_service
 from app.modules.system.service import HealthService
 
 router = APIRouter(tags=["health"])

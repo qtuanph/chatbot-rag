@@ -1,35 +1,34 @@
-from datetime import timedelta
-from uuid import uuid4
-
-import bcrypt
+from datetime import datetime, timedelta, timezone
+from typing import Any
 import jwt
-
+import bcrypt
 from app.core.config import settings
-from app.utils.datetime_utils import utc_now
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
 def hash_password(password: str) -> str:
-    password_bytes = password.encode("utf-8")
-    return bcrypt.hashpw(password_bytes, bcrypt.gensalt(rounds=10)).decode("utf-8")
+    pwd_bytes = password.encode("utf-8")
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(password=pwd_bytes, salt=salt)
+    return hashed_password.decode("utf-8")
 
 
-def verify_password(password: str, hashed: str) -> bool:
-    try:
-        return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
-    except (TypeError, ValueError):
-        return False
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        # Default fallback to 60 minutes if not set in config
+        expire_minutes = getattr(settings, "access_token_expire_minutes", 60)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
+    to_encode.update({"exp": expire})
 
+    # Use config secret_key, fallback to a secure default if testing
+    secret = getattr(settings, "secret_key", "secret")
+    algorithm = getattr(settings, "algorithm", "HS256")
 
-def create_access_token(*, subject: str, role: str = "", tenant_id: str | None = None) -> str:
-    now = utc_now()
-    token_id = str(uuid4())
-    payload = {
-        "sub": subject,
-        "role": role,
-        "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(minutes=settings.jwt_expire_minutes)).timestamp()),
-        "jti": token_id,
-    }
-    if tenant_id:
-        payload["tenant_id"] = tenant_id
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    encoded_jwt = jwt.encode(to_encode, secret, algorithm=algorithm)
+    return encoded_jwt

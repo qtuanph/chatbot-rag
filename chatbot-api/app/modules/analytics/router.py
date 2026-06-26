@@ -2,7 +2,10 @@
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import AuthContext, get_analytics_service, get_auth_context, get_rate_limiter
+from app.modules.auth.deps import get_auth_context, require_admin
+from app.modules.auth.context import AuthContext
+from app.modules.analytics.deps import get_analytics_service
+from app.core.deps import get_rate_limiter
 from app.core import http_errors
 from app.core.config import settings
 from app.utils.rate_limiter import RateLimiter
@@ -39,12 +42,10 @@ async def get_analytics_stats(
 
 @router.delete("/analytics/stats")
 async def clear_analytics_stats(
-    auth: AuthContext = Depends(get_auth_context),
+    auth: AuthContext = Depends(require_admin),
     service: AnalyticsService = Depends(get_analytics_service),
 ) -> dict:
     """Clear all analytics stats (admin only). Resets ai_model_usage table."""
-    if auth.role != "platform_admin":
-        raise http_errors.forbidden("Only admins can clear analytics data")
 
     deleted = await service.clear_stats()
     return {"status": "cleared", "deleted_records": deleted}

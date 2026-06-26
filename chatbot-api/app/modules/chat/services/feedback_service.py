@@ -8,8 +8,9 @@ from app.modules.settings.runtime_manager import RuntimeProviderManager
 
 
 class FeedbackService:
-    def __init__(self, repo: FeedbackRepository) -> None:
+    def __init__(self, repo: FeedbackRepository, semantic_cache: Any = None) -> None:
         self.repo = repo
+        self.semantic_cache = semantic_cache
 
     async def submit_feedback(
         self,
@@ -58,4 +59,10 @@ class FeedbackService:
             "citations": citations,
             "metadata": metadata or {},
         }
+        if self.semantic_cache:
+            if feedback_type == "dislike":
+                await self.semantic_cache.delete(query_text)
+            elif feedback_type == "like":
+                await self.semantic_cache.extend_ttl(query_text, 86400 * 7)
+
         return await self.repo.create_feedback(payload)

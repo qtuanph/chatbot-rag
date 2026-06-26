@@ -9,7 +9,9 @@ if TYPE_CHECKING:
     from app.utils.rate_limiter import RateLimiter
 import jwt
 
-from app.api.deps import AuthContext, get_auth_context, get_auth_service, require_admin, get_rate_limiter
+from app.modules.auth.deps import get_auth_context, get_auth_service, require_admin
+from app.modules.auth.context import AuthContext
+from app.core.deps import get_rate_limiter
 from app.core.config import settings
 from app.core import http_errors
 from app.modules.auth.schemas import (

@@ -35,6 +35,20 @@ class FeedbackRepository:
         rows = (await self.session.execute(stmt)).scalars().all()
         return [self._to_dict(row) for row in rows]
 
+    async def get_disliked_section_ids(self, tenant_id: str, query_text: str) -> list[str]:
+        """Fetch all section_ids that the user has disliked for a specific query."""
+        stmt = select(ChatFeedback.section_ids).where(
+            ChatFeedback.tenant_id == tenant_id,
+            ChatFeedback.query_text == query_text,
+            ChatFeedback.feedback_type == "dislike",
+        )
+        rows = (await self.session.execute(stmt)).scalars().all()
+        result = []
+        for section_list in rows:
+            if section_list:
+                result.extend(section_list)
+        return list(set(result))
+
     @staticmethod
     def _to_dict(row: ChatFeedback) -> dict[str, Any]:
         return {
