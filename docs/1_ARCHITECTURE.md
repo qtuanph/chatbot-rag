@@ -51,7 +51,7 @@ Feedback không phụ thuộc persisted transcript.
 |---|---|
 | PostgreSQL | auth, tenant, documents, canonical sections, usage, feedback |
 | Qdrant | dual index cho retrieval |
-| Redis | queue, cache, rate limit, audit stream |
+| Redis | queue, semantic cache (tenant-isolated), rate limit, audit stream |
 | RustFS | file gốc và artifact ingest |
 | SQLite `settings.db` | provider settings và runtime selection |
 
@@ -89,10 +89,11 @@ Retrieval hiện tại là **dual index + structure-aware**:
 2. build **section index** trong Qdrant cho heading / numbered section retrieval
 3. build **chunk index** trong Qdrant cho sentence-window evidence retrieval
 4. filter nghiêm ngặt theo `tenant_id`
-5. route truy vấn:
+5. chuẩn hoá query (xử lý dấu câu, xoá stopword tiếng Việt, giữ nguyên ERP phrase)
+6. route truy vấn:
    - section route cho numbered / heading-style query
    - semantic route cho free-form query
-6. dùng `RecursiveRetriever` để mở rộng section -> chunk theo `section_id`
+7. dùng `RecursiveRetriever` để mở rộng section -> chunk theo `section_id`
 7. dùng `AutoMergingRetriever` để gộp nhiều chunk về parent section khi đủ tỷ lệ
 8. thay sentence hit bằng local window context trước khi synthesis
 9. rerank sau khi candidate đã được làm sạch theo cấu trúc

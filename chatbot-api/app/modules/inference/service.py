@@ -17,6 +17,7 @@ from llama_index.llms.openai_like import OpenAILike
 from app.core.config import settings
 from app.modules.chat.retrieval.pipeline import retrieve_context
 from app.modules.chat.retrieval.usage_tracker import track_usage
+from app.modules.chat.utils.query_normalizer import normalize_query, ALL_DEFAULT_STOPWORDS
 from app.modules.chat.utils.chat_utils import compute_cost, is_greeting
 from app.models.rag import RagContext, RagNode
 from app.modules.documents.repositories.section_repository import SectionRepository
@@ -63,10 +64,12 @@ class PublicInferenceService:
     ) -> CompletionResult:
         user_query = self._latest_user_query(messages)
         query_vector = None
+        normalized_query = None
         if self.semantic_cache and user_query:
+            normalized_query = normalize_query(user_query, stopwords=ALL_DEFAULT_STOPWORDS)
             embed_model = Settings.embed_model
-            query_vector = await embed_model.aget_query_embedding(user_query)
-            cached = await self.semantic_cache.get(query_vector)
+            query_vector = await embed_model.aget_query_embedding(normalized_query)
+            cached = await self.semantic_cache.get(tenant_id, query_vector)
             if cached:
                 usage = cached.get("usage", {})
                 usage["cached"] = True
@@ -113,9 +116,10 @@ class PublicInferenceService:
             usage=self._normalize_usage(usage),
             model=getattr(llm, "model", settings.ai_proxy_default_model or "chatbot-rag"),
         )
-        if self.semantic_cache and user_query and query_vector:
+        if self.semantic_cache and normalized_query and query_vector:
             await self.semantic_cache.set(
-                user_query,
+                tenant_id,
+                normalized_query,
                 query_vector,
                 {
                     "content": result.content,
@@ -140,10 +144,12 @@ class PublicInferenceService:
     ) -> AsyncGenerator[str, None]:
         user_query = self._latest_user_query(messages)
         query_vector = None
+        normalized_query = None
         if self.semantic_cache and user_query:
+            normalized_query = normalize_query(user_query, stopwords=ALL_DEFAULT_STOPWORDS)
             embed_model = Settings.embed_model
-            query_vector = await embed_model.aget_query_embedding(user_query)
-            cached = await self.semantic_cache.get(query_vector)
+            query_vector = await embed_model.aget_query_embedding(normalized_query)
+            cached = await self.semantic_cache.get(tenant_id, query_vector)
             if cached:
                 created = int(time.time())
                 completion_id = f"chatcmpl-{created}"
@@ -227,9 +233,10 @@ class PublicInferenceService:
             usage=self._normalize_usage(usage_info),
             model=model_name,
         )
-        if self.semantic_cache and user_query and query_vector:
+        if self.semantic_cache and normalized_query and query_vector:
             await self.semantic_cache.set(
-                user_query,
+                tenant_id,
+                normalized_query,
                 query_vector,
                 {
                     "content": result.content,
@@ -308,13 +315,33 @@ class PublicInferenceService:
             self._emit_debug("RAG_BYPASS", tenant_id=tenant_id, query=user_query, reason="greeting")
             return RagContext(nodes=[], sections=None, confidence={"node_count": 0, "bypass_reason": "greeting"})
 
-        context = await retrieve_context(
-            self._build_retrieval_queries(messages),
-            limit=settings.retrieval_rerank_top_k,
-            tenant_id=tenant_id,
-            user_id=user_id,
-        )
-        return await self._hydrate_context(context)
+        try:
+            context = await retrieve_context(
+                self._build_retrieval_queries(messages),
+                limit=settings.retrieval_rerank_top_k,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+            return await self._hydrate_context(context)
+        except Exception as e:
+            self._emit_debug("RAG_RETRIEVAL_ERROR", error=str(e), tenant_id=tenant_id)
+            from app.models.rag import RagNode
+            error_node = RagNode(
+                node_id="sys_error",
+                parent_id=None,
+                document_id="sys",
+                document_title="System Status",
+                heading="Missing Documents",
+                summary="System has no documents.",
+                full_text="[SYSTEM INSTRUCTION] Hiện tại hệ thống chưa có tài liệu nào, hoặc dữ liệu đang được khởi tạo. Bạn hãy phản hồi một cách lịch sự, yêu cầu người dùng upload thêm tài liệu vào hệ thống để bạn có thể hỗ trợ họ nhé.",
+                page_range=None,
+                section_id=None,
+                section_code=None,
+                breadcrumb=tuple(),
+                node_kind="system",
+                score=1.0,
+            )
+            return RagContext(nodes=[error_node], sections=None, confidence={"node_count": 1, "error": str(e)})
 
     async def _hydrate_context(self, context: RagContext) -> RagContext:
         if not settings.retrieval_section_hydration_enabled or not context.nodes:

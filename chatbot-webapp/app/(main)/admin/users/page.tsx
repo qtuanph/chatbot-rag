@@ -161,7 +161,7 @@ export default function AdminUsersPage() {
       </Table>
 
       <Sheet open={createOpen} onOpenChange={setCreateOpen}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto" side="right">
+        <SheetContent className="w-[90vw] sm:max-w-xl overflow-y-auto" side="right">
           <SheetHeader>
             <SheetTitle>Tạo người dùng mới</SheetTitle>
           </SheetHeader>

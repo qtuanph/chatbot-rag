@@ -281,7 +281,7 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
 
       {/* ── Add Sheet ── */}
       <Sheet open={addDialog} onOpenChange={setAddDialog}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto" side="right">
+        <SheetContent className="w-[90vw] sm:max-w-xl overflow-y-auto" side="right">
           <SheetHeader>
             <SheetTitle>Thêm provider — {TAB_LABELS[tab]}</SheetTitle>
           </SheetHeader>
@@ -322,7 +322,7 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
 
       {/* ── Edit Sheet ── */}
       <Sheet open={!!editDialog} onOpenChange={() => setEditDialog(null)}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto" side="right">
+        <SheetContent className="w-[90vw] sm:max-w-xl overflow-y-auto" side="right">
           <SheetHeader>
             <SheetTitle>Sửa — {editDialog?.display_name}</SheetTitle>
           </SheetHeader>
@@ -360,7 +360,7 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
 
       {/* ── API Key Sheet ── */}
       <Sheet open={!!keyDialog} onOpenChange={() => setKeyDialog(null)}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto" side="right">
+        <SheetContent className="w-[90vw] sm:max-w-xl overflow-y-auto" side="right">
           <SheetHeader>
             <SheetTitle>API key — {keyDialog?.display_name}</SheetTitle>
           </SheetHeader>

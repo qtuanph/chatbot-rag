@@ -17,7 +17,6 @@
 | 5 | `docs/5_NAMING_CONVENTIONS.md` | Naming rules Python + TypeScript |
 | 6 | `docs/6_KNOWN_ISSUES.json` | Post-mortems / known issues |
 | 7 | `docs/7_CURRENT_SETTINGS.json` | Snapshot config/runtime hiện tại |
-| 8 | `docs/8_TENANT_INTEGRATION_GUIDE.md` | Hướng dẫn tích hợp chatbot vào phần mềm tenant |
 
 Task-specific reading:
 - API → `docs/3_API_CONTRACTS.md`
@@ -179,6 +178,7 @@ docker compose up -d
 - `redis` — Cache & Message Broker
 - `rustfs` — Object Storage
 - `ai-proxy` — 9Router
+- `traefik` — Reverse Proxy
 
 **Standalone Frontend**
 - `webapp` — Next.js (chạy độc lập ngoài Docker)
@@ -203,7 +203,6 @@ Mọi thay đổi code phải cập nhật tài liệu tương ứng.
 | Thay đổi deployment | `docs/4_DEPLOYMENT.md` |
 | Bug quan trọng | `docs/6_KNOWN_ISSUES.json` |
 | Thay đổi naming | `docs/5_NAMING_CONVENTIONS.md` |
-| Thay đổi cách tích hợp tenant | `docs/8_TENANT_INTEGRATION_GUIDE.md` |
 
 Nếu không chắc phải update file nào, ít nhất phải sync `docs/7_CURRENT_SETTINGS.json`.
 
@@ -218,4 +217,4 @@ Nếu không chắc phải update file nào, ít nhất phải sync `docs/7_CURR
 
 ---
 
-**Last Updated**: 2026-06-04
+**Last Updated**: 2026-07-01

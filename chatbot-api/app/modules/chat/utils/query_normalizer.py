@@ -25,7 +25,6 @@ DEFAULT_VIETNAMESE_STOPWORDS: set[str] = {
     "hi",
     "vui",
     "lòng",
-    "xin",
     "please",
     "tôi",
     "muốn",
@@ -33,56 +32,48 @@ DEFAULT_VIETNAMESE_STOPWORDS: set[str] = {
     "cho",
     "biết",
     "làm",
-    "sao",
     "để",
     "ạ",
-    "ạ?",
     "ơ",
-    "ơ?",
     "nha",
     "nhé",
     "vậy",
     "ấy",
-    "có",
-    "không",
-    "được",
-    "không?",
-    "được không?",
-    "là",
-    "cái",
-    "gì",
     "đi",
-    "được",
     "rồi",
-    "còn",
+    "dạ",
+    "vâng",
+    "thưa",
+    "thì",
+    "mà",
+    "là",
+    "rằng",
+    "nhưng",
+    "tuy",
+    "này",
+    "kia",
+    "đó",
+    "đấy",
+    "nọ",
+    "nhỉ",
+    "hả",
+    "thế",
+    "nào",
+    "đâu",
+    "nữa",
+    "luôn",
+    "cái",
 }
 
-DEFAULT_ERP_STOPWORDS: set[str] = {
-    "phần",
-    "mềm",
-    "erp",
-    "hệ",
-    "thống",
-    "module",
-    "chức",
-    "năng",
-    "tính",
-    "năng",
-    "hướng",
-    "dẫn",
-    "sử",
-    "dụng",
-    "cách",
-    "dùng",
-    "xem",
-    "thêm",
-    "chi",
-    "tiết",
-    "cụ",
-    "thể",
-}
+DEFAULT_ERP_PHRASES: list[str] = [
+    "phần mềm erp",
+    "phần mềm",
+    "hệ thống",
+    "chi tiết",
+    "cụ thể",
+]
 
-ALL_DEFAULT_STOPWORDS = DEFAULT_VIETNAMESE_STOPWORDS | DEFAULT_ERP_STOPWORDS
+ALL_DEFAULT_STOPWORDS = DEFAULT_VIETNAMESE_STOPWORDS
 
 
 def normalize_query(
@@ -94,7 +85,15 @@ def normalize_query(
     if not text:
         return ""
 
-    normalized = text.lower().strip()
+    normalized = text.lower()
+
+    # Remove specific ERP phrases safely
+    for phrase in DEFAULT_ERP_PHRASES:
+        normalized = normalized.replace(phrase, "")
+
+    # Strip punctuation
+    normalized = re.sub(r"[^\w\s]", " ", normalized)
+    normalized = normalized.strip()
     normalized = re.sub(r"\s+", " ", normalized)
 
     if remove_stopwords and stopwords:
@@ -107,7 +106,9 @@ def normalize_query(
 
 def remove_stopwords_from_query(text: str, stopwords: set[str] | None = None) -> str:
     """Remove stopwords from query text."""
-    return normalize_query(text, stopwords=stopwords or ALL_DEFAULT_STOPWORDS, remove_stopwords=True)
+    return normalize_query(
+        text, stopwords=stopwords or ALL_DEFAULT_STOPWORDS, remove_stopwords=True
+    )
 
 
 def get_stopwords_for_language(language: str = "vi") -> set[str]:
@@ -115,5 +116,5 @@ def get_stopwords_for_language(language: str = "vi") -> set[str]:
     if language == "vi":
         return DEFAULT_VIETNAMESE_STOPWORDS
     if language == "en":
-        return DEFAULT_ERP_STOPWORDS
+        return set()
     return ALL_DEFAULT_STOPWORDS

@@ -4,152 +4,198 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tenant Chat Demo</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Marked.js cho Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background-color: #f3f4f6;
-            margin: 0;
-            padding: 20px;
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+            height: 100vh;
             display: flex;
-            justify-content: center;
+            align-items: center;
         }
-        .container {
-            width: 100%;
-            max-width: 800px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        .chat-card {
+            height: 90vh;
+            border-radius: 1rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            height: 90vh;
         }
-        .header {
-            background: #111827;
+        .chat-header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
             color: white;
-            padding: 16px 20px;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        .header h1 {
-            margin: 0 0 10px 0;
-            font-size: 1.25rem;
-        }
-        .settings {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            font-size: 0.875rem;
-        }
-        .settings input {
-            padding: 6px 10px;
-            border: 1px solid #4b5563;
-            background: #1f2937;
-            color: white;
-            border-radius: 4px;
+            border-bottom: none;
         }
         .chat-box {
             flex: 1;
-            padding: 20px;
             overflow-y: auto;
+            padding: 1.5rem;
+            background-color: #ffffff;
+            scroll-behavior: smooth;
+        }
+        .message-wrapper {
             display: flex;
-            flex-direction: column;
-            gap: 16px;
+            margin-bottom: 1rem;
+            animation: slideInUp 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+        }
+        .message-wrapper.user {
+            justify-content: flex-end;
+        }
+        .message-wrapper.bot {
+            justify-content: flex-start;
         }
         .message {
             max-width: 80%;
-            padding: 12px 16px;
-            border-radius: 8px;
-            line-height: 1.5;
-            white-space: pre-wrap;
+            padding: 0.75rem 1.25rem;
+            line-height: 1.6;
         }
         .user-msg {
-            align-self: flex-end;
-            background: #2563eb;
+            background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
             color: white;
-            border-bottom-right-radius: 0;
+            border-radius: 1.2rem 1.2rem 0 1.2rem;
+            box-shadow: 0 2px 5px rgba(13, 110, 253, 0.2);
         }
         .bot-msg {
-            align-self: flex-start;
-            background: #f3f4f6;
-            color: #111827;
-            border-bottom-left-radius: 0;
-            border: 1px solid #e5e7eb;
+            background-color: #f8f9fa;
+            color: #212529;
+            border: 1px solid #e9ecef;
+            border-radius: 1.2rem 1.2rem 1.2rem 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        }
+        /* Markdown rendering styles */
+        .bot-msg p { margin-bottom: 0.75rem; }
+        .bot-msg p:last-child { margin-bottom: 0; }
+        .bot-msg pre {
+            background-color: #212529;
+            color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin-top: 0.5rem;
+        }
+        .bot-msg code {
+            color: #d63384;
+            background-color: rgba(214, 51, 132, 0.1);
+            padding: 0.1rem 0.3rem;
+            border-radius: 0.25rem;
+            font-family: monospace;
+        }
+        .bot-msg pre code {
+            color: inherit;
+            background: none;
+            padding: 0;
+        }
+        .bot-msg table {
+            width: 100%;
+            margin-bottom: 1rem;
+            border-collapse: collapse;
+        }
+        .bot-msg th, .bot-msg td {
+            padding: 0.5rem;
+            border: 1px solid #dee2e6;
+        }
+        .bot-msg blockquote {
+            border-left: 4px solid #ced4da;
+            padding-left: 1rem;
+            color: #6c757d;
+            font-style: italic;
         }
         .system-msg {
-            align-self: center;
-            font-size: 0.8rem;
-            color: #6b7280;
-            background: none;
+            text-align: center;
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-bottom: 1.5rem;
         }
         .input-area {
-            padding: 16px;
-            background: #f9fafb;
-            border-top: 1px solid #e5e7eb;
-            display: flex;
-            gap: 10px;
+            background-color: #f8f9fa;
+            padding: 1.25rem;
+            border-top: 1px solid #e9ecef;
         }
-        .input-area input {
-            flex: 1;
-            padding: 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            font-size: 1rem;
-            outline: none;
+        .form-control:focus {
+            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+            border-color: #86b7fe;
         }
-        .input-area input:focus {
-            border-color: #2563eb;
+        .btn-send {
+            transition: all 0.2s;
         }
-        .input-area button {
-            padding: 0 24px;
-            background: #2563eb;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s;
+        .btn-send:hover {
+            transform: translateY(-1px);
         }
-        .input-area button:hover {
-            background: #1d4ed8;
-        }
-        .input-area button:disabled {
-            background: #93c5fd;
-            cursor: not-allowed;
-        }
-        .typing {
-            opacity: 0.7;
+        .typing-indicator {
+            display: inline-block;
             font-style: italic;
+            color: #6c757d;
+        }
+        .typing-indicator::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+        @keyframes slideInUp {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
         }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="header">
-        <h1>Tenant Integration Demo</h1>
-        <div class="settings">
-            <div>
-                <label>API Endpoint:</label>
-                <input type="text" id="apiEndpoint" value="https://api.qtuanph.dev/v1/chat/completions" style="width: 100%; box-sizing: border-box;" />
-            </div>
-            <div>
-                <label>API Key:</label>
-                <input type="text" id="apiKey" value="trg_fkbZ8COIca3X9F7Kmp3BwKaypJ1oiksc6dlW1dSdzeI" style="width: 100%; box-sizing: border-box;" />
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-10 col-xl-8">
+            <div class="card chat-card border-0">
+                <!-- Header -->
+                <div class="card-header chat-header p-4">
+                    <h4 class="mb-3 fw-semibold">Tenant Integration Demo</h4>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label text-light opacity-75 small mb-1">API Endpoint</label>
+                            <input type="text" id="apiEndpoint" class="form-control form-control-sm bg-dark text-light border-secondary" value="https://api.qtuanph.dev/v1/chat/completions" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label text-light opacity-75 small mb-1">API Key</label>
+                            <input type="text" id="apiKey" class="form-control form-control-sm bg-dark text-light border-secondary" value="trg_m4aMKVkNLpnAxHok1I9wW9kcwohHwrQVw7Z16emQnqw" />
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Chat Box -->
+                <div class="card-body chat-box d-flex flex-column" id="chatBox">
+                    <div class="system-msg">Chat initialized. Gửi tin nhắn để kiểm tra kết nối với Public API.</div>
+                </div>
+                
+                <!-- Input Area -->
+                <div class="card-footer input-area">
+                    <form id="chatForm" class="d-flex gap-2" onsubmit="event.preventDefault(); sendMessage();">
+                        <input type="text" id="messageInput" class="form-control form-control-lg border-0 shadow-sm" placeholder="Nhập câu hỏi của bạn..." autocomplete="off" />
+                        <button type="submit" id="sendBtn" class="btn btn-primary btn-lg px-4 shadow-sm btn-send">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-send-fill" viewBox="0 0 16 16">
+                                <path d="M15.964.686a.5.5 0 0 0-.65-.65L.767 5.855H.766l-.452.18a.5.5 0 0 0-.082.887l.41.26.001.002 4.995 3.178 3.178 4.995.002.002.26.41a.5.5 0 0 0 .886-.083zm-1.833 1.89L6.637 10.07l-.215-.338a.5.5 0 0 0-.154-.154l-.338-.215 7.494-7.494 1.178-.471z"/>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
-    </div>
-    
-    <div class="chat-box" id="chatBox">
-        <div class="message system-msg">Chat initialized. Gửi tin nhắn để kiểm tra kết nối với Public API.</div>
-    </div>
-    
-    <div class="input-area">
-        <input type="text" id="messageInput" placeholder="Nhập câu hỏi của bạn..." autocomplete="off" />
-        <button id="sendBtn">Gửi</button>
     </div>
 </div>
 
 <script>
+    // Cấu hình Marked.js an toàn hơn (nếu cần, nhưng demo thì để mặc định)
+    marked.setOptions({
+        breaks: true, // Hỗ trợ xuống dòng bằng Enter
+        gfm: true     // Bật Github Flavored Markdown
+    });
+
     const chatBox = document.getElementById('chatBox');
     const messageInput = document.getElementById('messageInput');
     const sendBtn = document.getElementById('sendBtn');
@@ -161,13 +207,23 @@
         { role: 'system', content: 'You are a helpful assistant.' }
     ];
 
-    function appendMessage(role, content) {
-        const div = document.createElement('div');
-        div.className = `message ${role === 'user' ? 'user-msg' : 'bot-msg'}`;
-        div.textContent = content;
-        chatBox.appendChild(div);
+    function appendMessage(role, content, isMarkdown = false) {
+        const wrapper = document.createElement('div');
+        wrapper.className = `message-wrapper ${role === 'user' ? 'user' : 'bot'}`;
+        
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `message ${role === 'user' ? 'user-msg' : 'bot-msg'}`;
+        
+        if (isMarkdown && role === 'bot') {
+            msgDiv.innerHTML = marked.parse(content);
+        } else {
+            msgDiv.textContent = content;
+        }
+
+        wrapper.appendChild(msgDiv);
+        chatBox.appendChild(wrapper);
         chatBox.scrollTop = chatBox.scrollHeight;
-        return div;
+        return msgDiv;
     }
 
     async function sendMessage() {
@@ -183,8 +239,16 @@
         messageInput.value = '';
         
         sendBtn.disabled = true;
-        const botMessageDiv = appendMessage('bot', 'Đang xử lý...');
-        botMessageDiv.classList.add('typing');
+        
+        // Tạo typing indicator
+        const wrapper = document.createElement('div');
+        wrapper.className = 'message-wrapper bot typing-wrapper';
+        const typingDiv = document.createElement('div');
+        typingDiv.className = 'message bot-msg';
+        typingDiv.innerHTML = '<span class="typing-indicator">Đang xử lý</span>';
+        wrapper.appendChild(typingDiv);
+        chatBox.appendChild(wrapper);
+        chatBox.scrollTop = chatBox.scrollHeight;
 
         try {
             const response = await fetch(endpoint, {
@@ -194,11 +258,11 @@
                     'Authorization': `Bearer ${apiKey}`
                 },
                 body: JSON.stringify({
-                    model: 'default', // Nếu hệ thống yêu cầu model cụ thể, hãy sửa ở đây
+                    model: 'default',
                     messages: messages,
                     stream: true,
                     temperature: 0.7,
-                    max_tokens: 1000
+                    max_tokens: 2000
                 })
             });
 
@@ -207,12 +271,19 @@
                 throw new Error(`HTTP ${response.status}: ${errText}`);
             }
 
-            // Xử lý luồng stream (Server-Sent Events format)
+            // Xóa typing indicator và chuẩn bị thẻ cho markdown
+            wrapper.remove();
+            
+            const botWrapper = document.createElement('div');
+            botWrapper.className = 'message-wrapper bot';
+            const botMsgDiv = document.createElement('div');
+            botMsgDiv.className = 'message bot-msg';
+            botWrapper.appendChild(botMsgDiv);
+            chatBox.appendChild(botWrapper);
+
             const reader = response.body.getReader();
             const decoder = new TextDecoder("utf-8");
             let botReply = '';
-            botMessageDiv.textContent = '';
-            botMessageDiv.classList.remove('typing');
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -228,8 +299,12 @@
                             const data = JSON.parse(line.slice(6));
                             if (data.choices && data.choices[0].delta && data.choices[0].delta.content) {
                                 botReply += data.choices[0].delta.content;
-                                botMessageDiv.textContent = botReply;
+                                // Render markdown
+                                botMsgDiv.innerHTML = marked.parse(botReply);
                                 chatBox.scrollTop = chatBox.scrollHeight;
+                                
+                                // Yield to browser paint to prevent UI freezing (nổ bùm)
+                                await new Promise(resolve => requestAnimationFrame(resolve));
                             }
                         } catch (e) {
                             console.warn("Parse stream chunk error:", e, line);
@@ -239,26 +314,31 @@
             }
 
             // Lưu reply vào lịch sử
-            messages.push({ role: 'assistant', content: botReply });
+            if (botReply.trim() !== '') {
+                messages.push({ role: 'assistant', content: botReply });
+            }
 
         } catch (error) {
             console.error(error);
-            botMessageDiv.textContent = `[Lỗi] ${error.message}`;
-            botMessageDiv.classList.remove('typing');
-            botMessageDiv.style.color = '#dc2626';
-            botMessageDiv.style.borderColor = '#fca5a5';
-            botMessageDiv.style.background = '#fef2f2';
+            const typingWrapper = chatBox.querySelector('.typing-wrapper');
+            if(typingWrapper) typingWrapper.remove();
+            
+            const errWrapper = document.createElement('div');
+            errWrapper.className = 'message-wrapper bot';
+            const errMsg = document.createElement('div');
+            errMsg.className = 'message bot-msg bg-danger text-white border-danger';
+            errMsg.textContent = `[Lỗi] ${error.message}`;
+            errWrapper.appendChild(errMsg);
+            chatBox.appendChild(errWrapper);
+            chatBox.scrollTop = chatBox.scrollHeight;
         } finally {
             sendBtn.disabled = false;
             messageInput.focus();
         }
     }
-
-    sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') sendMessage();
-    });
 </script>
 
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

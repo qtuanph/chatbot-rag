@@ -144,7 +144,7 @@ services:
       - internal
 
   redis:
-    image: redis:8.6.3-trixie
+    image: redis:8.8.0-trixie
     command: redis-server --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lru --save 60 1000 --appendonly yes --requirepass ${REDIS_PASSWORD:-}
     ports:
       - "127.0.0.1:6379:6379"
@@ -192,9 +192,8 @@ services:
       - internal
 
   traefik:
-    image: traefik:v3.7.3
+    image: traefik:v3.7.5
     command:
-      - "--api.insecure=true"
       - "--ping=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedByDefault=false"
@@ -209,7 +208,6 @@ services:
       - "--log.level=INFO"
     ports:
       - "80:80"
-      - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:

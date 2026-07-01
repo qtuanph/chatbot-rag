@@ -15,7 +15,7 @@ import logging
 from typing import Any
 
 import numpy as np
-from redis.commands.search.field import TextField, VectorField
+from redis.commands.search.field import TextField, VectorField, TagField
 from redis.commands.search.index_definition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
@@ -50,8 +50,8 @@ class SemanticCache(BaseRedisCache):
         self.vector_dim = vector_dim or settings.embedding_vector_size
         self._is_async = hasattr(self._r, "pipeline") and callable(getattr(self._r, "pipeline", None))
 
-    def _build_key(self, key: str) -> str:
-        return f"{self.PREFIX}{hashlib.sha256(key.encode()).hexdigest()}"
+    def _build_key(self, tenant_id: str, key: str) -> str:
+        return f"{self.PREFIX}{tenant_id}:{hashlib.sha256(key.encode()).hexdigest()}"
 
     def _serialize(self, data: Any) -> bytes:
         return json.dumps(data).encode("utf-8")
@@ -65,6 +65,7 @@ class SemanticCache(BaseRedisCache):
             await self._r.ft(self.INDEX_NAME).info()
         except Exception:
             schema = (
+                TagField("tenant_id"),
                 TextField("query_text"),
                 VectorField(
                     "vector",
@@ -82,52 +83,52 @@ class SemanticCache(BaseRedisCache):
             except Exception as e:
                 logger.warning("Failed to create semantic cache index: %s", e)
 
-    async def get(self, query_vector: list[float]) -> dict[str, Any] | None:
+    async def get(self, tenant_id: str, query_vector: list[float]) -> dict[str, Any] | None:
         """Search for a similar cached result (Async). TTL is refreshed on hit."""
         try:
             query_bytes = np.array(query_vector, dtype=np.float32).tobytes()
             q = (
-                Query("*=>[KNN 1 @vector $vec AS score]")
+                Query("@tenant_id:{$tenant_id}=>[KNN 1 @vector $vec AS score]")
                 .sort_by("score")
                 .return_fields("score", "result_json", "query_text")
                 .dialect(2)
             )
-            res = await self._r.ft(self.INDEX_NAME).search(q, query_params={"vec": query_bytes})
+            res = await self._r.ft(self.INDEX_NAME).search(q, query_params={"vec": query_bytes, "tenant_id": tenant_id})
 
             if res.total > 0:
                 doc = res.docs[0]
                 if float(doc.score) <= self.distance_threshold:
-                    key = self._build_key(doc.query_text)
+                    key = self._build_key(tenant_id, doc.query_text)
                     await self._r.expire(key, 86400)
                     return json.loads(doc.result_json)
         except Exception as e:
             logger.error("Semantic cache retrieval failed (Async): %s", e)
         return None
 
-    async def set(self, query_text: str, query_vector: list[float], result: dict[str, Any]) -> None:
+    async def set(self, tenant_id: str, query_text: str, query_vector: list[float], result: dict[str, Any]) -> None:
         """Store a result in the semantic cache (Async)."""
         try:
-            key = self._build_key(query_text)
+            key = self._build_key(tenant_id, query_text)
             query_bytes = np.array(query_vector, dtype=np.float32).tobytes()
             await self._r.hset(
-                key, mapping={"query_text": query_text, "vector": query_bytes, "result_json": json.dumps(result)}
+                key, mapping={"tenant_id": tenant_id, "query_text": query_text, "vector": query_bytes, "result_json": json.dumps(result)}
             )
             await self._r.expire(key, 86400)
         except Exception as e:
             logger.error("Failed to store semantic cache (Async): %s", e)
 
-    async def delete(self, query_text: str) -> None:
+    async def delete(self, tenant_id: str, query_text: str) -> None:
         """Invalidate a semantic cache entry (Async)."""
         try:
-            key = self._build_key(query_text)
+            key = self._build_key(tenant_id, query_text)
             await self._r.delete(key)
         except Exception as e:
             logger.error("Failed to delete semantic cache (Async): %s", e)
 
-    async def extend_ttl(self, query_text: str, ttl_seconds: int) -> None:
+    async def extend_ttl(self, tenant_id: str, query_text: str, ttl_seconds: int) -> None:
         """Extend the TTL of a semantic cache entry (Async)."""
         try:
-            key = self._build_key(query_text)
+            key = self._build_key(tenant_id, query_text)
             await self._r.expire(key, ttl_seconds)
         except Exception as e:
             logger.error("Failed to extend semantic cache TTL (Async): %s", e)
@@ -138,6 +139,7 @@ class SemanticCache(BaseRedisCache):
             self._r.ft(self.INDEX_NAME).info()
         except Exception:
             schema = (
+                TagField("tenant_id"),
                 TextField("query_text"),
                 VectorField(
                     "vector",
@@ -155,35 +157,35 @@ class SemanticCache(BaseRedisCache):
             except Exception as e:
                 logger.warning("Failed to create semantic cache index (Sync): %s", e)
 
-    def get_sync(self, query_vector: list[float]) -> dict[str, Any] | None:
+    def get_sync(self, tenant_id: str, query_vector: list[float]) -> dict[str, Any] | None:
         """Search for a similar cached result (Sync). TTL is refreshed on hit."""
         try:
             query_bytes = np.array(query_vector, dtype=np.float32).tobytes()
             q = (
-                Query("*=>[KNN 1 @vector $vec AS score]")
+                Query("@tenant_id:{$tenant_id}=>[KNN 1 @vector $vec AS score]")
                 .sort_by("score")
                 .return_fields("score", "result_json", "query_text")
                 .dialect(2)
             )
-            res = self._r.ft(self.INDEX_NAME).search(q, query_params={"vec": query_bytes})
+            res = self._r.ft(self.INDEX_NAME).search(q, query_params={"vec": query_bytes, "tenant_id": tenant_id})
 
             if res.total > 0:
                 doc = res.docs[0]
                 if float(doc.score) <= self.distance_threshold:
-                    key = self._build_key(doc.query_text)
+                    key = self._build_key(tenant_id, doc.query_text)
                     self._r.expire(key, 86400)
                     return json.loads(doc.result_json)
         except Exception as e:
             logger.debug("Semantic cache retrieval failed (Sync): %s", e)
         return None
 
-    def set_sync(self, query_text: str, query_vector: list[float], result: dict[str, Any]) -> None:
+    def set_sync(self, tenant_id: str, query_text: str, query_vector: list[float], result: dict[str, Any]) -> None:
         """Store a result in the semantic cache (Sync)."""
         try:
-            key = self._build_key(query_text)
+            key = self._build_key(tenant_id, query_text)
             query_bytes = np.array(query_vector, dtype=np.float32).tobytes()
             self._r.hset(
-                key, mapping={"query_text": query_text, "vector": query_bytes, "result_json": json.dumps(result)}
+                key, mapping={"tenant_id": tenant_id, "query_text": query_text, "vector": query_bytes, "result_json": json.dumps(result)}
             )
             self._r.expire(key, 86400)
         except Exception as e:

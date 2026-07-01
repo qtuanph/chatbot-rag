@@ -335,7 +335,7 @@ export default function AdminTenantsPage() {
 
       {/* ── Create Sheet ── */}
       <Sheet open={createOpen} onOpenChange={setCreateOpen}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto" side="right">
+        <SheetContent className="w-[90vw] sm:max-w-xl overflow-y-auto" side="right">
           <SheetHeader>
             <SheetTitle>Tạo tenant mới</SheetTitle>
           </SheetHeader>
@@ -418,7 +418,7 @@ export default function AdminTenantsPage() {
 
       {/* ── Tenant Detail Sheet ── */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+        <SheetContent className="w-[90vw] sm:max-w-4xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle>{selectedTenant?.name || "Chi tiết tenant"}</SheetTitle>
           </SheetHeader>
