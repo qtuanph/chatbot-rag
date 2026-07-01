@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 type AnalyticsDashboardProps = {
   title: string;
@@ -32,36 +33,42 @@ function ModelTypeCard({
   title,
   stats,
   icon: Icon,
+  gradientClass = "from-blue-500/20 to-purple-500/20",
+  iconColor = "text-blue-500",
 }: {
   title: string;
   stats: ModelTypeStats;
   icon: typeof Brain;
+  gradientClass?: string;
+  iconColor?: string;
 }) {
   return (
-    <Card className="">
+    <Card className={cn("relative overflow-hidden bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300", "bg-gradient-to-br", gradientClass)}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="flex items-center gap-2 text-sm font-medium">
-          <Icon className="h-4 w-4 text-primary" />
+        <CardTitle className="flex items-center gap-3 text-sm font-semibold">
+          <div className={cn("p-2 rounded-xl bg-background/50 backdrop-blur-md shadow-sm", iconColor)}>
+            <Icon className="h-4 w-4" />
+          </div>
           {title}
         </CardTitle>
-        <span className="text-xs text-muted-foreground">{formatNumber(stats.call_count)} lượt</span>
+        <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-background/50 backdrop-blur-md shadow-sm">{formatNumber(stats.call_count)} lượt</span>
       </CardHeader>
-      <CardContent className="space-y-2 text-sm">
+      <CardContent className="space-y-3 text-sm mt-2">
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Token vào</span>
-          <span className="font-medium">{formatNumber(stats.tokens_in)}</span>
+          <span className="text-muted-foreground font-medium">Token vào</span>
+          <span className="font-bold">{formatNumber(stats.tokens_in)}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Token ra</span>
-          <span className="font-medium">{formatNumber(stats.tokens_out)}</span>
+          <span className="text-muted-foreground font-medium">Token ra</span>
+          <span className="font-bold">{formatNumber(stats.tokens_out)}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Độ trễ TB</span>
-          <span className="font-medium">{formatLatency(stats.avg_latency_ms)}</span>
+          <span className="text-muted-foreground font-medium">Độ trễ TB</span>
+          <span className="font-bold">{formatLatency(stats.avg_latency_ms)}</span>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">Chi phí</span>
-          <span className="font-medium">
+        <div className="flex items-center justify-between pt-2 border-t border-border/40">
+          <span className="text-muted-foreground font-medium">Chi phí</span>
+          <span className="font-bold text-primary">
             <CostText micros={stats.cost_micros_vnd} />
           </span>
         </div>
@@ -141,8 +148,8 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="space-y-8 p-6 md:p-8 min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-background dark:to-slate-900">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
           <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{subtitle}</p>
@@ -180,19 +187,19 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
 
       {stats && (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            <Card className="">
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
+            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Tổng request</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Tổng request</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{formatNumber(stats.total_messages)}</div>
                 <p className="text-xs text-muted-foreground">Theo cửa sổ {days} ngày</p>
               </CardContent>
             </Card>
-            <Card className="">
+            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Tổng token</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Tổng token</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{formatNumber(stats.total_tokens)}</div>
@@ -201,10 +208,12 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
                 </p>
               </CardContent>
             </Card>
-            <Card className="">
+            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                  <TimerReset className="h-4 w-4 text-primary" />
+                <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <div className="p-1.5 rounded-md bg-orange-500/10 text-orange-500">
+                    <TimerReset className="h-4 w-4" />
+                  </div>
                   Độ trễ trung bình
                 </CardTitle>
               </CardHeader>
@@ -213,9 +222,12 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
                 <p className="text-xs text-muted-foreground">Theo request đã ghi nhận</p>
               </CardContent>
             </Card>
-            <Card className="">
+            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 opacity-10">
+                <span className="text-6xl font-black">$</span>
+              </div>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Chi phí ước tính</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">Chi phí ước tính</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{formatVnd(stats.cost_vnd_rounded)}</div>
@@ -224,15 +236,17 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
                 </p>
               </CardContent>
             </Card>
-            <Card className="">
+            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                  <ThumbsDown className="h-4 w-4 text-primary" />
+                <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <div className="p-1.5 rounded-md bg-destructive/10 text-destructive">
+                    <ThumbsDown className="h-4 w-4" />
+                  </div>
                   Tỷ lệ dislike
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{Math.round(stats.feedback_summary.dislike_rate * 100)}%</div>
+                <div className="text-2xl font-bold">{Math.round((stats.feedback_summary.dislike_rate || 0) * 100)}%</div>
                 <p className="text-xs text-muted-foreground">
                   {formatNumber(stats.feedback_summary.dislike_count)} dislike • {formatNumber(stats.feedback_summary.like_count)} like
                 </p>
@@ -240,13 +254,13 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <ModelTypeCard title="LLM" stats={stats.by_model_type.llm} icon={Brain} />
-            <ModelTypeCard title="Embedding" stats={stats.by_model_type.embedding} icon={Cpu} />
-            <ModelTypeCard title="Reranker" stats={stats.by_model_type.reranker} icon={Network} />
+          <div className="grid gap-6 lg:grid-cols-3 mt-4">
+            <ModelTypeCard title="LLM" stats={stats.by_model_type.llm} icon={Brain} gradientClass="from-blue-500/10 to-cyan-500/10" iconColor="text-blue-500" />
+            <ModelTypeCard title="Embedding" stats={stats.by_model_type.embedding} icon={Cpu} gradientClass="from-emerald-500/10 to-teal-500/10" iconColor="text-emerald-500" />
+            <ModelTypeCard title="Reranker" stats={stats.by_model_type.reranker} icon={Network} gradientClass="from-purple-500/10 to-pink-500/10" iconColor="text-purple-500" />
           </div>
 
-          <Card className="">
+          <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg mt-4">
             <CardHeader>
               <CardTitle>Yêu cầu gần đây</CardTitle>
               <CardDescription>
@@ -282,7 +296,7 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
             </CardContent>
           </Card>
 
-          <Card className="">
+          <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg mt-4">
             <CardHeader>
               <CardTitle>Phản hồi chất lượng</CardTitle>
               <CardDescription>

@@ -203,8 +203,6 @@ Tenant applications typically need only:
 - `model`
 - `messages`
 
-See `docs/8_TENANT_INTEGRATION_GUIDE.md` for the tenant-facing integration contract.
-
 ---
 
 ## Retrieval Pipeline
@@ -310,7 +308,6 @@ If you are contributing or maintaining the project, start here:
 | API contracts | `docs/3_API_CONTRACTS.md` |
 | Deployment | `docs/4_DEPLOYMENT.md` |
 | Runtime snapshot | `docs/7_CURRENT_SETTINGS.json` |
-| Tenant integration guide | `docs/8_TENANT_INTEGRATION_GUIDE.md` |
 
 ---
 

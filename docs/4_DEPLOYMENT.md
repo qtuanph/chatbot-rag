@@ -19,6 +19,8 @@ Tài liệu deployment bám theo `docker-compose.yml` hiện tại.
 ## Runtime decisions
 
 - `qdrant` pin ở `qdrant/qdrant:v1.18.2`
+- `redis` pin ở `redis:8.8.0-trixie`
+- `traefik` pin ở `traefik:v3.7.5`
 - embedding mặc định: Docker Model Runner
 - reranker mặc định: NVIDIA NIM
 - local reranker chỉ là fallback

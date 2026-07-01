@@ -4,6 +4,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.modules.chat.repositories.feedback_repository import FeedbackRepository
+from app.modules.chat.utils.query_normalizer import normalize_query, ALL_DEFAULT_STOPWORDS
 from app.modules.settings.runtime_manager import RuntimeProviderManager
 
 
@@ -60,9 +61,10 @@ class FeedbackService:
             "metadata": metadata or {},
         }
         if self.semantic_cache:
+            normalized_query = normalize_query(query_text, stopwords=ALL_DEFAULT_STOPWORDS)
             if feedback_type == "dislike":
-                await self.semantic_cache.delete(query_text)
+                await self.semantic_cache.delete(tenant_id, normalized_query)
             elif feedback_type == "like":
-                await self.semantic_cache.extend_ttl(query_text, 86400 * 7)
+                await self.semantic_cache.extend_ttl(tenant_id, normalized_query, 86400 * 7)
 
         return await self.repo.create_feedback(payload)
