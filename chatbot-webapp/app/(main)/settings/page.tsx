@@ -3,6 +3,7 @@
 import { useSession } from "next-auth/react";
 
 import { TenantSettingsForm } from "@/components/tenants/tenant-settings-form";
+import { UserSettingsForm } from "@/components/auth/user-settings-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatRoleLabel } from "@/lib/format";
@@ -38,6 +39,8 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <UserSettingsForm />
 
       {isPlatformAdmin ? (
         <Card>

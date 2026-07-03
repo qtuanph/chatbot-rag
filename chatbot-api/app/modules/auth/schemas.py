@@ -45,3 +45,14 @@ class RoleResponse(BaseModel):
     id: str
     name: str
     description: str | None = None
+
+
+class UpdateProfileRequest(BaseModel):
+    username: str | None = Field(default=None, min_length=3, max_length=64)
+    current_password: str | None = Field(default=None)
+    new_password: str | None = Field(default=None, min_length=6, max_length=256)
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value: str | None) -> str | None:
+        return value.strip() if value else None

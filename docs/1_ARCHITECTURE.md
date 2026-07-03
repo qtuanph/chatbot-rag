@@ -4,16 +4,76 @@ Tài liệu này mô tả kiến trúc hiện tại của `chatbot-rag` sau đ�
 
 ## Tổng quan
 
-```text
-Browser -> Next.js webapp -> /api/bep/* proxy -> FastAPI backend
-                                      |
-                                      +-> NextAuth session/JWT
-```
+```mermaid
+flowchart TB
+    %% Definitions
+    subgraph Client [Client Zone]
+        User([Người dùng / Trình duyệt])
+    end
 
-Backend tuân theo CSR:
+    subgraph Gateway [API & Routing Zone]
+        Traefik[Traefik v3.7\nReverse Proxy]
+        WebApp[Next.js Webapp\n/api/bep/*]
+    end
 
-```text
-Route (HTTP only) -> Service (business logic) -> Repository (data access)
+    subgraph Core [Backend & Compute Zone]
+        FastAPI[FastAPI Backend\nCSR, JWT, RBAC]
+        Workers[Celery Workers\nIngestion / Async]
+    end
+
+    subgraph AI [AI Proxy & Models Zone]
+        Router[9Router\nLLM Proxy]
+        ModelRunner[Docker Model Runner\nLocal Embeddings]
+        NIM[NVIDIA NIM\nReranker]
+        LlamaParse[LlamaParse\nCloud OCR]
+    end
+
+    subgraph Data [Data & Storage Zone]
+        Postgres[(PostgreSQL\nTenant, Auth, Feedback)]
+        Qdrant[(Qdrant Vector DB\nSections & Chunks)]
+        Redis[(Redis\nCache, Rate Limit, Queue)]
+        RustFS[(RustFS\nFile Storage)]
+        SQLite[(SQLite\nProvider Settings)]
+    end
+
+    %% Client -> Gateway
+    User -->|HTTP/HTTPS| Traefik
+    Traefik -->|UI & /api| WebApp
+    Traefik -->|/api/v1| FastAPI
+
+    %% Gateway -> Core
+    WebApp -->|Bearer Token (Internal proxy)| FastAPI
+
+    %% Core -> Data
+    FastAPI -->|Query / CRUD| Postgres
+    FastAPI -->|Search / Filter| Qdrant
+    FastAPI -->|Pub/Sub & Limit| Redis
+    FastAPI -->|File Access| RustFS
+    FastAPI -->|Load Config| SQLite
+    
+    Workers -->|Parse & Ingest| Postgres
+    Workers -->|Index & Chunk| Qdrant
+    Workers -->|Task Queue| Redis
+    Workers -->|File Access| RustFS
+
+    %% Core -> AI
+    FastAPI -->|Chat / Inference| Router
+    FastAPI & Workers -->|Embeddings| ModelRunner
+    FastAPI -->|Reranking| NIM
+    Workers -->|OCR & Markdown| LlamaParse
+
+    %% Styling
+    classDef client fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px;
+    classDef gateway fill:#f5f5f5,stroke:#666666,stroke-width:2px;
+    classDef core fill:#e1d5e7,stroke:#9673a6,stroke-width:2px;
+    classDef ai fill:#fff2cc,stroke:#d6b656,stroke-width:2px;
+    classDef data fill:#d5e8d4,stroke:#82b366,stroke-width:2px;
+
+    class User client;
+    class Traefik,WebApp gateway;
+    class FastAPI,Workers core;
+    class Router,ModelRunner,NIM,LlamaParse ai;
+    class Postgres,Qdrant,Redis,RustFS,SQLite data;
 ```
 
 ## Domain chính

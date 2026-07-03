@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -13,6 +14,34 @@ interface MarkdownRendererProps {
 }
 
 export function MarkdownRenderer({ content, showCursor = false }: MarkdownRendererProps) {
+  const [displayedContent, setDisplayedContent] = useState("");
+
+  useEffect(() => {
+    if (!showCursor) {
+      setDisplayedContent(content);
+      return;
+    }
+
+    let animationFrameId: number;
+
+    const tick = () => {
+      setDisplayedContent((prev) => {
+        if (prev.length < content.length) {
+          const gap = content.length - prev.length;
+          // Calculate step size: minimum 1 char, speed up if falling behind
+          const step = Math.max(1, Math.floor(gap / 5)); 
+          return content.slice(0, prev.length + step);
+        }
+        return prev;
+      });
+      animationFrameId = requestAnimationFrame(tick);
+    };
+
+    animationFrameId = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [content, showCursor]);
+
   return (
     <div
       className={cn(
@@ -82,7 +111,7 @@ export function MarkdownRenderer({ content, showCursor = false }: MarkdownRender
           },
         }}
       >
-        {content}
+        {displayedContent}
       </ReactMarkdown>
       {showCursor && <span className="inline-block w-0.5 h-4 bg-foreground/70 ml-0.5 align-text-bottom animate-pulse" />}
     </div>
