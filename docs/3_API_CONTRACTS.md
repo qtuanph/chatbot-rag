@@ -11,7 +11,7 @@ Browser **không** gọi FastAPI trực tiếp.
 Luồng chuẩn:
 
 ```text
-Browser -> /api/bep/* -> Next.js route handler -> backend /api/v1/*
+Browser -> /api/bep/* -> Next.js route handler -> backend /v1/*
 ```
 
 ### Token rule
@@ -129,9 +129,10 @@ Base API hiện tại:
 
 | Method | Path |
 |---|---|
-| GET | `/health` |
 | GET | `/models` |
 | POST | `/chat/completions` |
+
+`GET /health` thuộc nhóm System (xem trên) — inference endpoint không định nghĩa thêm health riêng.
 
 Public chat request hiện hỗ trợ các field chính:
 
