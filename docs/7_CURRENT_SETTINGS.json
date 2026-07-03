@@ -15,16 +15,24 @@
       "provider": "dmr",
       "url": "http://model-runner.docker.internal:12434/engines/v1",
       "model": "ai/qwen3-embedding:0.6B-F16",
-      "vector_size": 1024
+      "status": "success",
+      "is_fallback": false
     },
     "reranker_default": {
       "provider": "nvidia",
       "url": "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking",
-      "model": "nvidia/llama-nemotron-rerank-1b-v2"
+      "model": "nvidia/llama-nemotron-rerank-1b-v2",
+      "status": "success"
+    },
+    "reranker_fallback": {
+      "provider": "dmr",
+      "url": "http://model-runner.docker.internal:12434",
+      "model": "ai/qwen3-reranker:0.6B",
+      "status": "unknown"
     },
     "llm_default": {
       "provider": "9router",
-      "url": "http://ai-proxy:2908",
+      "url": "http://ai-proxy:2908/v1",
       "model": "chatbot-rag"
     }
   },
@@ -59,7 +67,7 @@
     "is_true_realtime": true,
     "retrieval_hierarchical_chunk_sizes": [2048, 768],
     "retrieval_sentence_window_size": 3,
-    "embedding_batch_size": 16,
+    "embedding_batch_size": 10,
     "pipeline_batch_size": 8,
     "embedding_adapter": "app.adapters.embedding",
     "sparse_auto_detect": true,

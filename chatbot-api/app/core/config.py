@@ -169,8 +169,8 @@ class Settings(BaseSettings):
 
     embedding_model: str = "dmr"
     embedding_hf_model: str = "ai/qwen3-embedding:0.6B-F16"
-    embedding_vector_size: int = 1024
-    embedding_batch_size: int = 16
+    embedding_vector_size: int = 2048
+    embedding_batch_size: int = 50
     embed_parallelism: int = 0
     embedding_api_base: str = "http://model-runner.docker.internal:12434/engines/v1"
     embedding_api_key: str = ""

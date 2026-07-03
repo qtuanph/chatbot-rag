@@ -115,12 +115,23 @@ class EmbeddingAdapter:
 
         return self._capability
 
-    async def encode(self, texts: list[str]) -> EmbeddingResult:
+    async def encode(self, texts: list[str], input_type: str | None = None) -> EmbeddingResult:
         """Embed texts and return dense + optional sparse vectors."""
         cap = await self.probe()
         client = self._get_client()
 
         payload: dict[str, Any] = {"input": texts, "model": self.model}
+        
+        actual_input_type = input_type or self.config.get("input_type")
+        if not actual_input_type:
+            model_lower = self.model.lower()
+            if "nemotron" in model_lower:
+                actual_input_type = "passage"
+            elif "embed-multilingual-v3" in model_lower:
+                actual_input_type = "search_document"
+                
+        if actual_input_type:
+            payload["input_type"] = actual_input_type
         try:
             resp = await client.post(
                 f"{self.api_base}/embeddings",
