@@ -21,6 +21,7 @@ from app.modules.auth.schemas import (
     LogoutResponse,
     RoleResponse,
     TokenResponse,
+    UpdateProfileRequest,
 )
 from app.modules.auth.service import AuthService
 
@@ -130,6 +131,28 @@ async def get_me(
         return await service.get_current_user(auth.user_id)
     except ValueError as e:
         raise http_errors.unauthorized(str(e)) from None
+
+
+@router.patch("/auth/me")
+async def update_me(
+    payload: UpdateProfileRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    service: AuthService = Depends(get_auth_service),
+) -> dict:
+    try:
+        return await service.update_profile(
+            user_id=auth.user_id,
+            username=payload.username,
+            current_password=payload.current_password,
+            new_password=payload.new_password,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if "already exists" in msg:
+            raise http_errors.conflict(msg) from None
+        if "không chính xác" in msg or "required" in msg:
+            raise http_errors.bad_request(msg) from None
+        raise http_errors.bad_request(msg) from None
 
 
 @router.get("/auth/users", response_model=list[CreateUserResponse])

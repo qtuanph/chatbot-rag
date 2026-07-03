@@ -11,6 +11,7 @@ import type {
   DocumentListResponse,
   HealthData,
   LoginRequest,
+  UpdateProfileRequest,
   ProviderTemplate,
   RoleItem,
   TaskStatus,
@@ -116,6 +117,12 @@ export const authApi = {
     apiFetch<{ status: string }>("/auth/logout", { method: "POST" }),
 
   getMe: (token: string): Promise<UserInfo> => apiFetch<UserInfo>("/auth/me", {}, token),
+
+  updateProfile: (data: UpdateProfileRequest): Promise<UserInfo> =>
+    apiFetch<UserInfo>("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
 
   getUsers: (): Promise<UserItem[]> => apiFetch<UserItem[]>("/auth/users"),
 

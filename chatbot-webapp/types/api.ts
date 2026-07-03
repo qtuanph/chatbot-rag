@@ -10,6 +10,12 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface UpdateProfileRequest {
+  username?: string;
+  current_password?: string;
+  new_password?: string;
+}
+
 export interface TokenResponse {
   access_token: string;
   token_type: string;

@@ -145,6 +145,50 @@ class AuthService:
             "is_active": user["is_active"],
         }
 
+    async def update_profile(
+        self, 
+        user_id: str, 
+        username: str | None = None, 
+        current_password: str | None = None, 
+        new_password: str | None = None
+    ) -> dict:
+        user = await self.repo.get_user_by_id(user_id, include_hash=True)
+        if user is None:
+            raise ValueError("User not found")
+        
+        updates = {}
+        
+        if username and username != user["username"]:
+            existing_user = await self.repo.get_user_by_username(username)
+            if existing_user is not None:
+                raise ValueError("Username already exists")
+            updates["username"] = username
+
+        if new_password:
+            if not current_password:
+                raise ValueError("Current password is required to set a new password")
+            if not verify_password(current_password, user["password_hash"]):
+                raise ValueError("Mật khẩu hiện tại không chính xác")
+            
+            if len(new_password) < 6:
+                raise ValueError("Password must be at least 6 characters long")
+            updates["password_hash"] = hash_password(new_password)
+
+        if not updates:
+            return user
+            
+        updated_user = await self.repo.update_user(user_id, updates)
+        
+        # log audit
+        safe_record_audit(
+            action="auth.user.update_profile",
+            actor_user_id=user_id,
+            subject_type="user",
+            subject_id=user_id,
+        )
+        
+        return updated_user
+
     async def list_users(self) -> list[dict]:
         return await self.repo.list_users_with_roles()
 
