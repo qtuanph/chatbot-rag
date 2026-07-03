@@ -1,95 +1,55 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
 import { useSession, signOut } from "next-auth/react";
 import { toast } from "sonner";
 
 import { authApi } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { KeyRoundIcon, UserIcon } from "lucide-react";
-
-const formSchema = z
-  .object({
-    username: z.string().min(3, "Tên đăng nhập tối thiểu 3 ký tự").max(64).optional().or(z.literal("")),
-    current_password: z.string().optional(),
-    new_password: z.string().optional(),
-  })
-  .refine(
-    (data) => {
-      // If setting a new password, current password is required
-      if (data.new_password && !data.current_password) {
-        return false;
-      }
-      return true;
-    },
-    {
-      message: "Vui lòng nhập mật khẩu hiện tại để đổi mật khẩu mới",
-      path: ["current_password"],
-    }
-  )
-  .refine(
-    (data) => {
-      // If new password is provided, must be >= 6 chars
-      if (data.new_password && data.new_password.length < 6) {
-        return false;
-      }
-      return true;
-    },
-    {
-      message: "Mật khẩu mới phải có tối thiểu 6 ký tự",
-      path: ["new_password"],
-    }
-  );
 
 export function UserSettingsForm() {
   const { data: session, update } = useSession();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [username, setUsername] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      username: "",
-      current_password: "",
-      new_password: "",
-    },
-  });
-
-  // Hydrate username once session is loaded
   useEffect(() => {
     if (session?.user?.name) {
-      form.setValue("username", session.user.name);
+      setUsername(session.user.name);
     }
-  }, [session, form]);
+  }, [session]);
 
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+
     try {
       setIsSubmitting(true);
-      
+
       const payload: any = {};
       let isUsernameChanged = false;
       let isPasswordChanged = false;
 
-      if (values.username && values.username !== session?.user?.name) {
-        payload.username = values.username;
+      if (username && username !== session?.user?.name) {
+        payload.username = username;
         isUsernameChanged = true;
       }
 
-      if (values.new_password) {
-        payload.current_password = values.current_password;
-        payload.new_password = values.new_password;
+      if (newPassword) {
+        if (newPassword.length < 6) {
+          toast.error("Mật khẩu mới phải có tối thiểu 6 ký tự");
+          return;
+        }
+        if (!currentPassword) {
+          toast.error("Vui lòng nhập mật khẩu hiện tại để đổi mật khẩu mới");
+          return;
+        }
+        payload.current_password = currentPassword;
+        payload.new_password = newPassword;
         isPasswordChanged = true;
       }
 
@@ -99,18 +59,15 @@ export function UserSettingsForm() {
       }
 
       await authApi.updateProfile(payload);
-      
+
       if (isPasswordChanged) {
         toast.success("Đổi mật khẩu thành công. Vui lòng đăng nhập lại.");
         await signOut({ callbackUrl: "/login" });
       } else if (isUsernameChanged) {
         toast.success("Cập nhật tên đăng nhập thành công");
-        await update({ name: values.username });
-        form.reset({
-          username: values.username,
-          current_password: "",
-          new_password: "",
-        });
+        await update({ name: username });
+        setCurrentPassword("");
+        setNewPassword("");
       }
     } catch (error: any) {
       toast.error("Cập nhật thất bại", {
@@ -130,63 +87,48 @@ export function UserSettingsForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <FormField
-              control={form.control}
-              name="username"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-2">
-                    <UserIcon className="size-4" />
-                    Tên đăng nhập mới
-                  </FormLabel>
-                  <FormControl>
-                    <Input placeholder="Nhập tên đăng nhập" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+        <form onSubmit={onSubmit} className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-sm font-medium flex items-center gap-2">
+              <UserIcon className="size-4" />
+              Tên đăng nhập mới
+            </label>
+            <Input
+              placeholder="Nhập tên đăng nhập"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
             />
+          </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 border-t pt-4">
-              <FormField
-                control={form.control}
-                name="current_password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <KeyRoundIcon className="size-4" />
-                      Mật khẩu hiện tại
-                    </FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="Nhập mật khẩu cũ (nếu muốn đổi)" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="new_password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Mật khẩu mới</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="Mật khẩu mới (tối thiểu 6 ký tự)" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+          <div className="grid gap-4 sm:grid-cols-2 border-t pt-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <KeyRoundIcon className="size-4" />
+                Mật khẩu hiện tại
+              </label>
+              <Input
+                type="password"
+                placeholder="Nhập mật khẩu cũ (nếu muốn đổi)"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
               />
             </div>
 
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Đang cập nhật..." : "Lưu thay đổi"}
-            </Button>
-          </form>
-        </Form>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Mật khẩu mới</label>
+              <Input
+                type="password"
+                placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Đang cập nhật..." : "Lưu thay đổi"}
+          </Button>
+        </form>
       </CardContent>
     </Card>
   );

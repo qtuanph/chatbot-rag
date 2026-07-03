@@ -80,7 +80,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                         logger.warning("[%s] Failed to update progress in DB: %s", document_id, status_err)
 
                 ingestion_result = await pipeline.ingest(
-                    filename=filename,
+                    filename=document.get("file_name") or filename,
                     content=content,
                     user_id=user_id or "system",
                     document_id=document_id,

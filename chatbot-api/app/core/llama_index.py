@@ -30,37 +30,90 @@ class SequentialOpenAIEmbedding(OpenAIEmbedding):
         super().__init__(**kwargs)
         self._query_cache = query_cache
 
+    def _inject_kwargs(self, input_type: str) -> dict[str, Any]:
+        """Inject input_type into extra_body for asymmetric models."""
+        kwargs = self.additional_kwargs.copy() if self.additional_kwargs else {}
+        model_name = (self.model_name or "").lower()
+        if "nemotron" in model_name or "embed-multilingual-v3" in model_name:
+            if "nemotron" in model_name:
+                if input_type == "search_document":
+                    input_type = "passage"
+                elif input_type == "search_query":
+                    input_type = "query"
+                
+            extra = kwargs.get("extra_body", {}).copy()
+            extra["input_type"] = input_type
+            if "nemotron" in model_name:
+                extra["truncate"] = "NONE"
+            kwargs["extra_body"] = extra
+        return kwargs
+
     async def _aget_text_embedding(self, text: str):
-        async with _embed_async_semaphore:
-            return await super()._aget_text_embedding(text)
+        old_kwargs = self.additional_kwargs
+        try:
+            self.additional_kwargs = self._inject_kwargs("search_document")
+            async with _embed_async_semaphore:
+                return await super()._aget_text_embedding(text)
+        finally:
+            self.additional_kwargs = old_kwargs
 
     async def _aget_query_embedding(self, query: str):
         if self._query_cache:
             cached = await self._query_cache.get(query)
             if cached:
                 return cached
-
-        async with _embed_async_semaphore:
-            res = await super()._aget_query_embedding(query)
-            if self._query_cache:
-                await self._query_cache.set(query, res)
-            return res
+        
+    async def _aget_query_embedding(self, query: str):
+        if self._query_cache:
+            cached = await self._query_cache.get(query)
+            if cached:
+                return cached
+        old_kwargs = self.additional_kwargs
+        try:
+            self.additional_kwargs = self._inject_kwargs("search_query")
+            async with _embed_async_semaphore:
+                res = await super()._aget_query_embedding(query)
+                if self._query_cache:
+                    await self._query_cache.set(query, res)
+                return res
+        finally:
+            self.additional_kwargs = old_kwargs
 
     def _get_text_embedding(self, text: str):
-        with _embed_sync_semaphore:
-            return super()._get_text_embedding(text)
+        old_kwargs = self.additional_kwargs
+        try:
+            self.additional_kwargs = self._inject_kwargs("search_document")
+            with _embed_sync_semaphore:
+                return super()._get_text_embedding(text)
+        finally:
+            self.additional_kwargs = old_kwargs
 
     def _get_query_embedding(self, query: str):
-        with _embed_sync_semaphore:
-            return super()._get_query_embedding(query)
+        old_kwargs = self.additional_kwargs
+        try:
+            self.additional_kwargs = self._inject_kwargs("search_query")
+            with _embed_sync_semaphore:
+                return super()._get_query_embedding(query)
+        finally:
+            self.additional_kwargs = old_kwargs
 
     async def _aget_text_embeddings(self, texts: list[str]):
-        async with _embed_async_semaphore:
-            return await super()._aget_text_embeddings(texts)
+        old_kwargs = self.additional_kwargs
+        try:
+            self.additional_kwargs = self._inject_kwargs("search_document")
+            async with _embed_async_semaphore:
+                return await super()._aget_text_embeddings(texts)
+        finally:
+            self.additional_kwargs = old_kwargs
 
     def _get_text_embeddings(self, texts: list[str]):
-        with _embed_sync_semaphore:
-            return super()._get_text_embeddings(texts)
+        old_kwargs = self.additional_kwargs
+        try:
+            self.additional_kwargs = self._inject_kwargs("search_document")
+            with _embed_sync_semaphore:
+                return super()._get_text_embeddings(texts)
+        finally:
+            self.additional_kwargs = old_kwargs
 
 
 def init_llama_index(query_cache: Any = None) -> None:

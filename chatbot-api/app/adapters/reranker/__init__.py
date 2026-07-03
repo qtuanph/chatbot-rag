@@ -41,10 +41,8 @@ def get_reranker(top_k: int | None = None) -> LocalRerankerPostprocessor | Nvidi
                     dmr = repo.get_builtin_provider("reranker", "dmr")
                 finally:
                     repo.close()
-                kwargs["base_url"] = (dmr.get("url") if dmr else settings.ai_reranker_url) or settings.ai_reranker_url
-                kwargs["model_name"] = (
-                    dmr.get("model") if dmr else "ai/qwen3-reranker:0.6B"
-                ) or "ai/qwen3-reranker:0.6B"
+                kwargs["base_url"] = dmr.get("url") if dmr else settings.ai_reranker_url
+                kwargs["model_name"] = dmr.get("model") if dmr else None
                 return LocalRerankerPostprocessor(**kwargs)
             kwargs["base_url"] = cfg.get("url", settings.nvidia_reranker_url)
             kwargs["model_name"] = cfg.get("model", settings.nvidia_reranker_model)
@@ -68,8 +66,8 @@ def get_reranker(top_k: int | None = None) -> LocalRerankerPostprocessor | Nvidi
                 dmr = repo.get_builtin_provider("reranker", "dmr")
             finally:
                 repo.close()
-            kwargs["base_url"] = cfg.get("url", (dmr.get("url") if dmr else settings.ai_reranker_url))
-            kwargs["model_name"] = cfg.get("model", (dmr.get("model") if dmr else "ai/qwen3-reranker:0.6B"))
+            kwargs["base_url"] = cfg.get("url") or (dmr.get("url") if dmr else settings.ai_reranker_url)
+            kwargs["model_name"] = cfg.get("model") or (dmr.get("model") if dmr else None)
             return LocalRerankerPostprocessor(**kwargs)
 
     # Fallback: local Docker-compatible reranker endpoint
@@ -80,8 +78,8 @@ def get_reranker(top_k: int | None = None) -> LocalRerankerPostprocessor | Nvidi
         dmr = repo.get_builtin_provider("reranker", "dmr")
     finally:
         repo.close()
-    kwargs["base_url"] = (dmr.get("url") if dmr else settings.ai_reranker_url) or settings.ai_reranker_url
-    kwargs["model_name"] = (dmr.get("model") if dmr else "ai/qwen3-reranker:0.6B") or "ai/qwen3-reranker:0.6B"
+    kwargs["base_url"] = dmr.get("url") if dmr else settings.ai_reranker_url
+    kwargs["model_name"] = dmr.get("model") if dmr else None
     return LocalRerankerPostprocessor(**kwargs)
 
 

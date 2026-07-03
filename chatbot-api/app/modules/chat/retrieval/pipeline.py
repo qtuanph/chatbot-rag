@@ -393,8 +393,36 @@ async def retrieve_context(
                 )
                 if reranked_nodes:
                     query_nodes = reranked_nodes
-            except Exception:
-                logger.warning("Reranker failed for query='%s'; fallback to pre-rerank nodes.", query, exc_info=True)
+            except Exception as e:
+                logger.warning("Reranker failed for query='%s': %s. Attempting fallback to DMR reranker.", query, str(e))
+                try:
+                    from app.adapters.reranker.local_postprocessor import LocalRerankerPostprocessor
+                    from app.modules.settings.repository import SettingsRepository
+                    
+                    repo = SettingsRepository()
+                    try:
+                        dmr = repo.get_builtin_provider("reranker", "dmr")
+                    finally:
+                        repo.close()
+                    
+                    if not dmr:
+                        raise ValueError("DMR provider not found in SQLite.")
+                        
+                    fallback_url = dmr.get("url")
+                    fallback_model = dmr.get("model")
+                        
+                    fallback_reranker = LocalRerankerPostprocessor(
+                        base_url=fallback_url,
+                        model_name=fallback_model,
+                        timeout=settings.ai_reranker_timeout,
+                    )
+                    
+                    reranked_nodes = await fallback_reranker.postprocess_nodes(query_nodes, qb)
+                    if reranked_nodes:
+                        query_nodes = reranked_nodes
+                        logger.info("Successfully used DMR fallback reranker.")
+                except Exception:
+                    logger.warning("Fallback DMR reranker also failed for query='%s'; fallback to pre-rerank nodes.", query, exc_info=True)
         else:
             logger.info("Skip reranker for query='%s' (%s).", query, skip_reason)
 
