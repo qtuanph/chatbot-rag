@@ -14,7 +14,7 @@ import { chatApi, tenantsApi } from "@/lib/api-client";
 import type { ChatStreamEvent, ChatUsage, TenantItem, TenantSetting } from "@/types/api";
 import type { ChatMessage } from "@/types/chat";
 
-const MAX_CONTEXT_MESSAGES = 8;
+const MAX_CONTEXT_MESSAGES = 6;
 
 function createMessage(role: "user" | "assistant", content: string): ChatMessage {
   return {
