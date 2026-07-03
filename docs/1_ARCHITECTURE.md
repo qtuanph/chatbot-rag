@@ -13,7 +13,6 @@ flowchart TB
 
     subgraph Gateway [API & Routing Zone]
         Traefik[Traefik v3.7\nReverse Proxy]
-        WebApp[Next.js Webapp\n/api/bep/*]
     end
 
     subgraph Core [Backend & Compute Zone]
@@ -38,11 +37,9 @@ flowchart TB
 
     %% Client -> Gateway
     User -->|HTTP/HTTPS| Traefik
-    Traefik -->|UI & /api| WebApp
-    Traefik -->|/api/v1| FastAPI
+    Traefik -->|Host('api.qtuanph.dev')| FastAPI
 
     %% Gateway -> Core
-    WebApp -->|Bearer Token (Internal proxy)| FastAPI
 
     %% Core -> Data
     FastAPI -->|Query / CRUD| Postgres
@@ -70,7 +67,7 @@ flowchart TB
     classDef data fill:#d5e8d4,stroke:#82b366,stroke-width:2px;
 
     class User client;
-    class Traefik,WebApp gateway;
+    class Traefik gateway;
     class FastAPI,Workers core;
     class Router,ModelRunner,NIM,LlamaParse ai;
     class Postgres,Qdrant,Redis,RustFS,SQLite data;
@@ -234,12 +231,15 @@ Không được đảo thứ tự này.
 
 ## Runtime shape hiện tại
 
+Docker backend stack:
 - `api` — FastAPI
 - `workers` — Celery
-- `webapp` — Next.js
 - `postgres`
 - `redis`
 - `qdrant`
 - `rustfs`
 - `ai-proxy` — 9Router
 - `traefik`
+
+Standalone frontend (ngoài Docker, deploy trên Cloudflare Pages):
+- `webapp` — Next.js

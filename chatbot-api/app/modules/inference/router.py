@@ -26,11 +26,6 @@ def get_public_inference_service(
 # ── OpenAI-compatible endpoints ────────────────────────────────────
 
 
-@router.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "up"}
-
-
 @router.get("/models")
 async def list_models(
     api_context: TenantApiContext = Depends(get_tenant_api_context),

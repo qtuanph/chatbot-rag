@@ -10,8 +10,7 @@
     "docs/2_WORKFLOWS.json",
     "docs/3_API_CONTRACTS.md",
     "docs/4_DEPLOYMENT.md",
-    "docs/7_CURRENT_SETTINGS.json",
-    "docs/8_TENANT_INTEGRATION_GUIDE.md"
+    "docs/7_CURRENT_SETTINGS.json"
   ],
   "must_know": {
     "mode": "multi-tenant SaaS",
@@ -37,7 +36,6 @@
     "2.5_WORKFLOWS_ANALYTICS.md": "Usage/token/cost theo tenant",
     "3_API_CONTRACTS.md": "Route và rule bảo mật",
     "4_DEPLOYMENT.md": "Docker topology và realtime recommendation",
-    "7_CURRENT_SETTINGS.json": "Snapshot cấu hình hiện tại",
-    "8_TENANT_INTEGRATION_GUIDE.md": "Cách phần mềm tenant tích hợp chatbot"
+    "7_CURRENT_SETTINGS.json": "Snapshot cấu hình hiện tại"
   }
 }

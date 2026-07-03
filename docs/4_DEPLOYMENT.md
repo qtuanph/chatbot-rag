@@ -2,13 +2,14 @@
 
 Tài liệu deployment bám theo `docker-compose.yml` hiện tại.
 
+> **Lưu ý**: Webapp Next.js chạy độc lập ngoài Docker, deploy trên Cloudflare Pages tại `sse.qtuanph.dev`. Docker stack chỉ gồm backend services.
+
 ## Topology hiện tại
 
 | Service | Vai trò |
 |---|---|
 | `api` | FastAPI backend |
 | `workers` | Celery workers |
-| `webapp` | Next.js frontend |
 | `ai-proxy` | 9Router |
 | `db` | PostgreSQL |
 | `redis` | queue + cache |
@@ -29,9 +30,8 @@ Tài liệu deployment bám theo `docker-compose.yml` hiện tại.
 
 | Thành phần | Ghi chú |
 |---|---|
-| `traefik` | public entry |
-| `webapp` | nhận browser traffic |
-| `/api/bep/*` | proxy từ Next.js sang backend |
+| `traefik` | public entry (`Host('api.qtuanph.dev')` → API) |
+| `/api/bep/*` | proxy từ Next.js (Cloudflare Pages) sang backend |
 | `ai-proxy:2908` | 9Router nội bộ |
 
 ## Volume chính
@@ -72,7 +72,7 @@ Tài liệu deployment bám theo `docker-compose.yml` hiện tại.
 
 - `EMBEDDING_API_BASE=http://model-runner.docker.internal:12434/engines/v1`
 - `EMBEDDING_HF_MODEL=ai/qwen3-embedding:0.6B-F16`
-- `EMBEDDING_VECTOR_SIZE=1024`
+- `EMBEDDING_VECTOR_SIZE=2048`
 
 ### Qdrant
 
