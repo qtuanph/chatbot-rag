@@ -162,14 +162,6 @@ export interface ChatMessageItem {
   citations?: Citation[];
 }
 
-export interface ChatUsage extends MoneyPayload {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-  model?: string;
-  latency_ms?: number;
-}
-
 export interface ChatFeedbackRequest {
   tenant_id?: string | null;
   feedback_type: "like" | "dislike";
@@ -186,22 +178,6 @@ export interface ChatFeedbackResponse {
   feedback_type: "like" | "dislike";
   created_at: string;
 }
-
-export interface ChatStreamChunk {
-  chunk: string;
-  done: false;
-  thinking?: boolean;
-}
-
-export interface ChatStreamDone {
-  chunk: string;
-  done: true;
-  citations: Citation[];
-  stats?: ChatUsage | null;
-  error?: string;
-}
-
-export type ChatStreamEvent = ChatStreamChunk | ChatStreamDone;
 
 export interface DocumentSummary {
   document_id: string;

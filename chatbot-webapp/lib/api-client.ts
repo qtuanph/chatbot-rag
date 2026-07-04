@@ -270,29 +270,6 @@ export const treeApi = {
 };
 
 export const chatApi = {
-  chatStream: (
-    query: string,
-    messages: Array<{ role: string; content: string }>,
-    options?: { tenantId?: string | null; thinkingMode?: boolean },
-  ) => {
-    const controller = new AbortController();
-    const payload = {
-      query,
-      messages,
-      tenant_id: options?.tenantId ?? null,
-      thinking_mode: Boolean(options?.thinkingMode),
-    };
-
-    const fetchStream = fetch("/api/bep/chat/stream", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-
-    return { controller, fetchStream };
-  },
-
   submitFeedback: (data: ChatFeedbackRequest): Promise<ChatFeedbackResponse> =>
     apiFetch<ChatFeedbackResponse>("/chat/feedback", {
       method: "POST",

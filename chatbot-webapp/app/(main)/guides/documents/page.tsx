@@ -1,4 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+"use client";
+
+import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { 
   FileUpIcon, 
@@ -14,105 +16,107 @@ import {
 
 export default function DocumentsGuidePage() {
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-8 pb-16 max-w-4xl">
+      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Quản lý Tài liệu (Knowledge Base)</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Hiểu cách hệ thống &quot;đọc&quot;, &quot;băm nhỏ&quot; và &quot;ghi nhớ&quot; tài liệu PDF, DOCX của công ty bạn.
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Quản lý Tài liệu (Knowledge Base)</h1>
+        <p className="text-sm text-muted-foreground mt-2">
+          Cách hệ thống đọc, băm nhỏ và vector hóa các tài liệu nghiệp vụ nội bộ.
         </p>
       </div>
 
-      <Alert className="bg-emerald-50 border-emerald-200">
-        <InfoIcon className="h-4 w-4 text-emerald-600" />
-        <AlertTitle className="text-emerald-800 font-bold">Bảo mật dữ liệu tuyệt đối!</AlertTitle>
-        <AlertDescription className="text-emerald-700">
-          Mọi tài liệu của bạn tải lên chỉ phục vụ duy nhất cho nội bộ công ty (Tenant) của bạn. Hệ thống <strong>KHÔNG</strong> lấy dữ liệu này để huấn luyện ngược lại cho ChatGPT hay bán cho bên thứ ba. Dữ liệu số hoá được cô lập hoàn toàn.
+      {/* Security alert */}
+      <Alert>
+        <InfoIcon className="h-4 w-4" />
+        <AlertTitle className="font-bold">Bảo mật dữ liệu nội bộ</AlertTitle>
+        <AlertDescription className="text-sm leading-6 mt-1 text-muted-foreground">
+          Dữ liệu của từng Tenant được cô lập hoàn toàn ở tầng vật lý (Database Filter). Hệ thống <strong>tuyệt đối không</strong> sử dụng tài liệu của bạn để train lại cho các model công cộng của OpenAI hay NVIDIA.
         </AlertDescription>
       </Alert>
 
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold border-b pb-2 flex items-center gap-2">
-          <MousePointerClickIcon className="w-5 h-5" />
-          Hướng dẫn Tải lên (Upload) & Quản lý
-        </h2>
-        <Card>
-          <CardContent className="pt-6 space-y-4 text-sm text-slate-700 leading-6">
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-4">
-              <h3 className="font-bold mb-2">Các bước thao tác trên giao diện:</h3>
-              <ol className="list-decimal pl-5 space-y-2">
-                <li>Truy cập menu <strong>Dữ liệu &gt; Documents</strong> trên thanh bên trái. (Chỉ Tenant Admin mới thấy).</li>
-                <li>Bấm nút <strong>+ Tải file lên</strong>.</li>
-                <li>Chọn các tệp tin từ máy tính. Hỗ trợ tốt nhất là <strong>PDF (dạng chữ)</strong>, <strong>DOCX</strong>, <strong>TXT</strong>, và <strong>Markdown</strong>.</li>
-                <li>Hệ thống sẽ chạy ngầm. Vui lòng theo dõi <strong>Cột Trạng thái (Status)</strong> của file trong bảng:
-                  <ul className="list-none pl-0 mt-2 space-y-1">
-                    <li className="flex gap-2 items-center"><ClockIcon className="w-4 h-4 text-yellow-500" /> <code>Pending/Processing</code>: Đang xếp hàng chờ máy chủ băm nhỏ và Vector hoá.</li>
-                    <li className="flex gap-2 items-center"><CheckCircle2Icon className="w-4 h-4 text-emerald-500" /> <code>Ready / Completed</code>: Đã học xong! AI giờ đây đã biết các thông tin trong file này.</li>
-                    <li className="flex gap-2 items-center"><AlertTriangleIcon className="w-4 h-4 text-red-500" /> <code>Failed</code>: Lỗi định dạng file (ví dụ PDF trỗng hoặc mã hoá mật khẩu).</li>
-                  </ul>
-                </li>
-              </ol>
-            </div>
-            
-            <h3 className="font-bold mt-4">Kinh nghiệm chuẩn bị tài liệu (Best Practices):</h3>
-            <ul className="list-disc pl-5 space-y-2">
-              <li><strong>Chữ thay vì Ảnh:</strong> File PDF nếu là dạng Scan (chụp ảnh) sẽ cực kỳ khó phân tích và dễ bị sai chữ. Nếu có thể, hãy tải lên File gốc (DOCX) hoặc PDF xuất trực tiếp từ Word.</li>
-              <li><strong>Đừng để AI &quot;Học tài liệu rác&quot;:</strong> Xoá các mục lục quá dài, các trang giới thiệu công ty vô thưởng vô phạt. Hãy đưa cho hệ thống các phần trọng tâm (Chính sách, Báo cáo, Quy trình).</li>
-              <li><strong>Dọn dẹp file cũ:</strong> Nếu công ty bạn thay đổi chính sách nhân sự sang bản năm 2026, hãy vào <strong>xoá file bản 2025</strong> đi. Nếu để cả 2 file, AI sẽ đọc trúng thông tin mâu thuẫn và trả lời sai.</li>
-              <li><strong>Đặt tên file dễ hiểu:</strong> Tên file cũng là một dạng siêu dữ liệu (Metadata) giúp AI tìm kiếm. Đặt tên <code>Chinh_sach_nhan_su_2026.pdf</code> thay vì <code>Doc123_final_v2.pdf</code>.</li>
-            </ul>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold border-b pb-2 mt-8">Hành trình của một file tài liệu (Under the hood)</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Dành cho những ai muốn tò mò: Chuyện gì xảy ra sau khi bạn bấm nút Upload?
-        </p>
+      {/* Guide & Rules */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
-          <Card className="border-t-4 border-t-blue-500 bg-blue-50/30">
-            <CardHeader className="pb-2">
-              <FileUpIcon className="w-8 h-8 text-blue-500 mb-2" />
-              <CardTitle className="text-base">1. Parsing (Đọc thô)</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-slate-600">
-              Hệ thống gỡ bỏ các định dạng màu mè, hình ảnh thừa, bảng biểu lộn xộn trong file PDF/Word để trích xuất ra toàn bộ <strong>Văn bản thô (Raw Text)</strong>.
-            </CardContent>
-          </Card>
+        {/* Upload guide */}
+        <div className="border border-border rounded-xl p-5 bg-card space-y-3">
+          <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+            <MousePointerClickIcon className="w-4 h-4 text-primary" />
+            Các bước Upload Tài liệu
+          </h2>
+          <ol className="list-decimal pl-4 text-xs text-muted-foreground space-y-2.5">
+            <li>Truy cập menu <strong>Dữ liệu &gt; Tài liệu</strong> (Chỉ hiển thị với Tenant Admin).</li>
+            <li>Bấm nút <strong>Tải file lên</strong> ở góc trên.</li>
+            <li>Chọn file từ máy tính. Định dạng hỗ trợ tốt nhất là <strong>PDF (dạng text)</strong>, <strong>DOCX</strong>, <strong>TXT</strong> và <strong>Markdown</strong>.</li>
+            <li>Theo dõi trạng thái xử lý tài liệu trong bảng:
+              <ul className="mt-2 space-y-1.5 list-none pl-0 font-medium">
+                <li className="flex items-center gap-1.5"><ClockIcon className="w-3.5 h-3.5 text-amber-500" /> <code>Processing</code>: Đang băm và trích xuất.</li>
+                <li className="flex items-center gap-1.5"><CheckCircle2Icon className="w-3.5 h-3.5 text-emerald-500" /> <code>Ready</code>: AI đã học xong và có thể trả lời.</li>
+                <li className="flex items-center gap-1.5"><AlertTriangleIcon className="w-3.5 h-3.5 text-destructive" /> <code>Failed</code>: Lỗi đọc file (file scan ảnh không có text hoặc bị khóa mật khẩu).</li>
+              </ul>
+            </li>
+          </ol>
+        </div>
 
-          <Card className="border-t-4 border-t-amber-500 relative bg-amber-50/30">
-            <div className="hidden md:block absolute -left-4 top-1/2 w-8 border-t-2 border-dashed border-slate-300"></div>
-            <CardHeader className="pb-2">
-              <DatabaseIcon className="w-8 h-8 text-amber-500 mb-2" />
-              <CardTitle className="text-base">2. Chunking (Băm nhỏ)</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-slate-600">
-              Một file 100 trang quá dài để AI đọc cùng 1 lúc (vượt quá Token limit). Hệ thống sẽ băm file ra thành hàng nghìn đoạn nhỏ (mỗi đoạn khoảng 500-1000 chữ) để dễ tra cứu.
-            </CardContent>
-          </Card>
+        {/* Best practices */}
+        <div className="border border-border rounded-xl p-5 bg-card space-y-3">
+          <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+            <InfoIcon className="w-4 h-4 text-primary" />
+            Kinh nghiệm soạn tài liệu (Best Practices)
+          </h2>
+          <ul className="list-disc pl-4 text-xs text-muted-foreground space-y-2.5">
+            <li>
+              <strong>Tránh PDF dạng ảnh chụp (Scanned):</strong> OCR tự động có độ sai lệch cao. Hãy ưu tiên file Word (.docx) hoặc PDF xuất trực tiếp từ máy tính.
+            </li>
+            <li>
+              <strong>Dọn dẹp thông tin rác:</strong> Loại bỏ các trang bìa lớn, mục lục dài hoặc các lời mở đầu thừa thãi để tránh gây nhiễu cho AI khi tìm kiếm ngữ nghĩa.
+            </li>
+            <li>
+              <strong>Đặt tên file mô tả đúng nội dung:</strong> Tên file là một siêu dữ liệu (Metadata) quan trọng. Ví dụ đặt tên: <code className="bg-muted px-1 rounded text-foreground text-[11px]">Chinh_sach_nhan_su_2026.pdf</code> thay vì <code className="bg-muted px-1 rounded text-[11px]">Doc_final_v2.pdf</code>.
+            </li>
+            <li>
+              <strong>Xóa bỏ tài liệu hết hạn:</strong> Khi có chính sách mới thay thế bản cũ, hãy xóa bản cũ khỏi hệ thống để tránh AI đọc phải thông tin mâu thuẫn.
+            </li>
+          </ul>
+        </div>
 
-          <Card className="border-t-4 border-t-purple-500 relative bg-purple-50/30">
-            <div className="hidden md:block absolute -left-4 top-1/2 w-8 border-t-2 border-dashed border-slate-300"></div>
-            <CardHeader className="pb-2">
-              <SearchIcon className="w-8 h-8 text-purple-500 mb-2" />
-              <CardTitle className="text-base">3. Embedding (Số hoá)</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-slate-600">
-              Sử dụng Embedding Model (như BGE-M3), các đoạn văn bản này được chuyển đổi thành toạ độ <strong>Vector đa chiều</strong> (ví dụ 1024 chiều) và lưu vào Qdrant DB. Các câu có &quot;ý nghĩa&quot; giống nhau sẽ nằm gần nhau.
-            </CardContent>
-          </Card>
+      </div>
 
-          <Card className="border-t-4 border-t-emerald-500 relative bg-emerald-50/30">
-            <div className="hidden md:block absolute -left-4 top-1/2 w-8 border-t-2 border-dashed border-slate-300"></div>
-            <CardHeader className="pb-2">
-              <BotIcon className="w-8 h-8 text-emerald-500 mb-2" />
-              <CardTitle className="text-base">4. Retrieval (Truy xuất)</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-slate-600">
-              Khi User hỏi: <em>&quot;Chính sách thai sản 2026&quot;</em>. Cỗ máy tính toán nhanh chóng quét qua hàng triệu Vector để lôi ra đúng 5 đoạn chunk nói về thai sản, rồi ném cho AI để viết câu trả lời cuối cùng.
-            </CardContent>
-          </Card>
+      {/* Under the hood workflow */}
+      <section className="space-y-4">
+        <h2 className="text-xl font-bold text-foreground border-b pb-2">Hành trình của một file tài liệu (Under the hood)</h2>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-2">
+            <FileUpIcon className="w-6 h-6 text-primary" />
+            <h3 className="font-bold text-sm text-foreground">1. Đọc thô (Parsing)</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Trích xuất toàn bộ văn bản thô từ file, loại bỏ hình ảnh trang trí, font chữ màu mè.
+            </p>
+          </div>
+
+          <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-2">
+            <DatabaseIcon className="w-6 h-6 text-primary" />
+            <h3 className="font-bold text-sm text-foreground">2. Băm nhỏ (Chunking)</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Băm văn bản thành các đoạn nhỏ (khoảng 500-1000 từ) để AI dễ đọc và định vị chính xác thông tin.
+            </p>
+          </div>
+
+          <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-2">
+            <SearchIcon className="w-6 h-6 text-primary" />
+            <h3 className="font-bold text-sm text-foreground">3. Số hóa (Embedding)</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Chuyển các đoạn văn bản thành Vector đa chiều lưu vào Vector DB (Qdrant).
+            </p>
+          </div>
+
+          <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-2">
+            <BotIcon className="w-6 h-6 text-primary" />
+            <h3 className="font-bold text-sm text-foreground">4. Truy xuất (Retrieval)</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Quét nhanh hàng triệu vector, lọc ra 5 đoạn văn bản khớp ý nghĩa nhất đưa vào Prompt cho LLM.
+            </p>
+          </div>
         </div>
       </section>
     </div>
