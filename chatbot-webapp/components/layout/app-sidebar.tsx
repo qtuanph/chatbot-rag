@@ -9,7 +9,6 @@ import {
   ChevronsUpDownIcon,
   FileTextIcon,
   LayoutDashboardIcon,
-  MessageSquareIcon,
   PlugIcon,
   Settings2Icon,
   ShieldUserIcon,
@@ -87,7 +86,6 @@ const platformGroups: NavGroup[] = [
           { title: "LLM", href: "/admin/providers/llm" },
         ],
       },
-      { title: "Chat test", href: "/chat", icon: <MessageSquareIcon /> },
     ],
   },
 ];
@@ -119,7 +117,6 @@ const tenantGroups: NavGroup[] = [
     label: "Dữ liệu & AI",
     items: [
       { title: "Tài liệu", href: "/documents", icon: <FileTextIcon /> },
-      { title: "Chat test", href: "/chat", icon: <MessageSquareIcon /> },
     ],
   },
 ];
@@ -149,7 +146,6 @@ function PlatformSwitcher() {
             <DropdownMenuGroup>
               <DropdownMenuLabel className="text-xs text-muted-foreground">Điều hướng nhanh</DropdownMenuLabel>
               <DropdownMenuItem render={<Link href="/admin" />}>Trang quản trị</DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/chat" />}>Chat test</DropdownMenuItem>
               <DropdownMenuItem render={<Link href="/settings" />}>Cài đặt</DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>

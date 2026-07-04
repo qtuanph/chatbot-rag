@@ -50,7 +50,11 @@ services:
       - "traefik.http.services.api.loadbalancer.server.port=8000"
       - "traefik.http.middlewares.api-ratelimit.ratelimit.average=100"
       - "traefik.http.middlewares.api-ratelimit.ratelimit.burst=50"
-      - "traefik.http.routers.api.middlewares=api-ratelimit@docker"
+      # — SSE: disable response buffering so stream chunks reach browser immediately
+      - "traefik.http.middlewares.api-sse.headers.customResponseHeaders.X-Accel-Buffering=no"
+      - "traefik.http.middlewares.api-sse.headers.customResponseHeaders.Cache-Control=no-cache, no-transform"
+      - "traefik.http.middlewares.api-sse.headers.customResponseHeaders.Connection=keep-alive"
+      - "traefik.http.routers.api.middlewares=api-ratelimit@docker,api-sse@docker"
 
   workers:
     image: chatbot-rag-app:latest
