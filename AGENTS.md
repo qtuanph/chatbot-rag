@@ -217,4 +217,4 @@ Nếu không chắc phải update file nào, ít nhất phải sync `docs/7_CURR
 
 ---
 
-**Last Updated**: 2026-07-03
+**Last Updated**: 2026-07-04

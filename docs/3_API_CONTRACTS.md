@@ -59,7 +59,6 @@ Base API hiện tại:
 
 | Method | Path |
 |---|---|
-| POST | `/chat/stream` |
 | POST | `/chat/feedback` |
 
 ### Analytics
@@ -158,12 +157,7 @@ Public API dùng:
 
 Backend tự resolve tenant từ key, không tin tenant do client tự truyền.
 
-## Internal chat rule
-
-`/chat/stream` là route chat nội bộ để test:
-
-- `platform_admin` phải chọn tenant khi test
-- `tenant_admin` tự gắn tenant từ JWT
+## Feedback rule
 
 `/chat/feedback` dùng để ghi nhận `like` / `dislike` cho câu trả lời AI:
 
@@ -195,6 +189,7 @@ Backend tự resolve tenant từ key, không tin tenant do client tự truyền.
 
 ## Những contract đã bỏ
 
+- `/chat/stream` (xóa hoàn toàn, dùng chung /v1/chat/completions)
 - memories CRUD (`/memories`)
 - persisted chat session contract
 - session analytics contract
