@@ -1,28 +1,63 @@
-# Release Notes - v0.8.0
+# Release Notes - Lịch sử Phát hành
 
-Hệ thống RAG đa doanh nghiệp (SaaS Multi-tenant) cập nhật nâng cấp kiến trúc API và tối ưu tài liệu hướng dẫn vận hành.
-
-## 🚀 Tính năng mới &amp; Cải tiến giao diện
-
-### 1. Nâng cấp tài liệu Tích hợp phần mềm &amp; API Playground
-- **Nhúng Live Chat Playground trực tuyến**: Hỗ trợ thử nghiệm gọi RAG API trực tiếp từ giao diện tài liệu bằng cách nhập API Key (`trg_...`) của Tenant. Trực quan hóa tiến trình stream tokens của model trong thời gian thực.
-- **Thiết kế phẳng (Flat Layout) chuẩn Base UI**: Loại bỏ cấu hình Accordion lồng nhau phức tạp. Mỗi bước tích hợp hiện là một khối collapsible độc lập và sạch sẽ.
-- **Dynamic Theme support**: Loại bỏ hoàn toàn mã màu hardcode (`bg-blue-600`, `text-indigo-600`...). Toàn bộ styles sử dụng CSS variables mặc định của Shadcn/Base UI, tự động thay đổi mượt mà theo giao diện Sáng/Tối (Light/Dark mode).
-
-### 2. Chuẩn hóa &amp; Chi tiết hóa trang Giới thiệu chung
-- Bổ sung **Sơ đồ Kiến trúc phân lớp hệ thống** (Client App → API Backend → Celery Workers → DB &amp; Vector DB → AI Services).
-- Làm rõ quy trình **Semantic Chunking** và băm vector.
-- Trình bày trực quan quy tắc **Hard-Delete Order** (strict rule) bảo vệ tính toàn vẹn dữ liệu.
+Tổng hợp lịch sử phát hành của hệ thống RAG đa doanh nghiệp (SaaS Multi-tenant).
 
 ---
 
-## 🛠 Tái cấu trúc &amp; Dọn dẹp Code thừa (Refactoring)
+## 🚀 v0.8.0 (Hiện tại)
+*Nâng cấp tài liệu Tích hợp phần mềm & API Playground.*
+- **API Playground trực tuyến**: Hỗ trợ thử nghiệm gọi RAG API trực tiếp từ giao diện tài liệu bằng cách nhập API Key (`trg_...`).
+- **Thiết kế phẳng (Flat Layout)**: Thay đổi Accordion sang các khối độc lập.
+- **Dynamic Theme support**: Sử dụng CSS variables của Shadcn/Base UI, tự động đổi màu theo Light/Dark mode.
+- **Dọn dẹp Backend**: Loại bỏ endpoint custom `/chat/stream` thừa, sử dụng duy nhất `/v1/chat/completions` chuẩn OpenAI.
 
-### Backend (`chatbot-api`)
-- **Xóa bỏ endpoint custom `/chat/stream`**: Toàn bộ hệ thống giờ đây chỉ expose duy nhất route chuẩn tương thích với OpenAI là `/v1/chat/completions` (Direct API Call).
-- **Giữ lại `/chat/feedback`**: Hỗ trợ thu thập feedback của người dùng để cải tiến hệ thống.
+---
 
-### Webapp (`chatbot-webapp`)
-- Xóa bỏ hoàn toàn trang Chat Test nội bộ `/chat` lỗi thời và các component phụ thuộc.
-- Cập nhật Sidebar gỡ liên kết trang Chat Test cũ.
-- Chạy type-check `npx tsc --noEmit` thành công 100% không còn lỗi cú pháp hay linter.
+## 🚀 v0.7.0
+*Đồng bộ tài liệu hướng dẫn và cập nhật settings.*
+- Cập nhật các tệp tin trong `docs/` để đồng bộ với cấu hình môi trường runtime.
+
+---
+
+## 🚀 v0.6.3
+*Nâng cấp Analytics Dashboard UI & Tối ưu AI pipeline.*
+- **Analytics Dashboard**: Nâng cấp giao diện biểu đồ và quản trị.
+- **User Settings**: Form giao diện điều chỉnh thông số chatbot và hiệu ứng chữ gõ (typing effect).
+- **AI pipeline**: Cải tiến luồng băm dữ liệu Embedding và Reranker.
+
+---
+
+## 🚀 v0.6.2
+*Bump dependencies tự động.*
+- Cập nhật các gói thư viện Python và npm để cải thiện bảo mật và vá lỗi.
+
+---
+
+## 🚀 v0.6.1
+*Theo dõi độ trễ AI model & Token usage.*
+- Bổ sung tracking model latency (độ trễ phản hồi) và số token embedding sử dụng thực tế.
+
+---
+
+## 🚀 v0.6.0
+*Tái cấu trúc utils & Tối ưu semantic cache.*
+- Refactor cấu trúc thư mục tiện ích backend và tăng tốc độ trả lời nhờ bộ đệm tương đồng ngữ nghĩa.
+
+---
+
+## 🚀 v0.5.2
+*Hoàn tất tích hợp Cloudflare (Production-ready).*
+- Chuyển đổi middleware sang Edge runtime để tương thích với Cloudflare Next-on-Pages.
+- Tối ưu hóa kích thước bundle và tắt cache component tạm thời để tránh lỗi EISDIR.
+
+---
+
+## 🚀 v0.5.1
+*Sửa lỗi build Cloudflare & Cập nhật tài liệu.*
+- Sửa lỗi tương thích linter, tooltip mismatch, và cập nhật tài liệu hướng dẫn cho BA & Dev.
+
+---
+
+## 🚀 v0.5.0
+*Refactor UI quản lý AI Providers.*
+- Chia nhỏ các tab cài đặt AI Providers (Embedding, Reranker, LLM) thành các router tĩnh.
