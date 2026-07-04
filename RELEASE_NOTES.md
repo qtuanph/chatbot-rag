@@ -4,7 +4,13 @@ Tổng hợp lịch sử phát hành của hệ thống RAG đa doanh nghiệp (
 
 ---
 
-## 🚀 v0.8.0 (Hiện tại)
+## 🚀 v0.8.2 (Hiện tại)
+*Nâng cấp bảo mật các thư viện phụ thuộc.*
+- Cập nhật phiên bản thư viện `js-yaml` từ `4.1.1` lên `4.3.0` để bảo mật an toàn hệ thống.
+
+---
+
+## 🚀 v0.8.0
 *Nâng cấp tài liệu Tích hợp phần mềm & API Playground.*
 - **API Playground trực tuyến**: Hỗ trợ thử nghiệm gọi RAG API trực tiếp từ giao diện tài liệu bằng cách nhập API Key (`trg_...`).
 - **Thiết kế phẳng (Flat Layout)**: Thay đổi Accordion sang các khối độc lập.
