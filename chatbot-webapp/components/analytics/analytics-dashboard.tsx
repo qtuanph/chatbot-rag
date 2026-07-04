@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
 
 type AnalyticsDashboardProps = {
@@ -260,6 +263,87 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
             <ModelTypeCard title="Reranker" stats={stats.by_model_type.reranker} icon={Network} gradientClass="from-purple-500/10 to-pink-500/10" iconColor="text-purple-500" />
           </div>
 
+          {/* AI Token Consumption Chart Card */}
+          <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg mt-4">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-base font-semibold">Xu hướng tiêu thụ Token AI</CardTitle>
+              <CardDescription>
+                Biểu đồ thống kê chi tiết lượng Token Input và Output đã được xử lý qua hệ thống theo ngày.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="h-72">
+              <ChartContainer
+                config={{
+                  tokens_in: {
+                    label: "Token Vào (Input)",
+                    color: "var(--primary)",
+                  },
+                  tokens_out: {
+                    label: "Token Ra (Output)",
+                    color: "hsl(142.1 76.2% 36.3%)",
+                  },
+                }}
+                className="h-full w-full"
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={stats.daily.map(item => ({
+                      ...item,
+                      formattedDate: item.date.split("-").slice(1).reverse().join("/"), // "2026-07-04" -> "04/07"
+                    }))}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="colorTokensIn" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorTokensOut" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted/40" />
+                    <XAxis 
+                      dataKey="formattedDate" 
+                      stroke="hsl(var(--muted-foreground))" 
+                      fontSize={11} 
+                      tickLine={false} 
+                      axisLine={false}
+                    />
+                    <YAxis 
+                      stroke="hsl(var(--muted-foreground))" 
+                      fontSize={11} 
+                      tickLine={false} 
+                      axisLine={false}
+                      tickFormatter={(value) => value >= 1000 ? `${(value/1000).toFixed(0)}k` : value}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Area 
+                      type="monotone" 
+                      dataKey="tokens_in" 
+                      name="Token Vào (Input)"
+                      stroke="hsl(var(--primary))" 
+                      strokeWidth={2}
+                      fillOpacity={1} 
+                      fill="url(#colorTokensIn)" 
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="tokens_out" 
+                      name="Token Ra (Output)"
+                      stroke="#22c55e" 
+                      strokeWidth={2}
+                      fillOpacity={1} 
+                      fill="url(#colorTokensOut)" 
+                    />
+                    <ChartLegend content={<ChartLegendContent />} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+
           <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg mt-4">
             <CardHeader>
               <CardTitle>Yêu cầu gần đây</CardTitle>
@@ -274,24 +358,26 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
               {stats.recent_requests.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Chưa có request nào trong khoảng thời gian này.</p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="pr-4 text-xs text-muted-foreground">Model</TableHead>
-                      <TableHead className="pr-4 text-xs text-muted-foreground">Loại</TableHead>
-                      <TableHead className="pr-4 text-right text-xs text-muted-foreground">In</TableHead>
-                      <TableHead className="pr-4 text-right text-xs text-muted-foreground">Out</TableHead>
-                      <TableHead className="pr-4 text-right text-xs text-muted-foreground">Độ trễ</TableHead>
-                      <TableHead className="pr-4 text-right text-xs text-muted-foreground">Chi phí</TableHead>
-                      <TableHead className="text-right text-xs text-muted-foreground">Thời điểm</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {stats.recent_requests.map((row, index) => (
-                      <RequestRow key={`${row.model_name}-${row.created_at}-${index}`} row={row} />
-                    ))}
-                  </TableBody>
-                </Table>
+                <ScrollArea className="h-96 pr-2">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="pr-4 text-xs text-muted-foreground">Model</TableHead>
+                        <TableHead className="pr-4 text-xs text-muted-foreground">Loại</TableHead>
+                        <TableHead className="pr-4 text-right text-xs text-muted-foreground">In</TableHead>
+                        <TableHead className="pr-4 text-right text-xs text-muted-foreground">Out</TableHead>
+                        <TableHead className="pr-4 text-right text-xs text-muted-foreground">Độ trễ</TableHead>
+                        <TableHead className="pr-4 text-right text-xs text-muted-foreground">Chi phí</TableHead>
+                        <TableHead className="text-right text-xs text-muted-foreground">Thời điểm</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {stats.recent_requests.map((row, index) => (
+                        <RequestRow key={`${row.model_name}-${row.created_at}-${index}`} row={row} />
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
               )}
             </CardContent>
           </Card>
