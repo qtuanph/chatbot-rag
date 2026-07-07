@@ -1,3 +1,8 @@
-export default function HomePage() {
-  return null;
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+
+export default async function HomePage() {
+  const session = await auth();
+  if (!session) redirect("/login");
+  redirect(session.role === "platform_admin" ? "/admin" : "/analytics");
 }

@@ -19,8 +19,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RAG Platform",
+  title: { default: "RAG Platform", template: "%s | RAG Platform" },
   description: "Nền tảng hỏi đáp tài liệu đa tenant cho doanh nghiệp",
+  openGraph: {
+    title: "RAG Platform",
+    description: "Nền tảng hỏi đáp tài liệu đa tenant cho doanh nghiệp",
+    type: "website",
+    locale: "vi_VN",
+  },
+  icons: { icon: "/favicon.ico" },
+  robots: { index: true, follow: true },
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({

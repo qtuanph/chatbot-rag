@@ -12,7 +12,7 @@ export default auth((req) => {
   if (pathname === "/login") {
     if (isLoggedIn) {
       response = NextResponse.redirect(
-        new URL(role === "platform_admin" ? "/admin" : "/chat", req.nextUrl),
+        new URL(role === "platform_admin" ? "/admin" : "/analytics", req.nextUrl),
       );
     }
   }
@@ -21,7 +21,7 @@ export default auth((req) => {
   else if (pathname === "/") {
     if (isLoggedIn) {
       response = NextResponse.redirect(
-        new URL(role === "platform_admin" ? "/admin" : "/chat", req.nextUrl),
+        new URL(role === "platform_admin" ? "/admin" : "/analytics", req.nextUrl),
       );
     } else {
       response = NextResponse.redirect(new URL("/login", req.nextUrl));
@@ -37,7 +37,12 @@ export default auth((req) => {
 
   // Admin routes: require platform admin role
   else if (pathname.startsWith("/admin") && role !== "platform_admin") {
-    response = NextResponse.redirect(new URL("/chat", req.nextUrl));
+    response = NextResponse.redirect(new URL("/analytics", req.nextUrl));
+  }
+
+  // Guides for platform admin only: block tenant_admin
+  else if ((pathname.startsWith("/guides/providers") || pathname.startsWith("/guides/tenants")) && role !== "platform_admin") {
+    response = NextResponse.redirect(new URL("/analytics", req.nextUrl));
   }
 
   if (!response) {

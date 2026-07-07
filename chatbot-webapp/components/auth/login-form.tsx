@@ -43,7 +43,7 @@ export function LoginForm() {
       } else {
         const response = await fetch("/api/auth/session");
         const session = await response.json();
-        router.push(session?.role === "platform_admin" ? "/admin" : "/chat");
+        router.push(session?.role === "platform_admin" ? "/admin" : "/analytics");
       }
 
       router.refresh();

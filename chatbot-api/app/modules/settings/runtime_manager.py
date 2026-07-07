@@ -70,9 +70,9 @@ class RuntimeProviderManager:
 
                 logging.getLogger(__name__).warning("Failed to override embedding provider", exc_info=True)
 
-        # Override LLM (if not 9Router built-in or if user added custom)
+        # Override LLM from SQLite — 9Router is now managed via SQLite/webapp
         llm = self._llm
-        if llm and llm.get("url") and not llm.get("is_builtin"):
+        if llm and llm.get("url"):
             try:
                 from llama_index.llms.openai_like import OpenAILike
 
@@ -103,6 +103,29 @@ class RuntimeProviderManager:
 
     def get_llm_config(self) -> dict[str, Any] | None:
         return self._llm
+
+    def get_llm_api_base(self) -> str:
+        """9Router base URL (without /v1) for admin/model-listing endpoints."""
+        if not self._llm:
+            return ""
+        url = self._llm.get("url", "")
+        for suffix in ("/v1", "v1"):
+            if url.endswith(suffix):
+                url = url[: -len(suffix)]
+                break
+        return url.rstrip("/")
+
+    def get_llm_api_key(self) -> str:
+        """9Router API key (round-robin aware, else direct field)."""
+        if not self._llm:
+            return ""
+        return self._get_effective_key(self._llm) or self._llm.get("api_key") or ""
+
+    def get_llm_model(self) -> str:
+        """Active LLM model name, falling back to .env default."""
+        if not self._llm:
+            return settings.ai_proxy_default_model or ""
+        return self._llm.get("model") or settings.ai_proxy_default_model or ""
 
     # ── Round-robin keys ─────────────────────────────────────────
 

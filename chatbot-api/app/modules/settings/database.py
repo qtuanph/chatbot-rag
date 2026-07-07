@@ -2,6 +2,8 @@ import os
 import sqlite3
 from pathlib import Path
 
+from app.core.config import settings
+
 _DEFAULT_DIR = "/app/data"
 if not Path(_DEFAULT_DIR).exists():
     _DEFAULT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
@@ -91,6 +93,7 @@ def init_db() -> None:
         _migrate_schema(db)
         _seed_templates(db)
         _sync_builtin_defaults(db)
+        _migrate_9router_key(db)
     finally:
         db.close()
 
@@ -162,8 +165,18 @@ def _seed_templates(db: sqlite3.Connection) -> None:
             0,
         ),
         ("reranker", "cohere", "Cohere", "https://api.cohere.com", "rerank-multilingual-v3.0", "", 0, 0, 2),
-        # LLM (9Router built-in)
-        ("llm", "9router", "9Router (Built-in)", "http://ai-proxy:2908/v1", "chatbot-rag", "", 1, 1, 0),
+        # LLM (9Router built-in) — seeded from .env so webapp can manage it
+        (
+            "llm",
+            "9router",
+            "9Router (Built-in)",
+            f"{settings.ai_proxy_url.rstrip('/')}/v1",
+            settings.ai_proxy_default_model or "chatbot-rag",
+            settings.ai_proxy_api_key or "",
+            1,
+            1,
+            0,
+        ),
     ]
 
     db.executemany(
@@ -198,3 +211,18 @@ def _sync_builtin_defaults(db: sqlite3.Connection) -> None:
         ),
     )
     db.commit()
+
+
+def _migrate_9router_key(db: sqlite3.Connection) -> None:
+    """Copy .env api_key into SQLite 9Router entry if SQLite key is empty (one-off migration)."""
+    if not settings.ai_proxy_api_key:
+        return
+    row = db.execute(
+        "SELECT api_key FROM ai_providers WHERE service_type = 'llm' AND provider_name = '9router'"
+    ).fetchone()
+    if row and not row["api_key"]:
+        db.execute(
+            "UPDATE ai_providers SET api_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (settings.ai_proxy_api_key, row["id"]),
+        )
+        db.commit()

@@ -117,11 +117,7 @@ class TenantService:
         if setting is None:
             return await self.repo.upsert_setting(
                 tenant_id,
-                {
-                    "chatbot_display_name": "Assistant",
-                    "welcome_message": "Xin chao, toi co the ho tro gi cho ban?",
-                    "system_instruction": "",
-                },
+                {"system_instruction": ""},
             )
         return setting
 

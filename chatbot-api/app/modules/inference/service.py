@@ -99,7 +99,7 @@ class PublicInferenceService:
                 llm.temperature = previous_temperature
             if max_tokens is not None:
                 llm.max_tokens = previous_max_tokens
-        
+
         latency_ms = (time.perf_counter() - t0) * 1000
         usage = getattr(response, "additional_kwargs", {}) or {}
         usage["latency_ms"] = latency_ms
@@ -269,11 +269,7 @@ class PublicInferenceService:
             raise ValueError("Tenant not found")
         setting = await self.tenant_repo.get_setting(tenant_id)
         if setting is None:
-            return {
-                "chatbot_display_name": tenant["name"],
-                "welcome_message": "Xin chào, tôi có thể hỗ trợ gì cho bạn?",
-                "system_instruction": "",
-            }
+            return {"system_instruction": ""}
         return setting
 
     @staticmethod
@@ -326,6 +322,7 @@ class PublicInferenceService:
         except Exception as e:
             self._emit_debug("RAG_RETRIEVAL_ERROR", error=str(e), tenant_id=tenant_id)
             from app.models.rag import RagNode
+
             error_node = RagNode(
                 node_id="sys_error",
                 parent_id=None,
@@ -628,10 +625,13 @@ class PublicInferenceService:
         try:
             evaluator_llm = Settings.llm
             if settings.ai_evaluation_model:
+                from app.modules.settings.runtime_manager import RuntimeProviderManager
+
+                runtime = RuntimeProviderManager.get_instance()
                 evaluator_llm = OpenAILike(
                     model=settings.ai_evaluation_model,
-                    api_base=f"{settings.ai_proxy_url}/v1",
-                    api_key=settings.ai_proxy_api_key or "no-key",
+                    api_base=(runtime.get_llm_api_base() or settings.ai_proxy_url.rstrip("/")) + "/v1",
+                    api_key=runtime.get_llm_api_key() or settings.ai_proxy_api_key or "no-key",
                     is_chat_model=True,
                     temperature=0.0,
                     context_window=128000,

@@ -40,7 +40,7 @@ class SequentialOpenAIEmbedding(OpenAIEmbedding):
                     input_type = "passage"
                 elif input_type == "search_query":
                     input_type = "query"
-                
+
             extra = kwargs.get("extra_body", {}).copy()
             extra["input_type"] = input_type
             if "nemotron" in model_name:
@@ -57,12 +57,6 @@ class SequentialOpenAIEmbedding(OpenAIEmbedding):
         finally:
             self.additional_kwargs = old_kwargs
 
-    async def _aget_query_embedding(self, query: str):
-        if self._query_cache:
-            cached = await self._query_cache.get(query)
-            if cached:
-                return cached
-        
     async def _aget_query_embedding(self, query: str):
         if self._query_cache:
             cached = await self._query_cache.get(query)
@@ -126,6 +120,7 @@ def init_llama_index(query_cache: Any = None) -> None:
         query_cache=query_cache,
     )
 
+    # Safety net: .env fallback — runtime manager overrides this below
     Settings.llm = OpenAILike(
         model=settings.ai_proxy_default_model or "default",
         api_base=f"{settings.ai_proxy_url}/v1",

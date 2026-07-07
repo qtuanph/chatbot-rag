@@ -1,8 +1,8 @@
 {
   "document": {
     "id": "7_CURRENT_SETTINGS",
-    "version": "2026-07-03",
-    "purpose": "Snapshot cấu hình hiện tại sau route refactor sang /v1 prefix và embedding pipeline improvements."
+    "version": "2026-07-06",
+    "purpose": "Snapshot cấu hình hiện tại — bổ sung Zod v4 client-side validation cho frontend API client."
   },
   "architecture": {
     "mode": "multi-tenant",
@@ -111,5 +111,15 @@
     "fastembed_cache_path": "/home/qtuanph/.cache/huggingface/fastembed",
     "worker_prewarm_sparse_model": "Qdrant/bm25",
     "native_sparse_inject": true
+  },
+  "frontend": {
+    "validation_library": "zod v4.4.3",
+    "validation_import_path": "zod/v4",
+    "schema_source_of_truth": "lib/schemas.ts",
+    "type_re_export": "types/api.ts",
+    "api_client_pattern": "apiFetchParse<T>(schema, path, options, token) — appiFetch mới parse qua Zod schema",
+    "api_client_file": "lib/api-client.ts",
+    "migration_status": "100% — cả 42 method API đã chuyển sang apiFetchParse",
+    "unmigrated": ["streamList (EventSource — không áp dụng Zod parse)"]
   }
 }

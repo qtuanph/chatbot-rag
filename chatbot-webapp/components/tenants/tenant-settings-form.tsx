@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { tenantsApi } from "@/lib/api-client";
 import { formatDateTimeVN } from "@/lib/format";
@@ -34,8 +33,6 @@ export function TenantSettingsForm(props: TenantSettingsFormProps) {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<TenantSettingUpdateRequest>({
-    chatbot_display_name: "",
-    welcome_message: "",
     system_instruction: "",
   });
 
@@ -47,8 +44,6 @@ export function TenantSettingsForm(props: TenantSettingsFormProps) {
 
       setSetting(result);
       setForm({
-        chatbot_display_name: result.chatbot_display_name,
-        welcome_message: result.welcome_message,
         system_instruction: result.system_instruction,
       });
     } catch (error) {
@@ -70,8 +65,6 @@ export function TenantSettingsForm(props: TenantSettingsFormProps) {
     try {
       setSaving(true);
       const payload: TenantSettingUpdateRequest = {
-        chatbot_display_name: form.chatbot_display_name?.trim() || undefined,
-        welcome_message: form.welcome_message?.trim() || undefined,
         system_instruction: form.system_instruction?.trim() || undefined,
       };
 
@@ -82,8 +75,6 @@ export function TenantSettingsForm(props: TenantSettingsFormProps) {
 
       setSetting(result);
       setForm({
-        chatbot_display_name: result.chatbot_display_name,
-        welcome_message: result.welcome_message,
         system_instruction: result.system_instruction,
       });
       toast.success("Đã lưu cấu hình tenant");
@@ -100,31 +91,6 @@ export function TenantSettingsForm(props: TenantSettingsFormProps) {
   ) : (
     <>
       <FieldGroup>
-        <Field>
-          <FieldContent>
-            <FieldLabel htmlFor="chatbot_display_name">Tên chatbot</FieldLabel>
-            <Input
-              id="chatbot_display_name"
-              value={form.chatbot_display_name || ""}
-              onChange={(event) => setForm((current) => ({ ...current, chatbot_display_name: event.target.value }))}
-              placeholder="Ví dụ: Trợ lý nội bộ Công ty A"
-            />
-          </FieldContent>
-        </Field>
-
-        <Field>
-          <FieldContent>
-            <FieldLabel htmlFor="welcome_message">Lời chào</FieldLabel>
-            <Textarea
-              id="welcome_message"
-              value={form.welcome_message || ""}
-              onChange={(event) => setForm((current) => ({ ...current, welcome_message: event.target.value }))}
-              placeholder="Ví dụ: Xin chào, tôi có thể hỗ trợ gì cho anh/chị?"
-              rows={3}
-            />
-          </FieldContent>
-        </Field>
-
         <Field>
           <FieldContent>
             <FieldLabel htmlFor="system_instruction">Instruction tenant</FieldLabel>
@@ -159,7 +125,7 @@ export function TenantSettingsForm(props: TenantSettingsFormProps) {
       <CardHeader>
         <CardTitle>{props.title || "Cấu hình chatbot"}</CardTitle>
         <CardDescription>
-          {props.description || "Quản lý tên chatbot, lời chào và instruction riêng của tenant."}
+          {props.description || "Quản lý instruction riêng của tenant."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">{content}</CardContent>

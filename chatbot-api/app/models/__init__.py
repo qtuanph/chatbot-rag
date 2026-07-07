@@ -2,7 +2,7 @@
 
 from app.models.auth import Role, TimestampMixin, User
 from app.models.document import Document, DocumentSection
-from app.models.datasource import DataSource, DataSourceQueryAudit, DataSourceSchemaCache
+
 from app.models.audit import SecurityAudit
 from app.models.feedback import ChatFeedback
 from app.models.rag import RagNode, RagSection, RagContext
@@ -19,9 +19,6 @@ __all__ = [
     "Document",
     "DocumentSection",
     "ChatFeedback",
-    "DataSource",
-    "DataSourceSchemaCache",
-    "DataSourceQueryAudit",
     "SecurityAudit",
     "AiModelUsage",
     "RagNode",

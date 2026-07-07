@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.modules.analytics.repository import AnalyticsRepository
+from app.modules.settings.runtime_manager import RuntimeProviderManager
 from app.core.config import settings
 from app.utils.money import build_money_payload, compute_cost_micros_vnd
 
@@ -74,7 +75,7 @@ class AnalyticsService:
                 "currency_code": settings.billing_currency_code,
                 "input_price_vnd_per_1m": settings.ai_input_price_vnd_per_1m,
                 "output_price_vnd_per_1m": settings.ai_output_price_vnd_per_1m,
-                "model": settings.ai_proxy_default_model or "unknown",
+                "model": RuntimeProviderManager.get_instance().get_llm_model() or "unknown",
                 "note": "Free tier" if settings.ai_input_price_vnd_per_1m == 0 else "",
             },
         }

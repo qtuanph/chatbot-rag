@@ -326,7 +326,7 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
           <SheetHeader>
             <SheetTitle>Sửa — {editDialog?.display_name}</SheetTitle>
           </SheetHeader>
-          <form id="edit-form" onSubmit={handleUpdate}>
+          <form id="edit-form" key={editDialog?.id} onSubmit={handleUpdate}>
             <FieldGroup>
             <Field>
               <FieldContent>
