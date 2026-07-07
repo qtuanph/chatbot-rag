@@ -39,7 +39,9 @@ async def lifespan(application: FastAPI):
     from app.core.redis import get_redis_client
     from app.utils.cache import SemanticCache, QueryEmbeddingCache
     from app.core.llama_index import init_llama_index
+    from app.modules.settings.database import init_db
 
+    init_db()
     redis = get_redis_client()
     query_cache = QueryEmbeddingCache(redis, model_name=settings.embedding_hf_model)
     init_llama_index(query_cache=query_cache)

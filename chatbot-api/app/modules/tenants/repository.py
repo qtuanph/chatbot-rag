@@ -120,8 +120,6 @@ class TenantRepository:
         return {
             "id": str(row.id),
             "tenant_id": str(row.tenant_id),
-            "chatbot_display_name": row.chatbot_display_name,
-            "welcome_message": row.welcome_message,
             "system_instruction": row.system_instruction,
             "updated_at": to_vietnam_datetime(row.updated_at),
         }

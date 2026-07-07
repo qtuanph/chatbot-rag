@@ -1,506 +1,73 @@
-export interface MoneyPayload {
-  currency_code: string;
-  cost_micros_vnd: number;
-  cost_vnd: string;
-  cost_vnd_rounded: number;
-}
+// Types inferred from Zod schemas in lib/schemas.ts
+// Do NOT edit types here — edit schemas in lib/schemas.ts
 
-export interface LoginRequest {
-  username: string;
-  password: string;
-}
+import { z } from "zod/v4";
+import * as s from "@/lib/schemas";
 
-export interface UpdateProfileRequest {
-  username?: string;
-  current_password?: string;
-  new_password?: string;
-}
+// ── Shared ──
+export type MoneyPayload = z.infer<typeof s.MoneyPayloadSchema>;
 
-export interface TokenResponse {
-  access_token: string;
-  token_type: string;
-  role: string;
-  tenant_id?: string | null;
-}
+// ── Auth ──
+export type LoginRequest = z.infer<typeof s.LoginRequestSchema>;
+export type TokenResponse = z.infer<typeof s.TokenResponseSchema>;
+export type LogoutResponse = z.infer<typeof s.LogoutResponseSchema>;
+export type CreateUserRequest = z.infer<typeof s.CreateUserRequestSchema>;
+export type UserItem = z.infer<typeof s.UserItemSchema>;
+export type UserInfo = z.infer<typeof s.UserInfoSchema>;
+export type RoleItem = z.infer<typeof s.RoleItemSchema>;
+export type UpdateProfileRequest = z.infer<typeof s.UpdateProfileRequestSchema>;
 
-export interface UserInfo {
-  user_id: string;
-  username: string;
-  role: string;
-  tenant_id?: string | null;
-  is_active: boolean;
-}
+// ── Tenant ──
+export type TenantItem = z.infer<typeof s.TenantItemSchema>;
+export type TenantCreateRequest = z.infer<typeof s.TenantCreateRequestSchema>;
+export type TenantUpdateRequest = z.infer<typeof s.TenantUpdateRequestSchema>;
+export type TenantSetting = z.infer<typeof s.TenantSettingSchema>;
+export type TenantSettingUpdateRequest = z.infer<typeof s.TenantSettingUpdateRequestSchema>;
+export type TenantApiKeyItem = z.infer<typeof s.TenantApiKeyItemSchema>;
+export type TenantApiKeyCreateRequest = z.infer<typeof s.TenantApiKeyCreateRequestSchema>;
+export type TenantApiKeyCreateResponse = z.infer<typeof s.TenantApiKeyCreateResponseSchema>;
+export type TenantUsageSummaryItem = z.infer<typeof s.TenantUsageSummaryItemSchema>;
+export type TenantUsageSummaryResponse = z.infer<typeof s.TenantUsageSummaryResponseSchema>;
 
-export interface UserItem {
-  id: string;
-  username: string;
-  role: string;
-  tenant_id?: string | null;
-}
+// ── Document ──
+export type UploadResponse = z.infer<typeof s.UploadResponseSchema>;
+export type TaskStatus = z.infer<typeof s.TaskStatusSchema>;
+export type DocumentSummary = z.infer<typeof s.DocumentSummarySchema>;
+export type DocumentListResponse = z.infer<typeof s.DocumentListResponseSchema>;
+export type DocumentDetail = z.infer<typeof s.DocumentDetailSchema>;
+export type DocumentDeleteResponse = z.infer<typeof s.DocumentDeleteResponseSchema>;
+export type DocumentRetryResponse = z.infer<typeof s.DocumentRetryResponseSchema>;
+export type DocumentRechunkResponse = z.infer<typeof s.DocumentRechunkResponseSchema>;
 
-export interface CreateUserRequest {
-  username: string;
-  password: string;
-  role?: string;
-  tenant_id?: string | null;
-}
+// ── Tree ──
+export type TreeNode = z.infer<typeof s.TreeNodeSchema>;
+export type TreeResponse = z.infer<typeof s.TreeResponseSchema>;
+export type NodeDetail = z.infer<typeof s.NodeDetailSchema>;
+export type TreeSearchResult = z.infer<typeof s.TreeSearchResultSchema>;
 
-export interface RoleItem {
-  id: string;
-  name: string;
-  description: string | null;
-}
+// ── Chat ──
+export type Citation = z.infer<typeof s.CitationSchema>;
+export type ChatMessageItem = z.infer<typeof s.ChatMessageItemSchema>;
+export type ChatFeedbackRequest = z.infer<typeof s.ChatFeedbackRequestSchema>;
+export type ChatFeedbackResponse = z.infer<typeof s.ChatFeedbackResponseSchema>;
 
-export interface TenantItem {
-  id: string;
-  slug: string;
-  name: string;
-  status: string;
-  description?: string | null;
-  monthly_token_quota: number;
-  monthly_request_quota: number;
-  rate_limit_rpm: number;
-  allowed_origins: string[];
-  created_at: string;
-  updated_at: string;
-}
+// ── Analytics ──
+export type ModelTypeStats = z.infer<typeof s.ModelTypeStatsSchema>;
+export type AnalyticsDailyStat = z.infer<typeof s.AnalyticsDailyStatSchema>;
+export type DailyByModelType = z.infer<typeof s.DailyByModelTypeSchema>;
+export type RecentRequest = z.infer<typeof s.RecentRequestSchema>;
+export type AnalyticsStats = z.infer<typeof s.AnalyticsStatsSchema>;
+export type UserUsageSummaryItem = z.infer<typeof s.UserUsageSummaryItemSchema>;
+export type UserUsageWindows = z.infer<typeof s.UserUsageWindowsSchema>;
+export type UserUsageDetail = z.infer<typeof s.UserUsageDetailSchema>;
 
-export interface TenantCreateRequest {
-  name: string;
-  slug: string;
-  description?: string | null;
-  monthly_token_quota?: number;
-  monthly_request_quota?: number;
-  rate_limit_rpm?: number;
-  allowed_origins?: string[];
-  admin_username?: string;
-  admin_password?: string;
-}
+// ── Settings / AI Providers ──
+export type AIProvider = z.infer<typeof s.AIProviderSchema>;
+export type AIProviderCreate = z.infer<typeof s.AIProviderCreateSchema>;
+export type AIProviderUpdate = z.infer<typeof s.AIProviderUpdateSchema>;
+export type ApiKeyItem = z.infer<typeof s.ApiKeyItemSchema>;
+export type ProviderTemplate = z.infer<typeof s.ProviderTemplateSchema>;
 
-export interface TenantUpdateRequest {
-  slug?: string;
-  name?: string;
-  description?: string | null;
-  status?: string;
-  monthly_token_quota?: number;
-  monthly_request_quota?: number;
-  rate_limit_rpm?: number;
-  allowed_origins?: string[];
-}
-
-export interface TenantSetting {
-  tenant_id: string;
-  chatbot_display_name: string;
-  welcome_message: string;
-  system_instruction: string;
-  updated_at: string;
-}
-
-export interface TenantSettingUpdateRequest {
-  chatbot_display_name?: string;
-  welcome_message?: string;
-  system_instruction?: string;
-}
-
-export interface TenantApiKeyItem {
-  id: string;
-  tenant_id: string;
-  name: string;
-  key_prefix: string;
-  status: string;
-  expires_at?: string | null;
-  last_used_at?: string | null;
-  revoked_at?: string | null;
-  created_at: string;
-}
-
-export interface TenantApiKeyCreateRequest {
-  name: string;
-  expires_at?: string | null;
-}
-
-export interface TenantApiKeyCreateResponse extends TenantApiKeyItem {
-  raw_api_key: string;
-}
-
-export interface TenantUsageSummaryItem extends MoneyPayload {
-  tenant_id: string;
-  tenant_slug: string;
-  tenant_name: string;
-  tokens_in: number;
-  tokens_out: number;
-  total_tokens: number;
-  call_count: number;
-  avg_latency_ms: number;
-  window_days: number;
-}
-
-export interface TenantUsageSummaryResponse {
-  items: TenantUsageSummaryItem[];
-  window_days: number;
-  pricing: {
-    currency_code: string;
-    input_price_vnd_per_1m: number;
-    output_price_vnd_per_1m: number;
-  };
-}
-
-export interface Citation {
-  document_id: string;
-  section_id: string;
-  file_name: string;
-  title: string;
-  heading: string;
-  page_range?: string | null;
-  score?: number | null;
-}
-
-export interface ChatMessageItem {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  citations?: Citation[];
-}
-
-export interface ChatFeedbackRequest {
-  tenant_id?: string | null;
-  feedback_type: "like" | "dislike";
-  query_text: string;
-  assistant_answer: string;
-  citations: Citation[];
-  metadata?: Record<string, unknown>;
-}
-
-export interface ChatFeedbackResponse {
-  id: string;
-  tenant_id: string;
-  user_id?: string | null;
-  feedback_type: "like" | "dislike";
-  created_at: string;
-}
-
-export interface DocumentSummary {
-  document_id: string;
-  tenant_id: string;
-  title: string;
-  file_name: string;
-  file_type: string;
-  file_size: number;
-  version: number;
-  status: string;
-  stage: string;
-  progress_percent: number;
-  status_message?: string | null;
-  created_at: string;
-  updated_at: string;
-  node_count?: number;
-}
-
-export interface DocumentListResponse {
-  items: DocumentSummary[];
-  total: number;
-  offset?: number;
-  limit?: number;
-}
-
-export interface DocumentDetail {
-  document_id: string;
-  tenant_id: string;
-  title: string;
-  file_name: string;
-  sha256: string;
-  file_type: string;
-  file_size: number;
-  version: number;
-  status: string;
-  stage: string;
-  progress_percent: number;
-  status_message?: string | null;
-  parse_error?: string | null;
-  artifact_metadata: Record<string, unknown>;
-  deleted_at?: string | null;
-  created_at: string;
-  updated_at: string;
-  node_count?: number;
-}
-
-export interface UploadResponse {
-  task_id: string;
-  status: string;
-  document_id: string;
-}
-
-export interface TaskStatus {
-  task_id: string;
-  status: string;
-  stage?: string | null;
-  progress: { step: string; percent: number };
-  document_id?: string | null;
-  status_message?: string | null;
-  error?: string | null;
-  result?: Record<string, unknown> | null;
-}
-
-export interface TreeNode {
-  node_id: string;
-  title: string;
-  level: number;
-  breadcrumb: string;
-  parent_id?: string | null;
-  child_count: number;
-  text_length: number;
-  page_number: number | string;
-  page_range?: string | null;
-}
-
-export interface TreeResponse {
-  document_id: string;
-  document_title: string;
-  total_nodes: number;
-  max_depth: number;
-  nodes: TreeNode[];
-}
-
-export interface NodeDetail {
-  node_id: string;
-  title: string;
-  level: number;
-  breadcrumb: string;
-  text: string;
-  metadata: {
-    page_number: number | string;
-    page_range?: string | null;
-    node_type: string;
-    order: number;
-    char_count: number;
-    token_count: number;
-  };
-}
-
-export interface TreeSearchResult {
-  node_id: string;
-  title: string;
-  preview: string;
-  highlight: string;
-}
-
-export interface ModelTypeStats {
-  tokens_in: number;
-  tokens_out: number;
-  avg_latency_ms: number;
-  call_count: number;
-  cost_micros_vnd: number;
-}
-
-export interface AnalyticsDailyStat extends MoneyPayload {
-  date: string;
-  messages: number;
-  tokens_in: number;
-  tokens_out: number;
-  avg_latency_ms: number;
-}
-
-export interface DailyByModelType {
-  date: string;
-  llm: ModelTypeStats;
-  embedding: ModelTypeStats;
-  reranker: ModelTypeStats;
-}
-
-export interface RecentRequest {
-  model_name: string;
-  model_type: string;
-  tokens_in: number;
-  tokens_out: number;
-  latency_ms: number;
-  cost_micros_vnd: number;
-  created_at: string;
-}
-
-export interface AnalyticsStats extends MoneyPayload {
-  total_messages: number;
-  total_tokens_in: number;
-  total_tokens_out: number;
-  total_tokens: number;
-  avg_latency_ms: number;
-  model_used: string;
-  daily: AnalyticsDailyStat[];
-  by_model_type: {
-    llm: ModelTypeStats;
-    embedding: ModelTypeStats;
-    reranker: ModelTypeStats;
-  };
-  daily_by_model_type: DailyByModelType[];
-  recent_requests: RecentRequest[];
-  feedback_summary: {
-    total: number;
-    like_count: number;
-    dislike_count: number;
-    dislike_rate: number;
-    top_disliked_documents: Array<{
-      document_id: string;
-      title: string;
-      count: number;
-    }>;
-    top_disliked_sections: Array<{
-      document_id: string;
-      section_id: string;
-      heading: string;
-      count: number;
-    }>;
-  };
-  pricing: {
-    currency_code: string;
-    input_price_vnd_per_1m: number;
-    output_price_vnd_per_1m: number;
-    model?: string;
-    note?: string;
-  };
-}
-
-export interface UserUsageSummaryItem extends MoneyPayload {
-  user_id: string;
-  username: string;
-  tokens_in: number;
-  tokens_out: number;
-  total_tokens: number;
-  call_count: number;
-  window_days?: number;
-}
-
-export interface UserUsageWindows {
-  user_id: string;
-  windows: Record<
-    string,
-    {
-      days: number;
-      total: {
-        tokens_in: number;
-        tokens_out: number;
-        total_tokens: number;
-        currency_code: string;
-        cost_micros_vnd: number;
-        cost_vnd: string;
-        cost_vnd_rounded: number;
-      };
-      by_model_type: {
-        llm: ModelTypeStats;
-        embedding: ModelTypeStats;
-        reranker: ModelTypeStats;
-      };
-    }
-  >;
-  pricing: {
-    currency_code: string;
-    input_price_vnd_per_1m: number;
-    output_price_vnd_per_1m: number;
-  };
-}
-
-export interface UserUsageDetail {
-  user_id: string;
-  window_30d: {
-    days: number;
-    tokens_in: number;
-    tokens_out: number;
-    total_tokens: number;
-    daily: Array<{
-      date: string;
-      tokens_in: number;
-      tokens_out: number;
-    }>;
-    by_model_type: {
-      llm: ModelTypeStats;
-      embedding: ModelTypeStats;
-      reranker: ModelTypeStats;
-    };
-  } & MoneyPayload;
-  pricing: {
-    currency_code: string;
-    input_price_vnd_per_1m: number;
-    output_price_vnd_per_1m: number;
-  };
-}
-
-export interface HealthCheck {
-  status: "up" | "down" | "degraded";
-  latency_ms?: number;
-  configured?: boolean;
-  provider?: string;
-  model?: string;
-  broker?: string;
-  [key: string]: unknown;
-}
-
-export interface HealthData {
-  status: string;
-  timestamp: string;
-  active_docs?: number;
-  total_docs?: number;
-  latest_document_id?: string;
-  target_document_id?: string;
-  checks?: Record<string, HealthCheck>;
-  services?: Record<string, HealthCheck>;
-}
-
-export interface AIProvider {
-  id: number;
-  service_type: "embedding" | "reranker" | "llm";
-  provider_name: string;
-  display_name: string;
-  url: string;
-  model: string;
-  api_key: string;
-  is_active: boolean;
-  is_builtin: boolean;
-  priority: number;
-  config: Record<string, unknown>;
-  last_test_status: "unknown" | "success" | "failed";
-  last_test_at: string | null;
-  last_error: string;
-  last_error_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AIProviderCreate {
-  service_type: string;
-  provider_name: string;
-  display_name: string;
-  url: string;
-  model: string;
-  api_key: string;
-  priority?: number;
-  config?: Record<string, unknown>;
-}
-
-export interface AIProviderUpdate {
-  display_name?: string;
-  url?: string;
-  model?: string;
-  api_key?: string;
-  priority?: number;
-  config?: Record<string, unknown>;
-}
-
-export interface ApiKeyItem {
-  id: number;
-  provider_id: number;
-  key_value: string;
-  is_active: boolean;
-  failure_count: number;
-  rate_limited_until: string | null;
-  backoff_level: number;
-  last_error: string;
-  last_error_at: string | null;
-  last_used_at: string | null;
-  created_at: string;
-}
-
-export interface ProviderTemplate {
-  service_type: string;
-  provider_name: string;
-  display_name: string;
-  url: string;
-  model: string;
-}
+// ── Health ──
+export type HealthCheck = z.infer<typeof s.HealthCheckSchema>;
+export type HealthData = z.infer<typeof s.HealthDataSchema>;

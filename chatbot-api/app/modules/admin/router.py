@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.session import get_async_session
 from app.modules.analytics.repository import AnalyticsRepository
+from app.modules.settings.runtime_manager import RuntimeProviderManager
 from app.modules.analytics.service import AnalyticsService
 from app.modules.chat.repositories.usage_repository import UsageRepository
 from app.modules.auth.deps import require_admin
@@ -24,10 +25,12 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 @router.get("/models")
 async def list_models(auth: AuthContext = Depends(require_admin)):
     """List available models from 9Router's connected providers."""
-    proxy_base = settings.ai_proxy_url.rstrip("/")
+    runtime = RuntimeProviderManager.get_instance()
+    proxy_base = runtime.get_llm_api_base() or settings.ai_proxy_url.rstrip("/")
+    api_key = runtime.get_llm_api_key() or settings.ai_proxy_api_key or ""
     headers = {}
-    if settings.ai_proxy_api_key:
-        headers["Authorization"] = f"Bearer {settings.ai_proxy_api_key}"
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     try:
         async with httpx.AsyncClient(timeout=settings.ai_proxy_timeout) as client:
             resp = await client.get(f"{proxy_base}/v1/models", headers=headers)

@@ -65,8 +65,4 @@ class TenantSetting(Base, TimestampMixin):
     tenant_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
-    chatbot_display_name: Mapped[str] = mapped_column(String(255), nullable=False, server_default=text("'Assistant'"))
-    welcome_message: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=text("'Xin chao, toi co the ho tro gi cho ban?'")
-    )
     system_instruction: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))

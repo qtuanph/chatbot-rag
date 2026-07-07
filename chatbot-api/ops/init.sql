@@ -147,46 +147,7 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMP WITH 
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE;
 
--- Data sources: future SQL Server connectors (optional)
-CREATE TABLE IF NOT EXISTS data_sources (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    type VARCHAR(50) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    config_encrypted BYTEA NOT NULL,
-    capabilities JSONB DEFAULT '{}'::jsonb NOT NULL,
-    is_active BOOLEAN DEFAULT true NOT NULL,
-    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
-);
 
--- Data source schema cache: introspection cache
-CREATE TABLE IF NOT EXISTS data_source_schema_cache (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    data_source_id UUID NOT NULL REFERENCES data_sources(id) ON DELETE CASCADE,
-    schema_name VARCHAR(255) NOT NULL,
-    table_name VARCHAR(255) NOT NULL,
-    column_metadata JSONB NOT NULL,
-    table_description TEXT,
-    join_hints JSONB DEFAULT '[]'::jsonb NOT NULL,
-    synced_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    UNIQUE(data_source_id, schema_name, table_name)
-);
-
--- Data source query audit: security and performance tracking
-CREATE TABLE IF NOT EXISTS data_source_query_audit (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    data_source_id UUID NOT NULL REFERENCES data_sources(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    session_id UUID,
-    sql_text_redacted TEXT NOT NULL,
-    row_count INTEGER,
-    duration_ms INTEGER,
-    status VARCHAR(50) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
-);
 
 -- Security audit log
 CREATE TABLE IF NOT EXISTS security_audit (
@@ -204,8 +165,6 @@ CREATE TABLE IF NOT EXISTS security_audit (
 CREATE TABLE IF NOT EXISTS tenant_settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE UNIQUE,
-    chatbot_display_name VARCHAR(255) NOT NULL DEFAULT 'Assistant',
-    welcome_message TEXT NOT NULL DEFAULT 'Xin chao, toi co the ho tro gi cho ban?',
     system_instruction TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
@@ -247,8 +206,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_status_stage ON documents(status_stage)
 CREATE INDEX IF NOT EXISTS idx_documents_deleted_at ON documents(deleted_at) WHERE deleted_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id);
 CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_data_source_query_audit_created ON data_source_query_audit(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_data_source_query_audit_source_time ON data_source_query_audit(data_source_id, created_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_security_audit_actor ON security_audit(actor_user_id);
 CREATE INDEX IF NOT EXISTS idx_security_audit_created ON security_audit(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants(status);
@@ -294,9 +252,7 @@ CREATE TRIGGER touch_roles_updated_at BEFORE UPDATE ON roles FOR EACH ROW EXECUT
 CREATE TRIGGER touch_tenants_updated_at BEFORE UPDATE ON tenants FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_documents_updated_at BEFORE UPDATE ON documents FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
-CREATE TRIGGER touch_data_sources_updated_at BEFORE UPDATE ON data_sources FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
-CREATE TRIGGER touch_data_source_schema_cache_updated_at BEFORE UPDATE ON data_source_schema_cache FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
-CREATE TRIGGER touch_data_source_query_audit_updated_at BEFORE UPDATE ON data_source_query_audit FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
 CREATE TRIGGER touch_document_sections_updated_at BEFORE UPDATE ON document_sections FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_tenant_settings_updated_at BEFORE UPDATE ON tenant_settings FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_tenant_api_keys_updated_at BEFORE UPDATE ON tenant_api_keys FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
@@ -306,9 +262,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE roles TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tenants TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE users TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE documents TO app_rw;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_sources TO app_rw;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_source_schema_cache TO app_rw;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE data_source_query_audit TO app_rw;
+
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE security_audit TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE document_sections TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tenant_settings TO app_rw;

@@ -54,15 +54,11 @@ class TenantResponse(BaseModel):
 
 class TenantSettingResponse(BaseModel):
     tenant_id: str
-    chatbot_display_name: str
-    welcome_message: str
     system_instruction: str
     updated_at: datetime
 
 
 class TenantSettingUpdateRequest(BaseModel):
-    chatbot_display_name: str | None = Field(default=None, min_length=1, max_length=255)
-    welcome_message: str | None = Field(default=None, min_length=1, max_length=4000)
     system_instruction: str | None = Field(default=None, max_length=20000)
 
 

@@ -27,7 +27,6 @@ class FeedbackService:
         runtime = RuntimeProviderManager.get_instance()
         embedding_cfg = runtime.get_embedding_config() or {}
         reranker_cfg = runtime.get_reranker_config() or {}
-        llm_cfg = runtime.get_llm_config() or {}
 
         document_ids = []
         section_ids = []
@@ -45,7 +44,7 @@ class FeedbackService:
             "feedback_type": feedback_type,
             "query_text": query_text.strip(),
             "assistant_answer": assistant_answer.strip(),
-            "llm_model": str(llm_cfg.get("model") or settings.ai_proxy_default_model or "chatbot-rag"),
+            "llm_model": runtime.get_llm_model() or "chatbot-rag",
             "embedding_model": str(embedding_cfg.get("model") or settings.embedding_hf_model),
             "reranker_model": str(
                 reranker_cfg.get("model")

@@ -80,29 +80,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: process.env.NEXTAUTH_SECRET,
 });
 
-declare module "next-auth" {
-  interface Session {
-    role: string;
-    userId: string;
-    tenantId: string | null;
-  }
-
-  interface User {
-    role?: string;
-    token?: string;
-    tenantId?: string | null;
-  }
-}
-
-declare module "next-auth/jwt" {
-  interface JWT {
-    accessToken?: string;
-    accessTokenExpires?: number;
-    expired?: string;
-    role?: string;
-    userId?: string;
-    tenantId?: string | null;
-  }
-}
-
 export const authOptions = { providers: [Credentials] };
