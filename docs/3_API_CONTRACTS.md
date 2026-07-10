@@ -144,10 +144,7 @@ Public chat request hiện hỗ trợ các field chính:
 
 ## Quy tắc role
 
-| Role | Ý nghĩa |
-|---|---|
-| `platform_admin` | quản trị toàn hệ thống |
-| `tenant_admin` | chỉ trong tenant của mình |
+Hệ thống phân quyền bằng role (`platform_admin` và `tenant_admin`). Vui lòng xem ý nghĩa và quyền hạn của từng role tại mục **Tenant model** trong tài liệu [1_ARCHITECTURE.md](./1_ARCHITECTURE.md).
 
 ## Public API rule
 
