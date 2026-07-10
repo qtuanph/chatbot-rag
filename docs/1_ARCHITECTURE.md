@@ -179,17 +179,7 @@ Payload chuẩn:
 
 ## Ingestion architecture
 
-```text
-Upload -> persist document row -> enqueue Celery task
--> parse -> canonical section graph -> dual index Qdrant -> finalize
-```
-
-Điểm quan trọng:
-
-- ingest chạy nền qua `workers`
-- pipeline tự ensure 2 collection + payload indexes trước khi ghi
-- `document_sections` trong PostgreSQL là source of truth
-- progress tài liệu dùng SSE, không dùng polling làm đường chính nữa
+Chi tiết luồng xử lý và các bước ingestion cụ thể, vui lòng xem tại [2.1_WORKFLOWS_INGESTION.md](./2.1_WORKFLOWS_INGESTION.md).
 
 ## Auth boundary
 
@@ -220,26 +210,8 @@ Upload -> persist document row -> enqueue Celery task
 
 ## Hard delete order
 
-Thứ tự xóa cứng bắt buộc:
-
-1. xóa vectors
-2. xóa sections
-3. xóa file storage
-4. xóa DB row
-
-Không được đảo thứ tự này.
+Chi tiết thứ tự xóa cứng bắt buộc (registry -> vectors -> sections -> file -> db row) vui lòng xem tại [2.3_WORKFLOWS_DELETE.md](./2.3_WORKFLOWS_DELETE.md). Mọi thay đổi về code delete phải tuân thủ nghiêm ngặt thứ tự trong tài liệu này.
 
 ## Runtime shape hiện tại
 
-Docker backend stack:
-- `api` — FastAPI
-- `workers` — Celery
-- `postgres`
-- `redis`
-- `qdrant`
-- `rustfs`
-- `ai-proxy` — 9Router
-- `traefik`
-
-Standalone frontend (ngoài Docker, deploy trên Cloudflare Pages):
-- `webapp` — Next.js
+Vui lòng xem [4_DEPLOYMENT.md](./4_DEPLOYMENT.md) để biết chi tiết Topology của Docker Stack (API, Celery, Traefik, PostgreSQL, Qdrant, Redis, v.v.).
