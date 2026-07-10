@@ -163,6 +163,7 @@ Tenant Software -> OpenAI-compatible API -> FastAPI -> Retrieval + LLM orchestra
 - **LlamaIndex**
 - **qdrant-client**
 - **FastEmbed**
+- **Docling** (Local Offline AI Parser for Complex PDF/Word Documents)
 
 ---
 

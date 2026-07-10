@@ -131,6 +131,14 @@
       "root_cause": "`get_async_qdrant_client()`, `get_section_vector_store()`, and `get_chunk_vector_store()` in `app/core/llama_index.py` were decorated with `@lru_cache(maxsize=1)`. Celery workers use `asyncio.run()` which creates a fresh event loop per task. The cached `AsyncQdrantClient` held a reference to the old (closed) event loop's internal `httpx.AsyncClient`, causing the crash on the next task.",
       "resolution": "Removed `@lru_cache` from `get_async_qdrant_client()`, `get_section_vector_store()`, `get_chunk_vector_store()`, and `get_vector_store()`. The sync `get_qdrant_client()` kept its cache since it has no event loop dependency.",
       "lesson_learned": "Never cache async clients that internally manage HTTP sessions (httpx.AsyncClient, aiohttp.ClientSession, etc.) in mixed sync+async environments where event loops are created per-task (Celery + asyncio.run()). Each asyncio.run() invocation must get a fresh async client."
+    },
+    {
+      "issue_id": 16,
+      "title": "Semantic Cache crashed due to empty normalized query",
+      "symptom": "Chat completion request crashes with 400 BadRequest: 'Input list must be non-empty'.",
+      "root_cause": "The user query consisted entirely of stopwords (e.g., 'chào', 'hi'), causing `normalize_query` to return an empty string. The Semantic Cache then attempted to embed this empty string via OpenAI, which rejects empty inputs.",
+      "resolution": "Added a truthiness check for `normalized_query`. If it evaluates to empty, the system bypasses Semantic Cache entirely and falls back to normal RAG retrieval (which correctly uses the raw, non-empty user query).",
+      "lesson_learned": "Do not pass unvalidated normalized strings to embedding models. Always handle edge cases where stopword filtering strips out the entire string."
     }
   ]
 }

@@ -34,6 +34,14 @@ Tài liệu deployment bám theo `docker-compose.yml` hiện tại.
 | `/api/bep/*` | proxy từ Next.js (Cloudflare Pages) sang backend |
 | `ai-proxy:2908` | 9Router nội bộ |
 
+## Hardware & GPU
+
+Hệ thống được thiết kế tối ưu với module **Auto-Tuning** (`app/core/hardware.py`):
+- Tự động nhận diện số lượng nhân CPU, dung lượng RAM và thông số GPU (VRAM).
+- Nếu phát hiện GPU, tiến trình parsing file (ví dụ: Docling) sẽ tự động bật cờ `cuda`.
+- **GPU Passthrough**: File `docker-compose.yml` bắt buộc phải có block `deploy.resources.reservations.devices` cho cả container `api` và `workers` thì tiến trình bên trong mới nhìn thấy được GPU.
+- Mặc định, cấu hình headless server sẽ bào **95% VRAM** cho các container AI chạy nền để tối ưu triệt để.
+
 ## Volume chính
 
 | Volume | Mục đích |
