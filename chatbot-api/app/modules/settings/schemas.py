@@ -3,7 +3,7 @@ from typing import Any, Optional
 
 
 class ProviderCreate(BaseModel):
-    service_type: str = Field(pattern=r"^(embedding|reranker|llm)$")
+    service_type: str = Field(pattern=r"^(embedding|reranker|llm|parser)$")
     provider_name: str = Field(min_length=1, max_length=64)
     display_name: str = Field(min_length=1, max_length=128)
     url: str = Field(default="", max_length=512)

@@ -24,7 +24,7 @@ flowchart TB
         Router[9Router\nLLM Proxy]
         ModelRunner[Docker Model Runner\nLocal Embeddings]
         NIM[NVIDIA NIM\nReranker]
-        LlamaParse[LlamaParse\nCloud OCR]
+        Parser[LlamaParse Cloud\n/ Docling Local OCR]
     end
 
     subgraph Data [Data & Storage Zone]
@@ -57,7 +57,7 @@ flowchart TB
     FastAPI -->|Chat / Inference| Router
     FastAPI & Workers -->|Embeddings| ModelRunner
     FastAPI -->|Reranking| NIM
-    Workers -->|OCR & Markdown| LlamaParse
+    Workers -->|OCR & Markdown| Parser
 
     %% Styling
     classDef client fill:#dae8fc,stroke:#6c8ebf,stroke-width:2px;
@@ -69,7 +69,7 @@ flowchart TB
     class User client;
     class Traefik gateway;
     class FastAPI,Workers core;
-    class Router,ModelRunner,NIM,LlamaParse ai;
+    class Router,ModelRunner,NIM,Parser ai;
     class Postgres,Qdrant,Redis,RustFS,SQLite data;
 ```
 

@@ -17,6 +17,7 @@ const TAB_LABELS: Record<string, string> = {
   embedding: "Embedding",
   reranker: "Reranker",
   llm: "LLM",
+  parser: "Parser Engine",
 };
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -27,6 +28,8 @@ const PROVIDER_COLORS: Record<string, string> = {
   "9router": "bg-violet-500/15 text-violet-600 dark:text-violet-400",
   cohere: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
   gemini: "bg-rose-500/15 text-rose-600 dark:text-rose-400",
+  llamaparse: "bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-400",
+  docling: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400",
 };
 
 const PROVIDER_LETTERS: Record<string, string> = {
@@ -37,6 +40,8 @@ const PROVIDER_LETTERS: Record<string, string> = {
   "9router": "9R",
   cohere: "CH",
   gemini: "GM",
+  llamaparse: "LP",
+  docling: "DL",
 };
 
 function ProviderIcon({ providerName }: { providerName: string }) {
@@ -49,14 +54,13 @@ function ProviderIcon({ providerName }: { providerName: string }) {
   );
 }
 
-export function ProviderPage({ serviceType }: { serviceType: "embedding" | "reranker" | "llm" }) {
+export function ProviderPage({ serviceType }: { serviceType: "embedding" | "reranker" | "llm" | "parser" }) {
   const tab = serviceType;
 
   const [providers, setProviders] = useState<AIProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [addDialog, setAddDialog] = useState(false);
   const [editDialog, setEditDialog] = useState<AIProvider | null>(null);
-  const [keyDialog, setKeyDialog] = useState<AIProvider | null>(null);
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);
   const [newKeyValue, setNewKeyValue] = useState("");
 
@@ -159,8 +163,8 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
     }
   };
 
-  const openKeys = async (p: AIProvider) => {
-    setKeyDialog(p);
+  const openEdit = async (p: AIProvider) => {
+    setEditDialog(p);
     try {
       const data = await settingsApi.listKeys(p.id);
       setKeys(data);
@@ -170,12 +174,12 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
   };
 
   const addKey = async () => {
-    if (!keyDialog || !newKeyValue.trim()) return;
+    if (!editDialog || !newKeyValue.trim()) return;
     try {
-      await settingsApi.addKey(keyDialog.id, newKeyValue.trim());
+      await settingsApi.addKey(editDialog.id, newKeyValue.trim());
       setNewKeyValue("");
       toast.success("Đã thêm API key");
-      const data = await settingsApi.listKeys(keyDialog.id);
+      const data = await settingsApi.listKeys(editDialog.id);
       setKeys(data);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.detail : "Thêm key thất bại");
@@ -183,9 +187,9 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
   };
 
   const deleteKey = async (k: ApiKeyItem) => {
-    if (!keyDialog) return;
+    if (!editDialog) return;
     try {
-      await settingsApi.deleteKey(keyDialog.id, k.id);
+      await settingsApi.deleteKey(editDialog.id, k.id);
       setKeys((prev) => prev.filter((x) => x.id !== k.id));
       toast.success("Đã xóa key");
     } catch {
@@ -232,7 +236,7 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
             <Card
               key={p.id}
               className={`${p.is_active ? "hover:bg-muted/30 cursor-pointer" : "opacity-60"} transition-colors`}
-              onClick={() => setEditDialog(p)}
+              onClick={() => openEdit(p)}
             >
               <div className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-3 min-w-0">
@@ -263,9 +267,6 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
                   )}
                   <Button variant="ghost" size="icon-sm" title="Kiểm tra" onClick={() => handleTest(p)}>
                     <TestTube className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon-sm" title="API key" onClick={() => openKeys(p)}>
-                    <Key className="h-3.5 w-3.5" />
                   </Button>
                   {!p.is_builtin && (
                     <Button variant="ghost" size="icon-sm" title="Xóa" onClick={() => handleDelete(p)}>
@@ -340,72 +341,68 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
                 <Input id="edit-model" name="edit-model" defaultValue={editDialog?.model} />
               </FieldContent>
             </Field>
-            <Field>
-              <FieldContent>
-                <FieldLabel htmlFor="edit-api_key">API key</FieldLabel>
-                <Input id="edit-api_key" name="edit-api_key" type="password" defaultValue={editDialog?.api_key} placeholder="Để trống nếu muốn giữ nguyên" />
-                <FieldDescription>
-                  Khuyến nghị: quản lý key tại nút <strong>API key</strong>. Để trống ở đây sẽ giữ nguyên key hiện tại.
-                </FieldDescription>
-              </FieldContent>
-            </Field>
             </FieldGroup>
           </form>
-          <SheetFooter>
+          
+          <div className="mt-6 border-t pt-6">
+            <h3 className="mb-4 text-sm font-semibold">Danh sách API Key</h3>
+            <FieldGroup>
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldLabel htmlFor="new-provider-key">Thêm API key mới</FieldLabel>
+                  <Input
+                    id="new-provider-key"
+                    type="password"
+                    placeholder="Nhập API key mới..."
+                    value={newKeyValue}
+                    onChange={(e) => setNewKeyValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKey())}
+                    disabled={["llamaparse", "9router"].includes(editDialog?.provider_name || "") && keys.length >= 1}
+                  />
+                  {["llamaparse", "9router"].includes(editDialog?.provider_name || "") && keys.length >= 1 && (
+                    <p className="text-[10px] text-muted-foreground mt-1">Provider này chỉ hỗ trợ tối đa 1 key.</p>
+                  )}
+                </FieldContent>
+                <Button 
+                  onClick={addKey} 
+                  disabled={!newKeyValue.trim() || (["llamaparse", "9router"].includes(editDialog?.provider_name || "") && keys.length >= 1)}
+                >
+                  Thêm
+                </Button>
+              </Field>
+            </FieldGroup>
+            {keys.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                <Key className="mx-auto h-6 w-6 mb-1" />
+                Chưa có API key
+              </p>
+            ) : (
+              <ScrollArea className="max-h-60 mt-4">
+                <div className="flex flex-col gap-2 pr-3">
+                {keys.map((k) => (
+                  <div key={k.id} className="flex items-center justify-between border rounded-md p-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs truncate max-w-[200px]">
+                        {k.key_value.slice(0, 12)}...{k.key_value.slice(-4)}
+                      </span>
+                      {k.failure_count > 0 && (
+                        <Badge variant="destructive" className="text-xs">{k.failure_count} lỗi</Badge>
+                      )}
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => deleteKey(k)}>
+                      <Trash2 className="h-3 w-3 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+                </div>
+              </ScrollArea>
+            )}
+          </div>
+
+          <SheetFooter className="mt-6">
             <Button type="button" variant="outline" onClick={() => setEditDialog(null)}>Hủy</Button>
             <Button type="submit" form="edit-form">Lưu</Button>
           </SheetFooter>
-        </SheetContent>
-      </Sheet>
-
-      {/* ── API Key Sheet ── */}
-      <Sheet open={!!keyDialog} onOpenChange={() => setKeyDialog(null)}>
-        <SheetContent className="w-[90vw] sm:max-w-xl overflow-y-auto" side="right">
-          <SheetHeader>
-            <SheetTitle>API key — {keyDialog?.display_name}</SheetTitle>
-          </SheetHeader>
-          <FieldGroup>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldLabel htmlFor="new-provider-key">API key mới</FieldLabel>
-                <Input
-                  id="new-provider-key"
-                  type="password"
-                  placeholder="Nhập API key mới..."
-                  value={newKeyValue}
-                  onChange={(e) => setNewKeyValue(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKey())}
-                />
-              </FieldContent>
-              <Button onClick={addKey} disabled={!newKeyValue.trim()}>Thêm</Button>
-            </Field>
-          </FieldGroup>
-          {keys.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              <Key className="mx-auto h-6 w-6 mb-1" />
-              Chưa có API key
-            </p>
-          ) : (
-            <ScrollArea className="max-h-60">
-              <div className="flex flex-col gap-2 pr-3">
-              {keys.map((k) => (
-                <div key={k.id} className="flex items-center justify-between border rounded-md p-2 text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs truncate max-w-[200px]">
-                      {k.key_value.slice(0, 12)}...{k.key_value.slice(-4)}
-                    </span>
-                    {k.failure_count > 0 && (
-                      <Badge variant="destructive" className="text-xs">{k.failure_count} lỗi</Badge>
-                    )}
-                  </div>
-                  <Button variant="ghost" size="icon" onClick={() => deleteKey(k)}>
-                    <Trash2 className="h-3 w-3 text-destructive" />
-                  </Button>
-                </div>
-              ))}
-              </div>
-            </ScrollArea>
-          )}
         </SheetContent>
       </Sheet>
     </div>

@@ -67,8 +67,19 @@ class IngestionService:
         db_session: AsyncSession | None = None,
         section_repo: SectionRepository | None = None,
     ):
+        from app.core.config import settings
+        from app.modules.settings.runtime_manager import RuntimeProviderManager
+        
         self.redis = redis_client
-        self.parser = LlamaParseParser()
+        parser_config = RuntimeProviderManager.get_instance().get_parser_config() or {}
+        active_parser = parser_config.get("provider_name") or getattr(settings, "ingestion_parser_engine", "llamaparse")
+
+        if active_parser == "docling":
+            from app.adapters.parsers.docling import DoclingParser
+            self.parser = DoclingParser()
+        else:
+            self.parser = LlamaParseParser()
+            
         self.db_session = db_session
         self.section_repo = section_repo
         self.validator = HierarchyValidator()

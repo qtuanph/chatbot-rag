@@ -9,7 +9,7 @@ import {
   ChevronsUpDownIcon,
   FileTextIcon,
   LayoutDashboardIcon,
-  PlugIcon,
+  CpuIcon,
   Settings2Icon,
   ShieldUserIcon,
   BookOpenIcon,
@@ -79,11 +79,12 @@ const platformGroups: NavGroup[] = [
       {
         title: "Kết nối AI",
         href: "/admin/providers/embedding",
-        icon: <PlugIcon />,
+        icon: <CpuIcon />,
         children: [
           { title: "Embedding", href: "/admin/providers/embedding" },
           { title: "Reranker", href: "/admin/providers/reranker" },
           { title: "LLM", href: "/admin/providers/llm" },
+          { title: "Parser Engine", href: "/admin/providers/parser" },
         ],
       },
     ],

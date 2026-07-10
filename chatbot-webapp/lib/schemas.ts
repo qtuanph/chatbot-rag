@@ -468,7 +468,7 @@ export const TenantUsageSummaryResponseSchema = z.object({
 
 export const AIProviderSchema = z.object({
   id: z.number(),
-  service_type: z.enum(["embedding", "reranker", "llm"]),
+  service_type: z.enum(["embedding", "reranker", "llm", "parser"]),
   provider_name: z.string(),
   display_name: z.string(),
   url: z.string(),

@@ -20,9 +20,14 @@ def get_embedding_adapter(provider: dict[str, Any] | None = None) -> EmbeddingAd
         provider = _load_active_provider()
 
     if provider:
-        api_base = (provider.get("url") or settings.embedding_api_base).rstrip("/")
-        api_key = _resolve_key(provider) or provider.get("api_key") or settings.embedding_api_key or ""
-        model = provider.get("model") or settings.embedding_hf_model
+        url = provider.get("url")
+        if not url:
+            raise ValueError("Embedding API base URL is not configured.")
+        api_base = url.rstrip("/")
+        api_key = _resolve_key(provider) or provider.get("api_key") or ""
+        model = provider.get("model")
+        if not model:
+            raise ValueError("Embedding model name is not configured.")
         config = provider.get("config") or {}
     else:
         from app.modules.settings.repository import SettingsRepository
@@ -34,15 +39,17 @@ def get_embedding_adapter(provider: dict[str, Any] | None = None) -> EmbeddingAd
             repo.close()
 
         if dmr:
-            api_base = (dmr.get("url") or settings.embedding_api_base).rstrip("/")
-            api_key = dmr.get("api_key") or settings.embedding_api_key or ""
-            model = dmr.get("model") or settings.embedding_hf_model
+            url = dmr.get("url")
+            if not url:
+                raise ValueError("Built-in DMR URL is not configured.")
+            api_base = url.rstrip("/")
+            api_key = dmr.get("api_key") or ""
+            model = dmr.get("model")
+            if not model:
+                raise ValueError("Built-in DMR model is not configured.")
             config = dmr.get("config") or {}
         else:
-            api_base = settings.embedding_api_base
-            api_key = settings.embedding_api_key or ""
-            model = settings.embedding_hf_model
-            config = {}
+            raise ValueError("No active embedding provider and built-in DMR is missing.")
 
     return EmbeddingAdapter(
         api_base=api_base,

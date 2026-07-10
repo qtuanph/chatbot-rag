@@ -67,15 +67,16 @@ class PublicInferenceService:
         normalized_query = None
         if self.semantic_cache and user_query:
             normalized_query = normalize_query(user_query, stopwords=ALL_DEFAULT_STOPWORDS)
-            embed_model = Settings.embed_model
-            query_vector = await embed_model.aget_query_embedding(normalized_query)
-            cached = await self.semantic_cache.get(tenant_id, query_vector)
-            if cached:
-                usage = cached.get("usage", {})
-                usage["cached"] = True
-                return CompletionResult(
-                    content=cached["content"], citations=cached["citations"], usage=usage, model=cached["model"]
-                )
+            if normalized_query:
+                embed_model = Settings.embed_model
+                query_vector = await embed_model.aget_query_embedding(normalized_query)
+                cached = await self.semantic_cache.get(tenant_id, query_vector)
+                if cached:
+                    usage = cached.get("usage", {})
+                    usage["cached"] = True
+                    return CompletionResult(
+                        content=cached["content"], citations=cached["citations"], usage=usage, model=cached["model"]
+                    )
 
         setting = await self._get_tenant_setting(tenant_id)
         context = await self._resolve_context(
@@ -114,7 +115,7 @@ class PublicInferenceService:
             content=content,
             citations=self._build_citations(context),
             usage=self._normalize_usage(usage),
-            model=getattr(llm, "model", settings.ai_proxy_default_model or "chatbot-rag"),
+            model=getattr(llm, "model", "chatbot-rag"),
         )
         if self.semantic_cache and normalized_query and query_vector:
             await self.semantic_cache.set(
@@ -147,22 +148,23 @@ class PublicInferenceService:
         normalized_query = None
         if self.semantic_cache and user_query:
             normalized_query = normalize_query(user_query, stopwords=ALL_DEFAULT_STOPWORDS)
-            embed_model = Settings.embed_model
-            query_vector = await embed_model.aget_query_embedding(normalized_query)
-            cached = await self.semantic_cache.get(tenant_id, query_vector)
-            if cached:
-                created = int(time.time())
-                completion_id = f"chatcmpl-{created}"
-                model_name = cached["model"]
+            if normalized_query:
+                embed_model = Settings.embed_model
+                query_vector = await embed_model.aget_query_embedding(normalized_query)
+                cached = await self.semantic_cache.get(tenant_id, query_vector)
+                if cached:
+                    created = int(time.time())
+                    completion_id = f"chatcmpl-{created}"
+                    model_name = cached["model"]
 
-                # Yield content block
-                yield f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_name, 'choices': [{'index': 0, 'delta': {'content': cached['content']}, 'finish_reason': None}]})}\n\n"
+                    # Yield content block
+                    yield f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_name, 'choices': [{'index': 0, 'delta': {'content': cached['content']}, 'finish_reason': None}]})}\n\n"
 
-                # Yield citations & stats
-                usage = cached.get("usage", {})
-                usage["cached"] = True
-                yield f"data: {json.dumps({'done': True, 'citations': cached['citations'], 'stats': usage | {'model': model_name}})}\n\n"
-                return
+                    # Yield citations & stats
+                    usage = cached.get("usage", {})
+                    usage["cached"] = True
+                    yield f"data: {json.dumps({'done': True, 'citations': cached['citations'], 'stats': usage | {'model': model_name}})}\n\n"
+                    return
 
         setting = await self._get_tenant_setting(tenant_id)
         context = await self._resolve_context(
@@ -180,7 +182,7 @@ class PublicInferenceService:
             llm.max_tokens = max_tokens
 
         created = int(time.time())
-        model_name = getattr(llm, "model", settings.ai_proxy_default_model or "chatbot-rag")
+        model_name = getattr(llm, "model", "chatbot-rag")
         completion_id = f"chatcmpl-{created}"
         usage_info: dict[str, Any] = {}
         collected_text = ""
@@ -630,8 +632,8 @@ class PublicInferenceService:
                 runtime = RuntimeProviderManager.get_instance()
                 evaluator_llm = OpenAILike(
                     model=settings.ai_evaluation_model,
-                    api_base=(runtime.get_llm_api_base() or settings.ai_proxy_url.rstrip("/")) + "/v1",
-                    api_key=runtime.get_llm_api_key() or settings.ai_proxy_api_key or "no-key",
+                    api_base=(runtime.get_llm_api_base() or "http://ai-proxy:2908") + "/v1",
+                    api_key=runtime.get_llm_api_key() or "no-key",
                     is_chat_model=True,
                     temperature=0.0,
                     context_window=128000,

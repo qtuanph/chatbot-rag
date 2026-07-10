@@ -17,6 +17,7 @@ class RuntimeProviderManager:
         self._embedding: dict[str, Any] | None = None
         self._reranker: dict[str, Any] | None = None
         self._llm: dict[str, Any] | None = None
+        self._parser: dict[str, Any] | None = None
         self._key_cursors: dict[int, int] = {}
 
     @classmethod
@@ -46,6 +47,7 @@ class RuntimeProviderManager:
             self._embedding = repo.get_active_provider("embedding")
             self._reranker = repo.get_active_provider("reranker")
             self._llm = repo.get_active_provider("llm")
+            self._parser = repo.get_active_provider("parser")
         finally:
             repo.close()
 
@@ -58,7 +60,9 @@ class RuntimeProviderManager:
                 from app.core.llama_index import SequentialOpenAIEmbedding
 
                 api_key = self._get_effective_key(emb) or "no-key"
-                model_name = emb.get("model") or settings.embedding_hf_model
+                model_name = emb.get("model")
+                if not model_name:
+                    raise ValueError("Embedding model is missing in SQLite configuration.")
                 Settings.embed_model = SequentialOpenAIEmbedding(
                     model_name=model_name,
                     api_base=emb["url"].rstrip("/"),
@@ -76,9 +80,12 @@ class RuntimeProviderManager:
             try:
                 from llama_index.llms.openai_like import OpenAILike
 
-                api_key = self._get_effective_key(llm) or llm.get("api_key") or "no-key"
+                api_key = self._get_effective_key(llm) or "no-key"
+                model_name = llm.get("model")
+                if not model_name:
+                    raise ValueError("LLM model is missing in SQLite configuration.")
                 Settings.llm = OpenAILike(
-                    model=llm.get("model") or settings.ai_proxy_default_model or "default",
+                    model=model_name,
                     api_base=llm["url"].rstrip("/"),
                     api_key=api_key,
                     is_chat_model=True,
@@ -104,6 +111,14 @@ class RuntimeProviderManager:
     def get_llm_config(self) -> dict[str, Any] | None:
         return self._llm
 
+    def get_parser_config(self) -> dict[str, Any] | None:
+        return self._parser
+
+    def get_parser_api_key(self) -> str | None:
+        if not self._parser:
+            return None
+        return self._get_effective_key(self._parser)
+
     def get_llm_api_base(self) -> str:
         """9Router base URL (without /v1) for admin/model-listing endpoints."""
         if not self._llm:
@@ -122,10 +137,10 @@ class RuntimeProviderManager:
         return self._get_effective_key(self._llm) or self._llm.get("api_key") or ""
 
     def get_llm_model(self) -> str:
-        """Active LLM model name, falling back to .env default."""
+        """Active LLM model name, purely from SQLite."""
         if not self._llm:
-            return settings.ai_proxy_default_model or ""
-        return self._llm.get("model") or settings.ai_proxy_default_model or ""
+            return ""
+        return self._llm.get("model") or ""
 
     # ── Round-robin keys ─────────────────────────────────────────
 

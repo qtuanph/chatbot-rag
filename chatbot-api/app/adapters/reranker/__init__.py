@@ -29,7 +29,7 @@ def get_reranker(top_k: int | None = None) -> LocalRerankerPostprocessor | Nvidi
     if cfg and cfg.get("provider_name"):
         name = cfg["provider_name"]
         if name == "nvidia":
-            effective_key = runtime.get_reranker_api_key() or cfg.get("api_key") or settings.nvidia_api_key or "no-key"
+            effective_key = runtime.get_reranker_api_key() or cfg.get("api_key") or "no-key"
             if effective_key == "no-key":
                 logger.warning(
                     "Active reranker is NVIDIA but API key is missing. Falling back to local Docker reranker."
@@ -41,11 +41,12 @@ def get_reranker(top_k: int | None = None) -> LocalRerankerPostprocessor | Nvidi
                     dmr = repo.get_builtin_provider("reranker", "dmr")
                 finally:
                     repo.close()
-                kwargs["base_url"] = dmr.get("url") if dmr else settings.ai_reranker_url
+                kwargs["base_url"] = dmr.get("url") if dmr else "http://model-runner.docker.internal:12434"
+                kwargs["embedding_url"] = f"{kwargs['base_url']}/engines/v1"
                 kwargs["model_name"] = dmr.get("model") if dmr else None
                 return LocalRerankerPostprocessor(**kwargs)
-            kwargs["base_url"] = cfg.get("url", settings.nvidia_reranker_url)
-            kwargs["model_name"] = cfg.get("model", settings.nvidia_reranker_model)
+            kwargs["base_url"] = cfg.get("url") or "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
+            kwargs["model_name"] = cfg.get("model") or "nvidia/llama-nemotron-rerank-1b-v2"
             kwargs["api_key"] = effective_key
             kwargs["timeout"] = settings.nvidia_reranker_timeout
             return NvidiaRerankerPostprocessor(**kwargs)

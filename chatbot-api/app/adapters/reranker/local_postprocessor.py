@@ -54,8 +54,8 @@ class LocalRerankerPostprocessor(BaseNodePostprocessor):
     """Rerank via DMR embeddings + cosine similarity."""
 
     top_k: int = settings.retrieval_rerank_top_k
-    base_url: str = settings.ai_reranker_url
-    embedding_url: str = settings.ai_embedding_url
+    base_url: str = ""
+    embedding_url: str = ""
     embedding_model: str = _DEFAULT_EMBEDDING_MODEL
     timeout: float = settings.ai_reranker_timeout
 

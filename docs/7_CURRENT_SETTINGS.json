@@ -61,6 +61,7 @@
     ]
   },
   "ingestion": {
+    "parser_engine": "llamaparse (default) | docling",
     "worker_mode": "celery background task",
     "canonical_source_of_truth": "document_sections",
     "frontend_progress_mode": "SSE with auto-reconnect",

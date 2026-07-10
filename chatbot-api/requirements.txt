@@ -23,3 +23,5 @@ psutil==7.2.2
 nvidia-ml-py==13.610.43
 msgpack==1.2.1
 hiredis==3.4.0
+
+easyocr>=1.7.2

@@ -12,8 +12,6 @@ from app.core.config import settings
 from app.core.file_formats import extract_file_format
 
 logger = logging.getLogger(__name__)
-
-LLAMA_CLOUD_API_BASE = settings.llama_cloud_api_base
 HEADING_RE = re.compile(r"^(#{1,6})\s+(?P<title>.+?)\s*$")
 SECTION_CODE_RE = re.compile(r"^(?P<code>\d+(?:\.\d+)*)(?:[\)\.:]|(?=\s)|$)")
 
@@ -30,6 +28,20 @@ class LlamaParseParser(BaseParser):
     Cloud-based LlamaParse API implementation.
     Replaces local Docling to save local GPU/CPU resources.
     """
+
+    def __init__(self, api_key: str | None = None, api_base: str | None = None):
+        if not api_key or not api_base:
+            from app.modules.settings.runtime_manager import RuntimeProviderManager
+            mgr = RuntimeProviderManager.get_instance()
+            parser_config = mgr.get_parser_config() or {}
+            self.api_key = api_key or mgr.get_parser_api_key()
+            self.api_base = api_base or parser_config.get("url") or "https://api.cloud.llamaindex.ai"
+        else:
+            self.api_key = api_key
+            self.api_base = api_base
+        
+        if not self.api_key:
+            logger.warning("LlamaParse API Key is missing. Parsing will fail.")
 
     async def parse(
         self,
@@ -53,7 +65,7 @@ class LlamaParseParser(BaseParser):
 
             async with httpx.AsyncClient(timeout=settings.llama_cloud_timeout) as client:
                 headers = {
-                    "Authorization": f"Bearer {settings.llama_cloud_api_key}",
+                    "Authorization": f"Bearer {self.api_key}",
                     "Accept": "application/json",
                 }
                 files = {"file": (filename, content, "application/pdf")}
@@ -68,7 +80,7 @@ class LlamaParseParser(BaseParser):
                     ),
                 }
                 upload_res = await client.post(
-                    f"{LLAMA_CLOUD_API_BASE}/upload",
+                    f"{self.api_base.rstrip('/')}/upload",
                     headers=headers,
                     files=files,
                     data=data,
@@ -81,7 +93,7 @@ class LlamaParseParser(BaseParser):
                 max_polls = int(settings.llama_cloud_timeout // 2)
                 polls = 0
                 while True:
-                    status_res = await client.get(f"{LLAMA_CLOUD_API_BASE}/job/{job_id}", headers=headers)
+                    status_res = await client.get(f"{self.api_base.rstrip('/')}/job/{job_id}", headers=headers)
                     status_res.raise_for_status()
                     status_data = status_res.json()
                     status = status_data.get("status")
@@ -100,7 +112,7 @@ class LlamaParseParser(BaseParser):
 
                     await asyncio.sleep(2)
 
-                md_res = await client.get(f"{LLAMA_CLOUD_API_BASE}/job/{job_id}/result/markdown", headers=headers)
+                md_res = await client.get(f"{self.api_base.rstrip('/')}/job/{job_id}/result/markdown", headers=headers)
                 md_res.raise_for_status()
                 markdown_content = md_res.json()["markdown"]
 

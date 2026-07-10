@@ -93,7 +93,6 @@ def init_db() -> None:
         _migrate_schema(db)
         _seed_templates(db)
         _sync_builtin_defaults(db)
-        _migrate_9router_key(db)
     finally:
         db.close()
 
@@ -170,12 +169,35 @@ def _seed_templates(db: sqlite3.Connection) -> None:
             "llm",
             "9router",
             "9Router (Built-in)",
-            f"{settings.ai_proxy_url.rstrip('/')}/v1",
-            settings.ai_proxy_default_model or "chatbot-rag",
-            settings.ai_proxy_api_key or "",
+            "http://ai-proxy:2908/v1",
+            "chatbot-rag",
+            "",
             1,
             1,
             0,
+        ),
+        # Parser Engine
+        (
+            "parser",
+            "llamaparse",
+            "LlamaParse (Cloud)",
+            "https://api.cloud.llamaindex.ai",
+            "",
+            "",
+            1,
+            1,
+            0,
+        ),
+        (
+            "parser",
+            "docling",
+            "Docling (Local OCR)",
+            "",
+            "",
+            "",
+            0,
+            1,
+            1,
         ),
     ]
 
@@ -213,16 +235,4 @@ def _sync_builtin_defaults(db: sqlite3.Connection) -> None:
     db.commit()
 
 
-def _migrate_9router_key(db: sqlite3.Connection) -> None:
-    """Copy .env api_key into SQLite 9Router entry if SQLite key is empty (one-off migration)."""
-    if not settings.ai_proxy_api_key:
-        return
-    row = db.execute(
-        "SELECT api_key FROM ai_providers WHERE service_type = 'llm' AND provider_name = '9router'"
-    ).fetchone()
-    if row and not row["api_key"]:
-        db.execute(
-            "UPDATE ai_providers SET api_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (settings.ai_proxy_api_key, row["id"]),
-        )
-        db.commit()
+
