@@ -52,11 +52,13 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
 
             async_redis = get_redis_client()
             try:
-                content = await asyncio.to_thread(storage.download_bytes, file_path)
-                section_repo = SectionRepository(session)
                 document = await doc_repo.get_full_document(document_id)
                 if not document or not document.get("tenant_id"):
-                    raise ValueError("Document tenant context is missing")
+                    logger.warning("[%s] Document not found in DB or missing tenant_id (maybe deleted). Skipping ingestion.", document_id)
+                    return {"status": "skipped", "reason": "document_deleted"}
+
+                content = await asyncio.to_thread(storage.download_bytes, file_path)
+                section_repo = SectionRepository(session)
 
                 pipeline = IngestionService(
                     redis_client=async_redis,
@@ -185,7 +187,8 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
             section_repo = SectionRepository(session)
             document = await doc_repo.get_full_document(document_id)
             if not document or not document.get("tenant_id"):
-                raise ValueError("Document tenant context is missing")
+                logger.warning("[%s] Document not found in DB or missing tenant_id (maybe deleted). Skipping rechunk.", document_id)
+                return {"status": "skipped", "reason": "document_deleted"}
 
             await _rechunk_progress("rechunking", 5, "[1/4] Đang đọc OCR markdown từ S3...")
 
