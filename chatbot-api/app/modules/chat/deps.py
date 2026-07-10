@@ -18,5 +18,7 @@ async def get_feedback_service(
     repo: Any = Depends(get_feedback_repo), semantic_cache: Any = Depends(get_semantic_cache)
 ) -> Any:
     from app.modules.chat.services import FeedbackService
-
     return FeedbackService(repo=repo, semantic_cache=semantic_cache)
+
+
+

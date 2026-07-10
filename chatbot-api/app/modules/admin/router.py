@@ -26,8 +26,8 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 async def list_models(auth: AuthContext = Depends(require_admin)):
     """List available models from 9Router's connected providers."""
     runtime = RuntimeProviderManager.get_instance()
-    proxy_base = runtime.get_llm_api_base() or settings.ai_proxy_url.rstrip("/")
-    api_key = runtime.get_llm_api_key() or settings.ai_proxy_api_key or ""
+    proxy_base = runtime.get_llm_api_base() or "http://ai-proxy:2908"
+    api_key = runtime.get_llm_api_key() or ""
     headers = {}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"

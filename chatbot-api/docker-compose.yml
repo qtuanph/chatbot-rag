@@ -55,6 +55,13 @@ services:
       - "traefik.http.middlewares.api-sse.headers.customResponseHeaders.Cache-Control=no-cache, no-transform"
       - "traefik.http.middlewares.api-sse.headers.customResponseHeaders.Connection=keep-alive"
       - "traefik.http.routers.api.middlewares=api-ratelimit@docker,api-sse@docker"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   workers:
     image: chatbot-rag-app:latest
@@ -84,6 +91,13 @@ services:
       - internal
     extra_hosts:
       - "model-runner.docker.internal:host-gateway"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   ai-proxy:
     image: decolua/9router:latest
@@ -114,6 +128,12 @@ services:
     restart: unless-stopped
     networks:
       - internal
+    labels:
+      - "traefik.enable=true"
+      # — All traffic from 9router.qtuanph.dev goes to AI Proxy
+      - "traefik.http.routers.ai-proxy.rule=Host(`9router.qtuanph.dev`)"
+      - "traefik.http.routers.ai-proxy.entrypoints=web"
+      - "traefik.http.services.ai-proxy.loadbalancer.server.port=2908"
 
   db:
     image: postgres:18.4-trixie

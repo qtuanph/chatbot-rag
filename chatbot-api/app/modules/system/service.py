@@ -25,7 +25,7 @@ class HealthService:
                 "redis": {"configured": bool(settings.redis_url)},
                 "storage": {"configured": bool(settings.s3_endpoint)},
                 "ai_provider": {
-                    "configured": bool(llm_cfg.get("url") if llm_cfg else settings.ai_proxy_url),
+                    "configured": bool(llm_cfg.get("url")) if llm_cfg else False,
                     "provider": "9router",
                     "model": runtime.get_llm_model() or "default",
                 },

@@ -286,13 +286,7 @@ export const treeApi = {
   },
 };
 
-export const chatApi = {
-  submitFeedback: (data: ChatFeedbackRequest): Promise<ChatFeedbackResponse> =>
-    apiFetchParse(s.ChatFeedbackResponseSchema, "/chat/feedback", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-};
+
 
 export const analyticsApi = {
   getStats: (days = 30): Promise<AnalyticsStats> =>

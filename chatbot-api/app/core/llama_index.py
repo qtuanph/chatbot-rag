@@ -113,18 +113,18 @@ class SequentialOpenAIEmbedding(OpenAIEmbedding):
 def init_llama_index(query_cache: Any = None) -> None:
     """Initialize global LlamaIndex settings at application startup."""
     Settings.embed_model = SequentialOpenAIEmbedding(
-        model_name=settings.embedding_hf_model,
-        api_base=settings.embedding_api_base,
-        api_key=settings.embedding_api_key or "no-key",
+        model_name="dummy",
+        api_base="http://localhost",
+        api_key="no-key",
         embed_batch_size=settings.embedding_batch_size,
         query_cache=query_cache,
     )
 
-    # Safety net: .env fallback — runtime manager overrides this below
+    # Safety net: dummy values — runtime manager overrides this below
     Settings.llm = OpenAILike(
-        model=settings.ai_proxy_default_model or "default",
-        api_base=f"{settings.ai_proxy_url}/v1",
-        api_key=settings.ai_proxy_api_key or "no-key",
+        model="dummy",
+        api_base="http://localhost",
+        api_key="no-key",
         is_chat_model=True,
         is_function_calling_model=True,
         context_window=128000,

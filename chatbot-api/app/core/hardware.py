@@ -130,8 +130,8 @@ class HardwareProfile:
         gpu_count, vram = _detect_gpu_info()
 
         # VRAM-Aware Worker Strategy
-        # Reserve 2GB for base overhead, each worker might need its own context if not shared
-        vram_headroom = (vram - 2.0) if gpu_count > 0 else 0.0
+        # Headless server: allocate 95% of VRAM for workers (5% overhead)
+        vram_headroom = (vram * 0.95) if gpu_count > 0 else 0.0
         tight_gpu = gpu_count > 0 and vram_headroom < 6.0
 
         if tight_gpu:

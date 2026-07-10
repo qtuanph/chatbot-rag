@@ -23,6 +23,9 @@ import {
   EyeOffIcon,
   RefreshCwIcon,
   TerminalIcon,
+  ThumbsUpIcon,
+  ThumbsDownIcon,
+  DownloadIcon,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -281,6 +284,13 @@ const cssCode = `/* ===== Chatbot Container ===== */
     40%          { transform:scale(1);   opacity:1; }
 }
 
+/* Feedback Actions */
+.feedback-actions { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
+.feedback-btn { background: transparent; border: 1px solid #e2e8f0; color: #64748b; border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 4px; transition: all 0.2s; }
+.feedback-btn:hover { background: #f8fafc; color: #334155; border-color: #cbd5e0; }
+.feedback-btn.active-like { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.feedback-btn.active-dislike { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+
 /* Input */
 #chatbot-input { padding: 20px; background: white; border-top: 1px solid #e2e8f0; flex-shrink: 0; }
 .input-group { display:flex; gap:10px; align-items:flex-end; }
@@ -486,6 +496,38 @@ const jsVbnet = `<script>
 
             chatContext.history.push({ role: 'assistant', content: answer });
 
+            // Thêm nút Like / Dislike
+            const feedbackActions = document.createElement('div');
+            feedbackActions.className = 'feedback-actions';
+            
+            const likeBtn = document.createElement('button');
+            likeBtn.className = 'feedback-btn';
+            likeBtn.innerHTML = '👍';
+            
+            const dislikeBtn = document.createElement('button');
+            dislikeBtn.className = 'feedback-btn';
+            dislikeBtn.innerHTML = '👎';
+
+            const currentQuestion = question;
+            const currentAnswer = answer;
+
+            likeBtn.onclick = (e) => {
+                e.stopPropagation();
+                sendFeedback(currentQuestion, currentAnswer, 'like');
+                feedbackActions.innerHTML = '<span style="font-size: 11px; color: #10b981; font-style: italic;">✓ Đã gửi đánh giá</span>';
+            };
+
+            dislikeBtn.onclick = (e) => {
+                e.stopPropagation();
+                sendFeedback(currentQuestion, currentAnswer, 'dislike');
+                feedbackActions.innerHTML = '<span style="font-size: 11px; color: #10b981; font-style: italic;">✓ Đã gửi đánh giá</span>';
+            };
+
+            feedbackActions.appendChild(likeBtn);
+            feedbackActions.appendChild(dislikeBtn);
+            botMsg.appendChild(feedbackActions);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
         } catch (err) {
             removeTypingIndicator();
             chatContext.history.pop();
@@ -497,6 +539,22 @@ const jsVbnet = `<script>
             chatContext.isTyping = false;
             sendBtn.disabled = false; input.disabled = false; input.focus();
         }
+    }
+
+    function sendFeedback(queryText, answerText, feedbackType) {
+        const feedbackUrl = LLM_API_URL.replace('/chat/completions', '/chat/feedback');
+        fetch(feedbackUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + API_KEY
+            },
+            body: JSON.stringify({
+                feedback_type: feedbackType,
+                query_text: queryText,
+                assistant_answer: answerText
+            })
+        }).catch(err => console.error("Feedback error:", err));
     }
 <\/script>`;
 
@@ -589,6 +647,7 @@ export function LiveChatPlayground() {
 interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  feedback?: "like" | "dislike";
 }
 
 function LivePlayground() {
@@ -603,6 +662,37 @@ function LivePlayground() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const handleFeedback = async (index: number, feedbackType: "like" | "dislike") => {
+    if (!apiKey.trim()) return;
+    const assistantMsg = messages[index];
+    // Find the user message right before it
+    const userMsg = messages[index - 1];
+    if (!assistantMsg || !userMsg || userMsg.role !== "user") return;
+
+    setMessages(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], feedback: feedbackType };
+      return copy;
+    });
+
+    try {
+      await fetch(API_URL.replace("/chat/completions", "/chat/feedback"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          feedback_type: feedbackType,
+          query_text: userMsg.content,
+          assistant_answer: assistantMsg.content
+        })
+      });
+    } catch (e) {
+      console.error("Feedback error", e);
+    }
+  };
 
   const handleSend = async () => {
     if (!inputMessage.trim() || isLoading) return;
@@ -741,13 +831,38 @@ function LivePlayground() {
               {m.role === "user" ? (
                 <div className="whitespace-pre-wrap">{m.content}</div>
               ) : (
-                <div className="prose prose-sm dark:prose-invert break-words max-w-none text-xs">
-                  {m.content === "" ? (
-                    <span className="inline-flex gap-1 items-center italic text-muted-foreground">
-                      <RefreshCwIcon className="w-3 h-3 animate-spin" /> Đang nhận phản hồi...
-                    </span>
-                  ) : (
-                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                <div className="flex flex-col gap-2">
+                  <div className="prose prose-sm dark:prose-invert break-words max-w-none text-xs">
+                    {m.content === "" ? (
+                      <span className="inline-flex gap-1 items-center italic text-muted-foreground">
+                        <RefreshCwIcon className="w-3 h-3 animate-spin" /> Đang nhận phản hồi...
+                      </span>
+                    ) : (
+                      <ReactMarkdown>{m.content}</ReactMarkdown>
+                    )}
+                  </div>
+                  {(!isLoading || idx !== messages.length - 1) && m.content !== "" && !m.feedback && (
+                    <div className="flex items-center gap-1.5 mt-1 border-t border-border/50 pt-2">
+                      <button
+                        onClick={() => handleFeedback(idx, "like")}
+                        className="p-1 rounded transition-colors hover:bg-muted text-muted-foreground"
+                        title="Thích câu trả lời này"
+                      >
+                        <ThumbsUpIcon className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleFeedback(idx, "dislike")}
+                        className="p-1 rounded transition-colors hover:bg-muted text-muted-foreground"
+                        title="Không thích câu trả lời này"
+                      >
+                        <ThumbsDownIcon className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                  {m.feedback && (
+                    <div className="flex items-center gap-1.5 mt-1 border-t border-border/50 pt-2 text-muted-foreground text-[10px] italic">
+                      <CheckCircle2Icon className="w-3 h-3 text-green-500" /> Đã gửi đánh giá
+                    </div>
                   )}
                 </div>
               )}
@@ -921,6 +1036,17 @@ export default function IntegrationGuidePage() {
                   Điều này giúp client kết nối trực tiếp đến API Server của RAG, đồng thời không bao giờ lộ API Key tĩnh trong source code git.
                 </AlertDescription>
               </Alert>
+
+              <div className="flex items-center gap-3 p-4 bg-muted/30 border border-border rounded-lg">
+                <div className="flex-1">
+                  <h4 className="text-sm font-semibold text-foreground">File Mẫu Tích Hợp (Main.master)</h4>
+                  <p className="text-xs text-muted-foreground mt-1">Tải xuống file Main.master đã được nhúng sẵn Chatbot UI và logic gọi API. Lập trình viên có thể dùng file này để đối chiếu hoặc thay thế trực tiếp vào dự án ERP cũ.</p>
+                </div>
+                <Button size="sm" className="shrink-0 gap-2" onClick={() => window.open("/downloads/Main.master", "_blank")}>
+                  <DownloadIcon className="w-4 h-4" />
+                  Tải xuống file mẫu
+                </Button>
+              </div>
 
               <Tabs defaultValue="css">
                 <TabsList>

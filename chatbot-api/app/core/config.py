@@ -17,21 +17,12 @@ class Settings(BaseSettings):
     app_port: int = 8000
     api_v1_prefix: str = "/v1"
     api_timeout_keep_alive: int = 90
-    ai_embedding_url: str = "http://model-runner.docker.internal:12434/engines/v1"
-    ai_reranker_url: str = "http://model-runner.docker.internal:12434"
-    reranker_backend: str = "nvidia"  # "nvidia" (primary) | "dmr" (Docker Model Runner fallback)
-    nvidia_api_key: str = ""
-    nvidia_reranker_model: str = "nvidia/llama-nemotron-rerank-1b-v2"
-    nvidia_reranker_url: str = "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
     nvidia_reranker_timeout: float = 30.0
     ai_reranker_timeout: float = 30.0
     log_level: str = "INFO"
 
     celery_include: str = "all"
-
-    ai_proxy_url: str = "http://ai-proxy:2908"
-    ai_proxy_api_key: str = ""
-    ai_proxy_default_model: str = ""
+    
     billing_currency_code: str = "VND"
     ai_input_price_vnd_per_1m: int = 0
     ai_output_price_vnd_per_1m: int = 0
@@ -46,10 +37,7 @@ class Settings(BaseSettings):
     query_normalize_enabled: bool = True
     ragas_evaluation_enabled: bool = False
 
-    llama_cloud_api_key: str = ""
-    llama_cloud_api_base: str = "https://api.cloud.llamaindex.ai"
     llama_cloud_timeout: float = 120.0
-
     kg_entity_extract_limit: int = 50
     kg_connected_entity_limit: int = 20
 
@@ -69,6 +57,7 @@ class Settings(BaseSettings):
     ingestion_min_section_chars: int = 200
     ingestion_parsing_timeout: int = 3600
     ingestion_ocr_languages: Any = ["vi", "en"]
+    ingestion_parser_engine: str = "llamaparse"
 
     @field_validator("ingestion_ocr_languages", mode="before")
     @classmethod
@@ -172,7 +161,6 @@ class Settings(BaseSettings):
     embedding_vector_size: int = 2048
     embedding_batch_size: int = 50
     embed_parallelism: int = 0
-    embedding_api_base: str = "http://model-runner.docker.internal:12434/engines/v1"
     embedding_api_key: str = ""
     vector_store: str = "qdrant"
     qdrant_url: str = "http://qdrant:6333"
@@ -317,8 +305,7 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     s = Settings()
-    if not s.ai_proxy_api_key:
-        logger.debug("AI_PROXY_API_KEY is not set — requests to 9Router will be unauthenticated")
+
     if s.rate_limit_relaxed_mode and s.app_env != "development":
         logger.warning(
             "RATE_LIMIT_RELAXED_MODE is enabled in %s environment — rate limits are relaxed. "

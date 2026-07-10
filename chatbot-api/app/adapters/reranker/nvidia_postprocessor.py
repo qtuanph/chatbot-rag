@@ -23,9 +23,9 @@ class NvidiaRerankerPostprocessor(BaseNodePostprocessor):
     """Rerank retrieved nodes using NVIDIA NIM API."""
 
     top_k: int = settings.retrieval_rerank_top_k
-    base_url: str = settings.nvidia_reranker_url
-    model_name: str = settings.nvidia_reranker_model
-    api_key: str = settings.nvidia_api_key
+    base_url: str = ""
+    model_name: str = ""
+    api_key: str = ""
     timeout: float = settings.nvidia_reranker_timeout
 
     async def _postprocess_nodes(self, nodes: list[NodeWithScore], query_bundle: QueryBundle) -> list[NodeWithScore]:

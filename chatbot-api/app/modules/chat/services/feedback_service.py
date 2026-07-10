@@ -45,15 +45,8 @@ class FeedbackService:
             "query_text": query_text.strip(),
             "assistant_answer": assistant_answer.strip(),
             "llm_model": runtime.get_llm_model() or "chatbot-rag",
-            "embedding_model": str(embedding_cfg.get("model") or settings.embedding_hf_model),
-            "reranker_model": str(
-                reranker_cfg.get("model")
-                or (
-                    settings.nvidia_reranker_model
-                    if settings.reranker_backend == "nvidia"
-                    else settings.ai_reranker_url
-                )
-            ),
+            "embedding_model": str(embedding_cfg.get("model") or ""),
+            "reranker_model": str(reranker_cfg.get("model") or ""),
             "document_ids": document_ids,
             "section_ids": section_ids,
             "citations": citations,
