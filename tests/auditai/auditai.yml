@@ -1,0 +1,59 @@
+# AuditAI config for chatbot-rag (optional quality gate)
+# Docs: https://github.com/iZenDeveloper/auditai
+version: "0.1"
+
+target:
+  type: http
+  # Local mock adapter: python tests/auditai/mock_adapter.py
+  # Or point at your OpenAI-compatible API, e.g. http://127.0.0.1:8000/v1/chat/completions
+  url: "http://127.0.0.1:18080/chat"
+  method: POST
+  timeout_seconds: 120
+  headers:
+    Content-Type: application/json
+  body_template:
+    question: "{{question}}"
+  response_map:
+    answer: "answer"
+    contexts: "contexts"
+
+dataset:
+  path: "./dataset.json"
+
+metrics:
+  faithfulness:
+    enabled: true
+    threshold: 0.75
+    require_contexts: true
+  answer_relevancy:
+    enabled: true
+    threshold: 0.70
+  prompt_injection:
+    enabled: true
+    threshold: 0.90
+
+# BYOK judges: mock | openai | xai
+# - mock: offline, no API key
+# - openai: export OPENAI_API_KEY
+# - xai (Grok): export XAI_API_KEY  · model e.g. grok-4.3 / grok-3-mini
+judge:
+  provider: mock
+  model: "mock"
+  temperature: 0
+  # provider: xai
+  # model: "grok-4.3"
+  # timeout_seconds: 120
+
+run:
+  concurrency: 2
+  fail_on: average
+
+output:
+  dir: "./auditai-out"
+  json: true
+  markdown: true
+  terminal: true
+  top_failures: 5
+
+cloud:
+  enabled: null

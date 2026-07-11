@@ -1,0 +1,33 @@
+# Optional AuditAI gate — workflow_dispatch only (no auto PR cost)
+# https://github.com/iZenDeveloper/auditai
+name: AuditAI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup note
+        run: |
+          echo "Scaffold present under tests/auditai/."
+          echo "To enable full gate: start target HTTP, uncomment steps below,"
+          echo "and set secrets OPENAI_API_KEY or XAI_API_KEY to match judge.provider."
+
+      # Uncomment when ready:
+      # - name: Start mock adapter
+      #   run: python tests/auditai/mock_adapter.py &
+      #
+      # - uses: iZenDeveloper/auditai@v0.1
+      #   env:
+      #     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      #     XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+      #   with:
+      #     config: tests/auditai/auditai.yml
+      #     install: git+https://github.com/iZenDeveloper/auditai.git@v0.1.0
