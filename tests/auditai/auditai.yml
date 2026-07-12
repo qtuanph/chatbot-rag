@@ -6,7 +6,7 @@ target:
   type: http
   # Local mock adapter: python tests/auditai/mock_adapter.py
   # Or point at your OpenAI-compatible API, e.g. http://127.0.0.1:8000/v1/chat/completions
-  url: "http://127.0.0.1:18080/chat"
+  url: "${AUDITAI_TARGET_URL:-http://127.0.0.1:18080/chat}"
   method: POST
   timeout_seconds: 120
   headers:
