@@ -353,11 +353,31 @@ class PublicInferenceService:
         if not section_doc_pairs:
             return context
 
-        section_rows = await self.section_repo.get_sections_for_rag(section_doc_pairs)
-        section_map = {
-            (str(row.get("document_id") or ""), str(row.get("section_id") or "")): row for row in section_rows
-        }
-
+        section_map = {}
+        missing_pairs = []
+        
+        for doc_id, sec_id in section_doc_pairs:
+            key = (doc_id, sec_id)
+            cache_key = f"rag:section:{doc_id}:{sec_id}"
+            if self.semantic_cache:
+                cached = await self.semantic_cache.get(cache_key)
+                if cached:
+                    section_map[key] = json.loads(cached)
+                    continue
+            missing_pairs.append(key)
+            
+        if missing_pairs:
+            section_rows = await self.section_repo.get_sections_for_rag(missing_pairs)
+            for row in section_rows:
+                key = (str(row.get("document_id") or ""), str(row.get("section_id") or ""))
+                cache_dict = {
+                    "content": str(row.get("content") or ""),
+                    "title": str(row.get("title") or ""),
+                    "page_range": row.get("page_range")
+                }
+                section_map[key] = cache_dict
+                if self.semantic_cache:
+                    await self.semantic_cache.setex(f"rag:section:{key[0]}:{key[1]}", 3600, json.dumps(cache_dict))
         hydrated_nodes: list[RagNode] = []
         for node in context.nodes:
             key = (node.document_id, node.section_id or "")
@@ -417,16 +437,24 @@ class PublicInferenceService:
 
     def _build_messages(self, messages: list[dict[str, str]], setting: dict[str, Any], context) -> list[ChatMessage]:
         context_blocks = []
-        for idx, node in enumerate(context.nodes[:8], start=1):
+        total_chars = 0
+        max_chars = settings.retrieval_context_max_chars
+
+        for idx, node in enumerate(context.nodes, start=1):
             title = node.document_title or "Document"
             heading = node.heading or "Relevant section"
             section_code = f" [{node.section_code}]" if node.section_code else ""
             page = f" (page {node.page_range})" if node.page_range else ""
             breadcrumb = " > ".join(node.breadcrumb or ())
             breadcrumb_line = f"\nĐường dẫn: {breadcrumb}" if breadcrumb else ""
-            context_blocks.append(
-                f"[Nguồn {idx}] {title} - {heading}{section_code}{page}{breadcrumb_line}\n{node.full_text}"
-            )
+            
+            block_text = f"[Nguồn {idx}] {title} - {heading}{section_code}{page}{breadcrumb_line}\n{node.full_text}"
+            
+            if total_chars + len(block_text) > max_chars:
+                break
+                
+            context_blocks.append(block_text)
+            total_chars += len(block_text)
 
         system_prompt = (
             "Bạn là trợ lý doanh nghiệp hoạt động trong đúng phạm vi tenant hiện tại. "
@@ -437,7 +465,7 @@ class PublicInferenceService:
         if tenant_instruction:
             system_prompt += f"\n\nInstruction riêng của tenant:\n{tenant_instruction}"
         if context_blocks:
-            system_prompt += "\n\nNgữ cảnh truy xuất:\n" + "\n\n".join(context_blocks[:10])
+            system_prompt += "\n\nNgữ cảnh truy xuất:\n" + "\n\n".join(context_blocks)
         system_prompt += (
             "\n\nQUY TẮC BẮT BUỘC:"
             "\n- Không được bịa menu, nút, báo cáo, mã trạng thái, trường dữ liệu hoặc quy trình."

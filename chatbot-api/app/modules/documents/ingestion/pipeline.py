@@ -10,8 +10,7 @@ from typing import Any, Awaitable, Callable
 from llama_index.core import Document as LlamaDocument
 from llama_index.core import Settings as LlamaSettings
 from llama_index.core import StorageContext, VectorStoreIndex
-from llama_index.core.node_parser import HierarchicalNodeParser, SentenceWindowNodeParser
-from llama_index.core.postprocessor import MetadataReplacementPostProcessor
+from llama_index.core.node_parser import SentenceWindowNodeParser
 from llama_index.core.schema import IndexNode, NodeRelationship, TextNode
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client.http import models as rest
@@ -126,11 +125,6 @@ def _build_chunk_nodes(
 ) -> tuple[list[TextNode], list[TextNode]]:
     parent_nodes: list[TextNode] = []
     chunk_nodes: list[TextNode] = []
-    hierarchical_parser = HierarchicalNodeParser.from_defaults(
-        chunk_sizes=settings.retrieval_hierarchical_chunk_sizes,
-        chunk_overlap=settings.retrieval_chunk_overlap,
-        include_prev_next_rel=False,
-    )
 
     for section in sections_data:
         content = str(section.get("content") or "").strip()
@@ -153,19 +147,6 @@ def _build_chunk_nodes(
         )
 
         sentence_nodes = sentence_parser.get_nodes_from_documents([document])
-        try:
-            hierarchical_nodes = hierarchical_parser.get_nodes_from_documents([document])
-            hierarchical_leaf_count = sum(1 for node in hierarchical_nodes if not node.child_nodes)
-            hierarchy_fallback_used = False
-        except RecursionError:
-            logger.warning(
-                "[%s] Hierarchical chunk parsing hit recursion depth for section %s; "
-                "continuing with sentence-window chunks only",
-                document_id,
-                section["section_id"],
-            )
-            hierarchical_leaf_count = len(sentence_nodes)
-            hierarchy_fallback_used = True
 
         parent_node = TextNode(
             id_=_section_parent_node_id(document_id, section["section_id"]),
@@ -194,9 +175,6 @@ def _build_chunk_nodes(
         artifact_metadata = dict(section.get("artifact_metadata") or {})
         artifact_metadata["chunk_node_ids"] = [node.node_id for node in sentence_nodes]
         artifact_metadata["parent_node_id"] = parent_node.node_id
-        artifact_metadata["hierarchical_leaf_count"] = hierarchical_leaf_count
-        artifact_metadata["hierarchical_chunk_sizes"] = list(settings.retrieval_hierarchical_chunk_sizes)
-        artifact_metadata["hierarchy_fallback_used"] = hierarchy_fallback_used
         section["artifact_metadata"] = artifact_metadata
 
     return parent_nodes, chunk_nodes
