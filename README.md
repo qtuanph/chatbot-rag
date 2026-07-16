@@ -321,6 +321,11 @@ If you are contributing or maintaining the project, start here:
 - synchronized code and documentation changes
 - no hardcoded "pass-the-bug" fixes
 
+## Acknowledgments
+
+Special thanks to our contributors:
+- **[iZenDeveloper](https://github.com/iZenDeveloper)** for integrating the [AuditAI](https://github.com/iZenDeveloper/auditai) RAG quality smoke suite into the project, helping us measure and improve retrieval accuracy and safety.
+
 ---
 
 ## License
