@@ -77,7 +77,7 @@
   "chat": {
     "history_persistence": false,
     "client_context_window_messages": 6,
-    "retrieval_history_query_count": 0,
+    "retrieval_history_query_count": 3,
     "retrieval_section_top_k": 8,
     "retrieval_recursive_top_k": 8,
     "retrieval_chunk_top_k": 20,
@@ -89,7 +89,7 @@
     "retrieval_rerank_skip_enabled": true,
     "retrieval_rerank_skip_query_max_chars": 48,
     "retrieval_rerank_skip_query_max_terms": 8,
-    "retrieval_rerank_skip_dominance_ratio": 1.35,
+    "retrieval_rerank_skip_dominance_ratio": 2.0,
     "temperature": 0.3,
     "max_output_tokens": 8192,
     "internal_chat_route": "/v1/chat/stream",
