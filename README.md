@@ -107,7 +107,7 @@ This repository intentionally favors boundaries that scale operationally:
 ```mermaid
 flowchart LR
     A[Browser / Tenant App] --> B[Next.js Webapp]
-    B --> C[/api/bep/* Proxy]
+    B --> C["/api/bep/* Proxy"]
     C --> D[FastAPI Backend]
 
     D --> E[PostgreSQL]
