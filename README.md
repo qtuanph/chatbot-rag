@@ -66,7 +66,7 @@ The result is a platform that is useful not just as a demo chatbot, but as a fou
 
 ### Hybrid retrieval pipeline
 - Qdrant-backed search
-- PostgreSQL section hydration
+- Section hydration from PostgreSQL (accelerated via Redis caching)
 - reranking with NVIDIA NIM by default
 - adaptive rerank skipping for short, obvious queries to save latency and token cost
 
@@ -214,7 +214,7 @@ At a high level:
 1. accept the latest user query
 2. enforce tenant boundary
 3. run hybrid retrieval in Qdrant
-4. hydrate top sections from PostgreSQL
+4. hydrate top sections from PostgreSQL (with Redis caching)
 5. rerank when useful
 6. build final generation context
 7. call the LLM through 9Router
