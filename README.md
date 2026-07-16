@@ -5,6 +5,7 @@
 [![Frontend: Next.js 16](https://img.shields.io/badge/Frontend-Next.js%2016-black)](https://nextjs.org/)
 [![Vector DB: Qdrant](https://img.shields.io/badge/Vector%20DB-Qdrant-red)](https://qdrant.tech/)
 [![UI: shadcn/ui](https://img.shields.io/badge/UI-shadcn%2Fui-black)](https://ui.shadcn.com/)
+[![Audited by AuditAI](https://img.shields.io/badge/🛡️_Audited_by-AuditAI-7c5cfc?style=flat-square)](https://github.com/iZenDeveloper/auditai)
 
 A self-hosted, multi-tenant RAG chatbot platform built for SaaS-style operations and real product integration.
 
