@@ -1,0 +1,4 @@
+{"id": "q_section_code", "question": "What does section 3.2.1 say about warehouse receipt?", "expected_section_codes": ["3.2.1", "3.2"], "expected_section_ids": ["sec-wh-321", "sec-wh-32"], "id_field": "section_codes", "difficulty": "easy"}
+{"id": "q_natural", "question": "How do I create a warehouse receipt?", "expected_section_ids": ["sec-wh-321"], "expected_section_codes": ["3.2.1"], "id_field": "section_ids", "difficulty": "medium"}
+{"id": "q_near_miss", "question": "How do I cancel a warehouse receipt?", "expected_section_ids": ["sec-wh-cancel"], "expected_section_codes": ["3.2.9"], "id_field": "section_ids", "difficulty": "hard"}
+{"id": "q_multi", "question": "Warehouse receipt and inventory posting steps", "expected_section_ids": ["sec-wh-321", "sec-inv-post"], "id_field": "section_ids", "difficulty": "hard"}
