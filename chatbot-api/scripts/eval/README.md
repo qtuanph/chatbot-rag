@@ -102,7 +102,8 @@ Keep latency/cost notes next to accuracy when changing `retrieval_hybrid_top_k` 
 
 ```bash
 cd chatbot-api
-pytest tests/test_retrieval_metrics.py -q
+python scripts/eval/test_retrieval_metrics.py
+# or: python -m unittest scripts.eval.test_retrieval_metrics
 ```
 
 ## Related
