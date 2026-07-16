@@ -11,6 +11,7 @@ from llama_index.core import Document as LlamaDocument
 from llama_index.core import Settings as LlamaSettings
 from llama_index.core import StorageContext, VectorStoreIndex
 from llama_index.core.node_parser import SentenceWindowNodeParser
+from llama_index.core.postprocessor import MetadataReplacementPostProcessor
 from llama_index.core.schema import IndexNode, NodeRelationship, TextNode
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from qdrant_client.http import models as rest

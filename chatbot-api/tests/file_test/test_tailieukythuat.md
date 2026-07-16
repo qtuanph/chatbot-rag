@@ -57,7 +57,8 @@ Chức vụ Giám đốc
    - 1.4 Xử lý chứng từ trùng trong trong mua bán hàng hóa vật tư
       - 1.4.1 Phân loại các nghiệp vụ phát sinh có chứng từ trùng
       - 1.4.2 Quy định về cập nhật chứng từ trùng liên quan đồng thời tới tiền mặt và tiền gửi ngân hàng
-      - tiền gửi ngân hàng....................................................................................................................................................................................... 1.4.3 Quy định về cập nhật chứng từ trùng liên quan đến mua bán vật tư thanh toán ngay bằng tiền mặt hoặc
+      - tiền gửi ngân hàng
+      - 1.4.3 Quy định về cập nhật chứng từ trùng liên quan đến mua bán vật tư thanh toán ngay bằng tiền mặt hoặc
       - 1.4.4 Quy định về cập nhật chứng từ trùng liên quan đến thanh toán tiền tạm ứng mua vật tư
       - 1.4.5 Quy định về cập nhật chứng từ trùng liên quan đến cung cấp dịch vụ thu tiền ngay
    - 1.5 Quy trình xử lý số liệu trong SAO
@@ -89,8 +90,8 @@ Chức vụ Giám đốc
    - 3.7 Các thao tác chung khi lên báo cáo
    - 3.8 Các thức nhập tài khoản
    - 3.9 Đổi mã và ghép mã các danh điểm trong các danh mục từ điển
-- 4 Phân hệ Quản trị hệ thống............................................................................................
-   - 4.1 Giới thiệu chung.............................................................................................................................
+- 4 Phân hệ Quản trị hệ thống
+   - 4.1 Giới thiệu chung
    - 4.2 Khai báo tham số hệ thống
       - 4.2.1 Danh sách các chức năng khai báo tham số hệ thống
       - 4.2.2 Khai báo màn hình cập nhật chứng từ
@@ -108,8 +109,8 @@ Chức vụ Giám đốc
       - 4.4.3 Khai báo các phương pháp tính giá hàng tồn kho
       - 4.4.4 Khai báo phương pháp tính tỷ giá ghi sổ
    - 4.5 Quản lý và bảo trì số liệu
-      - 4.5.1 Lưu trữ (backup) số liệu..........................................................................................................................................................
-      - 4.5.2 Khóa số liệu....................................................................................................................................................................................
+      - 4.5.1 Lưu trữ (backup) số liệu
+      - 4.5.2 Khóa số liệu
       - 4.5.3 Bảo trì và kiểm tra số liệu
       - 4.5.4 Kiểm tra đồng bộ giữa các tệp
       - 4.5.5 Kiểm tra sai lệch số liệu khi lên báo cáo
@@ -124,17 +125,17 @@ Chức vụ Giám đốc
       - 4.7.1 Hướng dẫn sử dụng
       - 4.7.2 Quy định và hướng dẫn hạch toán nội bộ
       - 4.7.3 Các quy định về chế độ kế toán, thuế và tài chính
-      - 4.7.4 Thuật ngữ kế toán.......................................................................................................................................................................
+      - 4.7.4 Thuật ngữ kế toán
       - 4.7.5 Thư giãn
       - 4.7.6 Giới thiệu chương trình
 - 5 Phân hệ Kế toán tổng hợp
-   - 5.1 Giới thiệu chung.............................................................................................................................
+   - 5.1 Giới thiệu chung
    - 5.2 Khai báo các danh mục từ điển
       - 5.2.1 Danh mục tài khoản
          - 1.1.1.1 Phương án tổ chức danh mục tài khoản trong SA
          - 1.1.1.2 Cách thức khai báo danh mục tài khoản trong SA
          - 1.1.1.3 Các thông tin về tài khoản
-         - 1.1.1.4 Danh mục các tiểu khoản............................................................................................................................................................................
+         - 1.1.1.4 Danh mục các tiểu khoản
          - 1.1.1.5 Danh mục phân nhóm các tiểu khoản
       - 5.2.2 Danh mục phân loại các tài khoản
    - 5.3 Cập nhật số dư đầu kỳ và kết chuyển số dư cuối năm
@@ -151,7 +152,7 @@ Chức vụ Giám đốc
       - 5.5.3 Báo cáo tài chính
       - 5.5.4 Lọc tìm và tra cứu số liệu
 - 6 Phân hệ Kế toán tiền mặt tiền gửi, tiền vay
-   - 6.1 Giới thiệu chung.............................................................................................................................
+   - 6.1 Giới thiệu chung
    - 6.2 Khai báo các danh mục từ điển
    - 6.3 Cập nhật chứng từ đầu vào
       - 6.3.1 Cập nhật phiếu thu tiền mặt và giấy báo có của ngân hàng
@@ -213,14 +214,14 @@ Chức vụ Giám đốc
       - 7.4.9 Cập nhật chứng từ bù trừ công nợ
       - 7.4.10 Đánh giá chênh lệch tỷ giá theo hóa đơn
    - 7.5 Một số vấn đề liên quan đến quản lý bán hàng
-      - 7.5.1 Bán hàng theo hệ thống giá thống nhất.........................................................................................................................
+      - 7.5.1 Bán hàng theo hệ thống giá thống nhất
       - 7.5.2 Theo dõi chiết khấu bán hàng
       - 7.5.3 Theo dõi doanh thu theo bộ phận và nhân viên bán hàng
-      - 7.5.4 Cập nhật giá vốn hàng bán...................................................................................................................................................
+      - 7.5.4 Cập nhật giá vốn hàng bán
       - 7.5.5 Theo dõi bán hàng trong trường hợp xuất hoá đơn vào cuối kỳ
       - 7.5.6 Theo dõi việc thu tiền bán hàng
          - 1.1.1.30 Bán hàng thu tiền ngay
-         - 1.1.1.31 Thu tiền bán hàng.......................................................................................................................................................................................
+         - 1.1.1.31 Thu tiền bán hàng
          - 1.1.1.32 Tạm ứng trước tiền hàng của khách hàng
    - 7.6 Theo dõi công nợ chi tiết theo hoá đơn và thời hạn thanh toán
       - 7.6.1 Lưu ý về cập nhật các hóa đơn để có thể theo dõi thanh toán chi tiết cho hóa đơn
@@ -232,7 +233,7 @@ Chức vụ Giám đốc
    - 7.8 Báo cáo bán hàng và công nợ phải thu
       - 7.8.1 Báo cáo bán hàng
       - 7.8.2 Báo cáo công nợ theo khách hàng
-      - 7.8.3 Báo cáo công nợ theo hóa đơn...........................................................................................................................................
+      - 7.8.3 Báo cáo công nợ theo hóa đơn
       - 7.8.4 Báo cáo thuế GTGT hoá đơn hàng hoá, dịch vụ bán ra
    - 7.9 Quản lý các hợp đồng và đơn hàng
       - 7.9.1 Danh mục hợp đồng, đơn hàng
@@ -240,7 +241,7 @@ Chức vụ Giám đốc
       - 7.9.3 Cập nhật số liệu liên quan đến hợp đồng, đơn hàng
       - 7.9.4 Báo cáo theo hợp đồng, đơn hàng
 - 8 Phân hệ Kế toán mua hang và công nợ phải trả
-- 8.1 Giới thiệu chung..........................................................................................................................
+- 8.1 Giới thiệu chung
 - 8.2 Khai báo các danh mục từ điển
 - 8.3 Cập nhật số dư công nợ đầu kỳ và kết chuyển số dư công nợ sang năm sau
    - 8.3.1 Cập nhật số dư công nợ đầu kỳ của các nhà cung cấp
@@ -261,7 +262,7 @@ Chức vụ Giám đốc
    - 8.4.10 Đánh giá chênh lệch tỷ giá theo hóa đơn
 - 8.5 Theo dõi thanh toán tiền hàng
    - 8.5.1 Mua hàng trả tiền ngay
-   - 8.5.2 Trả tiền mua hàng....................................................................................................................................................................
+   - 8.5.2 Trả tiền mua hàng
    - 8.5.3 Thanh toán tiền tạm ứng mua hàng hoá, vật tư
    - 8.5.4 Tạm ứng trước tiền cho nhà cung cấp
 - 8.6 Theo dõi công nợ phải trả chi tiết theo hóa đơn và thời hạn thanh toán
@@ -279,7 +280,7 @@ Chức vụ Giám đốc
       - 8.8.3 Cập nhật số liệu liên quan đến hợp đồng, đơn hàng
       - 8.8.4 Báo cáo theo hợp đồng, đơn hàng
 - 9 Phân hệ Kế toán hàng tồn kho
-   - 9.1 Giới thiệu chung..........................................................................................................................
+   - 9.1 Giới thiệu chung
    - 9.2 Khai báo các danh mục từ điển
       - 9.2.1 Danh mục vật tư
       - 9.2.2 Danh mục nhóm vật tư, hàng hoá
@@ -302,19 +303,19 @@ Chức vụ Giám đốc
    - 9.5 Theo dõi hàng tồn kho tại các đại lý
    - 9.6 Tính giá và cập nhật giá hàng tồn kho
       - 9.6.1 Tính giá hàng tồn kho theo phương pháp giá trung bình
-      - 9.6.2 Tính giá hàng tồn kho theo phương pháp giá nhập trước xuất trước (NTXT)...........................................
+      - 9.6.2 Tính giá hàng tồn kho theo phương pháp giá nhập trước xuất trước (NTXT)
       - 9.6.3 Tính giá hàng tồn kho theo phương pháp giá đích danh
    - 9.7 Báo cáo hàng tồn kho
       - 9.7.1 Báo cáo hàng nhập
       - 9.7.2 Báo cáo hàng xuất
       - 9.7.3 Báo cáo hàng tồn kho
 - 10 Phân hệ kế toán giá thành
-   - 10.1 Giới thiệu chung......................................................................................................................
+   - 10.1 Giới thiệu chung
    - 10.2 Báo cáo chi phí theo tiểu khoản
    - 10.3 Báo cáo chi phí theo khoản mục phí
       - 10.3.1 Danh mục các khoản mục phí
       - 10.3.2 Báo cáo chi phí theo khoản mục phí
-   - 10.4 Tính giá thành sản phẩm công trình xây lắp................................................................
+   - 10.4 Tính giá thành sản phẩm công trình xây lắp
       - 10.4.1 Theo dõi tập hợp chi phí và tính giá thành công trình xây lắp trong SA
       - 10.4.2 Danh mục vụ việc công trình
       - 10.4.3 Danh mục phân nhóm vụ việc công trình
@@ -325,7 +326,7 @@ Chức vụ Giám đốc
       - 10.5.2 Tổ chức các trường thông tin để tập hợp chi phí và tính giá thành sản phẩm sản xuất liên tục
       - 10.5.3 Trình tự khai báo và tính toán khi tính giá thành sản phẩm sản xuất liên tục
       - 10.5.4 Báo cáo giá thành của sản phẩm sản xuất liên tục
-   - 10.6 Tính giá thành sản phẩm sản xuất theo đơn hàng.....................................................
+   - 10.6 Tính giá thành sản phẩm sản xuất theo đơn hàng
       - 10.6.1 Bài toán tính giá thành sản phẩm sản xuất theo đơn hàng
       - 10.6.2 Tổ chức các trường thông tin để tập hợp chi phí và tính giá thành sản phẩm sản xuất theo đơn hàng
       - 10.6.3 Trình tự khai báo và tính toán khi tính giá thành sản phẩm sản xuất theo đơn hàng
@@ -336,14 +337,14 @@ Chức vụ Giám đốc
       - 10.7.2 Danh mục từ điển liên quan đến trường tự do
       - 10.7.3 Báo cáo theo các trường tự do 1, 2,
 - 11 Phân hệ Kế toán tài sản cố định
-   - 11.1 Giới thiệu chung......................................................................................................................
+   - 11.1 Giới thiệu chung
    - 11.2 Khai báo các danh mục từ điển
       - 11.2.1 Danh mục nguồn vốn hình thành TSCĐ
       - 11.2.2 Danh mục lý do tăng giảm TSCĐ
       - 11.2.3 Danh mục nhóm tài sản
       - 11.2.4 Danh mục bộ phận sử dụng TSCĐ
       - 11.2.5 Danh mục phân nhóm TSCĐ
-   - 11.3 Khai báo thông tin về tài sản..............................................................................................
+   - 11.3 Khai báo thông tin về tài sản
    - 11.4 Khai báo các thay đổi liên quan đến tài sản
       - 11.4.1 Điều chỉnh giá trị tài sản
       - 11.4.2 Khai báo thôi khấu hao tài sản
@@ -352,11 +353,11 @@ Chức vụ Giám đốc
    - 11.5 Tính khấu hao tháng và điều chỉnh khấu hao tháng
    - 11.6 Tạo bút toán phân bổ khấu hao TSCĐ
    - 11.7 Các báo cáo về quản lý tài sản cố định
-      - 11.7.1 Các báo cáo kiểm kê về TSCĐ........................................................................................................................................
+      - 11.7.1 Các báo cáo kiểm kê về TSCĐ
       - 11.7.2 Các báo cáo tăng giảm TSCĐ
       - 11.7.3 Báo cáo khấu hao và phân bổ khấu hao TSCĐ
    - 11.8 Quản lý trang thiết bị
-- 12 Phân hệ Kế toán thuế...............................................................................................
+- 12 Phân hệ Kế toán thuế
    - 12.1 Báo cáo thuế GTGT đầu vào
       - 1.1.1 Cập nhật các chứng từ thuế GTGT đầu vào
       - 12.1.1 Báo cáo thuế GTGT đầu vào

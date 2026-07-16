@@ -137,6 +137,9 @@ async def _live_rank(
 ) -> dict[str, list[str]]:
     """Call production retrieve_context and extract id lists from metadata."""
     from app.modules.chat.retrieval.pipeline import retrieve_context
+    from app.core.llama_index import init_llama_index
+
+    init_llama_index()
 
     ctx = await retrieve_context(
         queries=[question],

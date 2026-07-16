@@ -1,0 +1,10 @@
+{"id": "q1", "question": "bạn ơi cho mình hỏi cái phần công nợ bán hàng trong SAO thì dùng để làm gì thế?", "expected_document_ids": ["56821318-0437-4176-aacc-e6d7c7752bed"]}
+{"id": "q2", "question": "phần mềm này có mấy cách tính giá tồn kho vậy ad?", "expected_document_ids": ["56821318-0437-4176-aacc-e6d7c7752bed"]}
+{"id": "q3", "question": "chết dở mình nhập trùng chứng từ mua hàng thì giờ xử lý kiểu gì?", "expected_document_ids": ["56821318-0437-4176-aacc-e6d7c7752bed"]}
+{"id": "q4", "question": "SAO có xem được số liệu của 2 năm liên tiếp trên cùng 1 bảng không?", "expected_document_ids": ["56821318-0437-4176-aacc-e6d7c7752bed"]}
+{"id": "q5", "question": "hướng dẫn mình cách đổi mã với ghép mã trong từ điển với", "expected_document_ids": ["56821318-0437-4176-aacc-e6d7c7752bed"]}
+{"id": "q6", "question": "cách backup dữ liệu phòng khi mất điện như nào nhỉ?", "expected_document_ids": ["56821318-0437-4176-aacc-e6d7c7752bed"]}
+{"id": "q7", "question": "thanh toán tiền tạm ứng mua vật tư bị trùng chứng từ thì phải làm sao?", "expected_document_ids": ["56821318-0437-4176-aacc-e6d7c7752bed"]}
+{"id": "q8", "question": "sếp bắt tính tồn kho theo NTXT thì cài đặt ở đâu hả bạn?", "expected_document_ids": ["56821318-0437-4176-aacc-e6d7c7752bed"]}
+{"id": "q9", "question": "làm sao để phân bổ tiền khách trả cho nhiều hóa đơn khác nhau cùng lúc?", "expected_document_ids": ["56821318-0437-4176-aacc-e6d7c7752bed"]}
+{"id": "q10", "question": "mình muốn lên báo cáo quyết toán thuế TNDN thì vào menu nào?", "expected_document_ids": ["56821318-0437-4176-aacc-e6d7c7752bed"]}
