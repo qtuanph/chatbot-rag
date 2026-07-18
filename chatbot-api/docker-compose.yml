@@ -216,7 +216,7 @@ services:
       - internal
 
   traefik:
-    image: traefik:v3.7.5
+    image: traefik:v3.7.8
     command:
       - "--ping=true"
       - "--providers.docker=true"
