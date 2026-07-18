@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { documentsApi } from "@/lib/api-client";
 import { formatDateTimeVN, formatNumber } from "@/lib/format";
+import { DocumentListResponseSchema } from "@/lib/schemas";
 import type { DocumentListResponse, DocumentSummary, TenantItem } from "@/types/api";
 
 const TABLE_COLUMNS = ["Tên file", "Tenant", "Trạng thái", "Giai đoạn", "Tiến độ", "Kích thước", "Cập nhật"];
@@ -92,8 +93,14 @@ export function DocumentCatalog({
 
     stream.addEventListener("documents", (event) => {
       try {
-        const payload = JSON.parse(event.data) as DocumentListResponse;
-        setDocuments(payload.items);
+        const rawPayload = JSON.parse(event.data) as unknown;
+        const parsedPayload = DocumentListResponseSchema.safeParse(rawPayload);
+        if (!parsedPayload.success) {
+          console.warn("Document SSE payload không hợp lệ");
+          return;
+        }
+
+        setDocuments(parsedPayload.data.items);
         setLoading(false);
       } catch (error) {
         console.error("Không thể parse document stream payload", error);

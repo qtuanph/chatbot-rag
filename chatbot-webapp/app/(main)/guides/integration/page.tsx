@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
+import { OpenAIStreamChunkSchema } from "@/lib/schemas";
+
 /* ─── Copy Button ─────────────────────────────────────────────── */
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -62,6 +64,19 @@ function CodeBlock({ code, lang = "" }: { code: string; lang?: string }) {
 const API_BASE = "https://api.qtuanph.dev/v1";
 const API_URL = `${API_BASE}/chat/completions`;
 const PLACEHOLDER_KEY = "trg_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+
+function getStreamContentChunk(dataPayload: string): string {
+  try {
+    const parsedPayload = OpenAIStreamChunkSchema.safeParse(JSON.parse(dataPayload) as unknown);
+    if (!parsedPayload.success) {
+      return "";
+    }
+
+    return parsedPayload.data.choices?.[0]?.delta?.content || "";
+  } catch {
+    return "";
+  }
+}
 
 /* ─── Code strings ────────────────────────────────────────────── */
 
@@ -753,19 +768,14 @@ function LivePlayground() {
           const dataPayload = line.slice(6).trim();
           if (dataPayload === "[DONE]") continue;
 
-          try {
-            const parsed = JSON.parse(dataPayload);
-            const chunk = parsed?.choices?.[0]?.delta?.content || "";
-            if (chunk) {
-              fullText += chunk;
-              setMessages((prev) => {
-                const list = [...prev];
-                list[assistantIndex] = { role: "assistant", content: fullText };
-                return list;
-              });
-            }
-          } catch (e) {
-            // ignore bad chunks
+          const chunk = getStreamContentChunk(dataPayload);
+          if (chunk) {
+            fullText += chunk;
+            setMessages((prev) => {
+              const list = [...prev];
+              list[assistantIndex] = { role: "assistant", content: fullText };
+              return list;
+            });
           }
         }
       }

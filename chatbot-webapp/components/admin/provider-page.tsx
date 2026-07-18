@@ -10,6 +10,7 @@ import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, Power, TestTube, Key, Trash2, Cpu } from "lucide-react";
 import { settingsApi, ApiError } from "@/lib/api-client";
+import { AIProviderCreateSchema, AIProviderUpdateSchema, ProviderApiKeyCreateRequestSchema } from "@/lib/schemas";
 import { toast } from "sonner";
 import type { AIProvider, AIProviderCreate, AIProviderUpdate, ApiKeyItem } from "@/types/api";
 
@@ -89,8 +90,15 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
       ...formData,
       provider_name: formData.provider_name || formData.display_name.toLowerCase().replace(/[^a-z0-9]/g, "_"),
     };
+
+    const parsedData = AIProviderCreateSchema.safeParse(data);
+    if (!parsedData.success) {
+      toast.error("Thông tin provider không hợp lệ");
+      return;
+    }
+
     try {
-      await settingsApi.createProvider(data);
+      await settingsApi.createProvider(parsedData.data);
       toast.success("Đã thêm provider");
       setAddDialog(false);
       resetForm();
@@ -108,8 +116,15 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
     if (f["edit-url"]) data.url = f["edit-url"].value;
     if (f["edit-model"]) data.model = f["edit-model"].value;
     if (f["edit-api_key"] && f["edit-api_key"].value.trim()) data.api_key = f["edit-api_key"].value.trim();
+
+    const parsedData = AIProviderUpdateSchema.safeParse(data);
+    if (!parsedData.success) {
+      toast.error("Dữ liệu cập nhật provider không hợp lệ");
+      return;
+    }
+
     try {
-      await settingsApi.updateProvider(editDialog.id, data);
+      await settingsApi.updateProvider(editDialog.id, parsedData.data);
       toast.success("Đã cập nhật");
       setEditDialog(null);
       loadProviders();
@@ -175,8 +190,15 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
 
   const addKey = async () => {
     if (!editDialog || !newKeyValue.trim()) return;
+
+    const parsedPayload = ProviderApiKeyCreateRequestSchema.safeParse({ key_value: newKeyValue.trim() });
+    if (!parsedPayload.success) {
+      toast.error("API key không hợp lệ");
+      return;
+    }
+
     try {
-      await settingsApi.addKey(editDialog.id, newKeyValue.trim());
+      await settingsApi.addKey(editDialog.id, parsedPayload.data.key_value);
       setNewKeyValue("");
       toast.success("Đã thêm API key");
       const data = await settingsApi.listKeys(editDialog.id);

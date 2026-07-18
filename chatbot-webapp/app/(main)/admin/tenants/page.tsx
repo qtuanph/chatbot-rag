@@ -17,6 +17,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { authApi, tenantsApi } from "@/lib/api-client";
 import { formatDateTimeVN } from "@/lib/format";
+import {
+  CreateUserRequestSchema,
+  TenantApiKeyCreateRequestSchema,
+  TenantCreateRequestSchema,
+  TenantUpdateRequestSchema,
+} from "@/lib/schemas";
 import type {
   TenantApiKeyCreateRequest,
   TenantApiKeyCreateResponse,
@@ -150,7 +156,14 @@ export default function AdminTenantsPage() {
         admin_username: tenantAdminUsername.trim() || undefined,
         admin_password: tenantAdminPassword || undefined,
       };
-      const created = await tenantsApi.create(payload);
+
+      const parsedPayload = TenantCreateRequestSchema.safeParse(payload);
+      if (!parsedPayload.success) {
+        toast.error("Dữ liệu tenant không hợp lệ");
+        return;
+      }
+
+      const created = await tenantsApi.create(parsedPayload.data);
       setTenants((current) => [created, ...current.filter((t) => t.id !== created.id)]);
       setCreateOpen(false);
       openTenant(created.id);
@@ -183,7 +196,14 @@ export default function AdminTenantsPage() {
         rate_limit_rpm: Number(tenantForm.rate_limit_rpm || 60),
         allowed_origins: parseAllowedOriginsDraft(allowedOriginsDraft),
       };
-      const updated = await tenantsApi.update(selectedTenantId, payload);
+
+      const parsedPayload = TenantUpdateRequestSchema.safeParse(payload);
+      if (!parsedPayload.success) {
+        toast.error("Dữ liệu cập nhật tenant không hợp lệ");
+        return;
+      }
+
+      const updated = await tenantsApi.update(selectedTenantId, parsedPayload.data);
       setTenants((current) => current.map((t) => (t.id === updated.id ? updated : t)));
       setTenantForm((current) => ({ ...current, slug: updated.slug, allowed_origins: updated.allowed_origins }));
       setAllowedOriginsDraft(stringifyAllowedOrigins(updated.allowed_origins));
@@ -200,10 +220,18 @@ export default function AdminTenantsPage() {
     if (!selectedTenantId || !newApiKey.name.trim()) return;
     try {
       setSavingApiKey(true);
-      const result: TenantApiKeyCreateResponse = await tenantsApi.createApiKey(selectedTenantId, {
+      const payload = {
         name: newApiKey.name.trim(),
         expires_at: newApiKey.expires_at || null,
-      });
+      };
+
+      const parsedPayload = TenantApiKeyCreateRequestSchema.safeParse(payload);
+      if (!parsedPayload.success) {
+        toast.error("Dữ liệu API key không hợp lệ");
+        return;
+      }
+
+      const result: TenantApiKeyCreateResponse = await tenantsApi.createApiKey(selectedTenantId, parsedPayload.data);
       setApiKeys((current) => [result, ...current]);
       setNewApiKey({ name: "" });
       setRawApiKey(result.raw_api_key);
@@ -232,12 +260,20 @@ export default function AdminTenantsPage() {
     if (!selectedTenantId || !tenantAdminUsername.trim() || !tenantAdminPassword.trim()) return;
     try {
       setSavingTenantUser(true);
-      const created = await authApi.createUser({
+      const payload = {
         username: tenantAdminUsername.trim(),
         password: tenantAdminPassword,
         role: "tenant_admin",
         tenant_id: selectedTenantId,
-      });
+      };
+
+      const parsedPayload = CreateUserRequestSchema.safeParse(payload);
+      if (!parsedPayload.success) {
+        toast.error("Dữ liệu tenant admin không hợp lệ");
+        return;
+      }
+
+      const created = await authApi.createUser(parsedPayload.data);
       setTenantUsers((current) => [...current, created]);
       setLastCreatedTenantAdmin({ username: tenantAdminUsername.trim(), password: tenantAdminPassword });
       setTenantAdminUsername("");

@@ -13,6 +13,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { authApi, tenantsApi } from "@/lib/api-client";
+import { CreateUserRequestSchema } from "@/lib/schemas";
 import type { CreateUserRequest, RoleItem, TenantItem, UserItem } from "@/types/api";
 
 const EMPTY_FORM: CreateUserRequest = {
@@ -61,13 +62,26 @@ export default function AdminUsersPage() {
   const handleCreate = useCallback(async () => {
     try {
       setSaving(true);
+
+      if (form.role === "tenant_admin" && !form.tenant_id) {
+        toast.error("Vui lòng chọn tenant cho tenant admin");
+        return;
+      }
+
       const payload: CreateUserRequest = {
         username: form.username.trim(),
         password: form.password,
         role: form.role,
         tenant_id: form.role === "tenant_admin" ? form.tenant_id : null,
       };
-      const created = await authApi.createUser(payload);
+
+      const parsedPayload = CreateUserRequestSchema.safeParse(payload);
+      if (!parsedPayload.success) {
+        toast.error("Dữ liệu người dùng không hợp lệ");
+        return;
+      }
+
+      const created = await authApi.createUser(parsedPayload.data);
       setUsers((current) => [...current, created]);
       setForm(EMPTY_FORM);
       setCreateOpen(false);
