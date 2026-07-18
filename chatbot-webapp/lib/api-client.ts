@@ -57,6 +57,28 @@ export class ApiError extends Error {
   }
 }
 
+function formatZodIssues(error: z.ZodError): string {
+  if (!error.issues.length) {
+    return "Payload không hợp lệ";
+  }
+
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.length ? issue.path.join(".") : "payload";
+      return `${path}: ${issue.message}`;
+    })
+    .join("; ");
+}
+
+function parseRequest<T>(schema: z.ZodType<T>, payload: unknown): T {
+  const result = schema.safeParse(payload);
+  if (!result.success) {
+    throw new ApiError(400, formatZodIssues(result.error));
+  }
+
+  return result.data;
+}
+
 function extractErrorMessage(body: unknown, fallback: string): string {
   if (!body || typeof body !== "object") {
     return fallback;
@@ -119,7 +141,7 @@ export const authApi = {
   login: (data: LoginRequest): Promise<TokenResponse> =>
     apiFetchParse(s.TokenResponseSchema, "/auth/login", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify(parseRequest(s.LoginRequestSchema, data)),
     }),
 
   logout: (): Promise<{ status: string }> =>
@@ -131,7 +153,7 @@ export const authApi = {
   updateProfile: (data: UpdateProfileRequest): Promise<UserInfo> =>
     apiFetchParse(s.UserInfoSchema, "/auth/me", {
       method: "PATCH",
-      body: JSON.stringify(data),
+      body: JSON.stringify(parseRequest(s.UpdateProfileRequestSchema, data)),
     }),
 
   getUsers: (): Promise<UserItem[]> =>
@@ -143,7 +165,7 @@ export const authApi = {
   createUser: (data: CreateUserRequest): Promise<UserItem> =>
     apiFetchParse(s.UserItemSchema, "/auth/users", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify(parseRequest(s.CreateUserRequestSchema, data)),
     }),
 
   deleteUser: (username: string): Promise<{ status: string }> =>
@@ -168,7 +190,7 @@ export const tenantsApi = {
   create: (data: TenantCreateRequest): Promise<TenantItem> =>
     apiFetchParse(s.TenantItemSchema, "/admin/tenants", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify(parseRequest(s.TenantCreateRequestSchema, data)),
     }),
 
   get: (tenantId: string): Promise<TenantItem> =>
@@ -177,7 +199,7 @@ export const tenantsApi = {
   update: (tenantId: string, data: TenantUpdateRequest): Promise<TenantItem> =>
     apiFetchParse(s.TenantItemSchema, `/admin/tenants/${encodeURIComponent(tenantId)}`, {
       method: "PATCH",
-      body: JSON.stringify(data),
+      body: JSON.stringify(parseRequest(s.TenantUpdateRequestSchema, data)),
     }),
 
   getSettings: (tenantId: string): Promise<TenantSetting> =>
@@ -186,7 +208,7 @@ export const tenantsApi = {
   updateSettings: (tenantId: string, data: TenantSettingUpdateRequest): Promise<TenantSetting> =>
     apiFetchParse(s.TenantSettingSchema, `/admin/tenants/${encodeURIComponent(tenantId)}/settings`, {
       method: "PUT",
-      body: JSON.stringify(data),
+      body: JSON.stringify(parseRequest(s.TenantSettingUpdateRequestSchema, data)),
     }),
 
   listApiKeys: (tenantId: string): Promise<TenantApiKeyItem[]> =>
@@ -195,7 +217,7 @@ export const tenantsApi = {
   createApiKey: (tenantId: string, data: TenantApiKeyCreateRequest): Promise<TenantApiKeyCreateResponse> =>
     apiFetchParse(s.TenantApiKeyCreateResponseSchema, `/admin/tenants/${encodeURIComponent(tenantId)}/api-keys`, {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify(parseRequest(s.TenantApiKeyCreateRequestSchema, data)),
     }),
 
   revokeApiKey: (tenantId: string, keyId: string): Promise<TenantApiKeyItem> =>
@@ -213,7 +235,7 @@ export const tenantsApi = {
   updateMySettings: (data: TenantSettingUpdateRequest): Promise<TenantSetting> =>
     apiFetchParse(s.TenantSettingSchema, "/tenants/me/settings", {
       method: "PUT",
-      body: JSON.stringify(data),
+      body: JSON.stringify(parseRequest(s.TenantSettingUpdateRequestSchema, data)),
     }),
 };
 
@@ -324,13 +346,13 @@ export const settingsApi = {
   createProvider: (data: AIProviderCreate): Promise<AIProvider> =>
     apiFetchParse(s.AIProviderSchema, "/settings/providers", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify(parseRequest(s.AIProviderCreateSchema, data)),
     }),
 
   updateProvider: (id: number, data: AIProviderUpdate): Promise<AIProvider> =>
     apiFetchParse(s.AIProviderSchema, `/settings/providers/${id}`, {
       method: "PUT",
-      body: JSON.stringify(data),
+      body: JSON.stringify(parseRequest(s.AIProviderUpdateSchema, data)),
     }),
 
   deleteProvider: (id: number): Promise<{ status: string }> =>
@@ -348,7 +370,7 @@ export const settingsApi = {
   addKey: (providerId: number, keyValue: string): Promise<ApiKeyItem> =>
     apiFetchParse(s.ApiKeyItemSchema, `/settings/providers/${providerId}/keys`, {
       method: "POST",
-      body: JSON.stringify({ key_value: keyValue }),
+      body: JSON.stringify(parseRequest(s.ProviderApiKeyCreateRequestSchema, { key_value: keyValue })),
     }),
 
   deleteKey: (providerId: number, keyId: number): Promise<{ status: string }> =>

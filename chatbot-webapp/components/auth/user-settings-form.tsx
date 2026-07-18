@@ -5,6 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 import { toast } from "sonner";
 
 import { authApi } from "@/lib/api-client";
+import { UpdateProfileRequestSchema } from "@/lib/schemas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,7 @@ export function UserSettingsForm() {
     try {
       setIsSubmitting(true);
 
-      const payload: any = {};
+      const payload: Record<string, string> = {};
       let isUsernameChanged = false;
       let isPasswordChanged = false;
 
@@ -58,7 +59,13 @@ export function UserSettingsForm() {
         return;
       }
 
-      await authApi.updateProfile(payload);
+      const parsedPayload = UpdateProfileRequestSchema.safeParse(payload);
+      if (!parsedPayload.success) {
+        toast.error("Dữ liệu cập nhật không hợp lệ");
+        return;
+      }
+
+      await authApi.updateProfile(parsedPayload.data);
 
       if (isPasswordChanged) {
         toast.success("Đổi mật khẩu thành công. Vui lòng đăng nhập lại.");
@@ -69,9 +76,10 @@ export function UserSettingsForm() {
         setCurrentPassword("");
         setNewPassword("");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Đã xảy ra lỗi không xác định";
       toast.error("Cập nhật thất bại", {
-        description: error.message || "Đã xảy ra lỗi không xác định",
+        description: message,
       });
     } finally {
       setIsSubmitting(false);

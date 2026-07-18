@@ -279,6 +279,24 @@ export const ChatMessageItemSchema = z.object({
   citations: z.array(CitationSchema).optional(),
 });
 
+export const ChatUIMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  citations: z.array(CitationSchema).optional(),
+  kind: z.enum(["welcome"]).optional(),
+});
+
+export const OpenAIStreamChunkSchema = z.object({
+  choices: z.array(
+    z.object({
+      delta: z.object({
+        content: z.string().optional(),
+      }).optional(),
+    })
+  ).optional(),
+});
+
 export const ChatFeedbackRequestSchema = z.object({
   tenant_id: z.string().nullable().optional(),
   feedback_type: z.enum(["like", "dislike"]),
@@ -518,6 +536,10 @@ export const ApiKeyItemSchema = z.object({
   last_error_at: z.string().nullable().optional(),
   last_used_at: z.string().nullable().optional(),
   created_at: z.string(),
+});
+
+export const ProviderApiKeyCreateRequestSchema = z.object({
+  key_value: z.string().min(1),
 });
 
 export const ProviderTemplateSchema = z.object({

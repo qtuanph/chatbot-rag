@@ -1,8 +1,8 @@
 {
   "document": {
     "id": "7_CURRENT_SETTINGS",
-    "version": "2026-07-06",
-    "purpose": "Snapshot cấu hình hiện tại — bổ sung Zod v4 client-side validation cho frontend API client."
+    "version": "2026-07-18",
+    "purpose": "Snapshot cấu hình hiện tại — đồng bộ Next.js output tracing root với turbopack root cho Vercel build."
   },
   "architecture": {
     "mode": "multi-tenant",
@@ -118,9 +118,15 @@
     "validation_import_path": "zod/v4",
     "schema_source_of_truth": "lib/schemas.ts",
     "type_re_export": "types/api.ts",
-    "api_client_pattern": "apiFetchParse<T>(schema, path, options, token) — appiFetch mới parse qua Zod schema",
+    "api_client_pattern": "apiFetchParse<T>(schema, path, options, token) + parseRequest(schema, payload) cho mutation request body",
     "api_client_file": "lib/api-client.ts",
-    "migration_status": "100% — cả 42 method API đã chuyển sang apiFetchParse",
-    "unmigrated": ["streamList (EventSource — không áp dụng Zod parse)"]
+    "migration_status": "response parse chuẩn hóa qua apiFetchParse; request payload mutation đã thêm parseRequest; SSE documents và live stream chunk đã parse guard bằng Zod",
+    "unmigrated": [
+      "streamList (EventSource transport layer không parse ở api-client)",
+      "guide code snippets dạng string minh họa vẫn dùng JSON.parse"
+    ],
+    "next_output_file_tracing_root": "workspace root (../ from chatbot-webapp)",
+    "next_turbopack_root": "workspace root (../ from chatbot-webapp)",
+    "vercel_build_warning_status": "fixed: outputFileTracingRoot and turbopack.root aligned"
   }
 }

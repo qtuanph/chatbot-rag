@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
 const connectSrc = isDevelopment ? "'self' ws: http://localhost:* ws://localhost:*" : "'self'";
+const workspaceRoot = path.resolve(process.cwd(), "..");
 
 const nextConfig: NextConfig = {
   env: {
@@ -12,6 +14,7 @@ const nextConfig: NextConfig = {
       "dev",
   },
   output: "standalone",
+  outputFileTracingRoot: workspaceRoot,
   productionBrowserSourceMaps: false,
   images: {
     remotePatterns: [
@@ -22,7 +25,7 @@ const nextConfig: NextConfig = {
   },
   skipTrailingSlashRedirect: true,
   turbopack: {
-    root: process.cwd(),
+    root: workspaceRoot,
   },
 };
 

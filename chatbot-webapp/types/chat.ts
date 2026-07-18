@@ -1,9 +1,5 @@
-import type { Citation } from "@/types/api";
+import { z } from "zod/v4";
 
-export interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  citations?: Citation[];
-  kind?: "welcome";
-}
+import { ChatUIMessageSchema } from "@/lib/schemas";
+
+export type ChatMessage = z.infer<typeof ChatUIMessageSchema>;

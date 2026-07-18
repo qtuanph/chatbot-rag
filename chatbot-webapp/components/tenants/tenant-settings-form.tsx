@@ -10,6 +10,7 @@ import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { tenantsApi } from "@/lib/api-client";
 import { formatDateTimeVN } from "@/lib/format";
+import { TenantSettingUpdateRequestSchema } from "@/lib/schemas";
 import type { TenantSetting, TenantSettingUpdateRequest } from "@/types/api";
 
 type TenantSettingsFormProps =
@@ -68,10 +69,16 @@ export function TenantSettingsForm(props: TenantSettingsFormProps) {
         system_instruction: form.system_instruction?.trim() || undefined,
       };
 
+      const parsedPayload = TenantSettingUpdateRequestSchema.safeParse(payload);
+      if (!parsedPayload.success) {
+        toast.error("Nội dung instruction không hợp lệ");
+        return;
+      }
+
       const result =
         props.mode === "self"
-          ? await tenantsApi.updateMySettings(payload)
-          : await tenantsApi.updateSettings(tenantId as string, payload);
+          ? await tenantsApi.updateMySettings(parsedPayload.data)
+          : await tenantsApi.updateSettings(tenantId as string, parsedPayload.data);
 
       setSetting(result);
       setForm({

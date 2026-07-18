@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { LoginRequestSchema } from "@/lib/schemas";
 
 export function LoginForm() {
   const router = useRouter();
@@ -21,8 +22,18 @@ export function LoginForm() {
     setLoading(true);
 
     const formData = new FormData(event.currentTarget);
-    const username = String(formData.get("username") || "");
-    const password = String(formData.get("password") || "");
+    const payloadResult = LoginRequestSchema.safeParse({
+      username: String(formData.get("username") || ""),
+      password: String(formData.get("password") || ""),
+    });
+
+    if (!payloadResult.success) {
+      toast.error("Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu");
+      setLoading(false);
+      return;
+    }
+
+    const { username, password } = payloadResult.data;
 
     try {
       const result = await signIn("credentials", {
