@@ -8,7 +8,7 @@ pytest-asyncio==1.4.0
 bandit==1.9.4
 
 # Static type checking
-mypy==2.1.0
+mypy==2.3.0
 
 # Code formatting
 black==26.5.1

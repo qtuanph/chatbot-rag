@@ -1,7 +1,7 @@
 {
   "document": {
     "id": "7_CURRENT_SETTINGS",
-    "version": "2026-07-18",
+    "version": "2026-07-23",
     "purpose": "Snapshot cấu hình hiện tại — đồng bộ Next.js output tracing root với turbopack root cho Vercel build."
   },
   "architecture": {
