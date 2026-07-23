@@ -1,7 +1,7 @@
 {
   "document": {
     "id": "0_QUICK_REFERENCE",
-    "version": "2026-06-04",
+    "version": "2026-07-23",
     "purpose": "Cheat sheet ngắn gọn cho project hiện tại."
   },
   "read_order": [
@@ -26,8 +26,8 @@
   "important_notes": [
     "Không được coi chat history DB là core flow nữa",
     "Tenant isolation là bắt buộc ở document, retrieval, usage",
-    "Frontend tài liệu hiện poll gần realtime, chưa phải push realtime thật",
-    "Ingestion hiện chậm một phần vì worker solo và pipeline batch_size=1"
+    "Tiến trình ingestion/chat sử dụng SSE (Server-Sent Events) với tự động kết nối lại",
+    "Pipeline ingestion tối ưu batching với pipeline_batch_size=8 và embedding_batch_size=50"
   ],
   "docs": {
     "1_ARCHITECTURE.md": "Kiến trúc thật của project hiện tại",
