@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - Continue hardening ingestion/rechunk stability and analytics consistency.
 - Improve answer style for end users while keeping anti-hallucination safeguards.
+
+## [v0.9.5] - 2026-07-23
+
+### Changed
+- Routine dependency updates across Python backend (`chatbot-api`) and Node.js frontend (`chatbot-webapp`).
+- Upgraded Python packages: `fastapi` (`0.139.2`), `docling` (`2.114.0`), `uvicorn` (`0.51.0`), `boto3` (`1.43.54`), `llama-index-vector-stores-qdrant` (`0.10.2`), `mypy` (`2.3.0`).
+- Upgraded Node.js packages: `react`/`react-dom` (`19.2.8`), `next` (`16.2.11`), `@auth/core` (`0.41.3`), `lucide-react` (`1.25.0`), `tailwindcss` (`4.3.3`), `recharts` (`3.10.0`), `shadcn` (`4.14.0`).
+
 
 ## [v0.1.2] - 2026-05-25
 
