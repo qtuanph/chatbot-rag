@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.core.config import settings
 from app.modules.chat.repositories.feedback_repository import FeedbackRepository
 from app.modules.chat.utils.query_normalizer import normalize_query, ALL_DEFAULT_STOPWORDS
 from app.modules.settings.runtime_manager import RuntimeProviderManager

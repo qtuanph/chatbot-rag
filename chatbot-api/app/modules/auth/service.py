@@ -146,11 +146,11 @@ class AuthService:
         }
 
     async def update_profile(
-        self, 
-        user_id: str, 
-        username: str | None = None, 
-        current_password: str | None = None, 
-        new_password: str | None = None
+        self,
+        user_id: str,
+        username: str | None = None,
+        current_password: str | None = None,
+        new_password: str | None = None,
     ) -> dict:
         user = await self.repo.get_user_by_id(user_id, include_hash=True)
         if user is None:
