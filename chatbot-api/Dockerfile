@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 LABEL org.opencontainers.image.authors="qtuanph"
 
@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # ── Runtime Stage ─────────────────────────────────────────────────────────────
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 LABEL org.opencontainers.image.authors="qtuanph"
 
@@ -55,11 +55,11 @@ RUN useradd -m -u 1000 -s /bin/bash qtuanph && \
     chown -R qtuanph:qtuanph /home/qtuanph /app
 
 # ── Copy python packages from builder ──
-COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Fix permissions for RapidOCR
-RUN chown -R qtuanph:qtuanph /usr/local/lib/python3.13/site-packages/rapidocr/models/ 2>/dev/null; true
+RUN chown -R qtuanph:qtuanph /usr/local/lib/python3.14/site-packages/rapidocr/models/ 2>/dev/null; true
 
 USER qtuanph
 

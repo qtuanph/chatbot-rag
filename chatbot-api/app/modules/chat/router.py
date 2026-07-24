@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends
 from app.modules.tenants.deps import get_tenant_api_context
 from app.modules.tenants.context import TenantApiContext
 from app.modules.chat.deps import get_feedback_service
-from app.core import http_errors
 from app.modules.chat.schemas import ChatFeedbackRequest, ChatFeedbackResponse
 from app.modules.chat.services import FeedbackService
 

@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any
-import jwt
+import uuid
+
 import bcrypt
+import jwt
+
 from app.core.config import settings
 
 
@@ -14,9 +16,6 @@ def hash_password(password: str) -> str:
     salt = bcrypt.gensalt()
     hashed_password = bcrypt.hashpw(password=pwd_bytes, salt=salt)
     return hashed_password.decode("utf-8")
-
-
-import uuid
 
 def create_access_token(
     *, subject: str, role: str, tenant_id: str | None = None, expires_delta: timedelta | None = None
