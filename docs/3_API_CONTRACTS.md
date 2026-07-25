@@ -48,6 +48,8 @@ Base API hiện tại:
 | GET | `/documents/stream` |
 | GET | `/documents` |
 | GET | `/documents/{document_id}` |
+| GET | `/documents/{document_id}/access` |
+| PUT | `/documents/{document_id}/access` |
 | DELETE | `/documents/{document_id}` |
 | POST | `/documents/{document_id}/retry` |
 | POST | `/documents/{document_id}/rechunk` |
@@ -94,6 +96,8 @@ Base API hiện tại:
 | GET | `/admin/users/usage` |
 | GET | `/admin/users/{user_id}/usage` |
 | GET | `/admin/tenants/usage` |
+| GET | `/admin/conversations` |
+| GET | `/admin/conversations/{conversation_id}/messages` |
 
 ### Tenant management
 
@@ -133,7 +137,7 @@ Base API hiện tại:
 
 `GET /health` thuộc nhóm System (xem trên) — inference endpoint không định nghĩa thêm health riêng.
 
-Public chat request hiện hỗ trợ các field chính:
+Public chat request hỗ trợ các field chính:
 
 - `model`
 - `messages`
@@ -141,26 +145,23 @@ Public chat request hiện hỗ trợ các field chính:
 - `thinking_mode`
 - `temperature`
 - `max_tokens`
+- `conversation_id` (tùy chọn, string UUID do frontend sinh per session để phục vụ Admin Audit Persistence)
 
-## Quy tắc role
+## Rate Limit & Quota contract (HTTP 429)
 
-Hệ thống phân quyền bằng role (`platform_admin` và `tenant_admin`). Vui lòng xem ý nghĩa và quyền hạn của từng role tại mục **Tenant model** trong tài liệu [1_ARCHITECTURE.md](./1_ARCHITECTURE.md).
+Khi vượt quá giới hạn lượt request (user/tenant rate limit), daily request quota, hoặc monthly LLM call/budget hard stop, backend trả về HTTP 429 với cấu trúc:
 
-## Public API rule
-
-Public API dùng:
-
-`Authorization: Bearer <tenant_api_key>`
-
-Backend tự resolve tenant từ key, không tin tenant do client tự truyền.
-
-## Feedback rule
-
-`/chat/feedback` dùng để ghi nhận `like` / `dislike` cho câu trả lời AI:
-
-- không phụ thuộc persisted chat history
-- frontend phải gửi lại `query_text`, `assistant_answer`, `citations`
-- backend tự gắn `tenant_id`, `user_id`, và runtime stack metadata
+```json
+{
+  "detail": {
+    "code": "rate_limited_or_quota_exceeded",
+    "limit_type": "user_rate_limit | tenant_rate_limit | daily_request | monthly_llm | hard_budget",
+    "retry_after": 60,
+    "reset_at": "2026-07-25T10:10:00+07:00",
+    "message": "Rate limit or quota exceeded"
+  }
+}
+```
 
 ## Error handling
 

@@ -28,9 +28,23 @@ class DocumentDeleteResponse(BaseModel):
     document_id: str
 
 
+class TenantBrief(BaseModel):
+    id: str
+    name: str
+
+
+class DocumentAccessResponse(BaseModel):
+    document_id: str
+    tenants: list[TenantBrief]
+
+
+class DocumentAccessUpdateRequest(BaseModel):
+    tenant_ids: list[str] = Field(default_factory=list)
+
+
 class DocumentSummaryResponse(BaseModel):
     document_id: str
-    tenant_id: str
+    tenant_id: str | None = None
     title: str
     file_name: str
     file_type: str
@@ -43,6 +57,7 @@ class DocumentSummaryResponse(BaseModel):
     created_at: str
     updated_at: str
     node_count: int = 0
+    allowed_tenants: list[TenantBrief] = Field(default_factory=list)
 
 
 class DocumentListResponse(BaseModel):
@@ -66,7 +81,7 @@ class DocumentRechunkResponse(BaseModel):
 
 class DocumentDetailResponse(BaseModel):
     document_id: str
-    tenant_id: str
+    tenant_id: str | None = None
     title: str
     file_name: str
     sha256: str
@@ -83,3 +98,5 @@ class DocumentDetailResponse(BaseModel):
     created_at: str
     updated_at: str
     node_count: int = 0
+    allowed_tenants: list[TenantBrief] = Field(default_factory=list)
+

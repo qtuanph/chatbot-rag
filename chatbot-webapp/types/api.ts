@@ -30,6 +30,8 @@ export type TenantUsageSummaryItem = z.infer<typeof s.TenantUsageSummaryItemSche
 export type TenantUsageSummaryResponse = z.infer<typeof s.TenantUsageSummaryResponseSchema>;
 
 // ── Document ──
+export type TenantBrief = z.infer<typeof s.TenantBriefSchema>;
+export type DocumentAccessResponse = z.infer<typeof s.DocumentAccessResponseSchema>;
 export type UploadResponse = z.infer<typeof s.UploadResponseSchema>;
 export type TaskStatus = z.infer<typeof s.TaskStatusSchema>;
 export type DocumentSummary = z.infer<typeof s.DocumentSummarySchema>;

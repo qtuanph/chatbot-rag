@@ -153,9 +153,19 @@ export const TaskStatusSchema = z.object({
   result: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
+export const TenantBriefSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
+export const DocumentAccessResponseSchema = z.object({
+  document_id: z.string(),
+  tenants: z.array(TenantBriefSchema),
+});
+
 export const DocumentSummarySchema = z.object({
   document_id: z.string(),
-  tenant_id: z.string(),
+  tenant_id: z.string().nullable().optional(),
   title: z.string(),
   file_name: z.string(),
   file_type: z.string(),
@@ -168,6 +178,7 @@ export const DocumentSummarySchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   node_count: z.number().optional(),
+  allowed_tenants: z.array(TenantBriefSchema).optional().default([]),
 });
 
 export const DocumentListResponseSchema = z.object({
@@ -179,7 +190,7 @@ export const DocumentListResponseSchema = z.object({
 
 export const DocumentDetailSchema = z.object({
   document_id: z.string(),
-  tenant_id: z.string(),
+  tenant_id: z.string().nullable().optional(),
   title: z.string(),
   file_name: z.string(),
   sha256: z.string(),
@@ -196,6 +207,7 @@ export const DocumentDetailSchema = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   node_count: z.number().optional(),
+  allowed_tenants: z.array(TenantBriefSchema).optional().default([]),
 });
 
 export const DocumentDeleteResponseSchema = z.object({
@@ -480,6 +492,45 @@ export const TenantUsageSummaryResponseSchema = z.object({
     input_price_vnd_per_1m: z.number(),
     output_price_vnd_per_1m: z.number(),
   }),
+});
+
+// ── Conversations Audit (Admin Only) ──────────────────────────────────────
+
+export const ConversationAuditItemSchema = z.object({
+  id: z.string(),
+  tenant_id: z.string(),
+  conversation_id: z.string(),
+  started_at: z.string().nullable().optional(),
+  last_message_at: z.string().nullable().optional(),
+  message_count: z.number(),
+});
+
+export const ConversationAuditListResponseSchema = z.object({
+  items: z.array(ConversationAuditItemSchema),
+  total: z.number(),
+  offset: z.number(),
+  limit: z.number(),
+});
+
+export const ConversationMessageAuditSchema = z.object({
+  id: z.string(),
+  role: z.string(),
+  content: z.string(),
+  model_name: z.string().nullable().optional(),
+  prompt_tokens: z.number().optional().default(0),
+  completion_tokens: z.number().optional().default(0),
+  latency_ms: z.number().optional().default(0),
+  cost_micros_vnd: z.number().optional().default(0),
+  is_cache_hit: z.boolean().optional().default(false),
+  cached_type: z.string().nullable().optional(),
+  citations: z.array(CitationSchema).optional().default([]),
+  no_answer: z.boolean().optional().default(false),
+  created_at: z.string().nullable().optional(),
+});
+
+export const ConversationDetailAuditResponseSchema = z.object({
+  conversation_id: z.string(),
+  messages: z.array(ConversationMessageAuditSchema),
 });
 
 // ── Settings / AI Providers ───────────────────────────────────────────────

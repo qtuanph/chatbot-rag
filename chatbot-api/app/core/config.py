@@ -27,8 +27,24 @@ class Settings(BaseSettings):
     ai_input_price_vnd_per_1m: int = 0
     ai_output_price_vnd_per_1m: int = 0
 
-    retrieval_semantic_cache_enabled: bool = True
-    retrieval_semantic_cache_threshold: float = 0.08
+    chat_retention_days: int = 90
+    chat_history_persist_enabled: bool = True
+
+    exact_cache_enabled: bool = True
+    exact_cache_ttl_seconds: int = 2592000
+
+    retrieval_semantic_cache_enabled: bool = False
+    retrieval_semantic_cache_threshold: float = 0.95
+
+    quota_user_rate_per_min: int = 6
+    quota_user_daily_requests: int = 100
+    quota_tenant_rate_per_min: int = 30
+    quota_tenant_monthly_llm_calls: int = 1000
+    quota_cost_alert_pct_warn: int = 70
+    quota_cost_alert_pct_alert: int = 85
+    quota_cost_alert_pct_cutoff: int = 100
+    quota_hard_budget_vnd: int = 0
+    quota_fail_closed: bool = True
 
     llm_cache_enabled: bool = True
     llm_cache_ttl: int = 14400

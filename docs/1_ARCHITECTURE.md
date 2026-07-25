@@ -75,40 +75,49 @@ flowchart TB
 
 ## Domain chính
 
-### Tenant model
-
 - `platform_admin` quản trị toàn hệ thống
 - `tenant_admin` chỉ thao tác trong tenant của mình
 - mọi dữ liệu tenant-scoped phải luôn đi cùng `tenant_id`
 
-### Chat model
+### Shared Knowledge Base model (ADR-02 & v2.1)
 
-Chat hiện tại là **stateless**:
+- Entity `KnowledgeBase` với trạng thái lifecycle (Draft -> Published -> Deprecated).
+- Document thuộc về KB (`documents.knowledge_base_id`).
+- Phân quyền Tenant truy cập KB qua bảng `tenant_knowledge_bases` và `tenant_document_access`.
+- Vector embeddings trong Qdrant được lưu duy nhất 1 lần cho mỗi document/section; retrieval pipeline sử dụng Qdrant payload filter theo danh sách tài liệu thuộc KB đã `published` mà Tenant được cấp quyền.
 
-- không còn `chat_sessions` / `chat_messages`
-- transcript chỉ sống trong memory của tab frontend
-- refresh/đóng tab là mất transcript
-- backend chỉ nhận recent `messages`, rồi tự inject instruction + RAG context
+### Chat model (User Stateless / Admin Audit Persistence)
 
-### Feedback model
+Chat từ góc nhìn Client/Người dùng là **stateless**:
+- Transcript người dùng chỉ lưu ở memory tab frontend, không thể query lại qua API người dùng.
+- Client gửi 6 tin nhắn gần nhất qua API request payload.
 
-Feedback chat được lưu riêng trong `chat_feedback`:
+Từ góc nhìn Admin/System:
+- Mỗi lượt hội thoại (turn) được tự động lưu **bất đồng bộ (fire-and-forget)** qua Celery task `save_conversation_turn_task` vào PostgreSQL (`conversations` & `conversation_messages`).
+- Phục vụ mục đích thu thập thông tin, audit, QA, tính toán chi phí, và escalation cho Admin.
+- Thời gian lưu trữ cấu hình qua `CHAT_RETENTION_DAYS` (mặc định 90 ngày).
 
-- `feedback_type`: `like` / `dislike`
-- `query_text`
-- `assistant_answer`
-- `citations`
-- `llm_model`, `embedding_model`, `reranker_model`
+### Tiered Cache Strategy (L1 Exact + L2 Semantic)
 
-Feedback không phụ thuộc persisted transcript.
+- **L1 Exact Cache**: Kiểm tra chuỗi câu hỏi đã chuẩn hóa (SHA-256 hash) trên Redis key `exact_cache:{tenant_id}:{hash}`. Tốc độ ~0.5ms, 0 token cost.
+- **L2 Semantic Cache**: Nếu L1 miss, chuyển sang Vector Cosine Similarity Search với ngưỡng nghiêm ngặt `0.95` (tránh false positive cho phần mềm ERP doanh nghiệp).
+- **Circuit Breaker**: Mọi sự cố kết nối Redis đều tự động bypass cache sang RAG pipeline, không làm sập request của người dùng.
+
+### Quota & Hard Budget Enforcement
+
+- **Cấu hình động trên Webapp**: Không hardcode giới hạn trong code. Toàn bộ quota và rate limit được đọc trực tiếp từ DB (`tenants` table: `rate_limit_rpm`, `monthly_request_quota`, `monthly_token_quota`) do Admin thiết lập từ Webapp.
+- **Rate limiting**: Atomic Redis counter theo phút cho user và tenant (`rate_limit_rpm`). Trả về HTTP 429 nếu vượt ngưỡng.
+- **Daily request limit**: Atomic Redis counter theo ngày cho từng user.
+- **Monthly request & token limits**: Atomic Redis counter theo tháng cho tenant dựa theo `monthly_request_quota` và `monthly_token_quota`.
+- **Hard budget**: Cảnh báo ngưỡng 70%/85% và ngắt cứng (hard stop) ở ngưỡng 100% ngân sách tháng.
 
 ## Storage
 
 | Store | Vai trò |
 |---|---|
-| PostgreSQL | auth, tenant, documents, canonical sections, usage, feedback |
+| PostgreSQL | auth, tenant, products, knowledge_bases, documents, canonical sections, conversations, usage, feedback, escalations |
 | Qdrant | dual index cho retrieval |
-| Redis | queue, semantic cache (tenant-isolated), rate limit, audit stream |
+| Redis | queue, L1 exact cache, L2 semantic cache, rate limit/quota atomic counters, audit stream |
 | RustFS | file gốc và artifact ingest |
 | SQLite `settings.db` | provider settings và runtime selection |
 

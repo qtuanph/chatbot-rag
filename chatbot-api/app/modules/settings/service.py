@@ -122,6 +122,9 @@ class SettingsService:
     def activate_provider(self, provider_id: int) -> dict | None:
         return self.repo.activate_provider(provider_id)
 
+    def deactivate_provider(self, provider_id: int) -> dict | None:
+        return self.repo.deactivate_provider(provider_id)
+
     def get_active_provider(self, service_type: str) -> dict | None:
         return self.repo.get_active_provider(service_type)
 

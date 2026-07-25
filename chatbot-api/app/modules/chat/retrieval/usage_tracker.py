@@ -42,6 +42,8 @@ def track_usage(
     total_tokens = prompt_tokens + completion_tokens
 
     cost_micros_vnd = compute_cost_micros_vnd(prompt_tokens, completion_tokens)
+    is_cache_hit = bool(usage.get("cached", False))
+    cached_type = usage.get("cached_type")
 
     try:
         from app.modules.chat.tasks.usage_tasks import log_model_usage_task
@@ -55,6 +57,8 @@ def track_usage(
             cost_micros_vnd=cost_micros_vnd,
             tenant_id=tenant_id,
             user_id=user_id,
+            is_cache_hit=is_cache_hit,
+            cached_type=cached_type,
         )
         logger.debug("Usage tracked: %s | %d tokens | %.1fms | %s", endpoint, total_tokens, latency_ms, model_name)
     except Exception as e:

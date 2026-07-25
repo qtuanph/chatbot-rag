@@ -111,6 +111,23 @@ async def activate_provider(
     return provider
 
 
+@router.post("/providers/{provider_id}/deactivate", response_model=ProviderResponse)
+async def deactivate_provider(
+    provider_id: int,
+    _auth=Depends(require_admin),
+    service: SettingsService = Depends(get_settings_service),
+):
+    provider = service.deactivate_provider(provider_id)
+    if not provider:
+        from app.core import http_errors
+
+        raise http_errors.not_found("Provider not found")
+    from app.modules.settings.runtime_manager import RuntimeProviderManager
+
+    RuntimeProviderManager.get_instance().reload()
+    return provider
+
+
 @router.post("/providers/{provider_id}/test", response_model=TestResult)
 async def test_provider(
     provider_id: int,

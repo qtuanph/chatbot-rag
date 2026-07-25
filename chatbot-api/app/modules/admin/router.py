@@ -132,3 +132,35 @@ async def get_tenants_usage(
     """Per-tenant usage summary in the selected time window, sorted by spend descending."""
     service = AnalyticsService(AnalyticsRepository(session))
     return await service.get_tenant_usage_summary(days=days)
+
+
+@router.get("/conversations")
+async def list_admin_conversations(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    tenant_id: str | None = None,
+    session: AsyncSession = Depends(get_async_session),
+    auth: AuthContext = Depends(require_admin),
+):
+    """Admin-only: list recorded chat conversations for knowledge base enhancement."""
+    from app.modules.chat.repositories.conversation_repository import ConversationRepository
+
+    repo = ConversationRepository(session)
+    effective_tenant = auth.tenant_id if auth.role != "platform_admin" else tenant_id
+    items, total = await repo.list_conversations(tenant_id=effective_tenant, offset=offset, limit=limit)
+    return {"items": items, "total": total, "offset": offset, "limit": limit}
+
+
+@router.get("/conversations/{conversation_id}/messages")
+async def get_admin_conversation_messages(
+    conversation_id: str,
+    session: AsyncSession = Depends(get_async_session),
+    auth: AuthContext = Depends(require_admin),
+):
+    """Admin-only: view turn-by-turn user queries & AI answers for a specific conversation."""
+    from app.modules.chat.repositories.conversation_repository import ConversationRepository
+
+    repo = ConversationRepository(session)
+    effective_tenant = auth.tenant_id if auth.role != "platform_admin" else None
+    messages = await repo.get_messages(conversation_id, tenant_id=effective_tenant)
+    return {"conversation_id": conversation_id, "messages": messages}

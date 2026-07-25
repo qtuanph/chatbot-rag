@@ -133,13 +133,18 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
     }
   };
 
-  const handleActivate = async (p: AIProvider) => {
+  const handleToggleActive = async (p: AIProvider) => {
     try {
-      await settingsApi.activateProvider(p.id);
-      toast.success(`Đã kích hoạt ${p.display_name}`);
+      if (p.is_active) {
+        await settingsApi.deactivateProvider(p.id);
+        toast.success(`Đã tắt ${p.display_name}`);
+      } else {
+        await settingsApi.activateProvider(p.id);
+        toast.success(`Đã kích hoạt ${p.display_name}`);
+      }
       loadProviders();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.detail : "Kích hoạt thất bại");
+      toast.error(err instanceof ApiError ? err.detail : "Thao tác thất bại");
     }
   };
 
@@ -282,9 +287,14 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  {!p.is_active && !llmBuiltin && (
-                    <Button variant="ghost" size="icon-sm" title="Kích hoạt" onClick={() => handleActivate(p)}>
-                      <Power className="h-3.5 w-3.5 text-primary" />
+                  {!llmBuiltin && (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title={p.is_active ? "Tắt provider" : "Kích hoạt provider"}
+                      onClick={() => handleToggleActive(p)}
+                    >
+                      <Power className={`h-3.5 w-3.5 ${p.is_active ? "text-emerald-500 font-bold" : "text-muted-foreground hover:text-primary"}`} />
                     </Button>
                   )}
                   <Button variant="ghost" size="icon-sm" title="Kiểm tra" onClick={() => handleTest(p)}>

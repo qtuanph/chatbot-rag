@@ -84,6 +84,21 @@ class SectionRepository(BaseRepository[DocumentSection]):
         rows = result.scalars().all()
         return [self._to_dict(s) for s in rows]
 
+    async def get_sections_by_allowed_documents(self, document_ids: list[str]) -> list[dict[str, Any]]:
+        """Get all sections for a list of allowed document IDs."""
+        if not document_ids:
+            return []
+        from uuid import UUID
+        doc_uuids = [UUID(d) for d in document_ids]
+        stmt = (
+            select(self.model)
+            .where(self.model.document_id.in_(doc_uuids))
+            .order_by(self.model.document_id, self.model.order_index)
+        )
+        result = await self.session.execute(stmt)
+        rows = result.scalars().all()
+        return [self._to_dict(s) for s in rows]
+
     async def get_sections_by_document_paginated(
         self, document_id: str, offset: int = 0, limit: int = 20
     ) -> tuple[list[dict[str, Any]], int]:

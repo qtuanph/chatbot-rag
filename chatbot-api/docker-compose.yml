@@ -43,8 +43,8 @@ services:
       - "model-runner.docker.internal:host-gateway"
     labels:
       - "traefik.enable=true"
-      # — All traffic from api.qtuanph.dev goes to API
-      - "traefik.http.routers.api.rule=Host(`api.qtuanph.dev`)"
+      # — Traffic from localhost, 127.0.0.1, or api.qtuanph.dev goes to API
+      - "traefik.http.routers.api.rule=Host(`localhost`) || Host(`127.0.0.1`) || Host(`api.qtuanph.dev`)"
       - "traefik.http.routers.api.entrypoints=web"
       - "traefik.http.routers.api.priority=100"
       - "traefik.http.services.api.loadbalancer.server.port=8000"
@@ -55,13 +55,7 @@ services:
       - "traefik.http.middlewares.api-sse.headers.customResponseHeaders.Cache-Control=no-cache, no-transform"
       - "traefik.http.middlewares.api-sse.headers.customResponseHeaders.Connection=keep-alive"
       - "traefik.http.routers.api.middlewares=api-ratelimit@docker,api-sse@docker"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+
 
   workers:
     image: chatbot-rag-app:latest
@@ -91,13 +85,7 @@ services:
       - internal
     extra_hosts:
       - "model-runner.docker.internal:host-gateway"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+
 
   ai-proxy:
     image: decolua/9router:latest
@@ -130,8 +118,8 @@ services:
       - internal
     labels:
       - "traefik.enable=true"
-      # — All traffic from 9router.qtuanph.dev goes to AI Proxy
-      - "traefik.http.routers.ai-proxy.rule=Host(`9router.qtuanph.dev`)"
+      # — Traffic from 9router.localhost or 9router.qtuanph.dev goes to AI Proxy
+      - "traefik.http.routers.ai-proxy.rule=Host(`9router.localhost`) || Host(`9router.qtuanph.dev`)"
       - "traefik.http.routers.ai-proxy.entrypoints=web"
       - "traefik.http.services.ai-proxy.loadbalancer.server.port=2908"
 

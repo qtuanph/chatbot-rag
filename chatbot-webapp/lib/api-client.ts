@@ -6,9 +6,8 @@ import type {
   AIProviderUpdate,
   ApiKeyItem,
   AnalyticsStats,
-  ChatFeedbackRequest,
-  ChatFeedbackResponse,
   CreateUserRequest,
+  DocumentAccessResponse,
   DocumentDetail,
   DocumentListResponse,
   HealthData,
@@ -248,9 +247,11 @@ export const documentsApi = {
   get: (documentId: string): Promise<DocumentDetail> =>
     apiFetchParse(s.DocumentDetailSchema, `/documents/${encodeURIComponent(documentId)}`),
 
-  upload: async (file: File, tenantId: string): Promise<UploadResponse> => {
+  upload: async (file: File, tenantId?: string): Promise<UploadResponse> => {
     const formData = new FormData();
-    formData.append("tenant_id", tenantId);
+    if (tenantId) {
+      formData.append("tenant_id", tenantId);
+    }
     formData.append("file", file);
 
     return apiFetchParse(s.UploadResponseSchema, "/upload", {
@@ -258,6 +259,15 @@ export const documentsApi = {
       body: formData,
     });
   },
+
+  getAccess: (documentId: string): Promise<DocumentAccessResponse> =>
+    apiFetchParse(s.DocumentAccessResponseSchema, `/documents/${encodeURIComponent(documentId)}/access`),
+
+  setAccess: (documentId: string, tenantIds: string[]): Promise<DocumentAccessResponse> =>
+    apiFetchParse(s.DocumentAccessResponseSchema, `/documents/${encodeURIComponent(documentId)}/access`, {
+      method: "PUT",
+      body: JSON.stringify({ tenant_ids: tenantIds }),
+    }),
 
   delete: (documentId: string): Promise<{ status: string; document_id: string }> =>
     apiFetchParse(s.DocumentDeleteResponseSchema, `/documents/${encodeURIComponent(documentId)}`, {
@@ -361,6 +371,9 @@ export const settingsApi = {
   activateProvider: (id: number): Promise<AIProvider> =>
     apiFetchParse(s.AIProviderSchema, `/settings/providers/${id}/activate`, { method: "POST" }),
 
+  deactivateProvider: (id: number): Promise<AIProvider> =>
+    apiFetchParse(s.AIProviderSchema, `/settings/providers/${id}/deactivate`, { method: "POST" }),
+
   testProvider: (id: number): Promise<{ success: boolean; message: string }> =>
     apiFetchParse(s.TestResultSchema, `/settings/providers/${id}/test`, { method: "POST" }),
 
@@ -380,6 +393,17 @@ export const settingsApi = {
 
   getTemplates: (): Promise<ProviderTemplate[]> =>
     apiFetchParse(z.array(s.ProviderTemplateSchema), "/settings/templates"),
+};
+
+export const conversationsApi = {
+  list: (offset = 0, limit = 20, tenantId?: string) => {
+    const q = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+    if (tenantId) q.set("tenant_id", tenantId);
+    return apiFetchParse(s.ConversationAuditListResponseSchema, `/admin/conversations?${q.toString()}`);
+  },
+
+  getMessages: (conversationId: string) =>
+    apiFetchParse(s.ConversationDetailAuditResponseSchema, `/admin/conversations/${conversationId}/messages`),
 };
 
 export { API_INTERNAL };

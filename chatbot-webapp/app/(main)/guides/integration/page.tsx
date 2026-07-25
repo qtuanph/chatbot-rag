@@ -779,10 +779,11 @@ function LivePlayground() {
           }
         }
       }
-    } catch (error: any) {
+    } catch (error) {
+      const errMessage = error instanceof Error ? error.message : "Không thể kết nối đến API RAG.";
       setMessages((prev) => {
         const list = [...prev];
-        list[assistantIndex] = { role: "assistant", content: `❌ Lỗi: ${error?.message || "Không thể kết nối đến API RAG."}` };
+        list[assistantIndex] = { role: "assistant", content: `❌ Lỗi: ${errMessage}` };
         return list;
       });
     } finally {

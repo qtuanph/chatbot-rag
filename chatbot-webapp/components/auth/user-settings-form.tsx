@@ -14,15 +14,9 @@ import { KeyRoundIcon, UserIcon } from "lucide-react";
 export function UserSettingsForm() {
   const { data: session, update } = useSession();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(session?.user?.name || "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-
-  useEffect(() => {
-    if (session?.user?.name) {
-      setUsername(session.user.name);
-    }
-  }, [session]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

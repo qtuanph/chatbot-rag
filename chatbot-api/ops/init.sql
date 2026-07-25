@@ -119,7 +119,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id)
 -- Documents: uploaded files, parse state, and ingestion metadata
 CREATE TABLE IF NOT EXISTS documents (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     title VARCHAR(500) NOT NULL,
     file_name VARCHAR(500) NOT NULL,
     file_path VARCHAR(1000) NOT NULL,
@@ -146,6 +146,19 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_message VARCHAR(500);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE;
+
+-- Tenant Document Access: multi-tenant document permissions
+CREATE TABLE IF NOT EXISTS tenant_document_access (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    granted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT uq_tenant_document_access UNIQUE (tenant_id, document_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tda_tenant_id ON tenant_document_access(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tda_document_id ON tenant_document_access(document_id);
+
 
 
 
@@ -340,3 +353,131 @@ GRANT ALL ON chat_feedback TO app_rw;
 DROP TABLE IF EXISTS chat_messages CASCADE;
 DROP TABLE IF EXISTS chat_sessions CASCADE;
 DROP TABLE IF EXISTS user_memories CASCADE;
+
+-- ============= Conversation History (Admin-only audit) =============
+CREATE TABLE IF NOT EXISTS conversations (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    conversation_id VARCHAR(255) NOT NULL,
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    last_message_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    message_count INTEGER DEFAULT 0 NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT uq_conv_tenant_convid UNIQUE (tenant_id, conversation_id)
+);
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    conversation_pk UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL,
+    content TEXT NOT NULL,
+    model_name VARCHAR(255),
+    prompt_tokens INTEGER DEFAULT 0,
+    completion_tokens INTEGER DEFAULT 0,
+    latency_ms DOUBLE PRECISION DEFAULT 0,
+    cost_micros_vnd BIGINT DEFAULT 0,
+    is_cache_hit BOOLEAN DEFAULT false NOT NULL,
+    cached_type VARCHAR(20),
+    citations JSONB DEFAULT '[]'::jsonb NOT NULL,
+    no_answer BOOLEAN DEFAULT false NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_tenant ON conversations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_expires ON conversations(expires_at) WHERE expires_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_conv_messages_conv ON conversation_messages(conversation_pk);
+CREATE INDEX IF NOT EXISTS idx_conv_messages_tenant ON conversation_messages(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_conv_messages_created ON conversation_messages(created_at DESC);
+
+GRANT ALL ON conversations TO app_rw;
+GRANT ALL ON conversation_messages TO app_rw;
+
+-- ============= Products & Versions =============
+CREATE TABLE IF NOT EXISTS products (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    code VARCHAR(100) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_active BOOLEAN DEFAULT true NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS product_versions (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    version_code VARCHAR(100) NOT NULL,
+    is_active BOOLEAN DEFAULT true NOT NULL,
+    released_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT uq_product_version UNIQUE (product_id, version_code)
+);
+
+CREATE TABLE IF NOT EXISTS tenant_products (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    product_version_id UUID NOT NULL REFERENCES product_versions(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT uq_tenant_product_version UNIQUE (tenant_id, product_version_id)
+);
+
+GRANT ALL ON products, product_versions, tenant_products TO app_rw;
+
+-- ============= Knowledge Bases =============
+CREATE TABLE IF NOT EXISTS knowledge_bases (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    scope VARCHAR(20) NOT NULL DEFAULT 'shared',
+    owner_tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    product_version_id UUID REFERENCES product_versions(id) ON DELETE SET NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'draft',
+    published_at TIMESTAMP WITH TIME ZONE,
+    deprecated_at TIMESTAMP WITH TIME ZONE,
+    published_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenant_knowledge_bases (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    knowledge_base_id UUID NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE,
+    granted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    granted_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT uq_tkb UNIQUE (tenant_id, knowledge_base_id)
+);
+
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS knowledge_base_id UUID REFERENCES knowledge_bases(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_bases_status ON knowledge_bases(status);
+CREATE INDEX IF NOT EXISTS idx_knowledge_bases_scope ON knowledge_bases(scope);
+CREATE INDEX IF NOT EXISTS idx_tkb_tenant ON tenant_knowledge_bases(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tkb_kb ON tenant_knowledge_bases(knowledge_base_id);
+CREATE INDEX IF NOT EXISTS idx_documents_kb_id ON documents(knowledge_base_id);
+
+GRANT ALL ON knowledge_bases TO app_rw;
+GRANT ALL ON tenant_knowledge_bases TO app_rw;
+
+-- ============= Escalations =============
+CREATE TABLE IF NOT EXISTS escalations (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    conversation_id VARCHAR(255),
+    question TEXT NOT NULL,
+    answer TEXT,
+    citations JSONB DEFAULT '[]'::jsonb,
+    correlation_id VARCHAR(255),
+    user_consent BOOLEAN DEFAULT true NOT NULL,
+    status VARCHAR(20) DEFAULT 'open',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+GRANT ALL ON escalations TO app_rw;
+
+-- ============= Usage Extensions =============
+ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS is_cache_hit BOOLEAN DEFAULT false NOT NULL;
+ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS cached_type VARCHAR(20);
+

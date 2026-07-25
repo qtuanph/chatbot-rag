@@ -23,14 +23,17 @@ from app.core.http_errors import handle_domain_errors
 from app.core.config import settings
 from app.core import http_errors
 from app.modules.documents.schemas import (
+    DocumentAccessResponse,
+    DocumentAccessUpdateRequest,
     DocumentDeleteResponse,
     DocumentDetailResponse,
-    DocumentRechunkResponse,
     DocumentListResponse,
+    DocumentRechunkResponse,
     DocumentRetryResponse,
     DocumentSummaryResponse,
     TaskProgressInfo,
     TaskStatusResponse,
+    TenantBrief,
     UploadAcceptedResponse,
 )
 from app.modules.documents.services import DocumentService, TreeService
@@ -44,7 +47,7 @@ def _build_document_list_response(result: dict) -> DocumentListResponse:
     items = [
         DocumentSummaryResponse(
             document_id=row["document_id"],
-            tenant_id=row["tenant_id"],
+            tenant_id=row.get("tenant_id"),
             title=row["title"],
             file_name=row["file_name"],
             file_type=row["file_type"],
@@ -56,6 +59,7 @@ def _build_document_list_response(result: dict) -> DocumentListResponse:
             status_message=row["status_message"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            allowed_tenants=[TenantBrief(id=t["id"], name=t["name"]) for t in row.get("allowed_tenants", [])],
         )
         for row in result["items"]
     ]
@@ -65,7 +69,7 @@ def _build_document_list_response(result: dict) -> DocumentListResponse:
 @router.post("/upload", response_model=UploadAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
     request: Request,
-    tenant_id: str = Form(...),
+    tenant_id: str | None = Form(None),
     file: UploadFile = File(...),
     auth: AuthContext = Depends(require_admin),
     service: DocumentService = Depends(get_document_service),
@@ -122,6 +126,7 @@ async def upload_document(
         user_agent=request.headers.get("user-agent"),
     )
     return UploadAcceptedResponse(task_id=task_id, status="queued", document_id=document_id)
+
 
 
 @router.get("/status/{task_id}", response_model=TaskStatusResponse)
@@ -250,7 +255,42 @@ async def get_document_detail(
         deleted_at=doc["deleted_at"],
         created_at=doc["created_at"],
         updated_at=doc["updated_at"],
+        allowed_tenants=[TenantBrief(id=t["id"], name=t["name"]) for t in doc.get("allowed_tenants", [])],
     )
+
+
+@router.get("/documents/{document_id}/access", response_model=DocumentAccessResponse)
+async def get_document_access(
+    document_id: str,
+    _auth=Depends(require_admin),
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentAccessResponse:
+    try:
+        res = await service.get_document_access(document_id)
+        return DocumentAccessResponse(
+            document_id=res["document_id"],
+            tenants=[TenantBrief(id=t["id"], name=t["name"]) for t in res["tenants"]],
+        )
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None
+
+
+@router.put("/documents/{document_id}/access", response_model=DocumentAccessResponse)
+async def update_document_access(
+    document_id: str,
+    payload: DocumentAccessUpdateRequest,
+    auth: AuthContext = Depends(require_admin),
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentAccessResponse:
+    try:
+        res = await service.set_document_access(document_id, payload.tenant_ids, granted_by=auth.user_id)
+        return DocumentAccessResponse(
+            document_id=res["document_id"],
+            tenants=[TenantBrief(id=t["id"], name=t["name"]) for t in res["tenants"]],
+        )
+    except ValueError as e:
+        raise http_errors.not_found(str(e)) from None
+
 
 
 @router.delete("/documents/{document_id}", response_model=DocumentDeleteResponse)
