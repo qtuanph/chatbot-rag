@@ -13,6 +13,7 @@ import {
   Settings2Icon,
   ShieldUserIcon,
   BookOpenIcon,
+  MessageSquareIcon,
 } from "lucide-react";
 
 import { NavMain } from "@/components/layout/nav-main";
@@ -70,6 +71,7 @@ const platformGroups: NavGroup[] = [
       { title: "Tenant", href: "/admin/tenants", icon: <Building2Icon /> },
       { title: "Người dùng", href: "/admin/users", icon: <ShieldUserIcon /> },
       { title: "Thống kê", href: "/admin/analytics", icon: <BarChart3Icon /> },
+      { title: "Nhật ký Hỏi & Đáp", href: "/admin/conversations", icon: <MessageSquareIcon /> },
     ],
   },
   {
@@ -111,6 +113,7 @@ const tenantGroups: NavGroup[] = [
     label: "Workspace",
     items: [
       { title: "Thống kê", href: "/analytics", icon: <BarChart3Icon /> },
+      { title: "Nhật ký Hỏi & Đáp", href: "/admin/conversations", icon: <MessageSquareIcon /> },
       { title: "Cài đặt tenant", href: "/settings", icon: <Settings2Icon /> },
     ],
   },

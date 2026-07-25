@@ -14,7 +14,7 @@ from llama_index.core import StorageContext
 from llama_index.core.postprocessor import LongContextReorder
 from llama_index.core.retrievers import AutoMergingRetriever, RecursiveRetriever
 from llama_index.core.schema import NodeRelationship, NodeWithScore, RelatedNodeInfo, TextNode
-from llama_index.core.vector_stores.types import MetadataFilter, MetadataFilters, VectorStoreQueryMode
+from llama_index.core.vector_stores.types import FilterCondition, MetadataFilter, MetadataFilters, VectorStoreQueryMode
 
 from app.adapters.reranker import get_reranker
 from app.core.config import settings
@@ -22,7 +22,6 @@ from app.core.llama_index import get_chunk_vector_store, get_section_vector_stor
 from app.db.session import AsyncSessionLocal
 from app.models.rag import RagContext, RagNode
 from app.modules.documents.ingestion.pipeline import build_context_postprocessor
-from app.modules.documents.repositories.section_repository import SectionRepository
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -139,7 +138,23 @@ def _emit_debug(event: str, **payload: Any) -> None:
     print(message, flush=True)
 
 
-def _tenant_filters(tenant_id: str | None, *, section_id: str | None = None) -> MetadataFilters | None:
+def _tenant_filters(
+    tenant_id: str | None,
+    allowed_doc_ids: list[str] | None = None,
+    *,
+    section_id: str | None = None,
+) -> MetadataFilters | None:
+    if allowed_doc_ids:
+        doc_filters = [MetadataFilter(key="document_id", value=d_id) for d_id in allowed_doc_ids]
+        if section_id:
+            return MetadataFilters(
+                filters=[
+                    MetadataFilter(key="section_id", value=section_id),
+                    MetadataFilters(filters=doc_filters, condition=FilterCondition.OR),
+                ]
+            )
+        return MetadataFilters(filters=doc_filters, condition=FilterCondition.OR)
+
     filters: list[MetadataFilter] = []
     if tenant_id:
         filters.append(MetadataFilter(key="tenant_id", value=tenant_id))
@@ -154,12 +169,22 @@ def _query_mode() -> VectorStoreQueryMode:
     return VectorStoreQueryMode.HYBRID if settings.retrieval_hybrid_enabled else VectorStoreQueryMode.DEFAULT
 
 
-async def _load_tenant_sections(tenant_id: str | None) -> list[dict[str, Any]]:
+async def _load_tenant_sections_and_doc_ids(
+    tenant_id: str | None,
+) -> tuple[list[str], list[dict[str, Any]]]:
     if not tenant_id:
-        return []
+        return [], []
     async with AsyncSessionLocal() as session:
-        repo = SectionRepository(session)
-        return await repo.get_sections_by_tenant(tenant_id)
+        from app.modules.documents.repositories import DocumentAccessRepository, SectionRepository
+
+        access_repo = DocumentAccessRepository(session)
+        section_repo = SectionRepository(session)
+        doc_ids = await access_repo.get_document_ids_for_tenant(tenant_id)
+        if doc_ids:
+            sections = await section_repo.get_sections_by_allowed_documents(doc_ids)
+        else:
+            sections = await section_repo.get_sections_by_tenant(tenant_id)
+        return doc_ids, sections
 
 
 def _build_parent_storage_context(sections: list[dict[str, Any]]) -> StorageContext:
@@ -211,6 +236,7 @@ def _build_section_index() -> VectorStoreIndex:
 def _build_section_recursive_retriever(
     *,
     tenant_id: str | None,
+    allowed_doc_ids: list[str] | None = None,
     sections: list[dict[str, Any]],
 ) -> RecursiveRetriever:
     section_index = _build_section_index()
@@ -223,13 +249,13 @@ def _build_section_recursive_retriever(
     }
     retriever_dict: dict[str, Any] = {
         SECTION_ROUTE_ROOT_ID: section_index.as_retriever(
-            filters=_tenant_filters(tenant_id),
+            filters=_tenant_filters(tenant_id, allowed_doc_ids=allowed_doc_ids),
             **common_kwargs,
         )
     }
     for section in sections:
         retriever_dict[f"section::{section['section_id']}"] = chunk_index.as_retriever(
-            filters=_tenant_filters(tenant_id, section_id=str(section["section_id"])),
+            filters=_tenant_filters(tenant_id, allowed_doc_ids=allowed_doc_ids, section_id=str(section["section_id"])),
             vector_store_query_mode=_query_mode(),
             similarity_top_k=settings.retrieval_recursive_top_k,
             hybrid_top_k=settings.retrieval_recursive_top_k,
@@ -241,11 +267,12 @@ def _build_section_recursive_retriever(
 def _build_auto_merging_retriever(
     *,
     tenant_id: str | None,
+    allowed_doc_ids: list[str] | None = None,
     storage_context: StorageContext,
 ) -> AutoMergingRetriever:
     chunk_index = _build_chunk_index()
     vector_retriever = chunk_index.as_retriever(
-        filters=_tenant_filters(tenant_id),
+        filters=_tenant_filters(tenant_id, allowed_doc_ids=allowed_doc_ids),
         vector_store_query_mode=_query_mode(),
         similarity_top_k=settings.retrieval_chunk_top_k,
         hybrid_top_k=settings.retrieval_chunk_top_k,
@@ -284,10 +311,14 @@ async def retrieve_context(
     if not queries:
         return RagContext(nodes=[], sections=None, confidence={"node_count": 0})
 
-    sections = await _load_tenant_sections(tenant_id)
+    allowed_doc_ids, sections = await _load_tenant_sections_and_doc_ids(tenant_id)
     storage_context = _build_parent_storage_context(sections)
-    recursive_retriever = _build_section_recursive_retriever(tenant_id=tenant_id, sections=sections)
-    auto_merging_retriever = _build_auto_merging_retriever(tenant_id=tenant_id, storage_context=storage_context)
+    recursive_retriever = _build_section_recursive_retriever(
+        tenant_id=tenant_id, allowed_doc_ids=allowed_doc_ids, sections=sections
+    )
+    auto_merging_retriever = _build_auto_merging_retriever(
+        tenant_id=tenant_id, allowed_doc_ids=allowed_doc_ids, storage_context=storage_context
+    )
     replacement_postprocessor = build_context_postprocessor()
     reorder = LongContextReorder() if settings.retrieval_long_context_reorder_enabled else None
 

@@ -45,3 +45,15 @@ async def get_query_cache(r_client: Any = Depends(get_redis_client)) -> Any:
     from app.utils.cache import QueryEmbeddingCache
 
     return QueryEmbeddingCache(r_client, model_name=settings.embedding_hf_model)
+
+
+async def get_redis() -> Any:
+    """Get async redis.asyncio client for L1 exact cache and quota counters."""
+    import redis.asyncio as aioredis
+
+    client = aioredis.from_url(settings.redis_url_auth, decode_responses=True, socket_timeout=2.0)
+    try:
+        yield client
+    finally:
+        await client.aclose()
+

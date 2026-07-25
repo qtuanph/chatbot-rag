@@ -139,6 +139,14 @@
       "root_cause": "The user query consisted entirely of stopwords (e.g., 'chào', 'hi'), causing `normalize_query` to return an empty string. The Semantic Cache then attempted to embed this empty string via OpenAI, which rejects empty inputs.",
       "resolution": "Added a truthiness check for `normalized_query`. If it evaluates to empty, the system bypasses Semantic Cache entirely and falls back to normal RAG retrieval (which correctly uses the raw, non-empty user query).",
       "lesson_learned": "Do not pass unvalidated normalized strings to embedding models. Always handle edge cases where stopword filtering strips out the entire string."
+    },
+    {
+      "issue_id": 17,
+      "title": "PostgreSQL Schema Out of Sync on Pre-existing Containers",
+      "symptom": "API returns 500 error with `psycopg.errors.UndefinedTable: relation conversations does not exist` when accessing new endpoints.",
+      "root_cause": "PostgreSQL init scripts in `/docker-entrypoint-initdb.d/init.sql` only execute during initial container volume creation. Subsequent schema updates added to `ops/init.sql` require explicit DDL execution on pre-existing database volumes.",
+      "resolution": "Executed `ops/init.sql` DDL statements using the database superuser `db-admin` (`psql -U db-admin -d ragbot < ops/init.sql`), which created the new `conversations`, `conversation_messages`, `knowledge_bases`, `tenant_knowledge_bases`, `products`, `product_versions`, `tenant_products`, and `escalations` tables.",
+      "lesson_learned": "When adding new tables to `ops/init.sql` on an existing Docker environment, always run the DDL update script with the database superuser."
     }
   ]
 }

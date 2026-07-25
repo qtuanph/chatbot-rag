@@ -117,6 +117,17 @@ class SettingsRepository:
         self.db.commit()
         return self.get_provider(provider_id)
 
+    def deactivate_provider(self, provider_id: int) -> dict[str, Any] | None:
+        provider = self.get_provider(provider_id)
+        if not provider:
+            return None
+        self.db.execute(
+            "UPDATE ai_providers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (provider_id,),
+        )
+        self.db.commit()
+        return self.get_provider(provider_id)
+
     def get_active_provider(self, service_type: str) -> dict[str, Any] | None:
         row = self.db.execute(
             "SELECT * FROM ai_providers WHERE service_type = ? AND is_active = 1 LIMIT 1",

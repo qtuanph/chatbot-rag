@@ -32,6 +32,8 @@ class UsageRepository:
         model_type: str = "llm",
         tenant_id: str | UUID | None = None,
         user_id: str | UUID | None = None,
+        is_cache_hit: bool = False,
+        cached_type: str | None = None,
     ) -> None:
         """Log an AI model usage event asynchronously."""
         tid = UUID(tenant_id) if isinstance(tenant_id, str) and tenant_id else tenant_id
@@ -50,6 +52,8 @@ class UsageRepository:
             endpoint=endpoint,
             tenant_id=tid if isinstance(tid, UUID) else None,
             user_id=uid if isinstance(uid, UUID) else None,
+            is_cache_hit=is_cache_hit,
+            cached_type=cached_type,
         )
         self.session.add(entry)
         await self.session.commit()

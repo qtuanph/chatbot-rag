@@ -11,7 +11,7 @@ from app.adapters.storage import build_storage
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.core.llama_index import delete_document_vectors
-from app.modules.documents.repositories import DocumentRepository, SectionRepository
+from app.modules.documents.repositories import DocumentAccessRepository, DocumentRepository, SectionRepository
 from app.modules.documents.services.task_service import TaskService
 from app.modules.documents.services.tree_service import TreeService
 from app.utils.audit import safe_record_audit
@@ -27,12 +27,14 @@ class DocumentService:
         redis_client: Any = None,
         task_service: TaskService | None = None,
         tree_service: TreeService | None = None,
+        access_repo: DocumentAccessRepository | None = None,
     ) -> None:
         self.doc_repo = doc_repo
         self.section_repo = section_repo
         self.redis = redis_client
         self.task_service = task_service or TaskService(doc_repo, redis_client)
         self.tree_service = tree_service or TreeService(doc_repo, section_repo)
+        self.access_repo = access_repo or DocumentAccessRepository(doc_repo.session)
 
         from app.modules.documents.utils import DuplicateDetector
 
@@ -41,8 +43,9 @@ class DocumentService:
     async def get_task_status(self, task_id: str) -> dict:
         return await self.task_service.get_task_status(task_id)
 
-    async def check_duplicate(self, sha256: str, filename: str, tenant_id: str) -> tuple[dict | None, int]:
-        if not await self.detector.exists(tenant_id, sha256):
+    async def check_duplicate(self, sha256: str, filename: str, tenant_id: str | None = None) -> tuple[dict | None, int]:
+        detector_key = tenant_id or "global"
+        if not await self.detector.exists(detector_key, sha256):
             next_version = await self.doc_repo.get_next_version(filename, tenant_id)
             return None, next_version
 
@@ -60,7 +63,7 @@ class DocumentService:
         file_type: str,
         sha256: str,
         next_version: int,
-        tenant_id: str,
+        tenant_id: str | None = None,
         user_id: str,
         ip_address: str | None = None,
         user_agent: str | None = None,
@@ -82,7 +85,8 @@ class DocumentService:
             version=next_version,
         )
 
-        await self.detector.add(tenant_id, sha256)
+        detector_key = tenant_id or "global"
+        await self.detector.add(detector_key, sha256)
 
         safe_record_audit(
             action="document.upload",
@@ -116,11 +120,14 @@ class DocumentService:
 
     async def list_documents(self, offset: int = 0, limit: int = 20, tenant_id: str | None = None) -> dict:
         items, total = await self.doc_repo.list_paginated(offset=offset, limit=limit, tenant_id=tenant_id)
-        return {
-            "items": [
+        result_items = []
+        for row in items:
+            doc_id = row["id"]
+            allowed_tenants = await self.access_repo.get_tenants_with_name_for_document(doc_id)
+            result_items.append(
                 {
-                    "document_id": row["id"],
-                    "tenant_id": str(row["tenant_id"]),
+                    "document_id": doc_id,
+                    "tenant_id": str(row["tenant_id"]) if row.get("tenant_id") else None,
                     "title": row["title"],
                     "file_name": row["file_name"],
                     "file_type": row["file_type"],
@@ -132,9 +139,11 @@ class DocumentService:
                     "status_message": row["status_message"],
                     "created_at": row["created_at"],
                     "updated_at": row["updated_at"],
+                    "allowed_tenants": allowed_tenants,
                 }
-                for row in items
-            ],
+            )
+        return {
+            "items": result_items,
             "total": total,
             "offset": offset,
             "limit": limit,
@@ -144,7 +153,31 @@ class DocumentService:
         doc = await self.doc_repo.get_full_document(document_id, tenant_id=tenant_id)
         if doc is None:
             raise ValueError("Document not found")
+        allowed_tenants = await self.access_repo.get_tenants_with_name_for_document(document_id)
+        doc["allowed_tenants"] = allowed_tenants
         return doc
+
+    async def get_document_access(self, document_id: str) -> dict:
+        doc = await self.doc_repo.get_full_document(document_id)
+        if doc is None:
+            raise ValueError("Document not found")
+        tenants = await self.access_repo.get_tenants_with_name_for_document(document_id)
+        return {"document_id": document_id, "tenants": tenants}
+
+    async def set_document_access(
+        self, document_id: str, tenant_ids: list[str], granted_by: str | None = None
+    ) -> dict:
+        doc = await self.doc_repo.get_full_document(document_id)
+        if doc is None:
+            raise ValueError("Document not found")
+        tenants = await self.access_repo.set_tenants_for_document(document_id, tenant_ids, granted_by=granted_by)
+        if self.redis:
+            for t_id in tenant_ids:
+                try:
+                    await self.redis.delete(f"kb:tenant:{t_id}")
+                except Exception:
+                    pass
+        return {"document_id": document_id, "tenants": tenants}
 
     async def get_document_tree(self, document_id: str) -> list:
         return await self.tree_service.get_document_tree(document_id)

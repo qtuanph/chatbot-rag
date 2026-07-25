@@ -13,7 +13,7 @@ def build_reranker() -> LocalRerankerPostprocessor | NvidiaRerankerPostprocessor
     return get_reranker()
 
 
-def get_reranker(top_k: int | None = None) -> LocalRerankerPostprocessor | NvidiaRerankerPostprocessor:
+def get_reranker(top_k: int | None = None) -> LocalRerankerPostprocessor | NvidiaRerankerPostprocessor | None:
     """Read the active reranker provider from RuntimeProviderManager and instantiate."""
     from app.modules.settings.runtime_manager import RuntimeProviderManager
 
@@ -24,6 +24,11 @@ def get_reranker(top_k: int | None = None) -> LocalRerankerPostprocessor | Nvidi
     if cfg is None:
         runtime.reload()
         cfg = runtime.get_reranker_config()
+
+    # ADR-04: If reranker is disabled / not active in SQLite settings -> return None (skip reranking)
+    if not cfg or not cfg.get("is_active"):
+        return None
+
     kwargs = {"top_k": top_k or settings.retrieval_rerank_top_k}
 
     if cfg and cfg.get("provider_name"):

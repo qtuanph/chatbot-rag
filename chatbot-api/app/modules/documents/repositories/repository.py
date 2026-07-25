@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 from datetime import datetime
+from uuid import UUID
 from sqlalchemy import func, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,23 +53,23 @@ class DocumentRepository(BaseRepository[Document]):
                 error_code="DOCUMENT_STORE_UPDATE_FAILED",
             )
 
-    async def find_by_sha256(self, sha256: str, tenant_id: str) -> dict | None:
+    async def find_by_sha256(self, sha256: str, tenant_id: str | None = None) -> dict | None:
         """Find a non-deleted document by SHA256 hash (for deduplication)."""
-        stmt = (
-            select(self.model)
-            .where(self.model.sha256 == sha256, self.model.tenant_id == tenant_id, self.model.deleted_at.is_(None))
-            .order_by(self.model.created_at.desc())
-            .limit(1)
-        )
+        stmt = select(self.model).where(self.model.sha256 == sha256, self.model.deleted_at.is_(None))
+        if tenant_id:
+            stmt = stmt.where(self.model.tenant_id == tenant_id)
+        stmt = stmt.order_by(self.model.created_at.desc()).limit(1)
         result = await self.session.execute(stmt)
         document = result.scalar_one_or_none()
         return self._to_dict(document) if document else None
 
-    async def get_next_version(self, filename: str, tenant_id: str) -> int:
+    async def get_next_version(self, filename: str, tenant_id: str | None = None) -> int:
         """Get the next version number for a given filename."""
         stmt = select(func.coalesce(func.max(self.model.version), 0)).where(
-            self.model.file_name == filename, self.model.tenant_id == tenant_id, self.model.deleted_at.is_(None)
+            self.model.file_name == filename, self.model.deleted_at.is_(None)
         )
+        if tenant_id:
+            stmt = stmt.where(self.model.tenant_id == tenant_id)
         result = await self.session.execute(stmt)
         max_ver = result.scalar()
         return (max_ver or 0) + 1
@@ -83,13 +84,14 @@ class DocumentRepository(BaseRepository[Document]):
         sha256: str,
         file_type: str,
         file_size: int,
-        tenant_id: str,
+        tenant_id: str | None = None,
         version: int = 1,
     ) -> dict:
         """Insert a new document record."""
+        tenant_uuid = UUID(tenant_id) if tenant_id else None
         document = self.model(
             id=document_id,
-            tenant_id=tenant_id,
+            tenant_id=tenant_uuid,
             title=title,
             file_name=file_name,
             file_path=file_path,
@@ -111,15 +113,21 @@ class DocumentRepository(BaseRepository[Document]):
         self, offset: int = 0, limit: int = 20, tenant_id: str | None = None
     ) -> tuple[list[dict], int]:
         """List non-deleted documents with pagination. Returns (items, total)."""
+        from app.models.tenant_document_access import TenantDocumentAccess
+
         count_stmt = select(func.count(self.model.id)).where(self.model.deleted_at.is_(None))
         if tenant_id:
-            count_stmt = count_stmt.where(self.model.tenant_id == tenant_id)
+            tenant_uuid = UUID(tenant_id)
+            subq = select(TenantDocumentAccess.document_id).where(TenantDocumentAccess.tenant_id == tenant_uuid)
+            count_stmt = count_stmt.where((self.model.tenant_id == tenant_uuid) | (self.model.id.in_(subq)))
         count_result = await self.session.execute(count_stmt)
         total = count_result.scalar() or 0
 
         stmt = select(self.model).where(self.model.deleted_at.is_(None))
         if tenant_id:
-            stmt = stmt.where(self.model.tenant_id == tenant_id)
+            tenant_uuid = UUID(tenant_id)
+            subq = select(TenantDocumentAccess.document_id).where(TenantDocumentAccess.tenant_id == tenant_uuid)
+            stmt = stmt.where((self.model.tenant_id == tenant_uuid) | (self.model.id.in_(subq)))
         stmt = stmt.order_by(self.model.created_at.desc()).offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         rows = result.scalars().all()

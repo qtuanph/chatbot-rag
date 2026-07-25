@@ -1,7 +1,7 @@
 {
   "document": {
     "id": "0_QUICK_REFERENCE",
-    "version": "2026-07-23",
+    "version": "2026-07-25",
     "purpose": "Cheat sheet ngắn gọn cho project hiện tại."
   },
   "read_order": [
@@ -13,8 +13,10 @@
     "docs/7_CURRENT_SETTINGS.json"
   ],
   "must_know": {
-    "mode": "multi-tenant SaaS",
-    "chat": "stateless",
+    "mode": "multi-tenant SaaS with shared Knowledge Bases",
+    "chat": "stateless for users, fire-and-forget async audit persistence for admins (90d retention)",
+    "caching": "Tiered L1 Exact (Redis ~0.5ms) + L2 Semantic (0.95 threshold) with circuit breaker",
+    "quota": "Dynamic rates & quotas read from DB tenants table (RPM, monthly requests/tokens)",
     "gateway": "Browser -> /api/bep/* -> Next.js proxy -> FastAPI",
     "money": "VND, lưu integer cost_micros_vnd",
     "time": "DB lưu UTC, backend/frontend format giờ Việt Nam khi hiển thị",
@@ -24,10 +26,10 @@
     "llm_default": "9Router"
   },
   "important_notes": [
-    "Không được coi chat history DB là core flow nữa",
-    "Tenant isolation là bắt buộc ở document, retrieval, usage",
-    "Tiến trình ingestion/chat sử dụng SSE (Server-Sent Events) với tự động kết nối lại",
-    "Pipeline ingestion tối ưu batching với pipeline_batch_size=8 và embedding_batch_size=50"
+    "User chat flow 100% stateless; Admin audit persistence handles turn-by-turn logging asynchronously via Celery",
+    "Tenant isolation là bắt buộc ở document, KB, retrieval, quota, usage",
+    "Admin Audit UI tại /admin/conversations cho phép xem câu hỏi 'Chưa đủ căn cứ' để nâng cấp tài liệu KB",
+    "Tiến trình ingestion/chat sử dụng SSE (Server-Sent Events) với tự động kết nối lại"
   ],
   "docs": {
     "1_ARCHITECTURE.md": "Kiến trúc thật của project hiện tại",

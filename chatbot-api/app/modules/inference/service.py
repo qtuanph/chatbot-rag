@@ -46,11 +46,54 @@ def _to_llama_role(role: str) -> MessageRole:
 
 class PublicInferenceService:
     def __init__(
-        self, tenant_repo: TenantRepository, section_repo: SectionRepository, semantic_cache: Any = None
+        self,
+        tenant_repo: TenantRepository,
+        section_repo: SectionRepository,
+        semantic_cache: Any = None,
+        redis_client: Any = None,
     ) -> None:
         self.tenant_repo = tenant_repo
         self.section_repo = section_repo
         self.semantic_cache = semantic_cache
+        self._redis = redis_client
+
+    async def _check_tiered_cache(self, tenant_id: str, user_query: str) -> dict[str, Any] | None:
+        if settings.exact_cache_enabled and self._redis:
+            from app.modules.chat.cache.exact_cache import exact_cache_get
+
+            cached = await exact_cache_get(self._redis, tenant_id, user_query)
+            if cached:
+                cached["_cache_tier"] = "exact"
+                return cached
+
+        if settings.retrieval_semantic_cache_enabled and self.semantic_cache and user_query:
+            normalized_query = normalize_query(user_query, stopwords=ALL_DEFAULT_STOPWORDS)
+            if normalized_query:
+                embed_model = Settings.embed_model
+                query_vector = await embed_model.aget_query_embedding(normalized_query)
+                cached = await self.semantic_cache.get(tenant_id, query_vector)
+                if cached:
+                    cached["_cache_tier"] = "semantic"
+                    return cached
+        return None
+
+    async def _write_tiered_cache(
+        self,
+        tenant_id: str,
+        user_query: str,
+        payload: dict[str, Any],
+        query_vector: list[float] | None = None,
+        normalized_query: str | None = None,
+    ) -> None:
+        if settings.exact_cache_enabled and self._redis:
+            from app.modules.chat.cache.exact_cache import exact_cache_set
+
+            await exact_cache_set(
+                self._redis, tenant_id, user_query, payload, ttl_seconds=settings.exact_cache_ttl_seconds
+            )
+
+        if settings.retrieval_semantic_cache_enabled and self.semantic_cache and normalized_query and query_vector:
+            await self.semantic_cache.set(tenant_id, normalized_query, query_vector, payload)
 
     async def complete(
         self,
@@ -61,22 +104,61 @@ class PublicInferenceService:
         temperature: float | None = None,
         max_tokens: int | None = None,
         user_id: str | None = None,
+        conversation_id: str | None = None,
     ) -> CompletionResult:
         user_query = self._latest_user_query(messages)
-        query_vector = None
-        normalized_query = None
-        if self.semantic_cache and user_query:
-            normalized_query = normalize_query(user_query, stopwords=ALL_DEFAULT_STOPWORDS)
-            if normalized_query:
-                embed_model = Settings.embed_model
-                query_vector = await embed_model.aget_query_embedding(normalized_query)
-                cached = await self.semantic_cache.get(tenant_id, query_vector)
-                if cached:
-                    usage = cached.get("usage", {})
-                    usage["cached"] = True
-                    return CompletionResult(
-                        content=cached["content"], citations=cached["citations"], usage=usage, model=cached["model"]
+
+        from app.modules.chat.quota.quota_service import QuotaService
+
+        quota_svc = QuotaService(self._redis, tenant_repo=self.tenant_repo)
+        tenant_config = await quota_svc._get_tenant_config(tenant_id)
+
+        allowed, reason = await quota_svc.check_and_increment_rate(
+            tenant_id=tenant_id, user_id=user_id, tenant_config=tenant_config
+        )
+        if not allowed:
+            raise ValueError(f"Rate limit exceeded: {reason}")
+
+        allowed, reason = await quota_svc.check_and_increment_daily(tenant_id=tenant_id, user_id=user_id)
+        if not allowed:
+            raise ValueError(f"Daily request quota exceeded: {reason}")
+
+        cached = await self._check_tiered_cache(tenant_id, user_query)
+        if cached:
+            cache_tier = cached.pop("_cache_tier", "exact")
+            usage = cached.get("usage", {})
+            usage["cached"] = True
+            usage["cached_type"] = cache_tier
+            res = CompletionResult(
+                content=cached["content"], citations=cached["citations"], usage=usage, model=cached["model"]
+            )
+            if settings.chat_history_persist_enabled and conversation_id:
+                try:
+                    from app.modules.chat.tasks.usage_tasks import save_conversation_turn_task
+
+                    save_conversation_turn_task.delay(
+                        tenant_id=tenant_id,
+                        conversation_id=conversation_id,
+                        user_content=user_query,
+                        assistant_content=res.content,
+                        citations=res.citations,
+                        usage=res.usage,
+                        model_name=res.model,
+                        is_cache_hit=True,
+                        cached_type=cache_tier,
+                        no_answer=False,
                     )
+                except Exception as exc:
+                    logger.warning("Failed to dispatch cached conversation save: %s", exc)
+            return res
+
+        allowed, reason = await quota_svc.reserve_llm_call(tenant_id=tenant_id)
+        if not allowed:
+            raise ValueError(f"Monthly LLM call limit exceeded: {reason}")
+
+        allowed, reason = await quota_svc.check_budget_before_llm(tenant_id=tenant_id)
+        if not allowed:
+            raise ValueError(f"Monthly budget limit reached: {reason}")
 
         setting = await self._get_tenant_setting(tenant_id)
         context = await self._resolve_context(
@@ -117,20 +199,46 @@ class PublicInferenceService:
             usage=self._normalize_usage(usage),
             model=getattr(llm, "model", "chatbot-rag"),
         )
-        if self.semantic_cache and normalized_query and query_vector:
-            await self.semantic_cache.set(
-                tenant_id,
-                normalized_query,
-                query_vector,
-                {
-                    "content": result.content,
-                    "citations": result.citations,
-                    "usage": result.usage,
-                    "model": result.model,
-                },
-            )
+
+        await self._write_tiered_cache(
+            tenant_id=tenant_id,
+            user_query=user_query,
+            payload={
+                "content": result.content,
+                "citations": result.citations,
+                "usage": result.usage,
+                "model": result.model,
+            },
+        )
+
+        cost_micros = result.usage.get("cost_micros_vnd", 0)
+        total_tokens = result.usage.get("total_tokens", 0)
+        await quota_svc.record_cost_and_tokens(
+            tenant_id=tenant_id, cost_micros_vnd=cost_micros, total_tokens=total_tokens, tenant_config=tenant_config
+        )
+
         provider = type("UsageProxy", (), {"last_usage": result.usage, "model_name": result.model})()
         track_usage(provider, endpoint="public.chat.completions", tenant_id=tenant_id)
+
+        if settings.chat_history_persist_enabled and conversation_id:
+            try:
+                from app.modules.chat.tasks.usage_tasks import save_conversation_turn_task
+
+                save_conversation_turn_task.delay(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    user_content=user_query,
+                    assistant_content=result.content,
+                    citations=result.citations,
+                    usage=result.usage,
+                    model_name=result.model,
+                    is_cache_hit=False,
+                    cached_type=None,
+                    no_answer=not result.content or "chưa đủ căn cứ" in result.content,
+                )
+            except Exception as exc:
+                logger.warning("Failed to dispatch conversation save: %s", exc)
+
         return result
 
     async def stream_complete(
@@ -142,29 +250,72 @@ class PublicInferenceService:
         temperature: float | None = None,
         max_tokens: int | None = None,
         user_id: str | None = None,
+        conversation_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         user_query = self._latest_user_query(messages)
-        query_vector = None
-        normalized_query = None
-        if self.semantic_cache and user_query:
-            normalized_query = normalize_query(user_query, stopwords=ALL_DEFAULT_STOPWORDS)
-            if normalized_query:
-                embed_model = Settings.embed_model
-                query_vector = await embed_model.aget_query_embedding(normalized_query)
-                cached = await self.semantic_cache.get(tenant_id, query_vector)
-                if cached:
-                    created = int(time.time())
-                    completion_id = f"chatcmpl-{created}"
-                    model_name = cached["model"]
 
-                    # Yield content block
-                    yield f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_name, 'choices': [{'index': 0, 'delta': {'content': cached['content']}, 'finish_reason': None}]})}\n\n"
+        from app.modules.chat.quota.quota_service import QuotaService
 
-                    # Yield citations & stats
-                    usage = cached.get("usage", {})
-                    usage["cached"] = True
-                    yield f"data: {json.dumps({'done': True, 'citations': cached['citations'], 'stats': usage | {'model': model_name}})}\n\n"
-                    return
+        quota_svc = QuotaService(self._redis, tenant_repo=self.tenant_repo)
+        tenant_config = await quota_svc._get_tenant_config(tenant_id)
+
+        allowed, reason = await quota_svc.check_and_increment_rate(
+            tenant_id=tenant_id, user_id=user_id, tenant_config=tenant_config
+        )
+        if not allowed:
+            yield f"data: {json.dumps({'error': True, 'code': 'rate_limited', 'message': reason})}\n\n"
+            return
+
+        allowed, reason = await quota_svc.check_and_increment_daily(tenant_id=tenant_id, user_id=user_id)
+        if not allowed:
+            yield f"data: {json.dumps({'error': True, 'code': 'daily_quota_exceeded', 'message': reason})}\n\n"
+            return
+
+        cached = await self._check_tiered_cache(tenant_id, user_query)
+        if cached:
+            cache_tier = cached.pop("_cache_tier", "exact")
+            created = int(time.time())
+            completion_id = f"chatcmpl-{created}"
+            model_name = cached["model"]
+
+            yield f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_name, 'choices': [{'index': 0, 'delta': {'content': cached['content']}, 'finish_reason': None}]})}\n\n"
+
+            usage = cached.get("usage", {})
+            usage["cached"] = True
+            usage["cached_type"] = cache_tier
+            yield f"data: {json.dumps({'done': True, 'citations': cached['citations'], 'stats': usage | {'model': model_name}})}\n\n"
+            yield f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_name, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}], 'citations': cached['citations'], 'usage': usage})}\n\n"
+            yield "data: [DONE]\n\n"
+
+            if settings.chat_history_persist_enabled and conversation_id:
+                try:
+                    from app.modules.chat.tasks.usage_tasks import save_conversation_turn_task
+
+                    save_conversation_turn_task.delay(
+                        tenant_id=tenant_id,
+                        conversation_id=conversation_id,
+                        user_content=user_query,
+                        assistant_content=cached["content"],
+                        citations=cached["citations"],
+                        usage=usage,
+                        model_name=model_name,
+                        is_cache_hit=True,
+                        cached_type=cache_tier,
+                        no_answer=False,
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to dispatch cached conversation stream save: %s", exc)
+            return
+
+        allowed, reason = await quota_svc.reserve_llm_call(tenant_id=tenant_id)
+        if not allowed:
+            yield f"data: {json.dumps({'error': True, 'code': 'monthly_quota_exceeded', 'message': reason})}\n\n"
+            return
+
+        allowed, reason = await quota_svc.check_budget_before_llm(tenant_id=tenant_id)
+        if not allowed:
+            yield f"data: {json.dumps({'error': True, 'code': 'budget_hard_stop', 'message': reason})}\n\n"
+            return
 
         setting = await self._get_tenant_setting(tenant_id)
         context = await self._resolve_context(
@@ -235,18 +386,24 @@ class PublicInferenceService:
             usage=self._normalize_usage(usage_info),
             model=model_name,
         )
-        if self.semantic_cache and normalized_query and query_vector:
-            await self.semantic_cache.set(
-                tenant_id,
-                normalized_query,
-                query_vector,
-                {
-                    "content": result.content,
-                    "citations": result.citations,
-                    "usage": result.usage,
-                    "model": result.model,
-                },
-            )
+
+        await self._write_tiered_cache(
+            tenant_id=tenant_id,
+            user_query=user_query,
+            payload={
+                "content": result.content,
+                "citations": result.citations,
+                "usage": result.usage,
+                "model": result.model,
+            },
+        )
+
+        cost_micros = result.usage.get("cost_micros_vnd", 0)
+        total_tokens = result.usage.get("total_tokens", 0)
+        await quota_svc.record_cost_and_tokens(
+            tenant_id=tenant_id, cost_micros_vnd=cost_micros, total_tokens=total_tokens, tenant_config=tenant_config
+        )
+
         provider = type("UsageProxy", (), {"last_usage": result.usage, "model_name": result.model})()
         track_usage(provider, endpoint="public.chat.stream", tenant_id=tenant_id)
         yield f"data: {json.dumps({'done': True, 'citations': result.citations, 'stats': result.usage | {'model': result.model}})}\n\n"
@@ -264,6 +421,25 @@ class PublicInferenceService:
         }
         yield f"data: {json.dumps(final_payload)}\n\n"
         yield "data: [DONE]\n\n"
+
+        if settings.chat_history_persist_enabled and conversation_id:
+            try:
+                from app.modules.chat.tasks.usage_tasks import save_conversation_turn_task
+
+                save_conversation_turn_task.delay(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    user_content=user_query,
+                    assistant_content=result.content,
+                    citations=result.citations,
+                    usage=result.usage,
+                    model_name=result.model,
+                    is_cache_hit=False,
+                    cached_type=None,
+                    no_answer=not result.content or "chưa đủ căn cứ" in result.content,
+                )
+            except Exception as exc:
+                logger.warning("Failed to dispatch stream conversation save: %s", exc)
 
     async def _get_tenant_setting(self, tenant_id: str) -> dict[str, Any]:
         tenant = await self.tenant_repo.get_tenant(tenant_id)
