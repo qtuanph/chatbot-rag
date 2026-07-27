@@ -13,6 +13,7 @@ from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from app.modules.analytics import router as analytics
 from app.modules.auth import router as auth
 from app.modules.chat import router as chat
+from app.modules.chat.faq_router import router as faq_router
 from app.modules.documents import router as documents
 from app.modules.inference import router as inference
 from app.modules.settings import router as settings_router
@@ -123,6 +124,7 @@ routers = [
     system.router,
     documents.router,
     chat.router,
+    faq_router,
     inference,
     analytics.router,
     settings_router,

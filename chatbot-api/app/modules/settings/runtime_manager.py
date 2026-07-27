@@ -48,6 +48,8 @@ class RuntimeProviderManager:
             self._reranker = repo.get_active_provider("reranker")
             self._llm = repo.get_active_provider("llm")
             self._parser = repo.get_active_provider("parser")
+            if self._parser is None:
+                self._parser = repo.get_builtin_provider("parser", "docling")
         finally:
             repo.close()
 
@@ -60,6 +62,17 @@ class RuntimeProviderManager:
                 from app.core.llama_index import SequentialOpenAIEmbedding
 
                 api_key = self._get_effective_key(emb) or "no-key"
+                if emb.get("provider_name") != "dmr" and api_key == "no-key":
+                    from app.modules.settings.repository import SettingsRepository
+                    repo = SettingsRepository()
+                    try:
+                        dmr_emb = repo.get_builtin_provider("embedding", "dmr")
+                        if dmr_emb:
+                            emb = dmr_emb
+                    finally:
+                        repo.close()
+                    api_key = "no-key"
+
                 model_name = emb.get("model")
                 if not model_name:
                     raise ValueError("Embedding model is missing in SQLite configuration.")

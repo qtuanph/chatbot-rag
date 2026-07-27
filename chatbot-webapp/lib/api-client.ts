@@ -35,6 +35,9 @@ import type {
   UserUsageDetail,
   UserUsageSummaryItem,
   UserUsageWindows,
+  FaqItem,
+  FaqCreateRequest,
+  EscalationItem,
 } from "@/types/api";
 
 import * as s from "@/lib/schemas";
@@ -404,6 +407,37 @@ export const conversationsApi = {
 
   getMessages: (conversationId: string) =>
     apiFetchParse(s.ConversationDetailAuditResponseSchema, `/admin/conversations/${conversationId}/messages`),
+};
+
+export const faqApi = {
+  list: (tenantId: string): Promise<FaqItem[]> =>
+    apiFetchParse(z.array(s.FaqItemSchema), `/tenants/${encodeURIComponent(tenantId)}/faqs`),
+
+  create: (tenantId: string, data: FaqCreateRequest): Promise<FaqItem> =>
+    apiFetchParse(s.FaqItemSchema, `/tenants/${encodeURIComponent(tenantId)}/faqs`, {
+      method: "POST",
+      body: JSON.stringify(parseRequest(s.FaqCreateRequestSchema, data)),
+    }),
+
+  update: (faqId: string, data: Partial<FaqCreateRequest>): Promise<FaqItem> =>
+    apiFetchParse(s.FaqItemSchema, `/faqs/${encodeURIComponent(faqId)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  delete: (faqId: string): Promise<void> =>
+    apiFetchParse(z.unknown().transform(() => {}), `/faqs/${encodeURIComponent(faqId)}`, {
+      method: "DELETE",
+    }),
+
+  listEscalations: (tenantId: string): Promise<EscalationItem[]> =>
+    apiFetchParse(z.array(s.EscalationItemSchema), `/tenants/${encodeURIComponent(tenantId)}/escalations`),
+
+  promoteEscalation: (escalationId: string, data: FaqCreateRequest): Promise<FaqItem> =>
+    apiFetchParse(s.FaqItemSchema, `/escalations/${encodeURIComponent(escalationId)}/promote`, {
+      method: "POST",
+      body: JSON.stringify(parseRequest(s.FaqCreateRequestSchema, data)),
+    }),
 };
 
 export { API_INTERNAL };

@@ -82,7 +82,7 @@ async def upload_document(
 
     try:
         filename = DocumentValidator.validate_filename(file.filename)
-        file_type = DocumentValidator.validate_file_type(file.content_type)
+        file_type = DocumentValidator.validate_file_type(file.content_type, filename)
     except ValueError as e:
         raise http_errors.bad_request(str(e)) from None
 
@@ -216,7 +216,7 @@ async def stream_documents(
                 logger.warning("Document SSE stream loop recovered from error: %s", exc, exc_info=True)
                 yield ": transient-error-recovered\n\n"
 
-            await asyncio.sleep(settings.document_progress_stream_interval)
+            await asyncio.sleep(max(2.0, float(settings.document_progress_stream_interval)))
 
     headers = {
         "Cache-Control": "no-cache, no-transform",

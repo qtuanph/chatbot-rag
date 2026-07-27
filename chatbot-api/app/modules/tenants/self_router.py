@@ -12,10 +12,15 @@ from app.modules.tenants.service import TenantService
 router = APIRouter(prefix="/tenants/me", tags=["tenant-self"])
 
 
-def _require_tenant_context(auth: AuthContext) -> str:
-    if auth.role != "tenant_admin" or not auth.tenant_id:
-        raise http_errors.forbidden("Tenant admin access required")
-    return auth.tenant_id
+async def _resolve_tenant_id(auth: AuthContext, service: TenantService) -> str:
+    if auth.tenant_id:
+        return auth.tenant_id
+    if auth.role == "platform_admin":
+        tenants = await service.list_tenants()
+        if tenants:
+            return str(tenants[0]["id"])
+        raise http_errors.not_found("No tenants found in system")
+    raise http_errors.forbidden("Tenant access required")
 
 
 @router.get("", response_model=TenantResponse)
@@ -23,7 +28,7 @@ async def get_my_tenant(
     auth: AuthContext = Depends(get_auth_context),
     service: TenantService = Depends(get_tenant_service),
 ) -> TenantResponse:
-    tenant_id = _require_tenant_context(auth)
+    tenant_id = await _resolve_tenant_id(auth, service)
     try:
         return TenantResponse(**(await service.get_tenant(tenant_id)))
     except ValueError as exc:
@@ -35,7 +40,7 @@ async def get_my_tenant_setting(
     auth: AuthContext = Depends(get_auth_context),
     service: TenantService = Depends(get_tenant_service),
 ) -> TenantSettingResponse:
-    tenant_id = _require_tenant_context(auth)
+    tenant_id = await _resolve_tenant_id(auth, service)
     try:
         return TenantSettingResponse(**(await service.get_setting(tenant_id)))
     except ValueError as exc:
@@ -48,7 +53,7 @@ async def update_my_tenant_setting(
     auth: AuthContext = Depends(get_auth_context),
     service: TenantService = Depends(get_tenant_service),
 ) -> TenantSettingResponse:
-    tenant_id = _require_tenant_context(auth)
+    tenant_id = await _resolve_tenant_id(auth, service)
     try:
         return TenantSettingResponse(
             **(await service.update_setting(tenant_id, payload.model_dump(exclude_unset=True)))

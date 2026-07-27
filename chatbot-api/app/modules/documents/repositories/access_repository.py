@@ -44,6 +44,25 @@ class DocumentAccessRepository:
         result = await self.session.execute(stmt)
         return [str(row[0]) for row in result.all()]
 
+    async def get_tenants_for_documents(self, document_ids: list[str]) -> dict[str, list[dict[str, str]]]:
+        """Batch fetch tenants for multiple documents in a single SQL query (prevents N+1 query lag)."""
+        if not document_ids:
+            return {}
+        doc_uuids = [UUID(d) for d in document_ids]
+        stmt = (
+            select(TenantDocumentAccess.document_id, Tenant.id, Tenant.name)
+            .join(Tenant, Tenant.id == TenantDocumentAccess.tenant_id)
+            .where(TenantDocumentAccess.document_id.in_(doc_uuids))
+            .order_by(Tenant.name.asc())
+        )
+        result = await self.session.execute(stmt)
+        mapping: dict[str, list[dict[str, str]]] = {d: [] for d in document_ids}
+        for row in result.all():
+            doc_id_str = str(row[0])
+            if doc_id_str in mapping:
+                mapping[doc_id_str].append({"id": str(row[1]), "name": row[2]})
+        return mapping
+
     async def set_tenants_for_document(
         self, document_id: str, tenant_ids: list[str], granted_by: str | None = None
     ) -> list[dict[str, str]]:

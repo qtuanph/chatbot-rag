@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -22,11 +23,18 @@ class DocumentValidator:
         return filename
 
     @staticmethod
-    def validate_file_type(content_type: str | None) -> str:
-        """Validate file content type."""
+    def validate_file_type(content_type: str | None, filename: str | None = None) -> str:
+        """Validate file content type with fallback extension checking."""
         file_type = content_type or "application/octet-stream"
         allowed_types = settings.get_allowed_file_types()
+
         if file_type not in allowed_types:
+            # Fall back to guessing MIME type from filename extension
+            if filename:
+                guessed_type, _ = mimetypes.guess_type(filename)
+                if guessed_type and guessed_type in allowed_types:
+                    return guessed_type
+
             raise ValueError(
                 f"File type '{file_type}' is not allowed. Allowed types: {', '.join(sorted(allowed_types))}"
             )

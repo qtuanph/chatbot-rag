@@ -1,6 +1,6 @@
 """L1 Exact cache: normalize query -> SHA-256 key -> Redis GET/SET.
 
-Cache key format: exact_cache:{tenant_id}:{sha256(normalized_query)}
+Cache key format: exact_cache:{doc_key_or_tenant_id}:{sha256(normalized_query)}
 Circuit breaker: redis errors are logged and caught, failing open.
 """
 
@@ -19,18 +19,18 @@ logger = logging.getLogger(__name__)
 _EXACT_CACHE_PREFIX = "exact_cache"
 
 
-def _build_cache_key(tenant_id: str, normalized_query: str) -> str:
+def _build_cache_key(doc_key_or_tenant_id: str, normalized_query: str) -> str:
     digest = hashlib.sha256(normalized_query.encode("utf-8")).hexdigest()
-    return f"{_EXACT_CACHE_PREFIX}:{tenant_id}:{digest}"
+    return f"{_EXACT_CACHE_PREFIX}:{doc_key_or_tenant_id}:{digest}"
 
 
-async def exact_cache_get(redis: aioredis.Redis, tenant_id: str, question: str) -> dict[str, Any] | None:
+async def exact_cache_get(redis: aioredis.Redis, doc_key_or_tenant_id: str, question: str) -> dict[str, Any] | None:
     """L1 lookup. Returns None on miss, error, or empty normalized query."""
     try:
         normalized = normalize_query(question, stopwords=ALL_DEFAULT_STOPWORDS)
         if not normalized:
             return None
-        key = _build_cache_key(tenant_id, normalized)
+        key = _build_cache_key(doc_key_or_tenant_id, normalized)
         raw = await redis.get(key)
         if raw is None:
             return None
@@ -42,7 +42,7 @@ async def exact_cache_get(redis: aioredis.Redis, tenant_id: str, question: str) 
 
 async def exact_cache_set(
     redis: aioredis.Redis,
-    tenant_id: str,
+    doc_key_or_tenant_id: str,
     question: str,
     payload: dict[str, Any],
     ttl_seconds: int = 2592000,
@@ -52,7 +52,7 @@ async def exact_cache_set(
         normalized = normalize_query(question, stopwords=ALL_DEFAULT_STOPWORDS)
         if not normalized:
             return
-        key = _build_cache_key(tenant_id, normalized)
+        key = _build_cache_key(doc_key_or_tenant_id, normalized)
         await redis.setex(key, ttl_seconds, json.dumps(payload, ensure_ascii=False))
     except Exception as exc:
         logger.warning("exact_cache_set error: %s", exc)
@@ -62,7 +62,7 @@ async def exact_cache_invalidate_tenant(redis: aioredis.Redis, tenant_id: str) -
     """Clear all L1 cache entries for a tenant (called on KB publish/rollback)."""
     try:
         pattern = f"{_EXACT_CACHE_PREFIX}:{tenant_id}:*"
-        keys = await redis.keys(pattern)
+        keys = [key async for key in redis.scan_iter(match=pattern)]
         if keys:
             return await redis.delete(*keys)
         return 0

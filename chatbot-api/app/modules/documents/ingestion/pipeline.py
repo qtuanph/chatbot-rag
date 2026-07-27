@@ -18,6 +18,7 @@ from qdrant_client.http import models as rest
 from qdrant_client.http.exceptions import UnexpectedResponse
 
 from app.core.config import settings
+from app.core.hardware import get_hardware
 from app.adapters.embedding.adapter import EmbeddingAdapter, EmbeddingCapability
 from app.core.llama_index import (
     delete_document_vectors,
@@ -60,6 +61,7 @@ def _base_metadata(section: dict[str, Any], document_id: str, tenant_id: str) ->
     breadcrumb = section.get("breadcrumb") or []
     breadcrumb_text = section.get("breadcrumb_text") or " > ".join(breadcrumb)
     document_title = breadcrumb[0] if breadcrumb else section.get("title", "")
+    sec_meta = section.get("metadata") or {}
     return {
         "tenant_id": tenant_id,
         "document_id": document_id,
@@ -72,6 +74,9 @@ def _base_metadata(section: dict[str, Any], document_id: str, tenant_id: str) ->
         "breadcrumb": breadcrumb,
         "level": int(section.get("level", 1) or 1),
         "order_index": int(section.get("order_index", 0) or 0),
+        "page_range": section.get("page_range"),
+        "page_start": sec_meta.get("page_start") or section.get("page_start"),
+        "page_end": sec_meta.get("page_end") or section.get("page_end"),
     }
 
 
@@ -221,10 +226,21 @@ async def _ensure_collection(vector_store: QdrantVectorStore) -> None:
     if vector_store.enable_hybrid and sparse_name:
         sparse_vectors_config = {sparse_name: rest.SparseVectorParams()}
 
+    hw = get_hardware()
+    quantization_config = (
+        rest.ScalarQuantization(
+            scalar=rest.ScalarQuantizationConfig(type=rest.ScalarType.INT8, always_ram=True)
+        )
+        if hw.qdrant_quantization else None
+    )
+    hnsw_config = rest.HnswConfigDiff(m=hw.qdrant_hnsw_m, ef_construct=hw.qdrant_hnsw_ef)
+
     await aclient.create_collection(
         collection_name=vector_store.collection_name,
         vectors_config=vectors_config,
         sparse_vectors_config=sparse_vectors_config,
+        hnsw_config=hnsw_config,
+        quantization_config=quantization_config,
     )
 
     for payload_index in payload_indexes:

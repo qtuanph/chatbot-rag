@@ -16,9 +16,11 @@ def get_db_path() -> str:
 
 
 def get_db() -> sqlite3.Connection:
-    db = sqlite3.connect(get_db_path())
+    db = sqlite3.connect(get_db_path(), timeout=10.0)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA synchronous=NORMAL")
+    db.execute("PRAGMA busy_timeout=5000")
     db.execute("PRAGMA foreign_keys=ON")
     return db
 
@@ -182,9 +184,9 @@ def _seed_templates(db: sqlite3.Connection) -> None:
             "https://api.cloud.llamaindex.ai",
             "",
             "",
-            1,
-            1,
             0,
+            0,
+            1,
         ),
         (
             "parser",
@@ -193,9 +195,9 @@ def _seed_templates(db: sqlite3.Connection) -> None:
             "",
             "",
             "",
+            1,
+            1,
             0,
-            1,
-            1,
         ),
     ]
 

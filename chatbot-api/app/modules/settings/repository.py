@@ -6,10 +6,23 @@ from typing import Any
 from app.modules.settings.database import get_db
 
 
-def _row_to_provider(row: sqlite3.Row) -> dict[str, Any]:
+def _row_to_provider(row: sqlite3.Row, db: sqlite3.Connection | None = None) -> dict[str, Any]:
     d = dict(row)
     if isinstance(d.get("config"), str):
         d["config"] = json.loads(d["config"]) if d["config"] else {}
+
+    key_count = 0
+    if db is not None:
+        try:
+            key_count = db.execute("SELECT COUNT(*) FROM api_keys WHERE provider_id = ?", (d["id"],)).fetchone()[0]
+        except Exception:
+            key_count = 0
+
+    if key_count == 0 and d.get("api_key") and str(d["api_key"]).strip():
+        key_count = 1
+
+    d["key_count"] = key_count
+    d["has_key"] = key_count > 0
     return d
 
 
@@ -42,11 +55,11 @@ class SettingsRepository:
             ).fetchall()
         else:
             rows = self.db.execute("SELECT * FROM ai_providers ORDER BY service_type, priority").fetchall()
-        return [_row_to_provider(r) for r in rows]
+        return [_row_to_provider(r, self.db) for r in rows]
 
     def get_provider(self, provider_id: int) -> dict[str, Any] | None:
         row = self.db.execute("SELECT * FROM ai_providers WHERE id = ?", (provider_id,)).fetchone()
-        return _row_to_provider(row) if row else None
+        return _row_to_provider(row, self.db) if row else None
 
     def create_provider(self, data: dict[str, Any]) -> dict[str, Any]:
         config_json = json.dumps(data.get("config", {}))
@@ -133,14 +146,14 @@ class SettingsRepository:
             "SELECT * FROM ai_providers WHERE service_type = ? AND is_active = 1 LIMIT 1",
             (service_type,),
         ).fetchone()
-        return _row_to_provider(row) if row else None
+        return _row_to_provider(row, self.db) if row else None
 
     def get_builtin_provider(self, service_type: str, provider_name: str) -> dict[str, Any] | None:
         row = self.db.execute(
             "SELECT * FROM ai_providers WHERE service_type = ? AND provider_name = ? AND is_builtin = 1 LIMIT 1",
             (service_type, provider_name),
         ).fetchone()
-        return _row_to_provider(row) if row else None
+        return _row_to_provider(row, self.db) if row else None
 
     def update_provider_test_status(self, provider_id: int, success: bool, error_message: str = "") -> None:
         now = _now_iso()

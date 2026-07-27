@@ -53,9 +53,12 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             async_redis = get_redis_client()
             try:
                 document = await doc_repo.get_full_document(document_id)
-                if not document or not document.get("tenant_id"):
-                    logger.warning("[%s] Document not found in DB or missing tenant_id (maybe deleted). Skipping ingestion.", document_id)
+                if not document:
+                    logger.warning("[%s] Document not found in DB (maybe deleted). Skipping ingestion.", document_id)
                     return {"status": "skipped", "reason": "document_deleted"}
+
+                raw_tenant_id = document.get("tenant_id")
+                clean_tenant_id = str(raw_tenant_id) if (raw_tenant_id is not None and str(raw_tenant_id) != "None") else None
 
                 content = await asyncio.to_thread(storage.download_bytes, file_path)
                 section_repo = SectionRepository(session)
@@ -86,7 +89,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                     content=content,
                     user_id=user_id or "system",
                     document_id=document_id,
-                    tenant_id=str(document["tenant_id"]),
+                    tenant_id=clean_tenant_id,
                     progress_callback=_progress_callback,
                 )
 

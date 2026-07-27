@@ -44,7 +44,7 @@ class PipelineContext:
     filename: str
     content: bytes
     document_id: str
-    tenant_id: str
+    tenant_id: str | None
     user_id: str
     nodes: list[IngestedNode] = field(default_factory=list)
     parse_metadata: ParsingMetadata | None = None
@@ -67,19 +67,10 @@ class IngestionService:
         db_session: AsyncSession | None = None,
         section_repo: SectionRepository | None = None,
     ):
-        from app.core.config import settings
-        from app.modules.settings.runtime_manager import RuntimeProviderManager
-        
-        self.redis = redis_client
-        parser_config = RuntimeProviderManager.get_instance().get_parser_config() or {}
-        active_parser = parser_config.get("provider_name") or getattr(settings, "ingestion_parser_engine", "llamaparse")
+        from app.adapters.parsers import get_parser
 
-        if active_parser == "docling":
-            from app.adapters.parsers.docling import DoclingParser
-            self.parser = DoclingParser()
-        else:
-            self.parser = LlamaParseParser()
-            
+        self.redis = redis_client
+        self.parser = get_parser()
         self.db_session = db_session
         self.section_repo = section_repo
         self.validator = HierarchyValidator()
@@ -219,7 +210,8 @@ class IngestionService:
             if phase == "section":
                 message = f"Đang index section {phase_processed}/{section_total}, chuẩn bị chuyển sang chunk..."
             elif phase == "chunk":
-                message = f"Đang index chunk {phase_processed}/{chunk_total}, dữ liệu đang được ghi vào Qdrant..."
+                actual_chunk_total = max(phase_processed, chunk_total)
+                message = f"Đang index chunk {phase_processed}/{actual_chunk_total}, dữ liệu đang được ghi vào Qdrant..."
             else:
                 message = "Đang chuẩn bị dữ liệu index cho Qdrant..."
             await report(

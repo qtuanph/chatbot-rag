@@ -3,21 +3,7 @@ CÔNG TY CP GIẢI PHÁP PHẦN MỀM DOANH NGHIỆP
 VPHN: Tầng 2, Tòa nhà 262 Nguyễn Huy Tưởng, Q.Thanh Xuân, TP.HN
 VPHCM: Tầng 5 Tòa nhà SONGDO số 62A Phạm Ngọc Thạch, P.6, Q.3, TP.HCM
 Tel: 02435682222; Hotline: 0942584285; W: http://www.sse.net.vn; M: Supports@sse.net.vn
-```
-**Tài liệu đào tạo**
-
-# Hướng dẫn sử dụng SAO
-
-```
-Tên tài liệu: NAME_DATE
-```
-```
-Lưu trữ
-```
-- Loại tài liệu
-- Đường dẫn
-
-```
+``**Tài liệu đào tạo** # Hướng dẫn sử dụng SAO`Tên tài liệu: NAME_DATE```` Lưu trữ`- Loại tài liệu - Đường dẫn``
 Ngày tạo
 Người tạo Cao Thị Uyên
 Chức vụ Chuyên viên tư vấn
@@ -27,26 +13,17 @@ Chức vụ Giám đốc
 
 ## Mục lục
 
-
-
-
-
-7.4.2 Cập nhật đơn đặt hàng .............................................................................................. **Error! Bookmark not defined.**
-
-
-
-
-
+7.4.2 Cập nhật đơn đặt hàng 
 
 - 1 Giới thiệu chung
-   - 1.1 Tổ chức các phân hệ nghiệp vụ của SSE Accounting Online Online (SAO )
+   - 1.1 Tổ chức các phân hệ nghiệp vụ của SSE Accounting Online (SAO )
       - 1.1.1 Các phân hệ của SSE Accounting Online (SAO )
       - 1.1.2 Phân hệ hệ thống
       - 1.1.3 Phân hệ kế toán tổng hợp
       - 1.1.4 Phân hệ kế toán tiền mặt và tiền gửi ngân hàng
       - 1.1.5 Phân hệ kế toán bán hàng và công nợ phải thu
-      - 1.1.6 Phân hệ kế toán mua hàng và công nợ phải trả............................................................................................................
-      - 1.1.7 Phân hệ kế toán hàng tồn kho...............................................................................................................................................
+      - 1.1.6 Phân hệ kế toán mua hàng và công nợ phải trả
+      - 1.1.7 Phân hệ kế toán hàng tồn kho
       - 1.1.8 Phân hệ kế toán tài sản cố định (TSCĐ)
       - 1.1.9 Phân hệ kế toán công cụ dụng cụ (CCDC)
       - 1.1.10 Báo cáo chi phí theo khoản mục phí
@@ -203,7 +180,7 @@ Chức vụ Giám đốc
       - 7.3.3 Kết chuyển số dư công nợ cuối kỳ sang năm sau
    - 7.4 Cập nhật chứng từ đầu vào
       - 7.4.1 Phân loại các chứng từ đầu vào
-      - 7.4.3 Cập nhật hoá đơn bán hàng kiêm phiếu xuất kho 1.1.1.27 Các thông tin trên đơn đặt hàng Error! Bookmark not defined.
+      - 7.4.3 Cập nhật hoá đơn bán hàng kiêm phiếu xuất kho 1.1.1.27 Các thông tin trên đơn đặt hàng 
          - 1.1.1.28 Các thông tin của hoá đơn bán hàng kiêm phiếu xuất kho
          - 1.1.1.29 Các lưu ý khi nhập hóa đơn bán hàng kiêm phiếu xuất kho
       - 7.4.4 Cập nhật phiếu nhập hàng bán bị trả lại
@@ -253,7 +230,7 @@ Chức vụ Giám đốc
       - 1.1.1.33 Các thông tin của phiếu nhập mua hàng
       - 1.1.1.34 Các lưu ý khi cập nhật phiếu nhập mua hàng và phiếu nhập khẩu
    - 8.4.3 Cập nhật phiếu nhập chi phí mua hàng
-   - 8.4.4 Cập nhật các phiếu xuất trả lại hàng hoá, vật tư cho nhà cung cấp..................................................................
+   - 8.4.4 Cập nhật các phiếu xuất trả lại hàng hoá, vật tư cho nhà cung cấp
    - 8.4.5 Cập nhật các phiếu nhập xuất thẳng
    - 8.4.6 Cập nhật hoá đơn mua dịch vụ
    - 8.4.7 Cập nhật phiếu thanh toán tạm ứng
@@ -367,10 +344,9 @@ Chức vụ Giám đốc
    - 12.3 Tờ khai thuế GTGT và sổ chi tiết các tài khoản thuế
    - 12.4 Báo cáo quyết toán thuế thu nhập doanh nghiệp
 
-
 ## 1 Giới thiệu chung
 
-### 1.1 Tổ chức các phân hệ nghiệp vụ của SSE Accounting Online Online (SAO )
+### 1.1 Tổ chức các phân hệ nghiệp vụ của SSE Accounting Online (SAO )
 
 #### 1.1.1 Các phân hệ của SSE Accounting Online (SAO )
 
@@ -389,7 +365,6 @@ SAO có các phân hệ nghiệp vụ sau:
 9. Phân hệ kế toán giá thành dịch vụ
 10. Phân hệ báo cáo thuế.
 
-
 **Mối liên kết giữa các phân hệ trong SAO**
 
 ```
@@ -397,101 +372,19 @@ Số liệu cập nhật ở các phân hệ được lưu ở phân hệ của 
 thông tin cần thiết sang các phân hệ nghiệp vụ khác tuỳ theo từng trường hợp cụ thể và
 chuyển sang phân hệ kế toán tổng hợp để lên các sổ sách kế toán, các báo cáo tài chính,
 báo cáo quản trị, chi phí và giá thành.
-```
-SSE Accounting Online (SAO )
-
-```
-Kế toán
-vốn bằng tiền
-```
-```
-Sổ quỹ tiền mặt,
-tiền gửi ngân
-hàng
-```
-```
-Kế toán bán
-hàng và công nợ
-phải thu
-```
-```
-Báo cáo bán hàng
-Sổ chi tiết công
-nợ
-```
-```
-Kế toán mua
-hàng và công nợ
-phải trả
-```
-```
-Báo cáo mua
-hàng Sổ chi tiết
-công nợ
-```
-```
-Kế toán
-hàng tồn kho
-```
-```
-Thẻ kho, sổ chi
-tiết vật tư
-```
-```
-Kế toán giá
-thành sản
-xuất
-```
-```
-Kế toán
-tổng hợp
-```
-```
-Sổ cái, sổ chi tiết
-các tài khoản
-```
-```
-Kế toán giá
-thành dịch vụ
-```
-```
-Thẻ kho, sổ chi
-tiết vật tư
-```
-```
-Kế toán tài
-sản, công cụ
-dụng cụ
-```
-```
-Thẻ tài sản cố
-định, báo cáo
-khấu hao
-```
+``SSE Accounting Online (SAO )`Kế toán vốn bằng tiền```` Sổ quỹ tiền mặt, tiền gửi ngân hàng```` Kế toán bán hàng và công nợ phải thu```` Báo cáo bán hàng Sổ chi tiết công nợ```` Kế toán mua hàng và công nợ phải trả```` Báo cáo mua hàng Sổ chi tiết công nợ```` Kế toán hàng tồn kho```` Thẻ kho, sổ chi tiết vật tư```` Kế toán giá thành sản xuất```` Kế toán tổng hợp```` Sổ cái, sổ chi tiết các tài khoản```` Kế toán giá thành dịch vụ```` Thẻ kho, sổ chi tiết vật tư```` Kế toán tài sản, công cụ dụng cụ```` Thẻ tài sản cố định, báo cáo khấu hao``
 ```
 Sổ sách kế
 toán(Sổ cái, sổ
 chi tiết, sổ nhật
-ký chung...)
-```
-```
-Báo cáo
-tài chính
-```
+ký chung)
+````` Báo cáo tài chính``
 ```
 Báo cáo chi phí
 và báo cáo giá
 thành sản xuất,
 dịch vụ
-```
-```
-Báo cáo thuế
-```
-```
-Báo cáo quản
-trị, báo cáo nội
-bộ
-```
+````` Báo cáo thuế```` Báo cáo quản trị, báo cáo nội bộ``
 
 #### 1.1.2 Phân hệ hệ thống
 
@@ -517,7 +410,7 @@ phân hệ khác để lên các báo cáo tài chính và sổ sách kế toán
 Phần lớn các chứng từ được cập nhật ở các phân hệ khác và chuyển thông tin về phân hệ
 kế toán tổng hợp để lên các báo cáo tài chính và sổ sách kế toán. Ở phân hệ kế toán tổng
 hợp người sử dụng có thể cập nhật các chứng từ chung như các bút toán cuối kỳ, bút
-toán điều chỉnh... Trong phân hệ này có các chức năng thực hiện phân bổ và kết chuyển
+toán điều chỉnh Trong phân hệ này có các chức năng thực hiện phân bổ và kết chuyển
 tự động cuối kỳ.
 
 Phân hệ kế toán tổng hợp có thể sử dụng như một phân hệ độc lập và tất cả các chứng từ
@@ -542,7 +435,6 @@ Phân hệ kế toán tổng hợp cung cấp các báo cáo sau:
 #### 1.1.4 Phân hệ kế toán tiền mặt và tiền gửi ngân hàng
 
 **Chức năng**
-
 
 Phân hệ kế toán tiền mặt và tiền ngân hàng dùng để theo dõi thu chi và thanh toán liên
 quan đến tiền mặt, tiền gửi ngân hàng và tiền vay
@@ -590,7 +482,6 @@ Các chứng từ được cập nhật trong phân hệ này gồm có:
 - Nhập số tiền điều chỉnh cho các hóa đơn
 - Tính tổng tại số tiền đã thu của các hóa đơn
 
-
 - Đánh giá chênh lệch tỷ giá cho các hóa đơn
 
 Khi cập nhật các hoá đơn bán hàng chương trình sẽ kiểm tra số tồn kho từ phân hệ hàng
@@ -612,7 +503,7 @@ Phân hệ bán hàng và công nợ phải thu cung cấp các báo cáo sau:
 - Báo cáo công nợ theo hóa đơn
 - Báo cáo đơn hàng.
 
-#### 1.1.6 Phân hệ kế toán mua hàng và công nợ phải trả............................................................................................................
+#### 1.1.6 Phân hệ kế toán mua hàng và công nợ phải trả
 
 **Chức năng**
 
@@ -636,7 +527,6 @@ Các chứng từ được cập nhật trong phân hệ này gồm có:
 - Đánh giá chênh lệch tỷ giá cho các hóa đơn
 - Đơ hàng nội địa
 
-
 - Đơn hàng nhập khẩu
 
 Các thông tin liên quan đến trả tiền cho nhà cung cấp sẽ do phân hệ kế toán vốn bằng
@@ -654,7 +544,7 @@ Phân hệ mua hàng và công nợ phải trả cung cấp các báo cáo sau:
 - Báo cáo công nợ theo hóa đơn
 - Báo cáo đơn hàng
 
-#### 1.1.7 Phân hệ kế toán hàng tồn kho...............................................................................................................................................
+#### 1.1.7 Phân hệ kế toán hàng tồn kho
 
 **Chức năng**
 
@@ -665,8 +555,8 @@ thành phẩm, tính giá hàng tồn kho.
 
 Các chứng từ được cập nhật trong phân hệ này gồm có:
 
-- Phiếu nhập (nhập thành phẩm từ sản xuất, nhập khác...)
-- Phiếu xuất (xuất sử dụng, xuất cho sản xuất, xuất điều chỉnh...)
+- Phiếu nhập (nhập thành phẩm từ sản xuất, nhập khác)
+- Phiếu xuất (xuất sử dụng, xuất cho sản xuất, xuất điều chỉnh)
 - Phiếu xuất điều chuyển kho
 - Tính giá trung bình
 - Tính giá trung bình di động theo ngày
@@ -686,13 +576,12 @@ Phân hệ hàng tồn kho cung cấp các báo cáo sau:
 - Báo cáo về hàng xuất
 - Báo cáo về nhập xuất tồn kho
 
-
 #### 1.1.8 Phân hệ kế toán tài sản cố định (TSCĐ)
 
 **Chức năng**
 
 Phân hệ này quản lý TSCĐ về nguyên giá, giá trị còn lại, giá trị khấu hao, bộ phận sử
-dụng...
+dụng
 
 Phân hệ quản lý TSCĐ hầu như tách biệt riêng.
 
@@ -712,7 +601,7 @@ Phân hệ TSCĐ cung cấp các báo cáo sau:
 **Chức năng**
 
 Phân hệ này quản lý CCDC về nguyên giá, giá trị còn lại, giá trị khấu hao, bộ phận sử
-dụng...
+dụng
 
 Phân hệ quản lý CCDC hầu như tách biệt riêng.
 
@@ -739,7 +628,6 @@ khoản mục phí
 - Báo cáo theo tiểu khoản
 - Báo cáo theo khoản mục phí
 
-
 #### 1.1.11 Phân hệ kế toán chi phí và giá thành
 
 **Chức năng**
@@ -756,11 +644,11 @@ khoản mục phí
 **Cập nhật số liệu**
 
 Số liệu liên quan đến giá thành chủ yếu được cập nhật từ các phân hệ khác (hàng tồn
-kho, mua hàng, vốn bằng tiền, TSCĐ, tiền lương...) và chuyển sang phân hệ chi phí và giá
+kho, mua hàng, vốn bằng tiền, TSCĐ, tiền lương) và chuyển sang phân hệ chi phí và giá
 thành.
 
 Trong phân hệ chi phí và giá thành chủ yếu cập nhật các thông tin liên quan đến định
-mức, tỷ lệ phân bổ...
+mức, tỷ lệ phân bổ
 
 **Báo cáo**
 
@@ -785,7 +673,6 @@ không cần thông qua các phân hệ nghiệp vu khác
 
 **Cập nhật các chứng từ thuế**
 
-
 Các chứng từ thuế GTGT đầu vào được cập nhật ở phần phiếu nhập mua hàng, phiếu
 nhập khẩu, chứng từ chi phí mua hàng, phiếu xuất trả lại nhà cung cấp ở phân hệ mua
 hàng và công nợ phải trả; phiếu chi, giấy báo nợ của ngân hàng ở phân hệ tiền mặt và
@@ -807,17 +694,7 @@ Phân hệ báo cáo thuế cung cấp các báo cáo sau:
 Các đối tượng thông tin được quản lý thông qua các danh mục từ điển. SAO quản lý các
 đối tượng thông tin sau:
 
-```
-Danh mục, đối tượng thông tin
-trong SAO
-Đối tượng thông tin được quản lý
-```
-```
-Danh mục các màn hình chứng từ + Thông tin về các màn hình cập nhật chứng từ
-```
-```
-Danh mục tiền tệ
-```
+``Danh mục, đối tượng thông tin trong SAO Đối tượng thông tin được quản lý```` Danh mục các màn hình chứng từ + Thông tin về các màn hình cập nhật chứng từ```` Danh mục tiền tệ``
 ```
 + Các loại tiền ngoại tệ
 + Đồng tiền hạch toán (VNĐ)
@@ -825,45 +702,19 @@ Danh mục tỷ giá + Tỷ giá quy đổi ngoại tệ ra đồng tiền hạc
 Danh mục các đơn vị cơ sở + Các đơn vị, các công ty con.
 Bộ phận hạch toán doanh thu, chi
 phí
-```
-```
-+ Danh mục các bộ phận hạch toán trong công ty
-```
-```
-Danh mục nhân viên + Danh mục các nhân viên trong công ty, đơn vị
-```
+````` + Danh mục các bộ phận hạch toán trong công ty```` Danh mục nhân viên + Danh mục các nhân viên trong công ty, đơn vị``
 ```
 Danh mục các tham số tuỳ chọn
 + Các tham số tuỳ chọn để khai báo cho phù hợp với
 từng doanh nghiệp cụ thể
 Danh mục tài khoản + Các tài khoản sổ cái và các tài khoản cấp cao hơn
-```
-```
-Danh mục tiểu khoản
-```
+````` Danh mục tiểu khoản``
 ```
 + Các khoản mục chi phí: lương, văn phòng, công tác
-phí...
+phí
 + Các đối tượng tập hợp chi phí: bộ phận, trung tâm
 chi phí
-```
-
-```
-+ Các đối tượng theo dõi doanh thu: bộ phận, trung
-tâm lợi nhuận, ngành hàng...
-```
-Danh mục tài khoản ngân hàng
-
-```
-+ Các tài khoản tại các ngân hàng (dùng để cung cấp
-các thông tin cần thiết khi in ủy nhiệm chi từ
-chương trình)
-```
-Danh mục khế ước vay + Các khế ước vay
-
-Danh mục khách hàng
-
-```
+````` + Các đối tượng theo dõi doanh thu: bộ phận, trung tâm lợi nhuận, ngành hàng`Danh mục tài khoản ngân hàng`+ Các tài khoản tại các ngân hàng (dùng để cung cấp các thông tin cần thiết khi in ủy nhiệm chi từ chương trình)`Danh mục khế ước vay + Các khế ước vay Danh mục khách hàng``
 + Khách hàng (tk 131)
 + Các đối tượng công nợ phải thu (tk 1388)
 + Các đối tượng công nợ tạm ứng (tk 141)
@@ -871,38 +722,7 @@ Danh mục khách hàng
 + Nhà cung cấp (tk 331)
 + Các đối tượng công nợ phải trả (tk 3388)
 + Các đối tượng c.nợ phải trả nội bộ (tk 336)
-```
-Danh mục phân nhóm khách
-hàng
-
-```
-+ Phân nhóm khách hàng
-+ Phân nhóm các nhà cung cấp
-```
-Danh mục đơn hàng bán + Đơn hàng bán
-
-Danh mục phân nhóm các hợp
-đồng bán
-
-```
-+ Phân nhóm các đơn hàng bán
-```
-Danh mục đơn hàng mua + Đơn hàng mua
-
-Danh mục phân nhóm các đơn
-hàng mua
-
-```
-+ Phân nhóm các đơn hàng mua
-```
-Danh mục thuế suất GTGT + Thuế suất GTGT
-
-Danh mục bộ phận kinh doanh
-
-```
-+ Bộ phận kinh doanh
-+ Nhân viên kinh doanh
-```
+``Danh mục phân nhóm khách hàng`+ Phân nhóm khách hàng + Phân nhóm các nhà cung cấp`Danh mục đơn hàng bán + Đơn hàng bán Danh mục phân nhóm các hợp đồng bán`+ Phân nhóm các đơn hàng bán`Danh mục đơn hàng mua + Đơn hàng mua Danh mục phân nhóm các đơn hàng mua`+ Phân nhóm các đơn hàng mua`Danh mục thuế suất GTGT + Thuế suất GTGT Danh mục bộ phận kinh doanh`+ Bộ phận kinh doanh + Nhân viên kinh doanh``
 Danh mục giá bán + Giá bán hàng hoá, thành phẩm
 
 Danh mục vật tư + Danh điểm vật tư, CCLĐ, thành phẩm, hàng hoá
@@ -911,31 +731,13 @@ Danh mục phân nhóm vật tư + Phân nhóm vật tư
 
 Danh mục kho hàng, vị trí
 
-```
-+ Kho hàng
-+ Đại lý
-+ Vị trí (chi tiết của kho hàng)
-```
-
-```
-Danh mục lô
-```
+``+ Kho hàng + Đại lý + Vị trí (chi tiết của kho hàng)```` Danh mục lô``
 ```
 + Danh sách các lô hàng
 + Hạn dùng
 Danh mục đơn vị tính + Đơn vị tính của hàng hóa vật tư
 Danh mục quy đổi các đơn vị tính + Quy đổi giữa các đơn vị
-```
-```
-Danh mục vụ việc
-```
-```
-+ Hạng mục công trình xây dựng
-+ Hạng mục công trình XDCB
-```
-```
-Danh mục phân nhóm vụ việc
-```
+````` Danh mục vụ việc```` + Hạng mục công trình xây dựng + Hạng mục công trình XDCB```` Danh mục phân nhóm vụ việc``
 ```
 + Công trình, dự án
 + Phân nhóm sản phẩm
@@ -946,32 +748,13 @@ Danh mục phân nhóm TSCĐ + Phân nhóm TSCĐ
 Danh mục các nguồn vốn TSCĐ + Các nguồn vốn hình thành TSCĐ
 Danh mục các lý do tăng giảm
 TSCĐ
-```
-```
-+ Các lý do tăng giảm TSCĐ
-```
-```
-Danh mục các bộ phận sử dụng
-TSCĐ
-```
-```
-+ Các bộ phận sử dụng TSCĐ
-```
+````` + Các lý do tăng giảm TSCĐ```` Danh mục các bộ phận sử dụng TSCĐ```` + Các bộ phận sử dụng TSCĐ``
 ```
 Danh mục yếu tố chi phí + Yếu tố chi phí quản lý
 Danh mục nhóm yếu tố chi phí + Nhóm các yếu tố
 Danh mục loại yếu tố + Phân loại yếu tố
 Danh mục phân xưởng + Phân xưởng sản xuất
-```
-### 1.3 Phân loại chứng từ trong SAO
-
-Trong SAO các chứng từ đầu vào được phân loại như sau:
-
-```
-Loại chứng từ Ghi chú
-Kế toán tổng hợp
-Phiếu kế toán Các bút toán điều chỉnh, phân bổ, kết chuyển cuối kỳ.
-```
+``### 1.3 Phân loại chứng từ trong SAO Trong SAO các chứng từ đầu vào được phân loại như sau:`Loại chứng từ Ghi chú Kế toán tổng hợp Phiếu kế toán Các bút toán điều chỉnh, phân bổ, kết chuyển cuối kỳ.``
 ```
 Bút toán phân bổ tự động Bút toán do chương trình tự^ động tạo ra dựa trên dựa
 trên các khai báo của người sử dụng về tài khoản sẽ
@@ -982,29 +765,15 @@ phân bổ, các tài khoản sẽ nhận phân bổ và hệ số phân
 bổ. Chương trình cho phép phân bổ theo các vụ việc
 (công trình xây lắp, sản phẩm).
 Ví dụ: phân bổ 621 - 154, 622 - 154, 623 - 154, 627 -
-154...
-```
-Bút toán kết chuyển tự động
-
-```
+154
+``Bút toán kết chuyển tự động``
 Bút toán do chương trình tự động tạo ra dựa trên dựa
 trên các khai báo của người sử dụng về tài khoản sẽ
 kết chuyển, các tài khoản sẽ nhận giá trị kết chuyển.
 Chương trình cho phép kết chuyển theo các vụ việc
 (công trình xây lắp, sản phẩm).
 Ví dụ: kết chuyển 531 - 511, 532 - 511, 511 - 911, 621
-```
-- 154, 622 - 154, 641, 642 - 911, 632 - 911, 911 -
-4212...
-
-Bút toán chênh lệch tỷ giá cuối
-kỳ
-
-```
-Cuối năm đánh giá lại theo tỷ giá hiện hành đối với các
-tài khoản có gốc ngoại tệ theo qui định của chuẩn mực
-kế toán
-```
+``- 154, 622 - 154, 641, 642 - 911, 632 - 911, 911 - 4212 Bút toán chênh lệch tỷ giá cuối kỳ`Cuối năm đánh giá lại theo tỷ giá hiện hành đối với các tài khoản có gốc ngoại tệ theo qui định của chuẩn mực kế toán``
 **Tiền mặt và tiền gửi ngân
 hàng**
 
@@ -1032,7 +801,6 @@ Hóa đơn giảm giá
 
 Dịch vụ, hàng hóa bị trả lại
 
-
 Phiếu ghi nợ, ghi có
 
 Chứng từ bù trừ công nợ
@@ -1053,19 +821,7 @@ Dùng trong trường hợp hàng tồn kho đánh giá theo
 phương pháp nhập trước xuất trước. Trong các
 trường hợp khác có thể nhập như là một phiếu nhập
 mua bình thường với số lượng = 0.
-```
-Phiếu xuất trả lại nhà cung cấp
-
-Hoá đơn mua hàng dịch vụ
-
-```
-Ví dụ: hoá đơn tiền điện, hoá đơn tiền điện thoại...
-trong trường hợp hạch toán qua công nợ phải trả (tk
-331)
-```
-Phiếu thanh toán tạm ứng
-
-```
+``Phiếu xuất trả lại nhà cung cấp Hoá đơn mua hàng dịch vụ`Ví dụ: hoá đơn tiền điện, hoá đơn tiền điện thoại trong trường hợp hạch toán qua công nợ phải trả (tk 331)`Phiếu thanh toán tạm ứng``
 Trong trường hợp nhập thanh toán tạm ứng mua hàng
 hóa, vật tư nếu nhập cả phiếu nhập mua và phiếu
 thanh toán tạm ứng thì phải khai báo tài khoản 141 là
@@ -1089,16 +845,7 @@ Phiếu xuất điều chuyển kho
 Chương trình tự động tạo ra một phiếu nhập kho với
 số và ngày của chứng từ trùng với số và ngày của
 phiếu xuất điều chuyển.
-```
-Phiếu nhập xuất thẳng
-
-**Tài sản cố định**
-
-
-```
-Bút toán phân bổ khấu hao
-TSCĐ
-```
+``Phiếu nhập xuất thẳng **Tài sản cố định**`Bút toán phân bổ khấu hao TSCĐ``
 ```
 Bút toán do chương trình tự động tạo dựa trên bảng
 phân bổ khấu hao TSCĐ.
@@ -1141,7 +888,6 @@ nhóm sau:
 4. Mua ngoại tệ
 5. Bán ngoại tệ.
 
-
 **Các phát sinh liên quan đến mua bán hàng hoá, vật tư thanh toán ngay bằng tiền
 mặt hoặc tiền gửi ngân hàng**
 
@@ -1154,7 +900,7 @@ Thanh toán tạm ứng mua hàng hoá, vật tư
 
 **Các phát sinh liên quan đến cung cấp dịch vụ thu tiền ngay**
 
-Cung cấp dịch vụ thu tiền ngay (khách sạn, nhà hàng, du lịch...).
+Cung cấp dịch vụ thu tiền ngay (khách sạn, nhà hàng, du lịch).
 
 #### 1.4.2 Quy định về cập nhật chứng từ trùng liên quan đồng thời tới tiền mặt và tiền gửi ngân hàng
 
@@ -1172,99 +918,14 @@ nhật vào máy theo trình tự ưu tiên như sau:
 Theo trình tự ưu tiên này thì chứng từ được lựa chọn để cập nhật trong các trường hợp
 thường xảy ra trên thực tế sẽ như sau:
 
-```
-Nghiệp vụ Ctừ 1 Ctừ 2 Ctừ cập nhật
-Mua ngoại tệ của
-ngân hàng
-```
-```
-Giấy báo nợ tiền
-VNĐ của ngân
-hàng
-```
-```
-Giấy báo có tiền
-NT của ngân hàng
-```
-```
-Giấy báo có tiền NT của
-ngân hàng
-```
-```
-Mua tiền mặt n.tệ Phiếu chi tiền VNĐ Phiếu thu tiền NT Phiếu thu tiền NT
-Bán ngoại tệ cho
-ngân hàng
-```
-```
-Giấy báo nợ tiền
-NT của ngân hàng
-```
-```
-Giấy báo có tiền
-VNĐ của ngân
-hàng
-```
-```
-Giấy báo nợ tiền NT của
-ngân hàng
-```
-```
-Bán tiền mặt n.tệ Phiếu chi tiền NT Phiếu thu tiền
-VNĐ
-```
-```
-Phiếu chi tiền NT
-```
-```
-Nộp tiền mặt vào
-ngân hàng
-```
-```
-Phiếu chi tiền mặt Giấy báo có của
-ngân hàng
-```
-```
-Phiếu chi tiền mặt
-```
-
-```
-Rút tiền gửi ngân
-hàng về quỹ
-```
-```
-Giấy báo nợ của
-ngân hàng
-```
-```
-Phiếu thu tiền
-mặt
-```
-```
-Phiếu thu tiền mặt
-```
-```
-Chuyển tiền giữa
-02 ngân hàng
-```
-```
-Giấy báo nợ của
-ngân hàng A
-```
-```
-Giấy báo có của
-ngân hàng B
-```
-```
-Giấy báo nợ của ngân hàng
-A
-```
+``Nghiệp vụ Ctừ 1 Ctừ 2 Ctừ cập nhật Mua ngoại tệ của ngân hàng```` Giấy báo nợ tiền VNĐ của ngân hàng```` Giấy báo có tiền NT của ngân hàng```` Giấy báo có tiền NT của ngân hàng```` Mua tiền mặt n.tệ Phiếu chi tiền VNĐ Phiếu thu tiền NT Phiếu thu tiền NT Bán ngoại tệ cho ngân hàng```` Giấy báo nợ tiền NT của ngân hàng```` Giấy báo có tiền VNĐ của ngân hàng```` Giấy báo nợ tiền NT của ngân hàng```` Bán tiền mặt n.tệ Phiếu chi tiền NT Phiếu thu tiền VNĐ```` Phiếu chi tiền NT```` Nộp tiền mặt vào ngân hàng```` Phiếu chi tiền mặt Giấy báo có của ngân hàng```` Phiếu chi tiền mặt```` Rút tiền gửi ngân hàng về quỹ```` Giấy báo nợ của ngân hàng```` Phiếu thu tiền mặt```` Phiếu thu tiền mặt```` Chuyển tiền giữa 02 ngân hàng```` Giấy báo nợ của ngân hàng A```` Giấy báo có của ngân hàng B```` Giấy báo nợ của ngân hàng A``
 **Phương án 2: nhập cả 2 chứng từ thông qua tài khoản trung gian - tiền đang
 chuyển**
 
 Nếu ta muốn nhập cả 2 chứng từ thì phải hạch toán qua tài khoản trung gian - 113 - tiền
 đang chuyển.
 
-#### tiền gửi ngân hàng....................................................................................................................................................................................... 1.4.3 Quy định về cập nhật chứng từ trùng liên quan đến mua bán vật tư thanh toán ngay bằng tiền mặt hoặc
+#### 1.4.3 Quy định về cập nhật chứng từ trùng liên quan đến mua bán vật tư thanh toán ngay bằng tiền mặt hoặc
 
 **toán ngay bằng tiền mặt hoặc tiền gửi ngân hàng**
 Trong các trường hợp liên quan đến tiền và vật tư như trong các trường hợp mua bán
@@ -1300,7 +961,6 @@ Giấy đề nghị thanh toán tiền tạm ứng và phiếu nhập kho. Dư�
 phương án khác nhau cho việc cập nhật các chứng từ này. Việc chọn phương án nào để
 sử dụng phụ thuộc vào hoàn cảnh cụ thể của từng doanh nghiệp.
 
-
 **Phương án 1: Cập nhật cả 02 chứng từ nhưng chứng từ liên quan đến vật tư không
 hạch toán**
 
@@ -1314,7 +974,7 @@ quản lý kho hàng, vật tư. Còn khi lên các báo cáo liên quan đến 
 
 #### 1.4.5 Quy định về cập nhật chứng từ trùng liên quan đến cung cấp dịch vụ thu tiền ngay
 
-Trong trường hợp cung cấp dịch vụ thu tiền ngay (khách sạn, nhà hàng, du lịch...) sẽ xuất
+Trong trường hợp cung cấp dịch vụ thu tiền ngay (khách sạn, nhà hàng, du lịch) sẽ xuất
 hiện 2 chứng từ: hóa đơn bán hàng và phiếu thu tiền mặt. Có 3 phương án cập nhật
 chứng từ trong trường hợp này.
 
@@ -1333,42 +993,13 @@ báo cáo kế toán.
 **Phương án 3: Chỉ nhập phiếu thu tiền mặt**
 
 Khi này trong phiếu thu tiền mặt phải chỉ rõ các thông tin liên quan đến hóa đơn gốc,
-thuế suất... để lên bảng kê thuế GTGT đầu ra.
-
+thuế suất để lên bảng kê thuế GTGT đầu ra.
 
 ### 1.5 Quy trình xử lý số liệu trong SAO
 
 Trong SAO quy trình xử lý được thực hiện theo sơ đồ sau:
 
-```
-Nghiệp vụ
-kinh tế phát sinh
-```
-```
-Lập chứng từ
-```
-```
-Chứng từ kế toán
-```
-```
-Các tệp sổ chi tiết
-```
-```
-Chuyển sổ
-cái
-```
-```
-Các tệp sổ cái
-```
-```
-Chuyển sổ
-cái
-```
-```
-Sổ sách và báo
-cáo tài chính,
-báo cáo quản trị
-```
+``Nghiệp vụ kinh tế phát sinh```` Lập chứng từ```` Chứng từ kế toán```` Các tệp sổ chi tiết```` Chuyển sổ cái```` Các tệp sổ cái```` Chuyển sổ cái```` Sổ sách và báo cáo tài chính, báo cáo quản trị``
 
 ### 1.6 Vấn đề quản lý đa ngoại tệ trong SAO
 
@@ -1415,7 +1046,6 @@ danh mục từ điển.
 Chương trình cho phép in chứng từ trực tiếp từ chương trình ra máy in. Việc này sẽ giúp
 cho thông tin luôn kịp thời và giảm thiểu các sai sót.
 
-
 Trong chương trình đã cài đặt sẵn các mẫu chứng từ. Trong trường hợp in chứng từ theo
 mẫu đặc thù thì phải thực hiện các sửa đổi mẫu theo yêu cầu.
 
@@ -1460,7 +1090,6 @@ Việc nắm rõ cách tổ chức và xử lý thông tin của SAO cùng với
 về quản lý sẽ giúp cho chúng ta tổ chức thông tin và quy trình xử lý thông tin một cách
 phù hợp và tiện lợi nhất.
 
-
 Ta phải nắm rõ SAO có các phân hệ nghiệp vụ gì, trong mỗi phân hệ thì có các nghiệp vụ,
 quy trình cập nhật và xử lý của từng nghiệp vụ như thế nào. Các màn hình nhập liệu
 thông tin đầu vào có các thông tin gì và chúng được xử lý như thế nào.
@@ -1484,15 +1113,15 @@ SAO sẽ được sử dụng cho việc quản lý thông tin nào của doanh 
 thông tin như thế nào.
 
 Ta phải xác định những thông tin gì thì được quản lý bằng danh mục tài khoản và tiểu
-khoản, thông tin gì thì được quản lý bằng danh mục vụ việc...
+khoản, thông tin gì thì được quản lý bằng danh mục vụ việc
 
 #### 2.1.4 Xây dựng các danh mục từ điển
 
 Các danh mục từ điển cần xây dựng gồm có: danh mục đơn vị cơ sở, danh mục tiền tệ,
 danh mục tài khoản, tiểu khoản, danh mục khách hàng, danh mục nhà cung cấp, danh
-mục vụ việc (công trình, hạn mục công trình, đề án, ...), Danh mục hợp đồng mua/bán,
+mục vụ việc (công trình, hạn mục công trình, đề án, ), Danh mục hợp đồng mua/bán,
 danh mục khế ước vay, danh mục kho hàng, danh mục vật tư hàng hoá, danh mục bộ
-phận kinh doanh, danh mục thuế suất, danh mục TSCĐ, danh mục trường tự do...
+phận kinh doanh, danh mục thuế suất, danh mục TSCĐ, danh mục trường tự do
 
 Liệt kê danh sách các mục của từng danh mục từ điển.
 
@@ -1503,14 +1132,13 @@ nhiều nơi và sau đó được gửi và copy vào một cơ sở dữ liệ
 
 Xác định cách thức phân loại, phân nhóm các danh mục từ điển để lên được các báo cáo
 quản lý cần thiết. Phân nhóm khách hàng, phân nhóm các nhà cung cấp, phân nhóm danh
-mục vật tư, danh mục TSCĐ, phân nhóm danh mục vụ việc...
+mục vật tư, danh mục TSCĐ, phân nhóm danh mục vụ việc
 
 **Gợi ý về cách thức xây dựng hệ thống mã hoá của các danh mục**
 
 Khi thực hiện mã hóa một danh mục cần lưu ý các điểm sau:
 
 - Mã phải là duy nhất trong danh mục
-
 
 - Mã phải dễ nhớ để tiện cho việc cập nhật và tra cứu
 - Trong trường hợp danh điểm có phát sinh theo thời gian thì khi xây dựng hệ
@@ -1526,12 +1154,12 @@ Dưới đây là một số gợi ý về cách thức xây dựng hệ thống
     giờ cũng nằm ở phía dưới khi liệt kê theo vần ABC.
 - Trong trường hợp số lượng danh điểm không nhiều thì có thể mã hóa theo cách
     dễ gợi nhớ đến tên của danh điểm. Ví dụ đối với khách hàng ta có thể mã hóa theo
-    tên giao dịch của khách hàng: Cty ABC có mã là ABC, Cty XYZ có mã XYZ...
+    tên giao dịch của khách hàng: Cty ABC có mã là ABC, Cty XYZ có mã XYZ
 - Tùy theo nhu cầu xử lý số liệu có thể áp dụng một phương án khác là trong mã ta
     chia thành các nhóm khác nhau và nhóm không chỉ có 1 cấp mà có thể có đến 2-
     3 cấp. Ví dụ đối với các đơn vị có khách hàng trải rộng trên toàn quốc thì có thể
     nhóm theo tỉnh/thành phố, chẳng hạn các khách hàng trên địa bàn Hà nội thì đều
-    bắt đầu bằng HN, TP HCM bắt đầu bằng HCM...
+    bắt đầu bằng HN, TP HCM bắt đầu bằng HCM
 - Trong trường hợp doanh nghiệp có nhiều đơn vị thành viên và số liệu được cập
     nhập tại các đơn vị thành viên sau đó được gửi về và tổng hợp toàn công ty thì
     đối với một số danh mục từ điển phải thống nhất trong toàn công ty, còn một số
@@ -1539,13 +1167,13 @@ Dưới đây là một số gợi ý về cách thức xây dựng hệ thống
 
 #### 2.1.5 Xác định và khai báo các tham số hệ thống, các tham số tùy chọn
 
-Khai báo các thông tin chung liên quan đến doanh nghiệp như tên, địa chỉ, mã số thuế...
+Khai báo các thông tin chung liên quan đến doanh nghiệp như tên, địa chỉ, mã số thuế
 
 Khai báo đồng tiền hạch toán, năm tài chính.
 
-Khai báo số chữ số thập phân được hiện ở các trường số lượng, đơn giá, tiền ngoại tệ...
+Khai báo số chữ số thập phân được hiện ở các trường số lượng, đơn giá, tiền ngoại tệ
 
-Xác định định kỳ lưu trữ số liệu...
+Xác định định kỳ lưu trữ số liệu
 
 #### 2.1.6 Khai báo thông tin về ngày bắt đầu của năm tài chính
 
@@ -1557,7 +1185,6 @@ nghiệp
 Các số dư của tài khoản, của khách hàng, số tồn kho được nhập vào chương trình là số dư
 của ngày nào.
 
-
 #### 2.1.8 Xác định số dư đầu kỳ, các số phát sinh lũy kế
 
 Xác định số dư đầu kỳ của các tài khoản, tiểu khoản.
@@ -1566,7 +1193,7 @@ Xác định số dư đầu kỳ của các khách hàng, nhà cung cấp và c
 
 Xác định số tồn kho và số dư đầu kỳ của các mặt hàng, vật tư và thành phẩm.
 
-Xác định số liệu liên quan đến TSCĐ: nguyên giá, giá trị còn lại, giá trị khấu hao...
+Xác định số liệu liên quan đến TSCĐ: nguyên giá, giá trị còn lại, giá trị khấu hao
 
 Xác định các số phát sinh luỹ kế của các tiểu khoản, của các vụ việc đối với các doanh
 nghiệp có sử dụng các báo cáo liên quan đến các số phát sinh lũy kế.
@@ -1590,22 +1217,7 @@ Dưới đây sẽ trình bày các phương án tổ chức thông tin khác nh
 các phương án này ta phải lựa chọn xem để quản lý đối tượng thông nào thì sử dụng
 danh mục nào, trường nào trong SA.
 
-```
-Đối tượng thông tin cần
-quản lý
-```
-```
-Phương án quản lý trong
-SA
-```
-```
-Ghi chú
-```
-```
-Tài khoản, tiểu khoản Danh mục tài khoản
-Tài khoản ngân hàng Danh mục tài khoản ngân
-hàng
-```
+``Đối tượng thông tin cần quản lý```` Phương án quản lý trong SA```` Ghi chú```` Tài khoản, tiểu khoản Danh mục tài khoản Tài khoản ngân hàng Danh mục tài khoản ngân hàng``
 ```
 Dùng để cung cấp các thông
 tin cần thiết khi in ủy
@@ -1614,48 +1226,7 @@ Khế ước vay Danh mục khế ước vay
 Khách hàng, nhà cung cấp,
 các đối tượng công nợ phải
 thu, phải trả
-```
-```
-Danh mục khách hàng
-```
-
-Phân loại khách hàng, nhà
-cung cấp, các đối tượng
-công nợ
-
-```
-Danh mục phân loại khách
-hàng
-```
-```
-Ví dụ: Phân theo địa lý, đại
-lý/khách lẻ.
-```
-Hợp đồng, đơn hàng
-(mua/bán)
-
-```
-Đơn hàng, hợp đồng
-```
-Danh mục thuế suất Danh mục thuế suất
-
-Bộ phận kinh doanh, nhân
-viên kinh doanh
-
-```
-Danh mục bộ phận, nhân
-viên kinh doanh
-```
-Nhân viên Danh mục nhân viên
-
-Danh mục giá bán Danh mục giá bán
-
-Vật tư, CCLĐ, hàng hoá,
-thành phẩm
-
-```
-Danh mục vật tư
-```
+````` Danh mục khách hàng`Phân loại khách hàng, nhà cung cấp, các đối tượng công nợ`Danh mục phân loại khách hàng```` Ví dụ: Phân theo địa lý, đại lý/khách lẻ.`Hợp đồng, đơn hàng (mua/bán)`Đơn hàng, hợp đồng`Danh mục thuế suất Danh mục thuế suất Bộ phận kinh doanh, nhân viên kinh doanh`Danh mục bộ phận, nhân viên kinh doanh`Nhân viên Danh mục nhân viên Danh mục giá bán Danh mục giá bán Vật tư, CCLĐ, hàng hoá, thành phẩm`Danh mục vật tư``
 Phân loại vật tư, hàng hoá Danh mục phân loại vật tư,
 hàng hoá
 
@@ -1664,32 +1235,7 @@ Kho hàng Danh mục kho hàng
 Hạng mục công trình xây
 dựng; Đề án, dự án, vụ việc
 
-```
-Danh mục vụ việc
-```
-Công trình, dự án Danh mục phân loại vụ việc
-
-Khoản mục phí Danh mục tài khoản, tiểu
-khoản
-Danh mục khoản mục phí
-
-```
-Sử dụng trong trường hợp
-```
-phải giữ^ theo hệ^ thống cũ.^
-
-Sản phẩm: tập hợp chi phí
-và tính giá thành
-
-```
-Danh mục sản phẩm
-Danh mục tài khoản, tiểu
-khoản
-```
-```
-Sử dụng trong trường hợp
-số lượng sản phẩm không
-```
+``Danh mục vụ việc`Công trình, dự án Danh mục phân loại vụ việc Khoản mục phí Danh mục tài khoản, tiểu khoản Danh mục khoản mục phí`Sử dụng trong trường hợp`phải giữ^ theo hệ^ thống cũ.^ Sản phẩm: tập hợp chi phí và tính giá thành`Danh mục sản phẩm Danh mục tài khoản, tiểu khoản```` Sử dụng trong trường hợp số lượng sản phẩm không``
 quá nhiều và ít thay đổi.^
 
 TSCĐ Danh mục tài sản cố định
@@ -1699,14 +1245,7 @@ Phân loại TSCĐ Danh mục phân loại TSCĐ
 Nguồn vốn hình thành
 TSCĐ
 
-```
-Danh mục nguồn vốn TSCĐ
-```
-Lý do tăng giảm TSCĐ Danh mục lý do tăng giảm
-TSCĐ
-
-
-```
+``Danh mục nguồn vốn TSCĐ`Lý do tăng giảm TSCĐ Danh mục lý do tăng giảm TSCĐ``
 Bộ phận sử dụng TSCĐ Danh mục bộ phận sử dụng
 TSCĐ
 Các loại tiền ngoại tệ Danh mục tiền tệ
@@ -1726,17 +1265,7 @@ Các bộ phận, đơn vị, chi
 nhánh cần theo dõi để lên
 được các báo cáo kế toán
 như 1 đơn vị độc lập
-```
-```
-Danh mục đơn vị cơ sở
-```
-```
-Các đối tượng thông tin
-khác
-```
-```
-Danh mục các trường tự do Người dùng tự định nghĩa
-```
+````` Danh mục đơn vị cơ sở```` Các đối tượng thông tin khác```` Danh mục các trường tự do Người dùng tự định nghĩa``
 ### 2.3 Tổ chức thông tin để quản lý các đơn vị thành viên và tổng hợp toàn công ty
 
 Trong phần này sẽ trình bày về phương án tổ chức thông tin để quản lý trong trường
@@ -1760,7 +1289,6 @@ ty. Phương án 1 sẽ tiện lợi và nhanh hơn khi xem số liệu của t�
 ### 3.1 Hệ thống menu
 
 Hệ thống menu trong SAO được tổ chức dưới dạng menu 3 cấp.
-
 
 Cấp thứ nhất bao gồm các phân hệ nghiệp vụ sau:
 
@@ -1796,11 +1324,7 @@ gắng thống nhất mỗi phím chức năng chỉ sử dụng cho một mục
 hướng dẫn sử dụng trong từng trường hợp này. Dưới đây là công dụng của các phím
 chức năng được sử dụng trong chương trình.
 
-```
-Ctrl+Insert – Thêm mới bản ghi
-Ctrl+E – Sửa bản ghi
-Ctrl+Delete – Xóa bản ghi
-```
+``Ctrl+Insert – Thêm mới bản ghi Ctrl+E – Sửa bản ghi Ctrl+Delete – Xóa bản ghi``
 
 ### 3.3 Các thao tác chung khi cập nhật chứng từ
 
@@ -1828,24 +1352,17 @@ dữ liệu
 ▪ Nút Khóa cột: Cố định lại một cột
 ▪ Nút Làm tươi: Làm mới lại dữ liệu. Khi ích chuột vào nút này hệ thống sẽ tải lại
 dữ liệu mới nhất
-```
-**Màn hình chứng từ chi tiết**
-
-
-```
+``**Màn hình chứng từ chi tiết**``
 Màn hình thông thường có 04 phần:
 Phần 1 - các thông tin liên quan chung cho toàn bộ chứng từ như ngày chứng từ,
-số chứng từ, mã khách hàng, diễn giải, loại tiền...
+số chứng từ, mã khách hàng, diễn giải, loại tiền
 Phần 2 - danh sách các định khoản / các mặt hàng trong chứng từ đó.
 Phần 3 - gồm có các tính toán như tổng số tiền, thuế GTGT, chi phí, trạng thái
-chuyển vào sổ sách kế toán...
+chuyển vào sổ sách kế toán
 Phần 4 - các nút chức năng điều khiển quá trình cập nhật chứng từ như xem /
-sửa / xoá / tạo mới/ copy, tìm,...
+sửa / xoá / tạo mới/ copy, tìm,
 Dưới đây là ví dụ về màn hình cập nhật một hoá đơn bán hàng:
-```
-```
-Tuỳ thuộc vào từng loại chứng từ mà các thông tin về chúng sẽ khác nhau.
-```
+````` Tuỳ thuộc vào từng loại chứng từ mà các thông tin về chúng sẽ khác nhau.``
 **Các thao tác xử lý khi cập nhật chứng từ**
 
 Trong SAO khi cập nhật chứng từ có các chức năng như sau:
@@ -1855,7 +1372,6 @@ Trong SAO khi cập nhật chứng từ có các chức năng như sau:
 3. Sửa: Sửa một chứng từ
 4. Xóa: Xoá một chứng từ
 5. Đóng: Thoát màn khỏi màn hình chi tiết
-
 
 6. In: In chứng từ
 
@@ -1876,7 +1392,7 @@ bán hàng.
     đến trường đầu tiên trong màn hình cập nhật thông tin về chứng từ.
 4. Lần lượt cập nhật các thông tin trên màn hình: Các thông tin chung cho toàn bộ
     chứng từ, các định khoản / mặt hàng trong chứng từ và các thông tin khác như
-    thuế, chi phí, chiết khấu, hạn thanh toán, trạng thái...
+    thuế, chi phí, chiết khấu, hạn thanh toán, trạng thái
 5. Tại nút <<Lưu>> ấn phím Enter để lưu chứng từ. Khi chương trình thực hiện lưu
     xong thì sẽ hiện lên thông báo "Chương trình đã thực hiện xong".
 6. Sau khi lưu xong chứng từ vừa mới cập nhật thì con trỏ sẽ chuyển đến nút
@@ -1899,7 +1415,6 @@ bán hàng.
 Khi chứng từ đã được lưu thì việc sửa xoá chứng từ chỉ được thực đối với những người
 có quyền sửa xoá chứng từ. Quyền này được khai báo trong phần khai báo và phân
 quyền cho những người sử dụng chương trình ở phân hệ “Hệ thống”.
-
 
 **Các bước thực hiện sửa, xoá một chứng từ**
 
@@ -1926,20 +1441,19 @@ quyền cho những người sử dụng chương trình ở phân hệ “Hệ 
 
 Để tăng sự tiện lợi cho người sử dụng SAO cung cấp một loạt các tiện ích sau:
 
-1. Để tìm nhanh một khách hàng, một vật tư,... trong khi cập nhật chứng từ ta có thể
+1. Để tìm nhanh một khách hàng, một vật tư, trong khi cập nhật chứng từ ta có thể
     thực hiện bằng nhiều cách. Nếu ta không nhớ mã thì ta chỉ việc ấn phím Enter và
     toàn bộ danh mục cần thiết sẽ hiện lên cho ta chọn. Nếu ta nhớ một số ký tự đầu
     của mã thì ta gõ các ký tự đầu này rồi ấn phím Enter, chương trình sẽ hiện lên
     danh mục cần thiết và con trỏ sẽ nằm tại bản ghi có mã gần đúng nhất với mã ta
     gõ vào.
-2. Để vào thêm một khách hàng mới, một vật tư mới,... ngay trong khi cập nhật
+2. Để vào thêm một khách hàng mới, một vật tư mới, ngay trong khi cập nhật
     chứng từ thì ta chỉ việc bấm vào biểu tượng kính núp ngay cạnh ô text của mã
     khách hàng hoặc mã vật tư. Màn hình danh mục từ điển sẽ hiện lên, bạn chọn bất
     kỳ một dòng nào đó và bấm vào nút xem hặc biểu tượng chương trình sẽ
     hiện ra màn hình thông tin của danh mục và trong màn hình này ta có thể thực
     hiện các thao tác với danh mục như thêm, sửa, xoá các danh điểm trong danh
     mục.
-
 
 3. Sau khi cập nhật đầy đủ các thông tin trên màn hình nhập liệu ta có thể lựa chọn
     trạng thái chuyển chứng từ vào sổ sách kế toán trước khi lưu. Chương trình hiện
@@ -1950,7 +1464,7 @@ quyền cho những người sử dụng chương trình ở phân hệ “Hệ 
 5. Chức năng lọc tìm chứng từ đa dạng, theo nhiều trường thông tin khác nhau (bao
     gồm cả thông tin các trường tự do). Ngoài ra chương trình còn cho phép người
     dùng lọc tìm chứng từ theo các điều kiện chi tiết và nâng cao hơn như tìm theo
-    các từ khóa Like, = >, <, ....
+    các từ khóa Like, = >, <, 
 
 ### 3.4 Các thông tin chung cần lưu ý khi cập nhập chứng từ
 
@@ -1978,14 +1492,13 @@ số cuối cùng để dùng đánh số cho số của chứng từ tiếp the
 Trong trường hợp số chứng từ được đánh theo tháng, quý hoặc năm thì khi vào chứng từ
 của tháng mới, quý mới hoặc năm mới ta chỉ việc sửa lại số của chứng từ đầu tiên của
 tháng/quý/năm mới bắt đầu từ 1 và các số của các chứng từ tiếp theo sẽ do chương
-trình tự động tăng dần lên bằng 2, 3, 4...
+trình tự động tăng dần lên bằng 2, 3, 4
 
 Trong trường hợp một loại chứng từ được nhập ở nhiều màn hình khách nhau, ví dụ như
 phiếu nhập kho được cập nhật ở các màn phiếu nhập mua nội địa, nhập khẩu, nhập hàng
 bán bị trả lại, nhập nội bộ thì trong danh mục chứng từ ta chỉ việc khai báo các màn hình
 này có cùng một mã chứng từ mẹ và chương trình sẽ hiểu để đánh số cho các loại chứng
 từ này cùng một hệ thống đánh số.
-
 
 Trong trường hợp doanh nghiệp có nhiều kho và mỗi kho có hệ thống đánh số riêng thì
 người sử dụng phải tự nhập số chứng từ mà không sử dụng hệ thống đánh số tự động
@@ -2035,7 +1548,6 @@ Về các giá trị tiền VNĐ và ngoại tệ trong SAO lưu số liệu nh�
 3. Có một trường tỷ giá lưu tỷ giá quy đổi ngoại tệ ra đồng Việt nam. Nếu giao dịch
     là đồng Việt nam thì chương trình tự động gán giá trị bằng 1 cho trường tỷ giá.
 
-
 4. Có một trường lưu giá trị tiền VNĐ. Nếu giao dịch là ngoại tệ thì trường này có
     giá trị bằng (Nguyên tệ * Tỷ giá). Nếu giao dịch là đồng Việt nam thì giá trị 02
     trường nguyên tệ và VNĐ bằng nhau.
@@ -2052,10 +1564,7 @@ nên khi cập nhật cần lưu ý sau.
 Trường ngoại tệ lúc này cũng được hiểu là VNĐ và ta gõ số tiền VNĐ vào đây.
 Trường tỷ giá lúc này sẽ được tự động gán giá trị bằng 1 và trường tiền VNĐ
 cũng được tự động gán giá trị của trường tiền ngoại tệ.
-```
-2. Đối với các giao dịch là ngoại tệ
-
-```
+``2. Đối với các giao dịch là ngoại tệ``
 Ta gõ số tiền nguyên tệ vào trường ngoại tệ và tỷ giá quy đổi ra VNĐ vào trường
 tỷ giá. Trường tiền VNĐ được tự động gán giá trị bằng (Nguyên tệ * Tỷ giá).
 Về nguyên tắc chung thì ta luôn có đẳng thức: Tiền VNĐ = Nguyên tệ * Tỷ giá.
@@ -2079,13 +1588,10 @@ chênh lệch giữa tổng phát sinh VNĐ và số cộng VNĐ từ các chi t
 
 Về nguyên tắc chung thì ta luôn có đẳng thức:
 
-```
-Tiền = Số lượng * Đơn giá.
-```
+``Tiền = Số lượng * Đơn giá.``
 và giá trị tiền được chương trình tự động tính sau khi người sử dụng cập nhật số lượng
 và đơn giá. Chương trình không cho phép người sử dụng cập nhật vào trường tiền. Tuy
 nhiên trong một số trường hợp đặc biệt do đơn giá quá lẻ và chương trình lại không lưu
-
 
 đủ số chữ số sau dấu phẩy thập phân nên có thể xảy ra là số tiền được tính khác với số
 tiền trên thực tế. Để giải quyết vấn đề này ta phải gõ giá trị bằng 0 (không) vào trường
@@ -2123,14 +1629,13 @@ về các điểm chung này.
     hàng.
 2. Chọn báo cáo cần thiết. Ví dụ: Báo cáo bán hàng chi tiết theo mặt hàng.
 3. Vào điều kiện lọc số liệu để lên báo cáo. Ví dụ: từ ngày 01/01/20 17 đến ngày
-    31/01/20 17 ,...
+    31/01/20 17 ,
 4. Sau khi tính toán xong chương trình sẽ hiện lên kết quả dưới dạng bảng số liệu.
 5. Ta có thể dùng các phím, con trỏ để di chuyển xem các thông tin cần thiết hoặc dùng
     các phím Ctrl + F (hoặc Ctrl + G) để tra tìm kiếm thông tin.
 6. Trong đa số các báo cáo chương trình sẽ cho phép thay đổi các kiểu xem, ví dụ như
     sắp xếp các dòng theo mã hoặc theo tên hoặc theo giá trị hoặc nhóm các vật tư,
-    khách hàng theo các tiêu chí khác nhau,... Để làm việc này ta dùng phím F10 để lựa
-
+    khách hàng theo các tiêu chí khác nhau, Để làm việc này ta dùng phím F10 để lựa
 
 ```
 chọn kiểu xem. Chương trình sẽ hiện lên các lựa chọn để ta chọn kiểu xem cần thiết.
@@ -2174,7 +1679,6 @@ khoản được nhập lần lượt trong danh mục tài khoản chính và t
 khoản. Nếu nhập không chính xác thì chương trình sẽ kiểm tra và hiện lên danh mục để
 người sử dụng chọn.
 
-
 Nếu việc chia tài khoản và tiểu khoản chỉ thực hiện ở phần khai báo các tài khoản chính
 mà không phải thông qua việc khai báo ở phần danh mục tiểu khoản thì khi nhập tài
 khoản ta chỉ việc gõ số hiệu tài khoản khai báo ở danh mục tài khoản chính mà không
@@ -2205,9 +1709,9 @@ hoặc ghép mã chương trình sẽ tự động tìm kiếm mã hiện thời
 Lưu ý: riêng danh mục tài khoản thì chương trình không cho phép ghép mã mà chỉ cho
 phép đổi một mã cũ thành một mã mới chưa có trong danh mục tài khoản hiện tại.
 
-## 4 Phân hệ Quản trị hệ thống............................................................................................
+## 4 Phân hệ Quản trị hệ thống
 
-### 4.1 Giới thiệu chung.............................................................................................................................
+### 4.1 Giới thiệu chung
 
 **Chức năng của phân hệ hệ thống**
 
@@ -2221,7 +1725,6 @@ Phân hệ hệ thống có các chức năng sau:
 **Hệ thống menu của phân hệ hệ thống**
 
 Các menu chính của phân hệ hệ thống gồm có:
-
 
 1. Khai báo tham số hệ thống
 2. Danh mục từ điển
@@ -2246,7 +1749,6 @@ Danh mục các màn hình cập nhật chứng từ dùng để quản lý, kha
 **Mã ctừ**
 
 Mã chứng từ do SAO quy định cho từng màn hình cập nhật chứng từ và không được sửa.
-
 
 Mã chứng từ được dùng để nhận biết là dữ liệu, thông tin trên các báo cáo được cập nhật
 từ màn hình nào, từ phân hệ nào.
@@ -2300,7 +1802,6 @@ nhiên ta có thể sửa lại số liên cần in ra khi in ctừ.
 
 **Stt khi in bảng kê**
 
-
 Thông tin này phục vụ việc sắp xếp các ctừ khi lên các báo cáo chi tiết liên quan đến
 nhiều loại ctừ khác nhau. Trong các báo cáo này, trong cùng một ngày thì các ctừ có stt
 bé hơn sẽ được sắp xếp trước các ctừ có stt lớn hơn.
@@ -2324,7 +1825,7 @@ trong cùng một năm.
 **Sử dụng tên người giao dịch**
 
 Thông tin này cho phép cập nhật hay không cập nhật trường tên người giao dịch trên
-chứng từ. Ví dụ: người nhận tiền trên phiếu chi, người nộp tiền trên phiếu thu...
+chứng từ. Ví dụ: người nhận tiền trên phiếu chi, người nộp tiền trên phiếu thu
 
 **Sửa trường ngày lập chứng từ**
 
@@ -2356,7 +1857,6 @@ Dùng để khai báo ngày bắt đầu của năm tài chính.
 Thông thường các doanh nghiệp Việt Nam có năm tài chính bắt đầu từ 1.1 và kết thúc
 vào ngày 31.12.
 
-
 Tuy nhiên ngày bắt đầu của năm tài chính có thể bắt đầu bằng bất kỳ ngày nào trong
 năm.
 
@@ -2385,16 +1885,7 @@ Các tuỳ chọn
 (Ví dụ)
 Mã số thuế của doanh
 nghiệp
-```
-###### 0100727825 -
-
-###### 1
-
-```
-Tỉnh thành
-Tên tỉnh thành nơi doanh nghiệp
-đăng ký
-```
+``###### 0100727825 - ###### 1`Tỉnh thành Tên tỉnh thành nơi doanh nghiệp đăng ký``
 ```
 Quận huyện
 Tên quận huyện nơi doanh nghiệp
@@ -2404,68 +1895,19 @@ Fax
 E-mail
 Họ và tên của kế toán
 trưởng
-```
-```
-Họ và tên sẽ được in trên các báo cáo
-kế toán
-```
-```
-Đinh Mai
-Oanh
-```
-```
-Chief accountant name
-```
-```
-Họ và tên sẽ được in trên các báo cáo
-kế toán in bằng tiếng Anh
-```
-```
-Dinh Mai
-Oanh
-```
-```
-Họ và tên của giám đốc
-Họ và tên sẽ được in trên các báo cáo
-kế toán
-```
-```
-Trần Duy
-Tăng
-```
-
-Director's name
-Họ và tên sẽ được in trên các báo cáo
-kế toán in bằng tiếng Anh
-
-```
-Tran Duy
-Tang
-```
-Mã cục/chi cục thuế nơi
-đóng thuế
-
-```
-Trong trường hợp doanh nghiệp đóng
-thuế ở nhiều nơi (đơn vị xây lắp)
-```
-```
-Chọn từ danh
-mục khách
-hàng
-```
+````` Họ và tên sẽ được in trên các báo cáo kế toán```` Đinh Mai Oanh```` Chief accountant name```` Họ và tên sẽ được in trên các báo cáo kế toán in bằng tiếng Anh```` Dinh Mai Oanh```` Họ và tên của giám đốc Họ và tên sẽ được in trên các báo cáo kế toán```` Trần Duy Tăng`Director's name Họ và tên sẽ được in trên các báo cáo kế toán in bằng tiếng Anh`Tran Duy Tang`Mã cục/chi cục thuế nơi đóng thuế`Trong trường hợp doanh nghiệp đóng thuế ở nhiều nơi (đơn vị xây lắp)```` Chọn từ danh mục khách hàng``
 Mã đồng tiền hạch toán VND
 
 Ngôn ngữ ngầm định của
 báo cáo (1-Việt, 2-Anh)
 
-###### 1, 2
+## 1, 2
 
 Báo cáo ngầm định là VNĐ
 hay ngoại tệ (1-VNĐ, 2-
 Ngoại tệ)
 
-###### 1, 2
+## 1, 2
 
 Dấu phân cách hàng nghìn
 khi viết các số
@@ -2483,9 +1925,9 @@ Khuôn dạng của trường
 ngoại tệ
 Khuôn dạng khi nhập và xem báo cáo
 
-###### 999 999
+## 999 999
 
-###### 999.99
+### 999.99
 
 Khuôn dạng của trường tỷ
 giá
@@ -2494,68 +1936,46 @@ Khuôn dạng khi nhập và xem báo cáo 9 999 999.99
 Khuôn dạng của trường số
 lượng
 
-###### 999 999
+## 999 999
 
-###### 999.999
+### 999.999
 
 Khuôn dạng của trường giá 999 999.99
 
 Khuôn dạng của trường giá
 ngoại tệ
 
-###### 9 999 999
+## 9 999 999
 
-###### 999.9999
+### 999.9999
 
 Phông chữ khi lên báo cáo .VnTime
 
 Phông chữ tiêu đề của báo
 cáo
 
-```
-.VnHelvellnsH
-, 16, 0
-```
+``.VnHelvellnsH , 16, 0``
 Phông chữ của báo cáo ở
 phần chữ ký
 .VnArialH, 8, 0
 
-
 Ngày (thứ mấy) lưu số liệu
 hàng tuần
 
-```
-Ngày thứ mấy trong tuần định kỳ
-chương trình tự động sẽ lưu số liệu
-```
+``Ngày thứ mấy trong tuần định kỳ chương trình tự động sẽ lưu số liệu``
 ```
 0 - Không lưu
 1 - Chủ nhật
 2, 3, 4, 5, 6, 7 -
-Thứ 2, 3,..., 7
-```
-Số ngày tối thiểu chương
-trình sẽ tự động lưu số liệu
-
-```
-Sau "n" ngày chương trình sẽ tự động
-lưu số liệu
-```
-```
-0 - Không lưu
-n - số ngày
-```
-Số tệp hàng tuần được lưu
-giữ
-
-```
+Thứ 2, 3,, 7
+``Số ngày tối thiểu chương trình sẽ tự động lưu số liệu`Sau "n" ngày chương trình sẽ tự động lưu số liệu```` 0 - Không lưu n - số ngày`Số tệp hàng tuần được lưu giữ``
 Ví dụ khai báo là 5 thì số mỗi lần lưu
 số liệu thì chương trình sẽ lưu ra một
 tệp riêng, đến lần lưu thứ 6 (mới
 nhất) thì sẽ ghi đè lên lần lưu thứ
 nhất (cũ nhất)
 ```
-###### 1, 2, 3, 4, 5
+## 1, 2, 3, 4, 5
 
 Thư mục copy vào/ra số
 liệu
@@ -2564,65 +1984,38 @@ liệu
 Danh sách các đầu tài khoản
 không có số dư
 
-```
-Khai báo này giúp cho chương trình
-nhận biết khi cập nhật các số dư đầu
-kỳ
-```
-###### 5, 6, 7, 8, 9
+``Khai báo này giúp cho chương trình nhận biết khi cập nhật các số dư đầu kỳ`###### 5, 6, 7, 8, 9 Danh sách các tài khoản công nợ`Dùng để kiểm tra việc khai báo tài khoản công nợ khi khai báo danh mục tài khoản``
+## 131, 136,
 
-Danh sách các tài khoản
-công nợ
+## 1388, 141,
 
-```
-Dùng để kiểm tra việc khai báo tài
-khoản công nợ khi khai báo danh mục
-tài khoản
-```
-###### 131, 136,
+## 331, 336,
 
-###### 1388, 141,
-
-###### 331, 336,
-
-###### 3388
+## 3388
 
 Tài khoản thuế GTGT hàng
 nhập khẩu phải nộp
 
-###### 33312
+## 33312
 
 Tài khoản xác định kết quả
 sản xuất kinh doanh
 
-```
-Dùng khi lên báo cáo kết quả sản xuất
-kinh doanh
-```
-###### 911
+``Dùng khi lên báo cáo kết quả sản xuất kinh doanh`###### 911 Tài khoản tiền mặt, tiền gửi ngân hàng, tương đương tiền`Dùng khi lên báo cáo dòng tiền``
+## 111, 112,
 
-Tài khoản tiền mặt, tiền gửi
-ngân hàng, tương đương
-tiền
-
-```
-Dùng khi lên báo cáo dòng tiền
-```
-###### 111, 112,
-
-###### 12113,12123
+## 12113,12123
 
 Danh sách các tài khoản
 khử trùng trong mua bán
 hàng hoá, vật tư
 
-###### 111, 112, 141
+## 111, 112, 141
 
 Tk chênh lệch tỷ giá do
 đánh giá cuối kỳ
 
-###### 413
-
+## 413
 
 ```
 Tk chênh lệch tỷ giá lãi 5153
@@ -2630,56 +2023,8 @@ Tk chênh lệch tỷ giá lỗ 6351
 Cách tính giá trung bình: 1 -
 Giá chung, 2 - Giá cho từng
 kho
-```
-###### 1, 2
-
-```
-Có/không tính giá trung
-bình ngoại tệ (1/0)
-1 – Có, 0 - Không
-```
-###### 1, 0
-
-```
-Cách tính giá NTXT: 1 -
-Đúng theo ngày, 2 - Đúng
-theo tháng
-```
-###### 1
-
-```
-Phương pháp tính khấu hao
-TSCĐ: 1 - theo nguyên giá, 2
-```
-- theo giá trị còn lại
-
-###### 1, 2
-
-```
-Hiện hộp thoại lựa chọn
-thời gian lúc vào các chứng
-từ
-```
-###### 0, 1
-
-```
-Kiểu tập hợp CF NVL để tính
-giá thành. 1-Trực tiếp, 3-
-Theo định mức
-```
-###### 1, 3
-
-```
-Có kiểm tra số lượng tồn so
-với lượng tồn tối thiểu
-```
-###### 0, 1
-
-```
-Tạo số chứng từ ghi sổ tự
-động: 0 – Không, 1 – Có
-```
-###### 0, 1
+``###### 1, 2`Có/không tính giá trung bình ngoại tệ (1/0) 1 – Có, 0 - Không`###### 1, 0`Cách tính giá NTXT: 1 - Đúng theo ngày, 2 - Đúng theo tháng`###### 1`Phương pháp tính khấu hao TSCĐ: 1 - theo nguyên giá, 2`- theo giá trị còn lại ###### 1, 2`Hiện hộp thoại lựa chọn thời gian lúc vào các chứng từ`###### 0, 1`Kiểu tập hợp CF NVL để tính giá thành. 1-Trực tiếp, 3- Theo định mức`###### 1, 3`Có kiểm tra số lượng tồn so với lượng tồn tối thiểu`###### 0, 1`Tạo số chứng từ ghi sổ tự động: 0 – Không, 1 – Có``
+## 0, 1
 
 ### 4.3 Danh mục từ điển
 
@@ -2693,7 +2038,6 @@ trùng số chứng từ hay không, ngày nào thì được áp dụng.
 #### 4.3.2 Danh mục đơn vị cơ sở
 
 **Chức năng**
-
 
 Danh mục đơn vị cơ sở dùng để quản lý các đơn vị hạch toán độc lập trong một doanh
 nghiệp (thường là các tổng công ty) có nhiều đơn vị hạch toán.
@@ -2745,7 +2089,6 @@ hàng ngày ra đồng tiền hạch toán.
 **Thông tin về tỷ giá quy đổi ngoại tệ**
 
 Thông tin về danh mục tỷ giá quy đổi ngoại tệ gồm có:
-
 
 - Mã ngoại tệ
 - Ngày quy đổi
@@ -2799,19 +2142,18 @@ Quản lý và bảo trì số liệu có các chức năng sau:
 
 1. Lưu trữ (backup) số liệu
 
-
 2. Khóa số liệu
 3. SAO chép số liệu ra
 4. SAO chép số liệu vào
 5. Bảo trì và kiểm tra số liệu
 6. Nâng cấp chương trình
 
-#### 4.5.1 Lưu trữ (backup) số liệu..........................................................................................................................................................
+#### 4.5.1 Lưu trữ (backup) số liệu
 
 **Chức năng**
 
 Lưu trữ (backup) số liệu là vấn đề rất quan trọng. Số liệu có thể bị mất do nhiều nguyên
-nhân như hỏng ổ cứng, bị virus phá...
+nhân như hỏng ổ cứng, bị virus phá
 
 Chương trình cho phép lưu trữ số liệu định kỳ hàng tuần. Mỗi khi thoát khỏi chương
 trình nếu chưa lưu trữ thì chương trình sẽ nhắc nhở người sử dụng lưu trữ số liệu. Số
@@ -2828,7 +2170,7 @@ việc để an toàn hơn trong trường hợp ổ cứng làm việc bị h�
 Cách tốt nhất để lưu trữ số liệu là dùng chế độ Mirror (gương) của hệ điều hành Window
 để SAO lưu số liệu tức thời.
 
-#### 4.5.2 Khóa số liệu....................................................................................................................................................................................
+#### 4.5.2 Khóa số liệu
 
 **Chức năng**
 
@@ -2846,10 +2188,9 @@ Số liệu được cập nhật và lưu giữ ở nhiều bảng số liệu 
 sai lệch về chỉ dẫn hoặc có sự không đồng bộ giữa các bảng số liệu.
 
 Khi chỉ dẫn của một bảng nào đó bị sai lệch hoặc bị mất thì khi xử lý số liệu chương trình
-sẽ đưa ra các thông báo như: “Out of Range”, “Index Tag Not Found”, "Not a table/DBF",...
+sẽ đưa ra các thông báo như: “Out of Range”, “Index Tag Not Found”, "Not a table/DBF",
 
 Khi số liệu giữa các bảng bị mất đồng bộ thì lên báo cáo sẽ bị sai.
-
 
 Trong cả 2 trường hợp trên ta phải thực hiện chức năng bảo trì và kiểm tra số liệu.
 
@@ -2895,7 +2236,6 @@ trong chương trình tại đơn vị mẹ cấp trên.
 
 Quản lý người sử dụng có các chức năng sau:
 
-
 #### 4.6.1 Khai báo người sử dụng và phân quyền
 
 **_4.6.1.1 Chức năng_**
@@ -2917,7 +2257,6 @@ hiện sửa chữa lần cuối cùng.
 **_4.6.1.2 Thêm mới/sửa/xóa người dùng_**
 Thanh công cụ
 
-
 Màn hình thông tin
 
 - Để thêm mới người dùng. Bạn chỉ cần chọn chức năng Người sử dụng/Khai báo
@@ -2932,7 +2271,6 @@ Màn hình thông tin
 Màn hình danh sách ngươid dùng
 
 Màn hình phân quyền chi tiết
-
 
 - Bạn chọn chức năng Hệ thống/Người sử dụng/Phân quyền truy cập.
 - Màn hình danh sách ngươi dùng hiện ra. Tại đây bạn chọn người dùng cần phân
@@ -2958,7 +2296,6 @@ vụ hoặc chức năng của chương trình.
 Ta có thể dùng chức năng quản lý menu để khai báo ẩn các menu không cần dùng đến.
 
 Chương trình cho phép khai báo hiện lại các menu đã khai báo ẩn trước đó.
-
 
 ### 4.7 Trợ giúp
 
@@ -2991,7 +2328,7 @@ hạch toán nội bộ của doanh nghiệp.
 Chức năng này cho phép người sử dụng cập nhật, lưu trữ các quy định về chế độ kế toán,
 thuế và tài chính do nhà nước ban hành.
 
-#### 4.7.4 Thuật ngữ kế toán.......................................................................................................................................................................
+#### 4.7.4 Thuật ngữ kế toán
 
 **Chức năng**
 
@@ -3014,10 +2351,9 @@ Người sử dụng có thể thêm bớt, sửa đổi theo nhu cầu.
 Chức năng giới thiệu về các thành viên tham gia vào phát triển phiên bản hiện hành của
 SAO.
 
-
 ## 5 Phân hệ Kế toán tổng hợp
 
-### 5.1 Giới thiệu chung.............................................................................................................................
+### 5.1 Giới thiệu chung
 
 **Chức năng của phân hệ kế toán tổng hợp**
 
@@ -3039,42 +2375,12 @@ Các menu chính của phân hệ kế toán tổng hợp
 1. Cập nhật số liệu
 2. Báo cáo tài chính
 
-```
-CH Ứ NG T Ừ
-```
-```
-Phiếu kế toán
-Bút toán phân bổ
-```
-```
-S Ố LI Ệ U T Ừ CÁC PHÂN
-H Ệ KHÁC
-```
-```
-Vốn bằng tiền
-Bán hàng, công nợ
-phải thu
-```
-```
-CHUY Ể N S Ố LI Ệ U SANG
-CÁC PHÂN H Ệ KHÁC
-```
-```
-Phiếu kế toán
-Bút toán phân bổ
-```
-```
-BÁO CÁO
-```
-```
-Sổ sách kế toán
-```
+``CH Ứ NG T Ừ```` Phiếu kế toán Bút toán phân bổ```` S Ố LI Ệ U T Ừ CÁC PHÂN H Ệ KHÁC```` Vốn bằng tiền Bán hàng, công nợ phải thu```` CHUY Ể N S Ố LI Ệ U SANG CÁC PHÂN H Ệ KHÁC```` Phiếu kế toán Bút toán phân bổ```` BÁO CÁO```` Sổ sách kế toán``
 ###### PHÂN H Ệ
 
 ###### K Ế TOÁN
 
 ###### T Ổ NG H Ợ P
-
 
 3. Sổ sách theo hình thức NKC
 4. Sổ kế toán chi tiết
@@ -3123,7 +2429,6 @@ kế toán.
 Các yêu cầu quản lý có thể xem xét dựa trên các báo cáo (các báo cáo nhanh hàng ngày,
 các báo cáo định kỳ và các câu hỏi bất chợt mà các "Sếp" hay đặt ra) cần phải thực hiện
 
-
 để cung cấp thông tin cho các cán bộ quản lý trong doanh nghiệp và các cơ quan hữu
 quan liên quan. Trên cơ sở các báo cáo cần thực hiện và phương án xử lý và khai thác
 thông tin của phần mềm kế toán ta sẽ biết là nên tổ chức hệ thống tài khoản như thế nào
@@ -3133,7 +2438,7 @@ nhanh nhất, tiện lợi nhất.
 Trong SAO khi xây dựng hệ thống tài khoản cần lưu ý các điểm sau:
 
 - Đối với các tài khoản cần phải theo dõi số dư ngoại tệ (các tài khoản vốn bằng
-    tiền, các tài khoản công nợ...) thì phải mở các tiểu khoản tương ứng với từng loại
+    tiền, các tài khoản công nợ) thì phải mở các tiểu khoản tương ứng với từng loại
     ngoại tệ.
 - Các tài khoản mở tại các ngân hàng (tk 112) được theo dõi bằng cách mở các tiểu
     khoản của các tài khoản tương ứng. Nên mở cho mỗi tài khoản tại ngân hàng một
@@ -3161,21 +2466,20 @@ Trong SAO khi xây dựng hệ thống tài khoản cần lưu ý các điểm s
        _Lưu ý: Việc mở thêm các tiểu khoản nêu trên để phục vụ lên báo cáo lưu_
        _chuyển tiền tệ._
 
-
 - Đối với tài khoản phải thu của khách hàng (tk 131) theo chuẩn mực kế toán mới
     thì có thể phải chia thành các tiểu khoản sau:
        - 1311 - Phải thu của khách hàng: hoạt động SXKD
           - 1311 - Phải thu của khách hàng: hoạt động SXKD (VNĐ)
           - 1311 - Phải thu của khách hàng: hoạt động SXKD (USD)
-...
+
        - 1312 - Phải thu của khách hàng: hoạt động đầu tư
           - 1312 - Phải thu của khách hàng: hoạt động đầu tư (VNĐ)
           - 1312 - Phải thu của khách hàng: hoạt động đầu tư (USD)
-...
+
        - 1313 - Phải thu của khách hàng: hoạt động tài chính
           - 1313 - Phải thu của khách hàng: hoạt động tài chính (VNĐ)
           - 1313 - Phải thu của khách hàng: hoạt động tài chính (USD)
-...
+
        _Lưu ý: Việc mở thêm các tiểu khoản nêu trên để phục vụ lên báo cáo lưu chuyển_
        _tiền tệ. Ngoài ra để chương trình tự động tính tỷ giá ghi sổ và hạch toán chênh_
        _lệch tỷ giá trong các giao dịch phát sinh liên quan đến ngoại tệ thì cần phải mở_
@@ -3196,7 +2500,6 @@ Trong SAO khi xây dựng hệ thống tài khoản cần lưu ý các điểm s
        _Lưu ý: Tiểu khoản 13313 và 13314 được mở thêm để có thể lên được báo cáo_
        _kết quả kinh doanh phần 3 - thuế GTGT và sổ theo dõi thuế GTGT được hoàn lại._
 
-
 - Đối với tài khoản chi phí trả trước (tk 1421) có thể phải chia thành 2 tiểu khoản:
     tk 14211 -Chi phí lãi vay trả trước và tk 14212 - Chi phí trả trước khác.
        _Lưu ý: Việc chia nhỏ hai tiểu khoản này để phục vụ lên báo cáo lưu chuyển tiền_
@@ -3208,7 +2511,7 @@ Trong SAO khi xây dựng hệ thống tài khoản cần lưu ý các điểm s
        _doanh phần 1- Lãi, lỗ._
 - Đối với tài khoản nguyên liệu, vật liệu (tk 152) có thể thêm các tiểu khoản theo
     phân nhóm các loại nguyên vật liệu theo tính chất sử dụng, ví dụ: Nguyên liệu
-    chính (tk 1521), vật liệu phụ (tk 1522), nhiên liệu (tk 1523)...
+    chính (tk 1521), vật liệu phụ (tk 1522), nhiên liệu (tk 1523)
 - Đối với tài khoản chi phí sản xuất kinh doanh dở dang (tk 154) thì có thể mở các
     tiểu khoản để theo dõi việc tập hợp chi phí theo các phân xưởng sản xuất và các
     nhóm sản phẩm hoặc sản phẩm. Trình tự mở các tài khoản chi tiết có thể như
@@ -3216,7 +2519,7 @@ Trong SAO khi xây dựng hệ thống tài khoản cần lưu ý các điểm s
     xưởng sản xuất -> Nhóm sản phẩm/sản phẩm. Trong trường hợp số lượng loại
     sản phẩm nhiều thì nên sử dụng danh mục sản phẩm để theo dõi và tính giá thành
     cho từng sản phẩm. chương trình cũng cho phép phân tích chi phí theo các yếu
-    tố như NVL, nhân công, chi phí chung,... thông qua danh mục yếu tố chi phí. Đối
+    tố như NVL, nhân công, chi phí chung, thông qua danh mục yếu tố chi phí. Đối
     với các công ty xây dựng mà đối tượng tính giá thành là các dự án, công trình,
     hạn mục công trình thì nên sử dụng danh mục phân nhóm vụ việc, danh mục vụ
     việc để theo dõi và tính giá thành. Trong trường hợp không chỉ tập hợp và tính
@@ -3232,7 +2535,6 @@ Trong SAO khi xây dựng hệ thống tài khoản cần lưu ý các điểm s
        - 21416 – Hao mòn cây trồng, vật nuôi
        - 21418 – Hao mòn TSCĐ hữu hình khác
        Tương tự đối với tài khoản hao mòn TSCĐ vô hình (tk 2143):
-
 
 - 21431 – Hao mòn quyền sử dụng đất
 - 21432 – Hao mòn quyền phát hành
@@ -3270,19 +2572,18 @@ chuyển tiền tệ._
 - Đối với tài khoản phải trả cho người bán (tk 331) theo chuẩn mực kế toán mới
 thì có thể phải chia thành các tiểu khoản sau:
 
-
 - 3311 - Phải trả cho người bán: hoạt động SXKD
     - 33111 - Phải trả cho người bán: hoạt động SXKD (VNĐ)
     - 33111 - Phải trả cho người bán: hoạt động SXKD (USD)
-...
+
 - 3312 - Phải trả cho người bán: hoạt động đầu tư
     - 33121 - Phải trả cho người bán: hoạt động đầu tư (VNĐ)
     - 33121 - Phải trả cho người bán: hoạt động đầu tư (USD)
-...
+
 - 3313 - Phải trả cho người bán: hoạt động tài chính
     - 33131 - Phải trả cho người bán: hoạt động tài chính (VNĐ)
     - 33132 - Phải trả cho người bán: hoạt động tài chính (USD)
-...
+
 _Lưu ý: Việc mở thêm các tiểu khoản nêu trên để phục vụ lên báo cáo lưu
 chuyển tiền tệ và để chương trình tự động tính tỷ giá ghi sổ và tự động hạch
 toán chênh lệch tỷ giá hối đoái trong các phát sinh liên quan đến ngoại tệ trong
@@ -3305,7 +2606,6 @@ Tthuế GTGT và sổ theo dõi thuế GTGT được miễn giảm._
 khoản - tk 33331 - thuế xuất khẩu và tk 33332 - thuế nhập khẩu.
 _Lưu ý: Việc mở thêm các tiểu khoản nêu trên để có thể lên được báo cáo kết quả
 kinh doanh phần 1 - lãi, lỗ._
-
 
 - Đối với tài khoản thuế nhà đất, tiền thuê đất (tk 3337) phải chia thành 2 tiểu
     khoản: tk 33371 - thuế nhà đất và 33372 - tiền thuê đất.
@@ -3342,7 +2642,6 @@ chính._
     theo trình tự sau: Tài khoản giá vốn và doanh thu bán hàng -> Bộ phận kinh
     doanh -> Loại hình kinh doanh.
 
-
 - Trường hợp doanh nghiệp có phát sinh doanh thu từ hoạt động chuyển quyền
     sử dụng đất, chuyển quyền thuê đất thì có thể phải mở thêm một tiểu khoản
     5115 – Doanh thu chuyển quyền sử dụng đất, chuyển quyền thuê đất.
@@ -3378,7 +2677,6 @@ chính._
     có thể lên được báo cáo lưu chuyển tiền tệ và báo cáo quyết toán thuế thu nhập
     doanh nghiệp.:
 
-
 - 6351 - Lỗ chênh lệch tỷ giá phát sinh trong kỳ.
 - 6352 - Chi phí lãi vay.
 - 6353 - Giá vốn và chi phí liên quan đến bán bất động sản.
@@ -3409,13 +2707,12 @@ Lưu ý chung:
 Ta sẽ mở các tiểu khoản cho các đối tượng mà danh sách các đối tượng này ít thay
 đổi theo thời gian. Ví dụ: danh mục mã các khoản mục phí, danh mục các ngành
 hàng kinh doanh, danh mục các bộ phận hạch toán, các tài khoản ngân hàng, tài
-khoản tiền vay...
+khoản tiền vay
 
 Đối với đối tượng mà danh sách các đối tượng này hay thay đổi theo thời gian thì
 không nên mở các tiểu khoản để theo dõi. Đối với các đối tượng này nên sử dụng
 các danh mục khác để theo dõi, ví dụ: danh mục vụ việc, danh mục sản phẩm, danh
-mục từ điển tự do...
-
+mục từ điển tự do
 
 ##### 1.1.1.2 Cách thức khai báo danh mục tài khoản trong SA
 
@@ -3460,7 +2757,6 @@ Các thông tin phải khai báo khi xây dựng hệ thống tài khoản bao g
 6. Loại tiền
 7. Tài khoản mẹ
 
-
 8. Tài khoản có hay không theo dõi chi tiết công nợ cho từng đối tượng phải thu hay
     phải trả.
 9. Tài khoản là tài khoản sổ cái hay không phải là tài khoản sổ cái. Các tài khoản sổ
@@ -3482,7 +2778,7 @@ Các thông tin phải khai báo khi xây dựng hệ thống tài khoản bao g
     phương pháp sau: Trung bình tháng, Đích danh, Nhập trước xuất trước,
     Trung bình di động hàng ngày và Tỷ giá giao dịch thực tế.
 
-##### 1.1.1.4 Danh mục các tiểu khoản............................................................................................................................................................................
+##### 1.1.1.4 Danh mục các tiểu khoản
 
 Các thông tin phải khai báo khi xây dựng hệ thống tài khoản bao gồm:
 
@@ -3502,7 +2798,6 @@ Các thông tin về nhóm các tiểu khoản gồm có:
 
 1. Mã nhóm tiểu khoản
 2. Tên nhóm tiểu khoản
-
 
 3. Tên tiếng Anh của nhóm tiểu khoản.
 
@@ -3543,7 +2838,6 @@ Trong SAO các tài khoản được chia thành các loại sau:
 - 5100 - Doanh thu
 - 5200 - Các khoản giảm trừ
 
-
 - 6000 - Chi phí = 6300 + 6400
 - 6300 - Giá vốn hàng bán
 - 6400 - Chi phí bán hàng và chi phí quản lý
@@ -3580,7 +2874,7 @@ Kết chuyển số dư của các tài khoản và công nợ sang đầu năm 
 “Kế toán tổng hợp / Kết chuyển số dư tài khoản, công nợ sang năm sau”.
 
 Lưu ý là trong chức năng này chỉ thực hiện kết chuyển số dư tài khoản và số dư công nợ.
-Số dư của các đối tượng quản lý khác như số tồn kho, số dư vụ việc... phải thực hiện kết
+Số dư của các đối tượng quản lý khác như số tồn kho, số dư vụ việc phải thực hiện kết
 chuyển ở các phân hệ quản lý tương ứng.
 
 Nếu sau khi đã kết chuyển số dư mà ta sửa lại số liệu ảnh hưởng đến số dư thì phải thực
@@ -3589,7 +2883,6 @@ hiện kết chuyển lại.
 ### 5.4 Cập nhật chứng từ đầu vào
 
 **Các chức năng chính của menu cập nhật số liệu**
-
 
 Menu "Cập nhật số liệu" trong phân hệ kế toán tổng hợp gồm có các menu con sau:
 
@@ -3606,13 +2899,11 @@ Menu "Cập nhật số liệu" trong phân hệ kế toán tổng hợp gồm c
 **Các thông tin của phiếu kế toán**
 
 Phiếu kế toán dùng để cập nhật các bút toán điều chỉnh, các bút toán phân bổ, kết chuyển
-cuối kỳ...
+cuối kỳ
 
 Phiếu kế toán có các thông tin sau.
 
-```
-Phần thông tin chung về chứng từ:
-```
+``Phần thông tin chung về chứng từ:``
 - Số chứng từ
 - Ngày hạch toán
 - Ngày lập chứng từ
@@ -3631,7 +2922,6 @@ _Phần chi tiết hạch toán:_
 - Phát sinh nợ theo đồng hạch toán
 - Phát sinh có theo đồng hạch toán
 - Các trường tự do
-
 
 - Nhóm định khoản.
 _Phần chi tiết thông tin về các hoá đơn thuế GTGT đầu vào:_
@@ -3668,7 +2958,6 @@ _1. Số tiền thuế trong bảng kê thuế theo tài khoản thuế phải b
 2. Hạch toán tài khoản trong phần nhập chi tiết thông tin về các hoá đơn thuế GTGT_
     _đầu vào chỉ phục vụ lọc tìm số liệu liên quan đến bảng kê hoá đơn thuế GTGT đầu_
 
-
 ```
 vào chứ không ảnh hưởng đến sổ cái. Phần hạch toán tài khoản thuế sổ cái phải
 hạch toán ở phần chi tiết hạch toán của chứng từ.
@@ -3679,7 +2968,7 @@ Chương trình cho phép hạch toán nhiều nợ nhiều có trên cùng mộ
 phải tách chúng thành các nhóm hạch toán đối ứng 1 nợ - nhiều có hoặc 1 có - nhiều nợ.
 Tương ứng với mỗi nhóm này ta phải mã hoá thành các nhóm định khoản khác nhau ở
 trường nhóm định khoản. Ví dụ ta có mã hoá từng nhóm định khoản khác nhau bằng
-cách đánh số: 1, 2, 3...
+cách đánh số: 1, 2, 3
 
 Trong trường hợp chỉ có 1 nhóm định khoản thì không cần phải cập nhập trường nhóm
 định khoản (để trắng).
@@ -3714,23 +3003,14 @@ tự động sinh ra các bút toán phân bổ cuối kỳ.
 
 _Phần thông tin chung:_
 
-```
-Thông tin Ghi chú
-```
+``Thông tin Ghi chú``
 
 ```
 Stt bút toán Trình tự thực hiện các bút toán phân bổ trong trường hợp chương trình
 tự động thực hiện nhiều bút toán phần bổ cùng 1 lúc.
 Tên bút
 toán
-```
-```
-Tên bút toán sẽ được lưu trong phần diễn giải nội dung phát sinh.
-```
-```
-Tài khoản
-ghi có
-```
+````` Tên bút toán sẽ được lưu trong phần diễn giải nội dung phát sinh.```` Tài khoản ghi có``
 ```
 Tài khoản sẽ phân bổ đi.
 Trong trường hợp tài khoản phân bổ đi có nhiều tiểu khoản và các tiểu
@@ -3738,31 +3018,7 @@ khoản này khi phân bổ có cùng một tiêu thức phân bổ thì có th�
 tài khoản sẽ phân bổ đi là tài khoản tổng hợp.
 Phân bổ
 theo dự án
-```
-```
-Cho phép phân bổ chi tiết theo dự án C/K
-```
-```
-Mã dự án
-mẹ
-```
-```
-Nếu có phân bổ theo dự án cho phép chọn theo dự án mẹ
-```
-```
-Mã DVCS Mã đơn vị cơ sở. Hệ thống cho phép khai báo bút toán riêng cho từng
-đơn vị c sở
-```
-_Phần thông tin chi tiết_
-
-```
-Thông tin Ghi chú
-Tài khoản
-ghi nợ
-```
-```
-Tài khoản sẽ nhận phân bổ. Tài khoản phải là tài khoản chi tiết.
-```
+````` Cho phép phân bổ chi tiết theo dự án C/K```` Mã dự án mẹ```` Nếu có phân bổ theo dự án cho phép chọn theo dự án mẹ```` Mã DVCS Mã đơn vị cơ sở. Hệ thống cho phép khai báo bút toán riêng cho từng đơn vị c sở`_Phần thông tin chi tiết_`Thông tin Ghi chú Tài khoản ghi nợ```` Tài khoản sẽ nhận phân bổ. Tài khoản phải là tài khoản chi tiết.``
 ```
 Mã dự án Sử dụng trong trường hợp phân bổ được chi tiết hoá cho từng vụ việc.
 Trong trường hợp này các phát sinh đã chỉ rõ ra cho vụ việc nào sẽ được
@@ -3777,22 +3033,8 @@ hạch toán nào.
 Tk tính hệ
 số nợ/Tk có
 1, 2, 3
-```
-```
-Cặp tài khoản dùng để tự động tính hệ số phân bổ.
-```
-```
-Mã phí Sử dụng phân bổ chi tiết theo từng mã phí
-```
-```
-Mã bộ phân
-xưởng
-```
-```
-Sử dụng phân bổ chi tiết theo từng mã phân xưởng
-```
+````` Cặp tài khoản dùng để tự động tính hệ số phân bổ.```` Mã phí Sử dụng phân bổ chi tiết theo từng mã phí```` Mã bộ phân xưởng```` Sử dụng phân bổ chi tiết theo từng mã phân xưởng``
 **Tính hệ số phân bổ tự động**
-
 
 Hệ số phân bổ có thể do người dùng tự nhập hoặc được tính bởi chương trình.
 
@@ -3805,14 +3047,7 @@ tính hệ số theo yêu cầu của từng khách hàng cụ thể.
 
 Khi tạo bút toán phân bổ tự động ta phải khai báo thêm các thông tin sau:
 
-```
-Thông tin Ghi chú
-Số CT Số của chứng từ của bút toán phân bổ tự động
-```
-```
-Số tiền
-phân bổ
-```
+``Thông tin Ghi chú Số CT Số của chứng từ của bút toán phân bổ tự động```` Số tiền phân bổ``
 ```
 Trong trường hợp ta không phân bổ hết toàn bộ số tiền phát sinh mà chỉ
 phân bổ một phần tiền phát sinh thì khi thực hiện bút toán phân bổ phải
@@ -3829,11 +3064,7 @@ cơ sở
 ```
 Khai báo trong trường hợp phân bổ không hết toàn bộ số phát sinh mà chỉ
 phân bổ một số tiền nhất định khai báo ở trên.
-```
-```
-Hệ số phân
-bổ
-```
+````` Hệ số phân bổ``
 ```
 Hệ số phân bổ cho từng tài khoản nhận phân bổ.
 Khi khai báo các hệ số ta không bắt buộc khai báo hệ số theo tỷ lệ phần
@@ -3853,10 +3084,9 @@ Cuối kỳ ta thường phải thực hiện các bút toán kết chuyển sau
 1. Kết chuyển tài khoản giá vốn hàng bán vào tài khoản kết quả kinh doanh
 2. Kết chuyển tài khoản doanh thu vào tài khoản kết quả kinh doanh
 
-
 3. Kết chuyển tài khoản chi phí bán hàng vào tài khoản kết quả kinh doanh
 4. Kết chuyển tài khoản chi phí quản lý vào tài khoản kết quả kinh doanh
-5. Kết chuyển khác...
+5. Kết chuyển khác
 
 Số lượng các bút toán kết chuyển có thể là rất lớn (tới vài trăm) trong trường hợp quản
 lý chi tiết về chi phí và doanh thu theo loại hình kinh doanh và bộ phận kinh doanh.
@@ -3893,20 +3123,12 @@ giảm trừ trong kỳ.
 
 _Phần thông tin chung:_
 
-```
-Thông tin Ghi chú
-```
-```
-Stt
-```
+``Thông tin Ghi chú```` Stt``
 ```
 Trình tự thực hiện các bút toán kết chuyển trong trường
 hợp chương trình tự động thực hiện nhiều bút toán kết
 chuyển cùng 1 lúc.
-```
-```
-Tên bút toán Tên bút toán ssinh. ẽ^ được lưu trong phần diễn giải nội dung phát
-```
+````` Tên bút toán Tên bút toán ssinh. ẽ^ được lưu trong phần diễn giải nội dung phát``
 
 ```
 Tài khoản ghi nợ Tài khoản cần kết chuyển ghi nợ/tài khoản đích
@@ -3953,7 +3175,6 @@ kỳ cho từng khách hàng/đối tượng công nợ.
 tự động tạo các bút toán chênh lệch tỷ giá cuối kỳ cho từng hoá đơn nhưng được thực
 hiện bên phân hệ kế toán mua hàng/bán hàng.
 
-
 Ta có thể xóa hoặc in các bút toán đã tạo chênh lệch tỷ giá cuối kỳ cho 1 tài khoản.
 
 ### 5.5 Báo cáo
@@ -3993,7 +3214,6 @@ Sổ sách theo hình thức chứng từ ghi sổ gồm có:
 - Bảng cân đối số phát sinh của các tài khoản
 - Bảng số dư cuối kỳ của các tài khoản
 
-
 - Bảng số dư đầu kỳ của các tài khoản.
 
 #### 5.5.3 Báo cáo tài chính
@@ -4028,24 +3248,22 @@ Các báo cáo tài chính gồm có:
 
 ## 6 Phân hệ Kế toán tiền mặt tiền gửi, tiền vay
 
-### 6.1 Giới thiệu chung.............................................................................................................................
+### 6.1 Giới thiệu chung
 
 **Chức năng của phân hệ kế toán vốn bằng tiền**
 
 - Theo dõi tiền mặt, tiền gửi ngân hàng
-
 
 - Theo dõi theo tiền VNĐ và ngoại tệ
 - Theo dõi tiền gửi, tiền vay tại nhiều ngân hàng khác nhau
 - Theo dõi số dư tức thời tiền mặt tại quỹ, tiền gửi tại từng tài khoản ở các ngân
     hàng
 - Theo dõi thanh toán thu chi theo khách hàng, hợp đồng, hoá đơn mua bán và
-    theo các khoản mục chi phí...
+    theo các khoản mục chi phí
 - Theo dõi chi tiết tình hình vay tiền, tính lãi, trả nợ gốc, số dư theo từng khế ước
     vay tại các ngân hàng, các đối tượng cho vay khác
 - Theo dõi chi tiết tình hình cho vay, tạm ứng và tình hình thu hồi các khoản cho
     vay, thanh toán tạm ứng của từng đối tượng
-
 
 **Sơ đồ tổ chức của phân hệ kế toán vốn bằng tiền**
 
@@ -4071,42 +3289,12 @@ Thông tin về danh mục ngân hàng gồm có:
 
 - Tài khoản kế toán (tài khoản tiền gởi ngân hàng trong danh mục tài khoản)
 
-```
-CH Ứ NG T Ừ
-```
-```
-Phiếu thu
-Phiếu chi
-```
-```
-S Ố LI Ệ U T Ừ CÁC PHÂN
-H Ệ KHÁC
-```
-```
-Bán hàng, côn nợ phải
-thu
-Mua hàng công nợ
-```
-```
-CHUY Ể N S Ố LI Ệ U SANG
-CÁC PHÂN H Ệ KHÁC
-```
-```
-Kế toán tổng hợp
-Công nợ phải thu
-```
-```
-BÁO CÁO
-```
-```
-Nhật ký thu tiền, chi
-```
+``CH Ứ NG T Ừ```` Phiếu thu Phiếu chi```` S Ố LI Ệ U T Ừ CÁC PHÂN H Ệ KHÁC```` Bán hàng, côn nợ phải thu Mua hàng công nợ```` CHUY Ể N S Ố LI Ệ U SANG CÁC PHÂN H Ệ KHÁC```` Kế toán tổng hợp Công nợ phải thu```` BÁO CÁO```` Nhật ký thu tiền, chi``
 ###### PHÂN H Ệ
 
 ###### K Ế TOÁN
 
 ###### V Ố N B Ằ NG
-
 
 - Số tài khoản ngân hàng
 - Tên ngân hàng
@@ -4141,12 +3329,9 @@ Menu "Cập nhật số liệu" gồm có các menu con sau:
 
 Màn hình nhập liệu:
 
-
 Phiếu thu tiền mặt và giấy báo có của ngân hàng bao gồm các thông tin sau:
 
-```
-Phần thông tin chung về chứng từ:
-```
+``Phần thông tin chung về chứng từ:``
 - Loại phiếu thu. Phiếu thu được phân thành các loại sau:
     1 - Thu tiền chi tiết cho các hoá đơn
     2 - Thu của 1 khách hàng
@@ -4163,7 +3348,6 @@ Phần thông tin chung về chứng từ:
 - Lý do nộp (diễn giải chung)
 - Tài khoản nợ
 - Số phiếu thu
-
 
 - Ngày hạch toán
 - Ngày lập phiếu thu
@@ -4184,7 +3368,7 @@ phiếu thu bằng 1)_
 - Số tiền thu lần này quy đổi ra đồng tiền ghi trên hoá đơn
 - Diễn giải (chi tiết cho từng hạch toán)
 - Số tiền thu lần này qui đổi ra đồng tiền hạch toán
-- Các mã của các trường tự do...
+- Các mã của các trường tự do
 
 _Phần chi tiết hạch toán trong trường hợp thu của 1 khách hàng (loại phiếu thu bằng
 2)_
@@ -4196,7 +3380,7 @@ _Phần chi tiết hạch toán trong trường hợp thu của 1 khách hàng (
 - Diễn giải (chi tiết cho từng hạch toán)
 - Phát sinh có theo đồng tiền hạch toán (theo tỷ giá giao dịch)
 - Phát sinh có theo đồng tiền hạch toán (theo tỷ giá ghi sổ)
-- Các mã của các trường tự do...
+- Các mã của các trường tự do
 
 _Phần chi tiết hạch toán trong trường hợp thu của nhiều khách hàng (loại phiếu thu
 bằng 3)_
@@ -4204,13 +3388,12 @@ bằng 3)_
 - Tài khoản có
 - Tên tài khoản có
 
-
 - Mã khách
 - Tên khách
 - Phát sinh có theo đồng tiền giao dịch
 - Diễn giải (chi tiết cho từng hạch toán)
 - Phát sinh có theo đồng tiền hạch toán
-- Các mã của các trường tự do...
+- Các mã của các trường tự do
 _Phần chi tiết hạch toán trong trường hợp vay (loại phiếu thu bằng 4); nộp tiền vào
 ngân hàng, chuyển tiền từ ngân hàng khác đến (loại phiếu thu bằng 5); mua ngoại tệ
 (loại phiếu thu bằng 6); người mua trả tiền trước (loại phiếu thu bằng 7); khác (loại
@@ -4220,7 +3403,7 @@ phiếu thu bằng 9)_
 - Phát sinh có theo đồng tiền giao dịch
 - Diễn giải (chi tiết cho từng hạch toán)
 - Phát sinh có theo đồng tiền hạch toán
-- Các mã của các trường tự do...
+- Các mã của các trường tự do
 _Phần tính tổng của phiếu thu_
 - Hạn thanh toán: đối với trường hợp vay (loại phiếu thu bằng 4)
 - Tổng số tiền trên phiếu thu/giấy báo có
@@ -4241,7 +3424,6 @@ _Phần tính tổng của phiếu thu_
     hóa đơn này trừ đi số tiền thu theo phiếu thu hiện tại. Trong trường hợp lọc chứng
     từ cũ ra sửa thì số tiền đã thu sẽ bao gồm cả các số tiền của các phiếu thu sau phiếu
     thu hiện thời.
-
 
 - Khi loại tiền thu trên phiếu thu khác với loại tiền trên hóa đơn bán hàng thì phải
     nhập số tiền quy đổi tương ứng với loại tiền ghi trên hóa đơn. Khi này chương trình
@@ -4289,11 +3471,7 @@ _Phần tính tổng của phiếu thu_
     chức năng cập nhật lại tỷ giá giao dịch được khai báo trong danh mục tỷ giá cho các
     phiếu thu ngoại tệ. Khi này, chương trình sẽ cập nhật lại tỷ giá giao dịch cho các
 
-
-```
-phiếu thu ngoại tệ trừ các phiếu thu thuộc loại mua ngoại tệ (theo tỷ giá thỏa thuận
-với người bán ngoại tệ).
-```
+``phiếu thu ngoại tệ trừ các phiếu thu thuộc loại mua ngoại tệ (theo tỷ giá thỏa thuận với người bán ngoại tệ).``
 - Trong trường hợp tỷ giá giao dịch do người sử dụng tự cập nhật mà không sử dụng
     chức năng tự động cập nhật của chương trình thì có thể sử dụng loại phiếu thu bằng
     9.
@@ -4333,12 +3511,9 @@ phiếu thu nêu trên.
 
 Màn hình nhập liệu:
 
-
 Phiếu chi tiền mặt và giấy báo nợ của ngân hàng có các thông tin sau:
 
-```
-Phần thông tin chung về chứng từ:
-```
+``Phần thông tin chung về chứng từ:``
 - Loại phiếu chi. Có các loại phiếu chi sau:
     1 - Chi trả chi tiết theo các hoá đơn
     2 - Chi cho 1 khách hàng
@@ -4355,7 +3530,6 @@ Phần thông tin chung về chứng từ:
 - Lý do chi (diễn giải chung)
 - Tài khoản có
 - Số phiếu chi
-
 
 - Ngày hạch toán
 - Ngày lập phiếu chi
@@ -4396,7 +3570,6 @@ bằng 3)_
 - Tài khoản nợ
 - Tên tài khoản nợ
 
-
 - Mã khách
 - Tên khách
 - Phát sinh nợ theo đồng tiền giao dịch
@@ -4428,7 +3601,7 @@ _Phần chi tiết hạch toán trong trường hợp chi thanh toán chi phí t
 ```
 0 - Không có hóa đơn
 1 - Hóa đơn GTGT giá chưa bao gồm thuế
-2 - Hóa đơn GTGT giá đã bao gồm thuế (tem, vé...)
+2 - Hóa đơn GTGT giá đã bao gồm thuế (tem, vé)
 3 - Hóa đơn trực tiếp được khấu trừ lùi
 4 - Hoá đơn trực tiếp không được khấu trừ
 5 – Nhiều loại hóa đơn.
@@ -4437,7 +3610,6 @@ _Phần chi tiết hạch toán trong trường hợp chi thanh toán chi phí t
 - Ngày hóa đơn
 - Số seri
 - Số hóa đơn
-
 
 - Mã khách (nhà cung cấp)
 - Tên khách (tên nhà cung cấp)
@@ -4477,7 +3649,6 @@ hàng của khách hàng trong danh mục khách hàng.
 - Loại phiếu chi này được sử dụng khi ta chi trả tiền mua hàng hoặc trả tiền đi vay
     trước đó và mong muốn khi nhập liệu phải chỉ rõ là chi tiền cho hóa đơn nào hoặc
     của phiếu thu đi vay cụ thể.
-
 
 - Trong trường hợp chi trả tiền cho nhiều hóa đơn thì phải tách số tiền ra theo từng
     hóa đơn 1.
@@ -4523,11 +3694,7 @@ hàng của khách hàng trong danh mục khách hàng.
 - Loại phiếu chi này được sử dụng trong trường hợp chuyển tiền ngoại tệ (nộp tiền
     ngoại tệ vào ngân hàng, chuyển tiền ngoại tệ từ ngân hàng A sang ngân hàng B) và
 
-
-```
-sử dụng chức năng tự động cập nhật tỷ giá giao dịch của phiếu thu bằng tỷ giá ghi
-sổ khi chi tiền ngoại tệ.
-```
+``sử dụng chức năng tự động cập nhật tỷ giá giao dịch của phiếu thu bằng tỷ giá ghi sổ khi chi tiền ngoại tệ.``
 - Trong trường hợp tỷ giá giao dịch của phiếu thu do người sử dụng tự cập nhật mà
     không sử dụng chức năng tự động cập nhật của chương trình thì có thể sử dụng loại
     phiếu chi bằng 9.
@@ -4572,7 +3739,6 @@ phiếu chi nêu trên.
 
 **Lưu ý chung**
 
-
 - Sau khi đã nhập số liệu ở phần chi tiết thì không được sửa loại phiếu chi nữa. Để sửa
     được loại phiếu chi phải xóa hết các dòng chi tiết.
 
@@ -4592,7 +3758,7 @@ phiếu chi nêu trên.
 - Chương trình hỗ trợ việc tự động tính tiền thuế phụ thuộc vào loại hóa đơn thuế
     GTGT. Các hóa đơn được phân loại như sau:
        1 - Hóa đơn GTGT giá chưa bao gồm thuế
-       2 - Hóa đơn GTGT giá đã bao gồm thuế (tem, vé...)
+       2 - Hóa đơn GTGT giá đã bao gồm thuế (tem, vé)
        3 - Hóa đơn trực tiếp được khấu trừ lùi
        4 - Hoá đơn trực tiếp không được khấu trừ
        5 – Nhiều loại hóa đơn.
@@ -4610,7 +3776,6 @@ phiếu chi nêu trên.
     1 dòng hạch toán thuế ở tab hạch toán.
 - Khi lưu chứng từ chương trình sẽ kiểm tra số tiền hàng (chi phí) và số tiền thuế
     GTGT nhập ở phần hạch toán chi tiết và phần hóa đơn thuế. Nếu có sự khác nhau về
-
 
 ```
 tiền thuế giữa 2 màn hình nhập liệu thì chương trình sẽ không cho lưu và yêu cầu
@@ -4661,7 +3826,6 @@ Dưới đây là ví dụ cho một số nghiệp vụ phát sinh.
 - Khi chi tiền mặt ngoại tệ ta ghi theo tỷ giá ghi sổ đối với phát sinh ghi có tài khoản
     tiền mặt ngoại tệ.
 
-
 - Khi bán hàng cho khách hàng ta ghi theo tỷ giá giao dịch đối với phát sinh ghi nợ tài
     khoản công nợ phải thu về ngoại tệ.
 - Khi thu tiền của khách hàng ta ghi theo tỷ giá ghi sổ đối với phát sinh ghi có tài khoản
@@ -4700,7 +3864,6 @@ sẽ xem xét một số ví dụ cụ thể sau.
     nợ sẽ lấy bằng tỷ giá ghi sổ của tài khoản ghi có. Trong trường hợp này không có
     phát sinh chênh lệch tỷ giá.
 
-
 - Mua ngoại tệ. Khi này chỉ cần cập nhật một tỷ giá duy nhất – tỷ giá giao dịch. Trong
     trường hợp này không có phát sinh chênh lệch tỷ giá.
 - Bán ngoại tệ. Khi này phải cập nhật cả hai tỷ giá – tỷ giá ghi sổ để tính số tiền phát
@@ -4736,7 +3899,6 @@ sẽ xem xét một số ví dụ cụ thể sau.
           chứ không phải là tài khoản tiền mặt ngoại tệ và hạch toán vào tài khoản công
           nợ thì hạch toán vào tài khoản công nợ ngoại tệ chứ không phải công nợ VNĐ.
 - Nhận trước tiền hàng của khách hàng. Có 2 phương án xử lý cho trường hợp này.
-
 
 1. Khi nhận tiền ta hạch toán vào tài khoản công nợ trung gian (tài khoản này là
     tài khoản công nợ VNĐ chứ không theo dõi công nợ ngoại tệ). Sau khi hạch
@@ -4778,16 +3940,13 @@ Trong các phương pháp trên sau khi tính tỷ giá ghi sổ nếu có sự 
 ghi sổ và tỷ giá giao dịch thì chương trình tự động hạch toán khoản chênh lệch đó vào tài
 khoản doanh thu hoặc chi phí tài chính (tk 515 hoặc tk 635). Hai tài khoản này được khai
 
-
 báo trong phân hệ Hệ thống/ Danh mục từ điển và tham số tùy chọn/ Khai báo các tham
 số tùy chọn.
 
 Chương trình thực hiện tính toán tỷ giá ghi sổ bằng phím F5 trong khi nhập liệu trước
 khi lưu chứng từ hoặc khi lưu chứng từ chương trình sẽ tính tỷ giá ghi sổ.
 
-```
-Lưu ý:
-```
+``Lưu ý:``
 1. Nếu tính tỷ giá ghi sổ theo phương pháp trung bình tháng (tính vào cuối tháng)
     thì sau khi đã hoàn tất các nghiệp vụ thu chi ngoại tệ trong tháng ta phải chạy
     chức năng tính tỷ giá trung bình tháng ở menu: Kế toán tiền mặt, tiền gởi và tiền
@@ -4837,7 +3996,7 @@ năng trên. Tuyệt đối không được chạy các chức năng không cầ
 − Các chức năng trên chỉ được xử lý vào cuối tháng và chạy lần lượt từng tháng
 một.
 ```
-#### hàng 6.3.7 Lưu ý về cập nhật các chứng từ chuyển tiền giữa các ngân hàng và các chứng từ nộp, rút tiền từ ngân
+#### 6.3.7 Lưu ý về cập nhật các chứng từ chuyển tiền giữa các ngân hàng và các chứng từ nộp, rút tiền từ ngân
 
 **từ nộp, rút tiền từ ngân hàng**
 Xem chương 1, mục "Chứng từ trùng và vấn đề khử chứng từ trùng trong SA".
@@ -4866,7 +4025,6 @@ Trong SAO có các báo cáo sau về tiền mặt và tiền gửi ngân hàng:
 17. Bảng kê chứng từ của một tài khoản
 18. Tổng hợp phát sinh của một tài khoản.
 
-
 ### 6.5 Quản lý tiền vay theo các khế ước vay
 
 #### 6.5.1 Danh mục khế ước vay
@@ -4891,7 +4049,7 @@ Các thông tin về khế ước vay gồm có:
 - Ghi chú
 - Trạng thái
 
-#### ước sang năm sau 6.5.2 Cập nhật số dư đầu kỳ, số phát sinh lũy kế đến đầu kỳ và kết chuyển số dư, số phát sinh lũy kế của các khế
+#### 6.5.2 Cập nhật số dư đầu kỳ, số phát sinh lũy kế đến đầu kỳ và kết chuyển số dư, số phát sinh lũy kế của các khế
 
 **số phát sinh lũy kế của các khế ước sang năm sau**
 Số dư đầu kỳ của các khế ước được cập nhật ở menu “Cập nhật số dư đầu kỳ của các khế
@@ -4910,7 +4068,6 @@ cuối năm của các khế ước”.
 
 Để cập nhật được thông tin phát sinh liên quan đến tiền vay ta phải khai báo cho phép
 cập nhật trường thông tin mã khế ước ở các màn hình cập nhật chứng từ.
-
 
 Khi có phát sinh liên quan đến tiền vay thì phải chỉ rõ mã khế ước vay tương ứng.
 
@@ -4948,7 +4105,6 @@ chương trình.
 
 **Sơ đồ tổ chức của phân hệ kế toán bán hàng và công nợ phải thu**
 
-
 **Hệ thống menu của phân hệ kế toán bán hàng và công nợ phải thu**
 
 Các menu chính của phân hệ kế toán công nợ phải thu
@@ -4969,34 +4125,7 @@ Các menu chính của phân hệ kế toán công nợ phải thu
 Danh mục khách hàng dùng để quản lý khách hàng và các đối tượng công nợ phải thu,
 phải trả (tk 131, 136, 1388, 141, 331, 336 và 3388).
 
-```
-CH Ứ NG T Ừ
-```
-```
-Hóa đơn bán hàng
-Phiếu nhập hàng bán trả lại
-```
-```
-S Ố LI Ệ U T Ừ CÁC PHÂN
-H Ệ KHÁC
-```
-```
-Kế toán vốn bằng tiền
-```
-```
-CHUY Ể N S Ố LI Ệ U SANG
-CÁC PHÂN H Ệ KHÁC
-```
-```
-Kế toán tổng hợp
-Kế toán hàng tồn kho
-```
-```
-BÁO CÁO
-```
-```
-Báo cáo bán hàng
-```
+``CH Ứ NG T Ừ```` Hóa đơn bán hàng Phiếu nhập hàng bán trả lại```` S Ố LI Ệ U T Ừ CÁC PHÂN H Ệ KHÁC```` Kế toán vốn bằng tiền```` CHUY Ể N S Ố LI Ệ U SANG CÁC PHÂN H Ệ KHÁC```` Kế toán tổng hợp Kế toán hàng tồn kho```` BÁO CÁO```` Báo cáo bán hàng``
 ```
 PHÂN H Ệ K Ế
 TOÁN BÁN
@@ -5042,7 +4171,6 @@ Các thông tin về danh mục phân nhóm các khách hàng gồm có:
 - Mã nhóm
 - Tên nhóm
 - Tên tiếng Anh của nhóm
-
 
 #### 7.2.2 Danh mục thuế suất thuế GTGT
 
@@ -5092,7 +4220,6 @@ trình để đáp ứng yêu cầu này.
 Số dư đầu kỳ của khách hàng được cập nhật ở phần vào số dư công nợ đầu kỳ. Người sử
 dụng chỉ phải cập nhật số dư đầu kỳ 1 lần khi bắt đầu sử dụng SA. Đối với các kỳ tiếp
 
-
 theo trong năm và của cả các năm sau số dư công nợ sẽ do chương trình tự động tính
 toán và kết chuyển.
 
@@ -5141,12 +4268,9 @@ Phân hệ kế toán bán hàng và công nợ phải thu có các loại chứ
 
 Màn hình nhập liệu:
 
+#### 7.4.3 Cập nhật hoá đơn bán hàng kiêm phiếu xuất kho 1.1.1.27 Các thông tin trên đơn đặt hàng
 
-#### 7.4.3 Cập nhật hoá đơn bán hàng kiêm phiếu xuất kho 1.1.1.27 Các thông tin trên đơn đặt hàng Error! Bookmark not defined.
-
-```
-Phần thông tin chung về chứng từ:
-```
+``Phần thông tin chung về chứng từ:``
 - Mã khách hàng: Gõ mã số thuế hoặc biển số xe (mã khách)
 - Tên khách hàng
 - Địa chỉ
@@ -5162,10 +4286,7 @@ Phần thông tin chung về chứng từ:
 - Mã ngoại tệ: Mặc định VND
 - Tỷ giá: 1
 
-
-```
-Phần chi tiết các mặt hàng:
-```
+``Phần chi tiết các mặt hàng:``
 - Mã hàng
 - Tên hàng
 - Đơn vị tính
@@ -5202,16 +4323,12 @@ Khi cập nhật các hóa đơn bán hàng kiêm phiếu xuất kho cần lưu 
     thu, tài khoản giá vốn, tài khoản thuế thì chương trình sẽ tự động hạch toán dựa
     trên khai báo các tài khoản này cho từng mặt hàng trong phần danh mục hàng hoá
 
-
-```
-vật tư ở phân hệ hàng tồn kho và khai báo hạch toán thuế trong phần danh mục thuế
-suất.
-```
+``vật tư ở phân hệ hàng tồn kho và khai báo hạch toán thuế trong phần danh mục thuế suất.``
 - Các thông tin liên quan đến hóa đơn và khách hàng sẽ được chuyển vào bảng kê hóa
     đơn đầu ra. Nếu khách hàng chưa có địa chỉ hoặc mã số thuế, khi lưu chứng từ
     chương trình sẽ bắt nhập thêm địa chỉ và mã số thuế.
 - Nếu khách hàng là thường xuyên nhưng không có mã số thuế (ví dụ như cá nhân,
-    văn phòng đại diện của công ty nước ngoài...), để tránh việc chương trình luôn hiện
+    văn phòng đại diện của công ty nước ngoài), để tránh việc chương trình luôn hiện
     lên màn hình đòi nhập mã số thuế ta nên khai báo trong danh mục khách hàng:tại
     trường mã số thuế nhập một ký tự bất kỳ, ví dụ: ký tự " - ".
 - Giá bán của mặt hàng sẽ được hổ trợ tự động lấy từ trong danh mục giá bán, nhưng
@@ -5242,9 +4359,7 @@ Các thông tin liên quan đến phiếu nhập hàng bán bị trả lại cũ
 chứng từ này tương tự như nhập hóa đơn bán hàng kiêm phiếu xuất kho đã trình bày ở
 trên.
 
-```
-Lưu ý:
-```
+``Lưu ý:``
 
 ```
 Nếu doanh nghiệp có theo dõi thanh toán chi tiết cho từng hóa đơn, chứng từ này
@@ -5292,7 +4407,6 @@ nghiệp vụ này phát sinh, doanh nghiệp phải xuất hóa đơn giảm gi
 chứng từ này được cập nhật tại menu “Kế toán bán hàng và công nợ phải thu/ Cập nhật
 số liệu/ Hóa đơn giảm giá”.
 
-
 Trường hợp hóa đơn xuất cho khách hàng ghi số tiền lớn hơn số tiền hàng hóa, dịch vụ
 thực giao và đơn vị mua hàng yêu cầu xuất hóa đơn điều chỉnh thì chứng từ này cũng
 được cập nhật tại menu này.
@@ -5316,7 +4430,7 @@ sau:
 - Cập nhật các bút toán xử lý giữa công nợ tạm ứng trước tiền hàng của khách hàng
     và công nợ bán hàng phải thu của khách hàng.
 - Cập nhật bút toán bù trừ công nợ giữa 2 tài khoản nhưng cùng 1 khách hàng.
-- Các trường hợp điều chỉnh khác...
+- Các trường hợp điều chỉnh khác
 **Lưu ý:**
 1. Màn hình nhập liệu “Phiếu ghi nợ, ghi có tài khoản công nợ” được dùng chung
 cho cả điều chỉnh tăng và điều chỉnh giảm các khoản công nợ phải thu nên khi
@@ -5334,7 +4448,6 @@ trước tiền hàng.
 Chứng từ bù trừ công nợ được dùng để cập nhật các phát sinh bù trừ công nợ 2 khách
 hàng hoặc giữa 1 khách hàng và 1 nhà cung cấp.
 
-
 Trong trường hợp bù trừ công nợ giữa 2 tài khoản nhưng cùng 1 khách hàng thì có thể
 cập nhật ở phiếu ghi nợ, ghi có tài khoản công nợ.
 
@@ -5349,7 +4462,7 @@ năng này không làm ảnh hưởng đến số liệu trên sổ cái mà ch�
 
 ### 7.5 Một số vấn đề liên quan đến quản lý bán hàng
 
-#### 7.5.1 Bán hàng theo hệ thống giá thống nhất.........................................................................................................................
+#### 7.5.1 Bán hàng theo hệ thống giá thống nhất
 
 Đối với giá bán thì chương trình lưu giá bán lần cuối của từng mặt hàng và khi ta chọn
 một mặt hàng, chương trình tự động gán giá này vào trường giá bán, tuy nhiên người sử
@@ -5374,7 +4487,7 @@ bán hàng. Việc quản lý này được thông qua danh mục bộ phận b�
 nhập một hoá đơn bán hàng thì phải chỉ rõ luôn là doanh thu được tính cho bộ phận nào
 hoặc cho nhân viên bán hàng nào.
 
-#### 7.5.4 Cập nhật giá vốn hàng bán...................................................................................................................................................
+#### 7.5.4 Cập nhật giá vốn hàng bán
 
 Đối với các mặt hàng tính giá vốn theo phương pháp đích danh thì người sử dụng phải tự
 gõ giá vốn. Chương trình cho phép chọn phiếu nhập để thực hiện xuất hàng theo phiếu
@@ -5383,7 +4496,6 @@ nhập.
 Đối với các mặt hàng tính giá vốn theo phương pháp giá trung bình tháng, trung bình di
 động hoặc giá nhập trước xuất trước thì giá vốn được tính vào cuối tháng và chương
 trình sẽ tự động cập nhật vào các phiếu xuất bán.
-
 
 #### 7.5.5 Theo dõi bán hàng trong trường hợp xuất hoá đơn vào cuối kỳ
 
@@ -5405,7 +4517,7 @@ Liên quan đến việc nhập 2 chứng từ này như thế nào để có th
 chi tiết ở chương 1 "Giới thiệu chung" mục "Chứng từ trùng và vấn đề khử trùng trong
 SA".
 
-##### 1.1.1.31 Thu tiền bán hàng.......................................................................................................................................................................................
+##### 1.1.1.31 Thu tiền bán hàng
 
 Phiếu thu tiền bán hàng (tiền mặt, tiền gửi ngân hàng ngân hàng) của khách hàng được
 cập nhật ở phân hệ “Kế toán vốn bằng tiền”.
@@ -5432,7 +4544,6 @@ thu tiền của từng hoá đơn. Dưới đây sẽ trình bày các lưu ý 
     bán hàng và hạn thu tiền được cập nhật ở menu “Vào số dư đầu kỳ của các hoá đơn”.
 - Để chỉ rõ hạn thu tiền cho các hóa đơn, khi cập nhập các hoá đơn ta phải điền số
     ngày đến hạn thu tiền, ngày này được tính kể từ ngày lập hoá đơn. Ta có thể khai
-
 
 ```
 báo hạn thanh toán ngầm định cho từng khách hàng trong danh mục khách hàng.
@@ -5475,7 +4586,6 @@ toán ngầm định này cho từng hoá đơn cụ thể.
     hàng ta sử dụng “Phiếu ghi nợ, ghi có tài khoản công nợ” để hạch toán “Ghi nợ tài
     khoản công nợ ứng trước của khách hàng/Ghi có tài khoản công nợ phải thu”.
 
-
 - Trong trường hợp tiền ứng trước liên quan đến ngoại tệ và phải xử lý chênh lệch
     tỷ giá thì khi ứng trước phải hạch toán qua tài khoản công nợ ứng trước và tiếp
     theo xử lý số liệu như ở mục ngay trên.
@@ -5485,9 +4595,7 @@ toán ngầm định này cho từng hoá đơn cụ thể.
 Dưới đây sẽ trình bày phương án xử lý các trường hợp đặc biệt liên quan đến theo dõi
 thanh toán chi tiết theo hóa đơn.
 
-```
-Khách hàng trả lại hàng
-```
+``Khách hàng trả lại hàng``
 1. Hàng bán bị trả lại được nhập ở “Phiếu nhập hàng bán bị trả lại”.
 2. Tiếp theo vào menu “Phân bổ thu tiền hàng cho các hóa đơn” và chọn phiếu nhập
     hàng bán bị trả lại để phân bổ cho hóa đơn xuất ra trước đó.
@@ -5513,14 +4621,11 @@ trừ. Số tiền điều chỉnh này sẽ không hạch toán vào sổ cái.
 Chương trình cho phép theo dõi các khoản phải thu chi tiết cho từng khoản giống như
 hóa đơn. Dưới đây là hướng dẫn việc cập nhật số liệu cho các trường hợp này.
 
-```
-Theo dõi các khoản tạm ứng
-```
+``Theo dõi các khoản tạm ứng``
 - Để theo dõi việc thanh toán của từng khoản/lần tạm ứng thì khi nhập phiếu chi
     ta chọn loại phiếu chi bằng “4 – Chi tạm ứng, cho vay”.
 - Khi thu lại tiền hoàn ứng thì chương trình sẽ hiện lên các phiếu chi tạm ứng để
     chỉ rõ là thu tiền hoàn ứng của phiếu chi nào.
-
 
 - Hoặc khi làm thanh toán tạm ứng ta chọn nút “Số PC” để chọn phiếu chi liên quan
     đến thanh toán tạm ứng.
@@ -5561,7 +4666,6 @@ Báo cáo bán hàng gồm có:
 - Báo cáo bán hàng nhóm theo 2 chỉ tiêu
 - Báo cáo tổng hợp tiêu thụ theo giá bán
 
-
 - Danh mục giá bán
 
 #### 7.8.2 Báo cáo công nợ theo khách hàng
@@ -5582,7 +4686,7 @@ Các báo cáo liên quan đến công nợ phải thu gồm có:
 - Bảng kê chứng từ theo khách hàng, tiểu khoản và tài khoản đối ứng.
 - Tổng hợp số phát sinh theo khách hàng, tiểu khoản và tài khoản đối ứng.
 
-#### 7.8.3 Báo cáo công nợ theo hóa đơn...........................................................................................................................................
+#### 7.8.3 Báo cáo công nợ theo hóa đơn
 
 Các báo cáo liên quan đến quản trị công nợ phải thu gồm có:
 
@@ -5598,7 +4702,6 @@ Các báo cáo liên quan đến quản trị công nợ phải thu gồm có:
 #### 7.8.4 Báo cáo thuế GTGT hoá đơn hàng hoá, dịch vụ bán ra
 
 Bảng kê thuế GTGT hoá đơn hàng hoá, dịch vụ bán ra được lên ở phân hệ "Báo cáo thuế".
-
 
 ### 7.9 Quản lý các hợp đồng và đơn hàng
 
@@ -5637,7 +4740,6 @@ Các thông tin về hợp đồng bán gồm có:
 Để phân loại hợp đồng bán có thể dùng danh mục phân nhóm các hợp đồng bán. SAO
 có 03 trường để thực hiện việc phân nhóm hợp đồng.
 
-
 Các thông tin về danh mục phân nhóm các hợp đồng bán gồm có:
 
 - Kiểu phân nhóm
@@ -5645,7 +4747,7 @@ Các thông tin về danh mục phân nhóm các hợp đồng bán gồm có:
 - Tên nhóm
 - Tên tiếng anh của nhóm.
 
-#### hợp đồng sang năm sau 7.9.2 Cập nhập số dư đầu kỳ, số phát sinh lũy kế đầu kỳ, kết chuyển số dư cuối kỳ, số phát sinh lũy kế của các
+#### 7.9.2 Cập nhập số dư đầu kỳ, số phát sinh lũy kế đầu kỳ, kết chuyển số dư cuối kỳ, số phát sinh lũy kế của các
 
 **số phát sinh lũy kế của các hợp đồng sang năm sau**
 Số dư đầu kỳ của các hợp đồng được cập nhật ở menu “Vào số dư đầu kỳ của các hợp
@@ -5684,13 +4786,12 @@ Các báo cáo bao gồm:
 - Báo cáo lỗ lãi của các hợp đồng
 - Số dư đầu kỳ của các hợp đồng
 
-
 - Số dư cuối kỳ của các hợp đồng
 - Số phát sinh luỹ kế hợp đồng đầu năm.
 
 ## 8 Phân hệ Kế toán mua hang và công nợ phải trả
 
-## 8.1 Giới thiệu chung..........................................................................................................................
+### 8.1 Giới thiệu chung
 
 **Chức năng của phân hệ kế toán mua hàng và công nợ phải trả**
 
@@ -5710,7 +4811,6 @@ Các báo cáo bao gồm:
 
 **Sơ đồ tổ chức của phân hệ kế toán công nợ phải trả**
 
-
 **Hệ thống menu của phân hệ kế toán mua hàng và công nợ phải trả**
 
 Các menu chính của phân hệ kế toán mua hàng và công nợ phải trả
@@ -5723,38 +4823,11 @@ Các menu chính của phân hệ kế toán mua hàng và công nợ phải tr�
 6. Danh mục từ điển và tham số tuỳ chọn
 7. In các danh mục từ điển và tham số
 
-## 8.2 Khai báo các danh mục từ điển
+### 8.2 Khai báo các danh mục từ điển
 
 **Danh mục nhà cung cấp**
 
-```
-CH Ứ NG T Ừ
-```
-```
-Hóa đơn mua hàng
-Phiếu xuất trả lại nhà
-```
-```
-S Ố LI Ệ U T Ừ CÁC PHÂN
-H Ệ KHÁC
-```
-```
-Kế toán vốn bằng tiền
-```
-```
-CHUY Ể N S Ố LI Ệ U SANG
-CÁC PHÂN H Ệ KHÁC
-```
-```
-Kế toán tổng hợp
-Kế toán hàng tồn kho
-```
-```
-BÁO CÁO
-```
-```
-Báo cáo hàng nhập mua
-```
+``CH Ứ NG T Ừ```` Hóa đơn mua hàng Phiếu xuất trả lại nhà```` S Ố LI Ệ U T Ừ CÁC PHÂN H Ệ KHÁC```` Kế toán vốn bằng tiền```` CHUY Ể N S Ố LI Ệ U SANG CÁC PHÂN H Ệ KHÁC```` Kế toán tổng hợp Kế toán hàng tồn kho```` BÁO CÁO```` Báo cáo hàng nhập mua``
 ###### PHÂN H Ệ K Ế
 
 ###### TOÁN MUA
@@ -5765,14 +4838,13 @@ Báo cáo hàng nhập mua
 
 ###### PH Ả I THU
 
-
 Danh mục nhà cung cấp được theo dõi chung với danh mục khách hàng và các đối tượng
 công nợ, phần này đã được trình bày ở mục 6.2.1 - phân hệ kế toán bán hàng và công nợ
 phải thu.
 
-## 8.3 Cập nhật số dư công nợ đầu kỳ và kết chuyển số dư công nợ sang năm sau
+### 8.3 Cập nhật số dư công nợ đầu kỳ và kết chuyển số dư công nợ sang năm sau
 
-### 8.3.1 Cập nhật số dư công nợ đầu kỳ của các nhà cung cấp
+#### 8.3.1 Cập nhật số dư công nợ đầu kỳ của các nhà cung cấp
 
 Số dư đầu kỳ của nhà cung cấp được cập nhật ở phần vào số dự công nợ đầu kỳ. Người
 sử dụng chỉ phải cập nhật số dư đầu kỳ 1 lần khi bắt đầu sử dụng SA. Đối với các kỳ tiếp
@@ -5782,21 +4854,21 @@ toán và kết chuyển.
 Sau khi cập nhật số dư công nợ đầu kỳ, chương trình sẽ chuyển số dư tổng hợp của các
 tài khoản công nợ sang phần số dưcủa các tài khoản đầu kỳ.
 
-### 8.3.2 Cập nhật số dư công nợ đầu kỳ của các hóa đơn
+#### 8.3.2 Cập nhật số dư công nợ đầu kỳ của các hóa đơn
 
 Trường hợp người sử dụng có theo dõi chi tiết thanh toán theo từng hóa đơn thì ngoài
 việc cập nhật số dư công nợ đầu kỳ còn phải cập nhật số dư đầu kỳ chi tiết theo hóa đơn
 thông qua menu “Kế toán mua hàng và công nợ phải trả/ Cập nhật số liệu/ Vào số dư đầu
 kỳ của các hóa đơn”.
 
-### 8.3.3 Kết chuyển số dư công nợ sang năm sau
+#### 8.3.3 Kết chuyển số dư công nợ sang năm sau
 
 Số dư công nợ được kết chuyển sang năm tại menu “Kế toán tổng hợp/ Cập nhật số liệu/
 Kết chuyển số dư tài khoản, công nợ sang năm sau”.
 
-## 8.4 Cập nhật chứng từ đầu vào
+### 8.4 Cập nhật chứng từ đầu vào
 
-### 8.4.1 Phân loại các chứng từ đầu vào
+#### 8.4.1 Phân loại các chứng từ đầu vào
 
 Phân hệ kế toán mua hàng và công nợ phải trả có các loại chứng từ đầu vào sau:
 
@@ -5810,21 +4882,18 @@ Phân hệ kế toán mua hàng và công nợ phải trả có các loại ch�
 8. Phiếu ghi nợ, ghi có tài khoản công nợ: dùng để hạch toán các bút toán (không
     liên quan đến hóa đơn) ghi tăng hoặc ghi giảm công nợ.
 
-
 9. Chứng từ bù trừ công nợ: dùng để bù trừ công nợ giữa 2 nhà cung cấp và/hoặc
     khách hàng.
 
-### 8.4.2 Cập nhật phiếu nhập mua hàng nội địa và phiếu nhập khẩu
+#### 8.4.2 Cập nhật phiếu nhập mua hàng nội địa và phiếu nhập khẩu
 
-#### 1.1.1.33 Các thông tin của phiếu nhập mua hàng
+##### 1.1.1.33 Các thông tin của phiếu nhập mua hàng
 
 Màn hình nhập liệu của phiếu nhập mua hàng:
 
 Phiếu nhập mua hàng có các thông tin sau.
 
-```
-Phần thông tin chung về chứng từ:
-```
+``Phần thông tin chung về chứng từ:``
 - Mã nhà cung cấp
 - Tên nhà cung cấp
 - Địa chỉ
@@ -5835,7 +4904,6 @@ Phần thông tin chung về chứng từ:
 - Hạn TT
 - Số phiếu nhập
 - Ngày hạch toán
-
 
 - Ngày lập phiếu nhập
 - Mã ngoại tệ
@@ -5850,9 +4918,7 @@ Phần thông tin chung về chứng từ:
 Đối với phiếu nhập khẩu thì ngoài các thông tin trên còn thêm các thông tin về tài khoản
 thuế nhập khẩu, tiền thuế nhập khẩu, tài khoản thuế GTGT hàng nhập khẩu.
 
-```
-Phần chi tiết các mặt hàng:
-```
+``Phần chi tiết các mặt hàng:``
 - Mã hàng
 - Tên hàng
 - Đơn vị tính
@@ -5874,11 +4940,10 @@ _Phần thông tin chi phí mua hàng:_
 - Chi phí nguyên tệ
 - Chi phí theo đồng tiền hạch toán.
 
-
 _Các thông tin về nhập thuế giá trị gia tăng đầu vào:_
 
 - Mẫu báo cáo (Mã số của mẫu báo cáo do Bộ tài chính quy định. Ví dụ, mẫu 03,
-    04, 05...)
+    04, 05)
 - Số hoá đơn GTGT
 - Số seri
 - Ngày hoá đơn GTGT
@@ -5913,14 +4978,13 @@ _Phần thông tin tổng hợp:_
 - Tổng tiền hàng nhập kho
 - Tổng chi phí mua hàng
 
-
 - Tổng tiền thuế GTGT đầu vào
 - Tổng tiền phải thanh toán
 - Tài khoản thuế nhập khẩu
 - Tổng tiền thuế nhập khẩu
 - Tổng cộng tiền.
 
-#### 1.1.1.34 Các lưu ý khi cập nhật phiếu nhập mua hàng và phiếu nhập khẩu
+##### 1.1.1.34 Các lưu ý khi cập nhật phiếu nhập mua hàng và phiếu nhập khẩu
 
 - Liên quan đến hạch toán tài khoản nợ (tài khoản vật tư) thì chương trình sẽ tự động
     hạch toán dựa trên khai báo tài khoản vật tư của mặt hàng trong danh mục hàng
@@ -5935,7 +4999,7 @@ _Phần thông tin tổng hợp:_
     tồn kho. Để việc nhập xuất ở kho tạm không làm ảnh hưởng đến hạch toán thì ở
     phần tài khoản đối ứng phải nhập tài khoản là tài khoản kho.
 
-### 8.4.3 Cập nhật phiếu nhập chi phí mua hàng
+#### 8.4.3 Cập nhật phiếu nhập chi phí mua hàng
 
 Cách thức cập nhật chi phí mua hàng liên quan đến chứng từ chi phí mua hàng và cách
 tính giá hàng tồn kho. Dưới đây sẽ trình bày các phương án khác nhau trong việc cập
@@ -5955,7 +5019,6 @@ nhật chi phí mua hàng.
     hỗ trợ của chương trình phảI chỉ rõ chi phí gắn với phiếu nhập mua nào và phan bổ
     cho các mạt hàng trong phiếu nhập mua đó. Chương trình hỗ trợ phân bổ chi phí
 
-
 ```
 mua hàng theo giá trị của các mặt hàng nhập mua, tuy nhiên người sử dụng có thể
 sửa lại số tiền phân bổ này theo ý muốn. Việc cập nhật riêng ở menu "Phiếu nhập
@@ -5964,7 +5027,7 @@ pháp nhập trước xuất trước, khi ta phải chỉ rõ phiếu xuất kh
 nào để có thể tính được giá. Tuy nhiên các phương pháp còn lại cũng có thể sử dụng
 phiếu này để cập nhật chi phí mua hàng
 ```
-### 8.4.4 Cập nhật các phiếu xuất trả lại hàng hoá, vật tư cho nhà cung cấp..................................................................
+#### 8.4.4 Cập nhật các phiếu xuất trả lại hàng hoá, vật tư cho nhà cung cấp
 
 Khi phát sinh nghiệp vụ trả hàng lại nhà cung cấp, ta sẽ cập nhật nghiệp vụ vào phiếu
 xuất trả lại nhà cung cấp và nhập tại menu "Phiếu xuất trả lại nhà cung cấp" phân hệ
@@ -5975,29 +5038,29 @@ GTGT đầu vào sẽ ghi âm giá trị hàng mua vào và số tiền thuế G
 đơn là số hóa đơn của doanh nghiệp xuất trả lại cho nhà cung cấp, còn cột ghi chú sẽ ghi
 số hóa đơn mà nhà cung cấp đã xuất ra trước đó cho doanh nghiệp.
 
-### 8.4.5 Cập nhật các phiếu nhập xuất thẳng
+#### 8.4.5 Cập nhật các phiếu nhập xuất thẳng
 
 Phiếu nhập xuất thẳng được sử dụng trong các trường hợp sau:
 
 - Vật tư mua vào được chuyển thẳng cho sản xuất mà không thông qua kho. Trường
     hợp này thường xảy ra đối với các doanh nghiệp ngành xây lắp.
-- Vật tư mua và được xuất cho sản xuất theo đơn hàng...
+- Vật tư mua và được xuất cho sản xuất theo đơn hàng
 
 Khi sử dụng chứng từ này thì chương trình sẽ tự động tạo ra luôn phiếu xuất.
 
-### 8.4.6 Cập nhật hoá đơn mua dịch vụ
+#### 8.4.6 Cập nhật hoá đơn mua dịch vụ
 
 Việc cập hóa đơn dịch vụ cũng tương tự như việc cập nhật phiếu nhập mua hàng nhưng
 không phải nhập chi tiết từng mặt hàng mà hạch toán trực tiếp vào các tài khoản chi phí.
 
-### 8.4.7 Cập nhật phiếu thanh toán tạm ứng
+#### 8.4.7 Cập nhật phiếu thanh toán tạm ứng
 
 Phiếu thanh toán tạm ứng dùng để cập nhật các chứng từ có liên quan đến việc nhân viên
 thanh toán các khoản tạm ứng trước đó. Phiếu thanh toán tạm ứng được cập nhật giống
 như phiếu chi tiền thanh toán cho các chi phí. Tham khảo các thông tin cần thiết được
 trình bày ở phân hệ kế toán tiền mặt, tiền gửi ngân hàng.
 
-### 8.4.8 Cập nhật phiếu ghi nợ ghi nợ, ghi có tài khoản công nợ
+#### 8.4.8 Cập nhật phiếu ghi nợ ghi nợ, ghi có tài khoản công nợ
 
 Loại chứng từ này được dùng để cập nhật các chứng từ phát sinh trong các trường hợp
 sau:
@@ -6005,14 +5068,13 @@ sau:
 - Điều chỉnh tăng các khoản công nợ, các khoản phải trả khác ngoài việc mua hàng
     hóa, dịch vụ thông thường (loại chứng từ = 1 - Ghi tăng công nợ).
 
-
 - Điều chỉnh giảm các khoản nợ nhỏ do chênh lệch khi thanh toán, xóa các khoản
     nợ (loại chứng từ = 2 - Ghi giảm công nợ chi tiết theo hóa đơn, hoặc loại hóa đơn
     = 3 - Ghi giảm công nợ không chi tiết theo hóa đơn).
 - Cập nhật các bút toán xử lý giữa công nợ tạm ứng trước tiền hàng cho nhà cung
     cấp và công nợ mua hàng phải trả cho nhà cung cấp.
 - Cập nhật bút toán bù trừ công nợ giữa 2 tài khoản nhưng cùng 1 nhà cung cấp.
-- Các trường hợp điều chỉnh khác...
+- Các trường hợp điều chỉnh khác
 **Lưu ý:**
 3. Màn hình nhập liệu “Phiếu ghi nợ, ghi có tài khoản công nợ” được dùng chung
 cho cả điều chỉnh tăng và điều chỉnh giảm các khoản công nợ phải trả nên cần
@@ -6025,7 +5087,7 @@ ghi nhận khi ứng trước cho nhà cung cấp. Chương trình sẽ tự đ�
 tiền chênh lệch giữa tỷ giá trên hóa đơn và tỷ giá ghi nhận ứng trước cho nhà
 cung cấp.
 
-### 8.4.9 Cập nhật chứng từ bù trừ công nợ
+#### 8.4.9 Cập nhật chứng từ bù trừ công nợ
 
 Chứng từ bù trừ công nợ được dùng để cập nhật các phát sinh bù trừ công nợ giữa 2 nhà
 cung cấp hoặc giữa 1 nhà cung cấp và một khách hàng.
@@ -6033,7 +5095,7 @@ cung cấp hoặc giữa 1 nhà cung cấp và một khách hàng.
 Trong trường hợp bù trừ công nợ giữa 2 tài khoản nhưng cùng 1 nhà cung cấp thì có thể
 cập nhật ở phiếu ghi nợ, ghi có tài khoản công nợ.
 
-### 8.4.10 Đánh giá chênh lệch tỷ giá theo hóa đơn
+#### 8.4.10 Đánh giá chênh lệch tỷ giá theo hóa đơn
 
 Song song với việc đánh giá chênh lệch tỷ giá vào thời điểm cuối kỳ theo tài khoản và nhà
 cung cấp ở phân hệ kế toán tổng hợp, thì việc đánh giá chênh lệch tỷ giá theo hóa đơn
@@ -6042,24 +5104,23 @@ cung cấp ở phân hệ kế toán tổng hợp, thì việc đánh giá chên
 chức năng này không làm ảnh hưởng đến số liệu trên sổ cái mà chỉ làm đánh giá lại số
 tiền quy đổi ra đồng tiền hạch toán của các hóa đơn vào cuối kỳ.
 
-## 8.5 Theo dõi thanh toán tiền hàng
+### 8.5 Theo dõi thanh toán tiền hàng
 
-### 8.5.1 Mua hàng trả tiền ngay
+#### 8.5.1 Mua hàng trả tiền ngay
 
 Trong trường hợp mua hàng, vật tư trả tiền ngay sẽ xuất hiện 2 chứng từ: phiếu nhập
 mua hàng và phiếu chi.
-
 
 Liên quan đến việc nhập 2 chứng từ này như thế nào để có thể khử trùng được trình bày
 chi tiết ở chương 1 "Giới thiệu chung" ở mục "Chứng từ trùng và vấn đề khử trùng trong
 SA".
 
-### 8.5.2 Trả tiền mua hàng....................................................................................................................................................................
+#### 8.5.2 Trả tiền mua hàng
 
 Phiếu chi trả tiền mua hàng (tiền mặt, ngân hàng) cho nhà cung cấp được cập nhật ở
 phân hệ “Kế toán vốn bằng tiền”.
 
-### 8.5.3 Thanh toán tiền tạm ứng mua hàng hoá, vật tư
+#### 8.5.3 Thanh toán tiền tạm ứng mua hàng hoá, vật tư
 
 Trong các trường hợp thanh toán tiền tạm ứng mua hàng hoá, vật tư ta có 02 chứng từ:
 giấy đề nghị thanh toán tiền tạm ứng và phiếu nhập kho.
@@ -6068,7 +5129,7 @@ Liên quan đến việc nhập 2 chứng từ này như thế nào để có th
 chi tiết ở chương 1 "Giới thiệu chung" ở mục "Chứng từ trùng và vấn đề khử trùng trong
 SA".
 
-### 8.5.4 Tạm ứng trước tiền cho nhà cung cấp
+#### 8.5.4 Tạm ứng trước tiền cho nhà cung cấp
 
 Trong trường hợp tạm ứng trước tiền cho nhà cung cấp thì ta cũng nhập như một phiếu
 chi thanh toán bình thường ở phân hệ “Kế toán vốn bằng tiền”.
@@ -6079,9 +5140,9 @@ công nợ ứng trước tiền hàng cho nhà cung cấp và sau đó thực h
 khoản công nợ ứng trước tiền hàng cho nhà cung cấp với tài khoản công nợ phải trả về
 mua hàng ở menu “Phiếu ghi nợ, ghi có tài khoản công nợ”.
 
-## 8.6 Theo dõi công nợ phải trả chi tiết theo hóa đơn và thời hạn thanh toán
+### 8.6 Theo dõi công nợ phải trả chi tiết theo hóa đơn và thời hạn thanh toán
 
-### 8.6.1 Lưu ý về cập nhật các hóa đơn để có thể theo dõi thanh toán chi tiết theo hóa đơn
+#### 8.6.1 Lưu ý về cập nhật các hóa đơn để có thể theo dõi thanh toán chi tiết theo hóa đơn
 
 - Khi bắt đầu sử dụng chương trình thì số tiền đầu kỳ còn phảI trả cho nhà cung
     cấp của từng hoá đơn mua và hạn thanh toán được cập nhật ở menu “Vào số dư
@@ -6094,7 +5155,6 @@ cũng như thời hạn trả tiền cho từng hoá đơn.
 tiền kể từ ngày ghi trên hoá đơn của nhà cung cấp. Ta có thể khai báo số ngày
 ngầm định phải trả cho từng nhà cung cấp khi khai báo các thông tin liên quan
 
-
 ```
 đến nhà cung cấp ở phần danh mục nhà cung cấp. Ta có thể sửa đổi số ngày ngầm
 định này cho từng hoá đơn nhập mua cụ thể.
@@ -6104,7 +5164,7 @@ ngầm định phải trả cho từng nhà cung cấp khi khai báo các thông
     hoá đơn. Nếu ta chỉ muốn theo dõi trả tiền cho từng hoá đơn mà không cần theo
     dõi hạn trả tiền thì không cần phải gõ thời hạn thanh toán.
 
-### 8.6.2 Cập nhật tiền thanh toán cho các hóa đơn
+#### 8.6.2 Cập nhật tiền thanh toán cho các hóa đơn
 
 - Số tiền đầu kỳ còn phải trả của từng hoá đơn mua hàng và hạn trả tiền được cập
     nhật ở menu “Vào số dư đầu kỳ của các hoá đơn”.
@@ -6135,8 +5195,7 @@ liệu/ Phân bổ thu tiền hàng cho các hóa đơn”.
 Trường hợp thu hoàn tạm ứng thì cũng được thực hiện tương tự như trên, chỉ khác là
 chứng từ phân bổ sẽ là phiếu thu, giấy báo có (loại phiếu thu bằng 4).
 
-
-### 8.6.3 Điều chỉnh số tiền phải trả theo hóa đơn
+#### 8.6.3 Điều chỉnh số tiền phải trả theo hóa đơn
 
 Trường hợp có theo dõi thanh toán chi tiết theo hóa đơn nếu phát sinh nghiệp vụ bù trừ
 công nợ giữa 2 nhà cung cấp hoặc giữa khách hàng và nhà cung cấp, để điều chỉnh số tiền
@@ -6150,9 +5209,9 @@ trình tự sau:
 - Sử dụng chức năng phân bổ tiền hàng trả cho các hóa đơn để phân bổ số tiền
     trong chứng từ vừa tạo cho các hóa đơn cần điều chỉnh.
 
-## 8.7 Báo cáo hàng nhập mua và công nợ phải trả
+### 8.7 Báo cáo hàng nhập mua và công nợ phải trả
 
-### 8.7.1 Báo cáo hàng nhập mua
+#### 8.7.1 Báo cáo hàng nhập mua
 
 Các báo cáo liên quan đến hàng nhập mua gồm có:
 
@@ -6168,7 +5227,7 @@ Các báo cáo liên quan đến hàng nhập mua gồm có:
 33. Báo cáo giá trị hàng nhập theo khách hàng, hợp đồng
 34. Báo cáo hàng nhập nhóm theo 2 chỉ tiêu
 
-### 8.7.2 Báo cáo công nợ theo nhà cung cấp
+#### 8.7.2 Báo cáo công nợ theo nhà cung cấp
 
 Các báo cáo liên quan đến công nợ phải trả gồm có:
 
@@ -6177,7 +5236,6 @@ Các báo cáo liên quan đến công nợ phải trả gồm có:
 - Sổ đối chiếu công nợ
 - Sổ tổng hợp công nợ chữ T của một khách hàng
 - Bảng cân đối số phát sinh công nợ của các khách hàng trên một tài khoản
-
 
 - Bảng cân đối số phát sinh công nợ của các khách hàng trên nhiều tài khoản
 - Bảng tổng hợp số dư công nợ cuối kỳ
@@ -6188,7 +5246,7 @@ Các báo cáo liên quan đến công nợ phải trả gồm có:
 - Bảng kê chứng từ theo khách hàng, tiểu khoản và tài khoản đối ứng
 - Tổng hợp số phát sinh theo khách hàng, tiểu khoản và tài khoản đối ứng
 
-### 8.7.3 Báo cáo công nợ phải trả theo hoá đơn
+#### 8.7.3 Báo cáo công nợ phải trả theo hoá đơn
 
 Các báo cáo liên quan đến công nợ phải trả gồm có:
 
@@ -6201,14 +5259,14 @@ Các báo cáo liên quan đến công nợ phải trả gồm có:
 - Sổ nhật ký mua hàng
 - Sổ nhật ký chi trả tiền mua hàng
 
-### 8.7.4 Báo cáo thuế GTGT hàng hoá, dịch vụ mua vào
+#### 8.7.4 Báo cáo thuế GTGT hàng hoá, dịch vụ mua vào
 
 Bảng kê hóa đơn thuế GTGT hàng hoá, dịch vụ mua vào được lên ở phân hệ "Báo cáo
 thuế".
 
-## 8.8 Quản lý hợp đồng và đơn hàng
+### 8.8 Quản lý hợp đồng và đơn hàng
 
-### 8.8.1 Danh mục hợp đồng, đơn hàng
+#### 8.8.1 Danh mục hợp đồng, đơn hàng
 
 Các thông tin về hợp đồng mua gồm có:
 
@@ -6219,7 +5277,6 @@ Các thông tin về hợp đồng mua gồm có:
 - Diễn giải
 - Ngày ký
 - Hạn hoàn thành
-
 
 - Ngày bắt đầu
 - Ngày hoàn thành
@@ -6250,7 +5307,7 @@ Các thông tin về danh mục phân nhóm các hợp đồng mua gồm có:
 - Mã tra cứu
 - Tên tiếng anh của nhóm.
 
-#### hợp đồng sang năm sau 8.8.2 Cập nhập số dư đầu kỳ, số phát sinh lũy kế đầu kỳ và kết chuyển số dư cuối kỳ, số phát sinh lũy kế của các
+#### 8.8.2 Cập nhập số dư đầu kỳ, số phát sinh lũy kế đầu kỳ và kết chuyển số dư cuối kỳ, số phát sinh lũy kế của các
 
 **kỳ, số phát sinh lũy kế của các hợp đồng sang năm sau**
 Số dư đầu kỳ của các hợp đồng được cập nhật ở menu “Vào số dư đầu kỳ của các hợp
@@ -6258,7 +5315,6 @@ Số dư đầu kỳ của các hợp đồng được cập nhật ở menu “
 
 Số phát sinh lũy kế đầu kỳ của các hợp đồng được cập nhật ở menu “Vào số phát sinh lũy
 kế của các hợp đồng”.
-
 
 Số dư của các hợp đồng được kết chuyển sang năm sau tại menu “Kết chuyển số dư của
 các hợp đồng sang năm sau”.
@@ -6291,7 +5347,7 @@ tin “Mã hợp đồng” ngay các màn hình nhập liệu.
 
 ## 9 Phân hệ Kế toán hàng tồn kho
 
-### 9.1 Giới thiệu chung..........................................................................................................................
+### 9.1 Giới thiệu chung
 
 **Chức năng của phân hệ kế toán hàng tồn kho**
 
@@ -6302,7 +5358,6 @@ tin “Mã hợp đồng” ngay các màn hình nhập liệu.
     đích danh
 - Theo dõi danh điểm vật tư theo cấu trúc cây
 - Theo dõi theo VNĐ và ngoại tệ
-
 
 - Phân hệ kế toán hàng tồn kho liên kết số liệu với phân hệ kế toán bán hàng, kế
     toán công nợ phải trả, kế toán công nợ phải thu, kế toán tổng hợp, kế toán chi
@@ -6327,41 +5382,12 @@ Các menu chính của phân hệ kế toán hàng tồn kho
 
 Các thông tin về vật tư, hàng hoá gồm có:
 
-```
-CH Ứ NG T Ừ
-```
-```
-Phiếu nhập kho
-Phiếu xuất kho
-```
-```
-S Ố LI Ệ U T Ừ CÁC PHÂN
-H Ệ KHÁC
-```
-```
-Kế toán mua hàng
-Kế toán bán hàng
-```
-```
-CHUY Ể N S Ố LI Ệ U SANG
-CÁC PHÂN H Ệ KHÁC
-```
-```
-Kế toán tổng hợp
-Kế toán giá thành
-```
-```
-BÁO CÁO
-```
-```
-Báo cáo hàng nhập
-```
+``CH Ứ NG T Ừ```` Phiếu nhập kho Phiếu xuất kho```` S Ố LI Ệ U T Ừ CÁC PHÂN H Ệ KHÁC```` Kế toán mua hàng Kế toán bán hàng```` CHUY Ể N S Ố LI Ệ U SANG CÁC PHÂN H Ệ KHÁC```` Kế toán tổng hợp Kế toán giá thành```` BÁO CÁO```` Báo cáo hàng nhập``
 ###### PHÂN H Ệ K Ế
 
 ###### TOÁN HÀNG
 
 ###### T Ồ N KHO
-
 
 - Mã vật tư
 - Mã phụ
@@ -6395,7 +5421,6 @@ Báo cáo hàng nhập
 - Phân nhóm vật tư 3
 - Ghi chú
 - Các trường tự do.
-
 
 Các thông tin liên quan đến tài khoản được sử dụng để tự động hạch toán khi nhập các
 chứng từ nhập xuất vật tư, hàng hoá.
@@ -6443,7 +5468,6 @@ chương trình sẽ tự động tính và lưu tổng số tồn kho của t�
 Đối với các vật tư tính giá tồn kho theo phương pháp nhập trước xuất trước ta phải khai
 báo số tồn đầu (về số lượng và giá trị) của từng phiếu nhập mà chưa xuất hết.
 
-
 Trường hợp lần đầu tiên sử dụng chương trình, có thể coi toàn bộ số tồn kho đầu kỳ là
 một phiếu nhập chưa xuất hết và nhập một phiếu đầu kỳ duy nhất.
 
@@ -6480,14 +5504,13 @@ Trong trường hợp điều chuyển kho qua 2 bước thì phiếu nhập đi
 cập nhật ở menu này. Nếu thực hiện điều chuyển kho 1 bước thì phiếu nhập điều
 chuyển cập nhật ở menu phiếu xuất điều chuyển kho.
 **Phiếu xuất kho**
-Phiếu xuất kho dùng để cập nhật các phiếu xuất NVL, CCLĐ... cho sản xuất, cho sử
+Phiếu xuất kho dùng để cập nhật các phiếu xuất NVL, CCLĐ cho sản xuất, cho sử
 dụng và xuất khác.
 Xuất bán được cập nhật ở menu hóa đơn bán hàng kiêm phiếu xuất kho tại phân hệ
 kế toán bán hàng và công nợ phải thu.
 Trong trường hợp điều chuyển kho qua 2 bước thì phiếu xuất điều chuyển được
 cập nhật ở menu này. Nếu thực hiện điều chuyển kho 1 bước thì phiếu xuất điều
 chuyển cập nhật ở menu phiếu xuất điều chuyển kho.
-
 
 ```
 Trong trường hợp nhập mua và xuất thẳng luôn thì sử dụng màn hình phiếu nhập
@@ -6504,9 +5527,7 @@ nhật ở menu phiếu xuất kho.
 
 Phiếu nhập kho có các thông tin sau.
 
-```
-Phần thông tin chung về chứng từ:
-```
+``Phần thông tin chung về chứng từ:``
 - Mã giao dịch: 4 - Nhập từ sản xuất, 9 - Nhập khác
 - Mã nhà cung cấp
 - Tên nhà cung cấp
@@ -6528,7 +5549,6 @@ _Phần chi tiết các mặt hàng:_
 - Đơn giá nhập theo đồng tiền giao dịch
 - Thành tiền theo đồng tiền giao dịch
 - Đơn giá nhập theo đồng tiền hạch toán
-
 
 - Thành tiền theo đồng tiền hạch toán
 - Tài khoản nợ (tài khoản vật tư tồn kho)
@@ -6560,9 +5580,7 @@ Chương trình còn cho phép tra cứu giá của các phiếu xuất để c�
 
 Phiếu xuất kho có các thông tin sau.
 
-```
-Phần thông tin chung về chứng từ:
-```
+``Phần thông tin chung về chứng từ:``
 - Mã giao dịch: 4 - Xuất cho sản xuất, 9 - Xuất khác
 - Mã khách hàng
 - Tên khách hàng
@@ -6573,7 +5591,6 @@ Phần thông tin chung về chứng từ:
 - Ngày hạch toán
 - Ngày lập phiếu xuất
 - Mã ngoại tệ
-
 
 - Tỷ giá
 _Phần chi tiết các mặt hàng:_
@@ -6616,7 +5633,6 @@ Chương trình còn cho phép tra cứu giá của các phiếu nhập để c�
 
 ##### 1.1.1.40 Các lưu ý khi cập nhật phiếu xuất điều chuyển kho
 
-
 _Phần thông tin chung về chứng từ:_
 
 - Mã kho xuất
@@ -6653,7 +5669,6 @@ _Phần tính tổng của phiếu xuất_
 - Trạng thái: 0 – Lập chứng từ, 1 – Đã chuyển vào sổ kho, 2 – Đã chuyển vào sổ
     cái.
 
-
 **_1.1.1.39 Các lưu ý khi cập nhật phiếu xuất điều chuyển kho_**
 
 Liên quan đến hạch toán tài khoản có (tài khoản vật tư) thì chương trình sẽ tự động hạch
@@ -6684,24 +5699,21 @@ phải dùng phiếu nhập kho và phiếu xuất kho để cập nhật.
 ### 9.5 Theo dõi hàng tồn kho tại các đại lý
 
 SAO cho phép quản lý hàng gửi bán tại các đại lý tương tự như hàng tồn tại các kho của
-công ty - có thể in các báo cáo nhập xuất tồn, thẻ kho...
+công ty - có thể in các báo cáo nhập xuất tồn, thẻ kho
 
 Mỗi đại lý sẽ coi như là một kho và cũng khai báo trong danh mục kho hàng. Các nhập
 xuất, điều chuyển kho đại lý cũng thực hiện như đối với kho của đơn vị.
 
 Liên quan đến tài khoản hàng gửi bán (tài khoản 157) người sử dụng có thể theo dõi như
-là một tài khoản công nợ - có thể in sổ chi tiết công nợ, tổng hợp công nợ của các đại lý...
+là một tài khoản công nợ - có thể in sổ chi tiết công nợ, tổng hợp công nợ của các đại lý
 
 ### 9.6 Tính giá và cập nhật giá hàng tồn kho
 
-```
-SAO cho phép đánh giá hàng tồn kho theo 04 phương pháp khác nhau:
-```
+``SAO cho phép đánh giá hàng tồn kho theo 04 phương pháp khác nhau:``
 - Giá trung bình tháng,
 - Giá trung bình di động (theo ngày),
 - Giá đích danh
 - Giá nhập trước xuất trước.
-
 
 Hơn thế nữa, đối với các vật tư khác nhau có thể chọn các phương pháp đánh giá hàng
 tồn kho khác nhau.
@@ -6750,7 +5762,6 @@ của giá nhập trong kỳ ở các kho và giá tồn đầu kỳ ở các kh
 nhập xuất tồn cho một kho hoặc một nhóm kho thì nếu chỉ in về mặt số lượng mà không
 in về mặt giá trị. Còn các báo cáo riêng về giá trị tồn cuối hoặc tổng nhập hoặc tổng xuất
 
-
 trong kỳ thì có thể cả về số lượng và giá trị. Một phương án khác để xử lý các chênh lệch
 là ta phải tạo các bút toán bù trừ chênh lệch. Việc này có thể thực hiện tự động bằng
 chương trình khi ta thực hiện tính giá trung bình.
@@ -6772,10 +5783,10 @@ Trong trường hợp tính giá trung bình cho từng kho mà có phiếu xu�
 giá trung bình theo 02 chiều từ kho A sang kho B và ngược lại từ kho B sang kho A hoặc
 từ kho A sang kho B, sau đó sang kho C và lại quay về kho A thì chương trình không tính
 được giá trung bình của một vật tư ở từng kho. Nhưng nếu chỉ có các điều chuyển một
-chiều từ kho A sang B rồi sang C... nhưng không có điều chuyển ngược lại về A thì
+chiều từ kho A sang B rồi sang C nhưng không có điều chuyển ngược lại về A thì
 chương trình vẫn tính được giá trung bình của một vật tư cho từng kho.
 
-#### 9.6.2 Tính giá hàng tồn kho theo phương pháp giá nhập trước xuất trước (NTXT)...........................................
+#### 9.6.2 Tính giá hàng tồn kho theo phương pháp giá nhập trước xuất trước (NTXT)
 
 Giá NTXT được SAO tính cho các phiếu xuất bằng cách trừ dần từ các phiếu nhập theo
 nguyên tắc nhập trước xuất trước.
@@ -6799,7 +5810,6 @@ tiên sau:
 
 1. Số thứ tự ưu tiên của các kho
 2. Số chứng từ của các phiếu xuất
-
 
 3. Số thứ tự ưu tiên của các phiếu nhập
 4. Số chứng từ của các phiếu nhập.
@@ -6847,7 +5857,6 @@ nhập vào để tính ra giá trị tồn kho.
 2. Bảng kê phiếu nhập của một mặt hàng, vật tư
 3. Bảng kê phiếu nhập nhóm theo nhà cung cấp
 
-
 4. Bảng kê phiếu nhập nhóm theo vụ việc
 5. Bảng kê phiếu nhập nhóm theo dạng nhập
 6. Bảng kê phiếu nhập nhóm theo mặt hàng
@@ -6885,10 +5894,9 @@ nhập vào để tính ra giá trị tồn kho.
 10. Sổ chi tiết của một tài khoản
 11. Sổ tổng hợp chữ T của một tài khoản.
 
-
 ## 10 Phân hệ kế toán giá thành
 
-### 10.1 Giới thiệu chung......................................................................................................................
+### 10.1 Giới thiệu chung
 
 Chương trình này sẽ đề cập đến các vấn đề liên quan đến kế toán chi phí và tính giá
 thành sản phẩm.
@@ -6929,7 +5937,6 @@ Chương trình cung cấp các báo cáo về tập hợp và phân tích chi p
 
 Các thông tin về khoản mục phí gồm có:
 
-
 - Mã khoản mục phí
 - Tên khoản mục phí
 - Tên tiếng Anh.
@@ -6940,7 +5947,7 @@ Các thông tin về khoản mục phí gồm có:
 - Tổng hợp số phát sinh theo khoản mục phí
 - Tổng hợp số phát sinh theo khoản mục phí và tài khoản
 
-### 10.4 Tính giá thành sản phẩm công trình xây lắp................................................................
+### 10.4 Tính giá thành sản phẩm công trình xây lắp
 
 #### 10.4.1 Theo dõi tập hợp chi phí và tính giá thành công trình xây lắp trong SA
 
@@ -6958,7 +5965,7 @@ Các thông tin về khoản mục phí gồm có:
     dư và tính tổng số phát sinh lũy kế đến cuối năm của các công trình.
 - Các báo cáo liên quan đến các công trình gồm có các bảng kê, bảng tổng hợp số phát
     sinh theo công trình, tài khoản, chi tiết theo vật tư, tính giá thành công trình, báo
-    cáo lỗ lãi...
+    cáo lỗ lãi
 
 #### 10.4.2 Danh mục vụ việc công trình
 
@@ -6972,7 +5979,6 @@ Các thông tin về danh mục vụ việc gồm có:
 - Mã tra cứu
 - Tên vụ việc
 - Tên tiếng Anh của vụ việc
-
 
 - Khách hàng
 - Bộ phận kinh doanh (chọn từ danh mục bộ phận bán hàng)
@@ -7016,7 +6022,6 @@ lũy kế được tách thành 2 phần: số phát sinh lũy kế từ khi kh�
 Trong trường hợp muốn quản lý và lên các báo cáo chi tiết theo từng vật tư ta phải cập
 nhật thêm số phát sinh lũy kế cho từng mã vật tư của các công trình.
 
-
 Cuối năm, sau khi đã khóa số liệu ta thực hiện kết chuyển số dư và số phát sinh lũy kế
 sang đầu năm sau.
 
@@ -7048,7 +6053,7 @@ chương trình chỉ cung cấp các chức năng riêng biệt một để ng�
 hợp các chức năng này phục vụ cho việc tính giá thành sản phẩm.
 
 Ví dụ về sản phẩm sản xuất theo dây chuyền công nghệ liên tục có thể là xi măng, phân
-bón...
+bón
 
 #### 10.5.2 Tổ chức các trường thông tin để tập hợp chi phí và tính giá thành sản phẩm sản xuất liên tục
 
@@ -7060,12 +6065,11 @@ Trường mã sản phẩm dùng để theo dõi từng sản phẩm.
 
 Trường bộ phận hạch toán dùng để theo dõi phân xưởng hoặc dây chuyền sản xuất.
 
-
 #### 10.5.3 Trình tự khai báo và tính toán khi tính giá thành sản phẩm sản xuất liên tục
 
 **Khai báo các thông tin để tính giá thành sản phẩm**
 
-- Khai báo bộ phận hạch toán: dây chuyền, phân xưởng... (ở phân hệ hệ thống)
+- Khai báo bộ phận hạch toán: dây chuyền, phân xưởng (ở phân hệ hệ thống)
 - Nhập định mức nguyên vật liệu
 - Nhập định mức tiền lương
 - Khai báo hệ số quy đổi về sản phẩm chuẩn
@@ -7103,7 +6107,6 @@ Khi bắt đầu sử dụng chương trình ta phải thực hiện cập nhậ
 - Bảng kê chứng từ theo sản phẩm
 - Bảng kê chứng từ nguyên vật liệu theo sản phẩm
 
-
 - Tổng hợp số phát sinh theo sản phẩm
 - Tổng hợp số phát sinh nguyên vật liệu theo sản phẩm
 - Bảng giá thành sản phẩm
@@ -7111,7 +6114,7 @@ Khi bắt đầu sử dụng chương trình ta phải thực hiện cập nhậ
 - Thẻ tính giá thành sản phẩm (2)
 - Báo cáo chi tiết giá thành theo vật tư
 
-### 10.6 Tính giá thành sản phẩm sản xuất theo đơn hàng.....................................................
+### 10.6 Tính giá thành sản phẩm sản xuất theo đơn hàng
 
 #### 10.6.1 Bài toán tính giá thành sản phẩm sản xuất theo đơn hàng
 
@@ -7125,7 +6128,7 @@ chương trình chỉ cung cấp các chức năng riêng biệt một để ng�
 hợp các chức năng này phục vụ cho việc tính giá thành sản phẩm.
 
 Ví dụ về sản phẩm sản xuất theo đơn hàng có thể là sản phẩm may mặc, sản phẩm cơ
-khí...
+khí
 
 #### 10.6.2 Tổ chức các trường thông tin để tập hợp chi phí và tính giá thành sản phẩm sản xuất theo đơn hàng
 
@@ -7148,7 +6151,6 @@ Trường mã hợp đồng/đơn hàng (ở phân hệ bán hàng) dùng để 
     nợ phải thu)
 - Nhập lệnh sản xuất.
 - Nhập định mức nguyên vật liệu
-
 
 - Nhập định mức tiền lương
 - Khai báo hệ số quy đổi về sản phẩm chuẩn
@@ -7190,7 +6192,6 @@ Khi bắt đầu sử dụng chương trình ta phải thực hiện cập nhậ
 - Bảng giá thành sản phẩm
 - Thẻ tính giá thành sản phẩm
 
-
 - Báo cáo chi tiết giá thành theo vật tư
 
 ### 10.7 Phân tích thông tin theo một số trường tự do
@@ -7200,7 +6201,7 @@ Khi bắt đầu sử dụng chương trình ta phải thực hiện cập nhậ
 #### Sử dụng các trường tự do trong SAO để phục vụ nhu cầu quản lý
 
 Đối với phần lớn các đối tượng quản lý của doanh nghiệp như hợp đồng, công trình xây
-lắp, trang thiết bị, bộ phận hạch toán, lệnh sản xuất... trong SAO đều có 1 trường thông
+lắp, trang thiết bị, bộ phận hạch toán, lệnh sản xuất trong SAO đều có 1 trường thông
 tin riêng tương ứng để theo dõi các nghiệp vụ liên quan đến các đối tượng này.
 
 ```
@@ -7234,15 +6235,14 @@ Danh mục tài khoản lũy kế tự do
 - Tổng hợp phát sinh trên nhiều tài khoản theo trường tự do
 - Bảng cân đối số phát sinh của các danh điểm tự do.
 
-
 ## 11 Phân hệ Kế toán tài sản cố định
 
-### 11.1 Giới thiệu chung......................................................................................................................
+### 11.1 Giới thiệu chung
 
 **Các chức năng chính của phân hệ kế toán TSCĐ**
 
 - Theo dõi tài sản cố định về nguyên giá, giá trị khấu hao, giá trị còn lại, nguồn vốn,
-    bộ phận sử dụng, mục đích sử dụng, nước sản xuất, ngày đưa vào sử dụng,...
+    bộ phận sử dụng, mục đích sử dụng, nước sản xuất, ngày đưa vào sử dụng,
 - Theo dõi các thay đổi về tài sản như: tăng giảm giá trị, thôi tính khấu hao, giảm tài
     sản, điều chuyển tài sản giữa các bộ phận.
 - Tính khấu hao và lên bảng phân bổ khấu hao.
@@ -7282,7 +6282,6 @@ Các thông tin về lý do tăng giảm TSCĐ:
 
 Danh mục nhóm tài sản theo quy định của Bộ Tài chính gồm có các nhóm sau:
 
-
 - Nhà cửa, vật kiến trúc
 - Máy móc, thiết bị
 - Phương tiện vận tải
@@ -7309,11 +6308,9 @@ Các thông tin về danh mục phân nhóm các TSCĐ gồm có:
 - Tên nhóm
 - Tên tiếng Anh của nhóm.
 
-### 11.3 Khai báo thông tin về tài sản..............................................................................................
+### 11.3 Khai báo thông tin về tài sản
 
-```
-Các thông tin chính về tài sản được SAO quản lý bao gồm:
-```
+``Các thông tin chính về tài sản được SAO quản lý bao gồm:``
 12. Mã đơn vị cơ sở
 13. Mã tài sản (số thẻ)
 14. Tên tài sản
@@ -7325,7 +6322,6 @@ Các thông tin chính về tài sản được SAO quản lý bao gồm:
 20. Giá trị làm tròn
 21. Bộ phận sử dụng
 22. Tài khoản TSCĐ (tk 211)
-
 
 23. Tài khoản hao mòn TSCĐ (tk 214)
 24. Tài khoản chi phí (các tiểu khoản tương ứng của các tài khoản 627, 641, 642)
@@ -7369,7 +6365,6 @@ Các thông tin chính về TSCĐ:
 - Mã tra cứu
 - Tên TSCĐ
 
-
 - Nhóm tài sản (theo quy định của bộ tài chính)
 - Lý do tăng tài sản
 - Ngày tăng tài sản
@@ -7406,7 +6401,6 @@ Thông tin chi tiết về nguồn vốn hình thành tscđ
 - Ngày chứng từ
 - Số chứng từ
 - Diễn giải.
-
 
 Thông tin chi tiết về các phụ tùng kèm theo.
 
@@ -7452,7 +6446,6 @@ nâng cấp sau đó sử dụng lại thì sử dụng chức năng “Điều 
 #### 11.4.3 Khai báo giảm tài sản
 
 Trong trường hợp giảm tài sản thì ta khai báo giảm tài sản.
-
 
 Thông tin phải khai báo bao gồm:
 
@@ -7501,10 +6494,9 @@ Khi tạo bút toán cần phải khai báo các thông tin sau:
 64. Đến tháng
 65. Năm.
 
-
 ### 11.7 Các báo cáo về quản lý tài sản cố định
 
-#### 11.7.1 Các báo cáo kiểm kê về TSCĐ........................................................................................................................................
+#### 11.7.1 Các báo cáo kiểm kê về TSCĐ
 
 66. Báo cáo chi tiết TSCĐ: chung, theo nguồn vốn, theo bộ phận sử dụng
 67. Báo cáo tổng hợp giá trị TSCĐ
@@ -7541,14 +6533,13 @@ Các thông tin về thiết bị gồm có:
 - Tên 2
 - Mã vụ việc.
 
-## 12 Phân hệ Kế toán thuế...............................................................................................
+## 12 Phân hệ Kế toán thuế
 
 ### 12.1 Báo cáo thuế GTGT đầu vào
 
 #### 1.1.1 Cập nhật các chứng từ thuế GTGT đầu vào
 
 Liên quan đến cập nhật các chứng từ thuế GTGT đầu vào có các lưu ý sau:
-
 
 - Các hoá đơn thuế GTGT đầu vào được cập nhật ở các phần nhập mua hàng hoá
     dịch vụ, phiếu thanh toán tạm ứng và phiếu chi thanh toán các chi phí trực tiếp
@@ -7581,9 +6572,9 @@ Liên quan đến cập nhật các chứng từ thuế GTGT đầu vào có cá
 
 ```
 + Mua hàng hóa dịch vụ chịu thuế GTGT: Ghi nợ 133 / Ghi có 331, 111, 112,
-141, ...
+141, 
 + Cuối kỳ xác định và kết chuyển số thuế GTGT của hàng hóa dịch vụ mua vào
-không được khấu trừ trong kỳ (nếu có): Ghi nợ 142, 632.../ Ghi có 133
+không được khấu trừ trong kỳ (nếu có): Ghi nợ 142, 632/ Ghi có 133
 + Nếu số thuế GTGT đầu ra phải nộp lớn hơn số thuế GTGT đầu vào được
 khấu trừ thì ta kết chuyển toàn bộ số tiền bên nợ của tk 133 vào tk 33311;
 ngược lại, nếu số thuế GTGT đầu ra phải nộp nhỏ hơn số thuế GTGT đầu
@@ -7632,7 +6623,6 @@ Liên quan đến cập nhật các chứng từ thuế GTGT đầu ra có các 
     riêng các mặt hàng có cùng loại thuế suất và nhập chúng như là một chứng từ
     riêng.
 
-
 - Đối với các đơn vị xây lắp có công trình nằm trên địa bàn của tỉnh/thành phố
     khác với tỉnh/thành phố nơi khai báo thuế thì thuế GTGT đầu ra được tách thành
     2 phần: 7% thuế GTGT nộp tại tỉnh/thành phố nơi khai báo thuế và 3% thuế
@@ -7670,7 +6660,6 @@ Liên quan đến cập nhật các chứng từ thuế GTGT đầu ra có các 
     này nữa.
 - Để lên được các báo cáo thuế một cách chính xác và tự động bằng chương trình
     ta phải tuân thủ hướng dẫn cách chia tiểu khoản của tài khoản thuế GTGT đầu
-
 
 ```
 vào được khấu trừ. Cách chia các tiểu khoản này được trình bày ở phần hướng
@@ -7720,7 +6709,6 @@ Khi khai báo cách lấy số liệu của các chỉ tiêu trên báo cáo c�
 - Chương trình cho phép lựa chọn 1 trong 3 cách tổng hợp số liệu của từng chỉ tiêu
     khi lên báo cáo:
 
-
 ```
 0 - Tính theo các mã số: mỗi chỉ tiêu sẽ có một mã số tính toán, việc tính theo
 các mã số này chỉ thực hiện đối với phép cộng và trừ.
@@ -7740,5 +6728,4 @@ chạy lại báo cáo.
     được chính xác thì phần lớn các chỉ tiêu điều chỉnh trên báo cáo quyết toán là do
     người sử dụng phải tự cập nhật, chương trình chỉ có thể thực hiện tổng hợp số
     liệu tự động “phần A - Kết quả kinh doanh ghi nhận theo báo cáo tài chính”.
-
 

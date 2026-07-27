@@ -57,11 +57,49 @@ class PublicInferenceService:
         self.semantic_cache = semantic_cache
         self._redis = redis_client
 
+    async def _resolve_doc_cache_key(self, tenant_id: str) -> str:
+        if not tenant_id:
+            return "global"
+        cache_key = f"tenant_docs:{tenant_id}"
+        if self._redis:
+            try:
+                raw = await self._redis.get(cache_key)
+                if raw:
+                    return raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
+            except Exception:
+                pass
+
+        from app.modules.documents.repositories.access_repository import DocumentAccessRepository
+        access_repo = DocumentAccessRepository(self.section_repo.session)
+        doc_ids = await access_repo.get_document_ids_for_tenant(tenant_id)
+        if not doc_ids:
+            doc_key = tenant_id
+        else:
+            import hashlib
+            sorted_ids = ",".join(sorted(doc_ids))
+            doc_key = hashlib.sha256(sorted_ids.encode("utf-8")).hexdigest()[:16]
+
+        if self._redis:
+            try:
+                await self._redis.setex(cache_key, 300, doc_key)
+            except Exception:
+                pass
+        return doc_key
+
     async def _check_tiered_cache(self, tenant_id: str, user_query: str) -> dict[str, Any] | None:
+        if self._redis and user_query:
+            from app.modules.chat.cache.faq_cache import faq_lookup
+
+            faq_hit = await faq_lookup(self._redis, tenant_id, user_query)
+            if faq_hit:
+                faq_hit["_cache_tier"] = "faq"
+                return faq_hit
+
         if settings.exact_cache_enabled and self._redis:
             from app.modules.chat.cache.exact_cache import exact_cache_get
 
-            cached = await exact_cache_get(self._redis, tenant_id, user_query)
+            doc_key = await self._resolve_doc_cache_key(tenant_id)
+            cached = await exact_cache_get(self._redis, doc_key, user_query)
             if cached:
                 cached["_cache_tier"] = "exact"
                 return cached
@@ -88,8 +126,9 @@ class PublicInferenceService:
         if settings.exact_cache_enabled and self._redis:
             from app.modules.chat.cache.exact_cache import exact_cache_set
 
+            doc_key = await self._resolve_doc_cache_key(tenant_id)
             await exact_cache_set(
-                self._redis, tenant_id, user_query, payload, ttl_seconds=settings.exact_cache_ttl_seconds
+                self._redis, doc_key, user_query, payload, ttl_seconds=settings.exact_cache_ttl_seconds
             )
 
         if settings.retrieval_semantic_cache_enabled and self.semantic_cache and normalized_query and query_vector:
@@ -130,8 +169,25 @@ class PublicInferenceService:
             usage["cached"] = True
             usage["cached_type"] = cache_tier
             res = CompletionResult(
-                content=cached["content"], citations=cached["citations"], usage=usage, model=cached["model"]
+                content=cached["content"], citations=cached["citations"], usage=usage, model=cached.get("model", "cached")
             )
+            try:
+                from app.modules.chat.tasks.usage_tasks import log_model_usage_task
+
+                log_model_usage_task.delay(
+                    model_name=res.model,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    endpoint="/chat/completions",
+                    cost_micros_vnd=0,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    is_cache_hit=True,
+                    cached_type=cache_tier,
+                )
+            except Exception as exc:
+                logger.warning("Failed to log cache hit usage: %s", exc)
+
             if settings.chat_history_persist_enabled and conversation_id:
                 try:
                     from app.modules.chat.tasks.usage_tasks import save_conversation_turn_task
@@ -535,8 +591,8 @@ class PublicInferenceService:
         for doc_id, sec_id in section_doc_pairs:
             key = (doc_id, sec_id)
             cache_key = f"rag:section:{doc_id}:{sec_id}"
-            if self.semantic_cache:
-                cached = await self.semantic_cache.get(cache_key)
+            if self._redis:
+                cached = await self._redis.get(cache_key)
                 if cached:
                     section_map[key] = json.loads(cached)
                     continue
@@ -552,8 +608,8 @@ class PublicInferenceService:
                     "page_range": row.get("page_range")
                 }
                 section_map[key] = cache_dict
-                if self.semantic_cache:
-                    await self.semantic_cache.setex(f"rag:section:{key[0]}:{key[1]}", 3600, json.dumps(cache_dict))
+                if self._redis:
+                    await self._redis.setex(f"rag:section:{key[0]}:{key[1]}", 3600, json.dumps(cache_dict))
         hydrated_nodes: list[RagNode] = []
         for node in context.nodes:
             key = (node.document_id, node.section_id or "")

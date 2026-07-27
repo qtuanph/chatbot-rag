@@ -547,6 +547,8 @@ export const AIProviderSchema = z.object({
   is_builtin: z.boolean(),
   priority: z.number(),
   config: z.record(z.string(), z.unknown()).default({}),
+  key_count: z.number().optional().default(0),
+  has_key: z.boolean().optional().default(false),
   last_test_status: z.enum(["unknown", "success", "failed"]).default("unknown"),
   last_test_at: z.string().nullable().optional(),
   last_error: z.string().default(""),
@@ -626,4 +628,37 @@ export const HealthDataSchema = z.object({
   target_document_id: z.string().optional(),
   checks: z.record(z.string(), HealthCheckSchema).optional(),
   services: z.record(z.string(), HealthCheckSchema).optional(),
+});
+
+// ── FAQ / Escalation ──
+export const FaqItemSchema = z.object({
+  id: z.string(),
+  tenant_id: z.string(),
+  conversation_id: z.string().nullable().optional(),
+  question: z.string(),
+  answer: z.string(),
+  question_variants: z.array(z.string()).default([]),
+  citations: z.array(CitationSchema).default([]),
+  status: z.string(),
+  hit_count: z.number().default(0),
+  created_at: z.string().nullable().optional(),
+  updated_at: z.string().nullable().optional(),
+});
+
+export const FaqCreateRequestSchema = z.object({
+  question: z.string().min(2),
+  answer: z.string().min(2),
+  question_variants: z.array(z.string()).optional(),
+  citations: z.array(CitationSchema).optional(),
+});
+
+export const EscalationItemSchema = z.object({
+  id: z.string(),
+  tenant_id: z.string(),
+  conversation_id: z.string().nullable().optional(),
+  question: z.string(),
+  answer: z.string().nullable().optional(),
+  citations: z.array(CitationSchema).default([]),
+  status: z.string(),
+  created_at: z.string().nullable().optional(),
 });

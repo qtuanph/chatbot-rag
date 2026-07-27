@@ -73,3 +73,8 @@ export type ProviderTemplate = z.infer<typeof s.ProviderTemplateSchema>;
 // ── Health ──
 export type HealthCheck = z.infer<typeof s.HealthCheckSchema>;
 export type HealthData = z.infer<typeof s.HealthDataSchema>;
+
+// ── FAQ / Escalation ──
+export type FaqItem = z.infer<typeof s.FaqItemSchema>;
+export type FaqCreateRequest = z.infer<typeof s.FaqCreateRequestSchema>;
+export type EscalationItem = z.infer<typeof s.EscalationItemSchema>;

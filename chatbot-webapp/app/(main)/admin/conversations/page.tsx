@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { MessageSquare, RefreshCw, Zap, ShieldAlert, Sparkles, BookOpen, Clock, FileText, ChevronRight, CheckCircle2 } from "lucide-react";
+import { MessageSquare, RefreshCw, Zap, ShieldAlert, BookOpen, Clock, FileText, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { conversationsApi } from "@/lib/api-client";
 
@@ -70,43 +71,30 @@ export default function AdminConversationsPage() {
   };
 
   return (
-    <div className="space-y-6 p-6 max-w-7xl mx-auto">
-      {/* Header Banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-900/40 via-indigo-900/30 to-purple-900/40 border border-indigo-500/20 p-6 md:p-8 backdrop-blur-xl shadow-2xl">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative z-10">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-xs font-semibold uppercase tracking-wider mb-3">
-              <Sparkles className="w-3.5 h-3.5" /> Admin Audit & KB Enhancement
-            </div>
-            <h1 className="text-2xl md:text-3xl font-heading font-bold text-foreground tracking-tight">
-              Nhật ký Hỏi & Đáp (Admin Audit)
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-              Danh sách các câu hỏi thực tế của người dùng. Admin sử dụng nhật ký này để phát hiện câu hỏi "Chưa đủ căn cứ" và bổ sung tài liệu mới vào Knowledge Base.
-            </p>
-          </div>
-
-          <Button
-            onClick={fetchConversations}
-            disabled={loading}
-            variant="outline"
-            className="border-indigo-500/30 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} /> Làm mới
-          </Button>
+    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Nhật ký Hỏi & Đáp (Admin Audit)</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Theo dõi các câu hỏi thực tế của người dùng để phát hiện nội dung "Chưa đủ căn cứ" và nâng cấp Knowledge Base.
+          </p>
         </div>
+        <Button onClick={fetchConversations} disabled={loading} variant="outline" size="sm" className="gap-2">
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Làm mới
+        </Button>
       </div>
 
-      {/* Main Table List */}
-      <div className="rounded-xl border border-border bg-card/60 backdrop-blur-md overflow-hidden shadow-lg">
+      {/* Main List */}
+      <Card className="p-0 overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-muted-foreground">
-            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-400" />
+          <div className="p-12 text-center text-sm text-muted-foreground">
+            <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
             Đang tải nhật ký hội thoại...
           </div>
         ) : conversations.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground">
-            <MessageSquare className="w-10 h-10 mx-auto mb-3 text-muted-foreground/40" />
+          <div className="p-12 text-center text-sm text-muted-foreground">
+            <MessageSquare className="h-8 w-8 mx-auto mb-3 text-muted-foreground/50" />
             Chưa có cuộc hội thoại nào được ghi nhận.
           </div>
         ) : (
@@ -115,131 +103,129 @@ export default function AdminConversationsPage() {
               <div
                 key={item.id}
                 onClick={() => openConversationDetail(item.conversation_id)}
-                className="p-4 md:p-5 flex items-center justify-between hover:bg-muted/40 transition-colors cursor-pointer group"
+                className="p-4 flex items-center justify-between hover:bg-muted/50 transition-colors cursor-pointer group"
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-transform">
-                    <MessageSquare className="w-5 h-5" />
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="size-9 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0 group-hover:text-primary transition-colors">
+                    <MessageSquare className="h-4 w-4" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-medium text-foreground">
-                        {item.conversation_id.slice(0, 18)}...
+                      <span className="font-mono text-sm font-semibold truncate">
+                        {item.conversation_id}
                       </span>
-                      <Badge variant="outline" className="text-xs bg-muted/50">
+                      <Badge variant="secondary" className="text-[10px] h-4 font-mono">
                         {item.message_count} tin nhắn
                       </Badge>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
                       <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
+                        <Clock className="h-3 w-3" />
                         Lần cuối: {item.last_message_at ? new Date(item.last_message_at).toLocaleString("vi-VN") : "N/A"}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-indigo-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                    Xem chi tiết
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:translate-x-1 transition-transform" />
+                <div className="flex items-center gap-1 shrink-0 text-muted-foreground group-hover:text-foreground transition-colors">
+                  <span className="text-xs font-medium">Chi tiết</span>
+                  <ChevronRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
                 </div>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Dialog Detail View */}
       <Dialog open={!!selectedConvId} onOpenChange={() => setSelectedConvId(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto bg-card border-border">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg font-heading font-semibold">
-              <MessageSquare className="w-5 h-5 text-indigo-400" />
-              Chi tiết Cuộc hội thoại (Session Audit)
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              Chi tiết Phiên Hỏi & Đáp
             </DialogTitle>
-            <DialogDescription className="font-mono text-xs text-muted-foreground">
+            <DialogDescription className="font-mono text-xs">
               ID: {selectedConvId}
             </DialogDescription>
           </DialogHeader>
 
           {loadingDetail ? (
-            <div className="p-8 text-center text-muted-foreground">
-              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-400" />
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
               Đang tải tin nhắn...
             </div>
           ) : messages.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">Không có tin nhắn nào.</div>
+            <div className="p-8 text-center text-sm text-muted-foreground">Không có tin nhắn nào.</div>
           ) : (
-            <div className="space-y-4 py-2">
+            <div className="space-y-3.5 py-2">
               {messages.map((msg) => {
                 const isUser = msg.role === "user";
                 return (
                   <div
                     key={msg.id}
-                    className={`p-4 rounded-xl border ${
+                    className={`p-3.5 rounded-lg border text-sm ${
                       isUser
-                        ? "bg-muted/40 border-border ml-4"
-                        : "bg-indigo-950/20 border-indigo-500/20 mr-4"
+                        ? "bg-muted/40 border-border/60 ml-6"
+                        : "bg-card border-border mr-6"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2">
-                        <span
-                          className={`text-xs font-semibold uppercase px-2 py-0.5 rounded ${
-                            isUser ? "bg-muted text-muted-foreground" : "bg-indigo-500/20 text-indigo-300"
-                          }`}
+                        <Badge
+                          variant={isUser ? "outline" : "default"}
+                          className="text-[10px] h-4 font-semibold uppercase tracking-wider"
                         >
-                          {isUser ? "Người dùng (User)" : "Trợ lý AI"}
-                        </span>
+                          {isUser ? "User" : "AI"}
+                        </Badge>
+
                         {msg.is_cache_hit && (
-                          <Badge variant="outline" className="text-[10px] bg-emerald-500/10 border-emerald-500/30 text-emerald-400">
-                            <Zap className="w-3 h-3 mr-1" /> Cache HIT ({msg.cached_type || "L1"})
+                          <Badge variant="outline" className="text-[10px] h-4 bg-primary/10 border-primary/20 text-primary">
+                            <Zap className="h-3 w-3 mr-1" /> Cache HIT ({msg.cached_type || "L1"})
                           </Badge>
                         )}
                         {msg.no_answer && (
-                          <Badge variant="outline" className="text-[10px] bg-amber-500/10 border-amber-500/30 text-amber-400">
-                            <ShieldAlert className="w-3 h-3 mr-1" /> Cần bổ sung tài liệu
+                          <Badge variant="destructive" className="text-[10px] h-4">
+                            <ShieldAlert className="h-3 w-3 mr-1" /> Chưa đủ căn cứ
                           </Badge>
                         )}
                       </div>
 
                       {msg.created_at && (
-                        <span className="text-[11px] text-muted-foreground">
+                        <span className="text-[11px] text-muted-foreground font-mono">
                           {new Date(msg.created_at).toLocaleTimeString("vi-VN")}
                         </span>
                       )}
                     </div>
 
-                    {/* Message Body */}
-                    <div className="text-sm whitespace-pre-wrap leading-relaxed text-foreground">
+                    {/* Content */}
+                    <div className="whitespace-pre-wrap leading-relaxed">
                       {msg.content}
                     </div>
 
-                    {/* Citations if available */}
+                    {/* Citations */}
                     {!isUser && msg.citations && msg.citations.length > 0 && (
-                      <div className="mt-3 pt-2 border-t border-indigo-500/10">
-                        <div className="text-xs font-medium text-indigo-300 mb-1 flex items-center gap-1">
-                          <BookOpen className="w-3.5 h-3.5" /> Nguồn dẫn chứng ({msg.citations.length}):
+                      <div className="mt-3 pt-2 border-t border-border/50">
+                        <div className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
+                          <BookOpen className="h-3.5 w-3.5" /> Dẫn chứng ({msg.citations.length}):
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {msg.citations.map((c, idx) => (
-                            <Badge key={idx} variant="outline" className="text-[11px] bg-indigo-900/30 border-indigo-500/20">
-                              <FileText className="w-3 h-3 mr-1" /> {c.title || "Tài liệu"} {c.page_range ? `(Trang ${c.page_range})` : ""}
+                            <Badge key={idx} variant="secondary" className="text-[11px] font-normal">
+                              <FileText className="h-3 w-3 mr-1" /> {c.title || "Tài liệu"} {c.page_range ? `(Trang ${c.page_range})` : ""}
                             </Badge>
                           ))}
                         </div>
                       </div>
                     )}
 
-                    {/* Performance & Token usage stats */}
+                    {/* Stats */}
                     {!isUser && (
-                      <div className="mt-3 text-[11px] text-muted-foreground/80 flex flex-wrap items-center gap-3 pt-2 border-t border-border/40">
-                        {msg.model_name && <span>Model: <code className="text-foreground">{msg.model_name}</code></span>}
-                        {msg.latency_ms !== undefined && <span>Độ trễ: <code className="text-foreground">{msg.latency_ms.toFixed(0)}ms</code></span>}
+                      <div className="mt-2.5 text-[11px] text-muted-foreground flex flex-wrap items-center gap-3 pt-2 border-t border-border/40 font-mono">
+                        {msg.model_name && <span>Model: {msg.model_name}</span>}
+                        {msg.latency_ms !== undefined && <span>Độ trễ: {msg.latency_ms.toFixed(0)}ms</span>}
                         {msg.prompt_tokens !== undefined && (
-                          <span>Tokens: <code className="text-foreground">{msg.prompt_tokens + (msg.completion_tokens || 0)}</code></span>
+                          <span>Tokens: {msg.prompt_tokens + (msg.completion_tokens || 0)}</span>
                         )}
                       </div>
                     )}

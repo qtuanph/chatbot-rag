@@ -120,10 +120,12 @@ class DocumentService:
 
     async def list_documents(self, offset: int = 0, limit: int = 20, tenant_id: str | None = None) -> dict:
         items, total = await self.doc_repo.list_paginated(offset=offset, limit=limit, tenant_id=tenant_id)
+        doc_ids = [row["id"] for row in items]
+        tenants_map = await self.access_repo.get_tenants_for_documents(doc_ids)
         result_items = []
         for row in items:
             doc_id = row["id"]
-            allowed_tenants = await self.access_repo.get_tenants_with_name_for_document(doc_id)
+            allowed_tenants = tenants_map.get(doc_id, [])
             result_items.append(
                 {
                     "document_id": doc_id,

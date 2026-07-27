@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Power, TestTube, Key, Trash2, Cpu } from "lucide-react";
+import { Plus, Power, TestTube, Key, KeyRound, Trash2, Cpu } from "lucide-react";
 import { settingsApi, ApiError } from "@/lib/api-client";
 import { AIProviderCreateSchema, AIProviderUpdateSchema, ProviderApiKeyCreateRequestSchema } from "@/lib/schemas";
 import { toast } from "sonner";
@@ -74,8 +74,18 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
     api_key: "",
   });
 
+  const loadProviders = async () => {
+    try {
+      const data = await settingsApi.listProviders(tab);
+      setProviders(data);
+    } catch {
+      toast.error("Không thể tải danh sách providers");
+    }
+  };
+
   useEffect(() => {
-    settingsApi.listProviders(tab).then(setProviders).catch(() => toast.error("Không thể tải danh sách providers")).finally(() => setLoading(false));
+    setLoading(true);
+    loadProviders().finally(() => setLoading(false));
   }, [tab]);
 
   const llmBuiltin = tab === "llm";
@@ -152,6 +162,7 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
     try {
       const res = await settingsApi.testProvider(p.id);
       toast[res.success ? "success" : "error"](res.message);
+      loadProviders();
     } catch {
       toast.error("Test connection failed");
     }
@@ -168,18 +179,6 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
       loadProviders();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.detail : "Xóa thất bại");
-    }
-  };
-
-  const loadProviders = async () => {
-    try {
-      setLoading(true);
-      const data = await settingsApi.listProviders(tab);
-      setProviders(data);
-    } catch {
-      toast.error("Không thể tải danh sách providers");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -208,6 +207,7 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
       toast.success("Đã thêm API key");
       const data = await settingsApi.listKeys(editDialog.id);
       setKeys(data);
+      loadProviders();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.detail : "Thêm key thất bại");
     }
@@ -219,6 +219,7 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
       await settingsApi.deleteKey(editDialog.id, k.id);
       setKeys((prev) => prev.filter((x) => x.id !== k.id));
       toast.success("Đã xóa key");
+      loadProviders();
     } catch {
       toast.error("Xóa key thất bại");
     }
@@ -231,7 +232,7 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{TAB_LABELS[tab]}</h1>
         {!llmBuiltin && (
-          <Button className="gap-2" onClick={() => { resetForm(); setAddDialog(true); }}>
+          <Button className="gap-2" onClick={() => { setFormData({ service_type: tab, provider_name: "", display_name: "", url: "", model: "", api_key: "" }); setAddDialog(true); }}>
             <Plus className="h-4 w-4" /> Thêm provider
           </Button>
         )}
@@ -259,56 +260,79 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {list.map((p) => (
-            <Card
-              key={p.id}
-              className={`${p.is_active ? "hover:bg-muted/30 cursor-pointer" : "opacity-60"} transition-colors`}
-              onClick={() => openEdit(p)}
-            >
-              <div className="flex items-center justify-between p-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <ProviderIcon providerName={p.provider_name} />
+          {list.map((p) => {
+            const hasKey = p.has_key || (p.key_count !== undefined && p.key_count > 0);
+            return (
+              <Card
+                key={p.id}
+                className={`transition-all duration-200 cursor-pointer ${
+                  p.is_active
+                    ? "ring-2 ring-emerald-500/60 border-emerald-500/50 bg-emerald-500/5 hover:bg-emerald-500/10 shadow-md"
+                    : hasKey
+                    ? "border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 opacity-95"
+                    : "opacity-60 hover:opacity-100 hover:bg-muted/30"
+                }`}
+                onClick={() => openEdit(p)}
+              >
+                <div className="flex items-center justify-between p-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <ProviderIcon providerName={p.provider_name} />
                     <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold truncate">{p.display_name}</h3>
-                      {p.is_builtin && <Badge variant="outline" className="text-[10px] h-4 shrink-0">Mặc định</Badge>}
-                      {p.is_active && <Badge className="text-[10px] h-4 shrink-0">Đang dùng</Badge>}
-                      {p.last_test_status === "failed" && (
-                        <Badge variant="destructive" className="text-[10px] h-4 shrink-0">Lỗi</Badge>
-                      )}
-                      {p.last_test_status === "success" && (
-                        <Badge variant="secondary" className="text-[10px] h-4 shrink-0">Đã test</Badge>
+                      <h3 className="font-semibold truncate text-sm">{p.display_name}</h3>
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">{p.provider_name}</p>
+
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        {p.is_builtin && <Badge variant="outline" className="text-[10px] h-4 shrink-0">Mặc định</Badge>}
+                        {p.is_active && <Badge className="text-[10px] h-4 shrink-0 bg-emerald-600 hover:bg-emerald-700">Đang dùng</Badge>}
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] h-4 px-1.5 shrink-0 inline-flex items-center gap-1 font-mono ${
+                            hasKey
+                              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 font-semibold"
+                              : "bg-muted/40 text-muted-foreground border-border/50"
+                          }`}
+                          title={`Số lượng API Key: ${p.key_count || 0}`}
+                        >
+                          <Key className="w-3 h-3" /> {p.key_count || 0}
+                        </Badge>
+                        {p.last_test_status === "failed" && (
+                          <Badge variant="destructive" className="text-[10px] h-4 shrink-0">Lỗi</Badge>
+                        )}
+                        {p.last_test_status === "success" && (
+                          <Badge variant="secondary" className="text-[10px] h-4 shrink-0">Đã test</Badge>
+                        )}
+                      </div>
+
+                      {p.last_error && (
+                        <p className="text-[10px] text-destructive truncate mt-1" title={p.last_error}>{p.last_error}</p>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">{p.provider_name}</p>
-                    {p.last_error && (
-                      <p className="text-[10px] text-destructive truncate mt-0.5" title={p.last_error}>{p.last_error}</p>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {!llmBuiltin && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title={p.is_active ? "Tắt provider" : "Kích hoạt provider"}
+                        onClick={() => handleToggleActive(p)}
+                      >
+                        <Power className={`h-3.5 w-3.5 ${p.is_active ? "text-emerald-500 font-bold" : "text-muted-foreground hover:text-primary"}`} />
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="icon-sm" title="Kiểm tra" onClick={() => handleTest(p)}>
+                      <TestTube className="h-3.5 w-3.5" />
+                    </Button>
+                    {!p.is_builtin && (
+                      <Button variant="ghost" size="icon-sm" title="Xóa" onClick={() => handleDelete(p)}>
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  {!llmBuiltin && (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title={p.is_active ? "Tắt provider" : "Kích hoạt provider"}
-                      onClick={() => handleToggleActive(p)}
-                    >
-                      <Power className={`h-3.5 w-3.5 ${p.is_active ? "text-emerald-500 font-bold" : "text-muted-foreground hover:text-primary"}`} />
-                    </Button>
-                  )}
-                  <Button variant="ghost" size="icon-sm" title="Kiểm tra" onClick={() => handleTest(p)}>
-                    <TestTube className="h-3.5 w-3.5" />
-                  </Button>
-                  {!p.is_builtin && (
-                    <Button variant="ghost" size="icon-sm" title="Xóa" onClick={() => handleDelete(p)}>
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
 

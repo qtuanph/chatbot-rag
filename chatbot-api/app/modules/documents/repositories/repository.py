@@ -116,18 +116,21 @@ class DocumentRepository(BaseRepository[Document]):
         from app.models.tenant_document_access import TenantDocumentAccess
 
         count_stmt = select(func.count(self.model.id)).where(self.model.deleted_at.is_(None))
+        stmt = select(self.model).where(self.model.deleted_at.is_(None))
+
         if tenant_id:
             tenant_uuid = UUID(tenant_id)
-            subq = select(TenantDocumentAccess.document_id).where(TenantDocumentAccess.tenant_id == tenant_uuid)
-            count_stmt = count_stmt.where((self.model.tenant_id == tenant_uuid) | (self.model.id.in_(subq)))
+            has_access = select(1).where(
+                TenantDocumentAccess.document_id == self.model.id,
+                TenantDocumentAccess.tenant_id == tenant_uuid,
+            ).exists()
+            tenant_filter = (self.model.tenant_id == tenant_uuid) | has_access
+            count_stmt = count_stmt.where(tenant_filter)
+            stmt = stmt.where(tenant_filter)
+
         count_result = await self.session.execute(count_stmt)
         total = count_result.scalar() or 0
 
-        stmt = select(self.model).where(self.model.deleted_at.is_(None))
-        if tenant_id:
-            tenant_uuid = UUID(tenant_id)
-            subq = select(TenantDocumentAccess.document_id).where(TenantDocumentAccess.tenant_id == tenant_uuid)
-            stmt = stmt.where((self.model.tenant_id == tenant_uuid) | (self.model.id.in_(subq)))
         stmt = stmt.order_by(self.model.created_at.desc()).offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         rows = result.scalars().all()

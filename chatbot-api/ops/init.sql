@@ -154,8 +154,10 @@ CREATE TABLE IF NOT EXISTS tenant_document_access (
     document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     granted_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     CONSTRAINT uq_tenant_document_access UNIQUE (tenant_id, document_id)
 );
+ALTER TABLE tenant_document_access ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_tda_tenant_id ON tenant_document_access(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tda_document_id ON tenant_document_access(document_id);
 
@@ -229,7 +231,7 @@ CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_status ON tenant_api_keys(status)
 -- Document Sections: Level 1 hierarchical storage for 2-stage retrieval (RAG v2)
 CREATE TABLE IF NOT EXISTS document_sections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     section_id VARCHAR(255) NOT NULL,
     parent_section_id VARCHAR(255),
@@ -473,11 +475,21 @@ CREATE TABLE IF NOT EXISTS escalations (
     correlation_id VARCHAR(255),
     user_consent BOOLEAN DEFAULT true NOT NULL,
     status VARCHAR(20) DEFAULT 'open',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+    question_variants JSONB DEFAULT '[]'::jsonb,
+    query_hashes JSONB DEFAULT '[]'::jsonb,
+    hit_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_escalations_published_faq ON escalations(tenant_id, status) WHERE status = 'published_faq';
 GRANT ALL ON escalations TO app_rw;
 
 -- ============= Usage Extensions =============
 ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS is_cache_hit BOOLEAN DEFAULT false NOT NULL;
 ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS cached_type VARCHAR(20);
+
+CREATE INDEX IF NOT EXISTS idx_usage_tenant_created ON ai_model_usage(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_created_type ON ai_model_usage(created_at DESC, model_type);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_deleted ON documents(tenant_id, deleted_at, created_at DESC);
+
 

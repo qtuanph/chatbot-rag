@@ -73,7 +73,6 @@ class Settings(BaseSettings):
     ingestion_min_section_chars: int = 200
     ingestion_parsing_timeout: int = 3600
     ingestion_ocr_languages: Any = ["vi", "en"]
-    ingestion_parser_engine: str = "llamaparse"
 
     @field_validator("ingestion_ocr_languages", mode="before")
     @classmethod
