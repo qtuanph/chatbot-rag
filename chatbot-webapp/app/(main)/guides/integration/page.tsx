@@ -666,6 +666,7 @@ interface ChatMessage {
 }
 
 function LivePlayground() {
+  const [targetUrl, setTargetUrl] = useState("http://localhost/v1/chat/completions");
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -681,7 +682,6 @@ function LivePlayground() {
   const handleFeedback = async (index: number, feedbackType: "like" | "dislike") => {
     if (!apiKey.trim()) return;
     const assistantMsg = messages[index];
-    // Find the user message right before it
     const userMsg = messages[index - 1];
     if (!assistantMsg || !userMsg || userMsg.role !== "user") return;
 
@@ -692,7 +692,8 @@ function LivePlayground() {
     });
 
     try {
-      await fetch(API_URL.replace("/chat/completions", "/chat/feedback"), {
+      const feedbackUrl = targetUrl.trim().replace("/chat/completions", "/chat/feedback");
+      await fetch(feedbackUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -729,7 +730,7 @@ function LivePlayground() {
     setMessages([...updatedMessages, { role: "assistant", content: "" }]);
 
     try {
-      const response = await fetch(API_URL, {
+      const response = await fetch(targetUrl.trim(), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -797,18 +798,24 @@ function LivePlayground() {
       <div className="p-4 bg-muted/30 border-b border-border space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
           <div className="space-y-1">
-            <span className="font-semibold block">RAG Target Endpoint URL:</span>
-            <Input type="text" readOnly value={API_URL} className="font-mono text-[10px] h-8 bg-muted cursor-default" />
+            <span className="font-semibold block text-primary">RAG Target Endpoint URL (Chỉnh sửa được):</span>
+            <Input
+              type="text"
+              placeholder="http://localhost/v1/chat/completions"
+              value={targetUrl}
+              onChange={(e) => setTargetUrl(e.target.value)}
+              className="font-mono text-[10px] h-8 bg-background border-border"
+            />
           </div>
           <div className="space-y-1">
-            <span className="font-semibold block text-primary">Nhập API Key (trg_...) để test:</span>
+            <span className="font-semibold block text-primary">Nhập API Key Tenant để test:</span>
             <div className="relative">
               <Input
                 type={showKey ? "text" : "password"}
-                placeholder="Dán API Key của Tenant của bạn vào đây..."
+                placeholder="Dán Tenant API Key vào đây (VD: alpha-tech-secret-key-2026)..."
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                className="font-mono text-[10px] h-8 pr-8"
+                className="font-mono text-[10px] h-8 pr-8 bg-background border-border"
               />
               <button
                 type="button"

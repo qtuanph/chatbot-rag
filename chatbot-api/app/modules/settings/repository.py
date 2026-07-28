@@ -19,7 +19,12 @@ def _row_to_provider(row: sqlite3.Row, db: sqlite3.Connection | None = None) -> 
             sub_keys = 0
 
     has_main_key = bool(d.get("api_key") and str(d["api_key"]).strip())
-    total_keys = sub_keys + (1 if has_main_key else 0)
+    if sub_keys > 0:
+        total_keys = sub_keys
+    elif has_main_key:
+        total_keys = 1
+    else:
+        total_keys = 0
 
     d["key_count"] = total_keys
     d["has_key"] = total_keys > 0
