@@ -123,6 +123,10 @@ class PublicInferenceService:
         query_vector: list[float] | None = None,
         normalized_query: str | None = None,
     ) -> None:
+        content = payload.get("content", "") if payload else ""
+        if not content or content.strip() in ("", "Empty Response"):
+            return
+
         if settings.exact_cache_enabled and self._redis:
             from app.modules.chat.cache.exact_cache import exact_cache_set
 

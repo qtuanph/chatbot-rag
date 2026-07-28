@@ -42,7 +42,7 @@ class FAQPromoteSchema(BaseModel):
     citations: list[dict[str, Any]] = Field(default_factory=list)
 
 
-def _require_platform_admin(ctx: AuthContext = Depends(get_auth_context)) -> None:
+def _verify_platform_admin(ctx: AuthContext = Depends(get_auth_context)) -> None:
     if ctx.role != "platform_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
