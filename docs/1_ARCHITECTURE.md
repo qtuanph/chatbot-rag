@@ -106,8 +106,8 @@ Từ góc nhìn Admin/System:
 ### Quota & Hard Budget Enforcement
 
 - **Cấu hình động trên Webapp**: Không hardcode giới hạn trong code. Toàn bộ quota và rate limit được đọc trực tiếp từ DB (`tenants` table: `rate_limit_rpm`, `monthly_request_quota`, `monthly_token_quota`) do Admin thiết lập từ Webapp.
-- **Rate limiting**: Atomic Redis counter theo phút cho user và tenant (`rate_limit_rpm`). Trả về HTTP 429 nếu vượt ngưỡng.
-- **Daily request limit**: Atomic Redis counter theo ngày cho từng user.
+- **Platform Billing & Budget Settings**: Giá token (`ai_input_price_vnd_per_1m`, `ai_output_price_vnd_per_1m`), hard budget tháng, và các ngưỡng cảnh báo được quản lý trực tiếp qua SQLite (`platform_settings` table) tại giao diện `/settings` của Platform Admin.
+- **Public API Rate Limiting**: Đối với Public API (`user_id = None`), hệ thống bỏ qua kiểm tra per-user và chỉ áp dụng giới hạn duy nhất theo **Tenant** (`rate_limit_rpm` trong DB `tenants`).
 - **Monthly request & token limits**: Atomic Redis counter theo tháng cho tenant dựa theo `monthly_request_quota` và `monthly_token_quota`.
 - **Hard budget**: Cảnh báo ngưỡng 70%/85% và ngắt cứng (hard stop) ở ngưỡng 100% ngân sách tháng.
 
@@ -119,7 +119,7 @@ Từ góc nhìn Admin/System:
 | Qdrant | dual index cho retrieval |
 | Redis | queue, L1 exact cache, L2 semantic cache, rate limit/quota atomic counters, audit stream |
 | RustFS | file gốc và artifact ingest |
-| SQLite `settings.db` | provider settings và runtime selection |
+| SQLite `settings.db` | provider settings, runtime selection, và platform billing/budget settings (`platform_settings` table) |
 
 ## AI provider boundary
 

@@ -86,6 +86,8 @@ Base API hiện tại:
 | GET | `/settings/providers/{provider_id}/keys` |
 | POST | `/settings/providers/{provider_id}/keys` |
 | DELETE | `/settings/providers/{provider_id}/keys/{key_id}` |
+| GET | `/settings/billing` |
+| PUT | `/settings/billing` |
 
 ### Admin
 
@@ -149,7 +151,7 @@ Public chat request hỗ trợ các field chính:
 
 ## Rate Limit & Quota contract (HTTP 429)
 
-Khi vượt quá giới hạn lượt request (user/tenant rate limit), daily request quota, hoặc monthly LLM call/budget hard stop, backend trả về HTTP 429 với cấu trúc:
+Khi vượt quá giới hạn lượt request (tenant rate limit), daily request quota (nội bộ user), hoặc monthly LLM call/budget hard stop, backend trả về HTTP 429 với cấu trúc:
 
 ```json
 {
@@ -162,6 +164,8 @@ Khi vượt quá giới hạn lượt request (user/tenant rate limit), daily re
   }
 }
 ```
+
+*Lưu ý cho Public API (`POST /v1/chat/completions`)*: Public API xác thực qua Tenant API Key (`user_id = None`), do đó hoàn toàn bỏ qua các counter giới hạn cấp User (`rate:user:...` và `quota:user_daily:...`). Toàn bộ request Public API chỉ tuân theo duy nhất giới hạn cấp **Tenant** (`rate_limit_rpm`, `monthly_request_quota`, `monthly_token_quota` trong DB `tenants`) và Platform Hard Budget (SQLite `platform_settings`).
 
 ## Error handling
 

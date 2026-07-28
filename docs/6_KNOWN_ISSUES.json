@@ -149,11 +149,11 @@
     },
     {
       "issue_id": 18,
-      "title": "Rate Limit Applied to Incorrect user_id in quota_service",
-      "symptom": "User hits rate limits too quickly or incorrectly because the limit was being applied globally instead of per user.",
-      "root_cause": "The `user_id` parameter passed to rate limiting logic was sometimes None or incorrect (`user_id=None` instead of `user_id=api_context.api_key_id`), causing rate limits to be tracked against 'anon' for all API key users.",
-      "resolution": "Fixed the caller logic to pass the correct `user_id=api_context.api_key_id` to ensure per-API-key rate limiting.",
-      "lesson_learned": "When implementing per-user limits, ensure the identity context is properly threaded through to the quota service to avoid unintentionally applying global limits."
+      "title": "Public API Requests Shared Low Per-User Rate Limit Bucket",
+      "symptom": "Clients sending requests via Tenant API Key hit 429 rate limit error after only a few requests in multi-user environment.",
+      "root_cause": "The public inference router passed `user_id=None`. In `QuotaService`, `user_id=None` caused all API key requests for that tenant to fall back to a shared `'anon'` counter bucket, enforcing a strict per-user limit (6 req/min) and daily request quota across the whole tenant.",
+      "resolution": "Updated `QuotaService.check_and_increment_rate` and `check_and_increment_daily` to bypass per-user counters completely when `user_id` is None (Public API key calls). Public API requests are now strictly governed by a single Tenant-scoped limit (`rate_limit_rpm` from PostgreSQL `tenants` table) set by Tenant Admin.",
+      "lesson_learned": "Public API callers (M2M / integrations) do not have user identity context. Do not force an 'anon' user bucket on public API requests; enforce single-level tenant-scoped quotas instead."
     }
   ]
 }
