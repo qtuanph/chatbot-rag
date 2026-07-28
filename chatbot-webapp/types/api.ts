@@ -69,6 +69,7 @@ export type AIProviderCreate = z.infer<typeof s.AIProviderCreateSchema>;
 export type AIProviderUpdate = z.infer<typeof s.AIProviderUpdateSchema>;
 export type ApiKeyItem = z.infer<typeof s.ApiKeyItemSchema>;
 export type ProviderTemplate = z.infer<typeof s.ProviderTemplateSchema>;
+export type BillingSettings = z.infer<typeof s.BillingSettingsSchema>;
 
 // ── Health ──
 export type HealthCheck = z.infer<typeof s.HealthCheckSchema>;

@@ -603,6 +603,17 @@ export const ProviderTemplateSchema = z.object({
   model: z.string(),
 });
 
+export const BillingSettingsSchema = z.object({
+  ai_input_price_vnd_per_1m: z.number().int().min(0),
+  ai_output_price_vnd_per_1m: z.number().int().min(0),
+  quota_hard_budget_vnd: z.number().int().min(0),
+  quota_user_rate_per_min: z.number().int().min(1),
+  quota_user_daily_requests: z.number().int().min(1),
+  quota_cost_alert_pct_warn: z.number().int().min(1).max(100),
+  quota_cost_alert_pct_alert: z.number().int().min(1).max(100),
+  quota_cost_alert_pct_cutoff: z.number().int().min(1).max(100),
+});
+
 export const TestResultSchema = z.object({
   success: z.boolean(),
   message: z.string(),

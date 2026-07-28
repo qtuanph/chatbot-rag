@@ -71,3 +71,25 @@ class ProviderTemplate(BaseModel):
 class TestResult(BaseModel):
     success: bool
     message: str
+
+
+class BillingSettingsResponse(BaseModel):
+    ai_input_price_vnd_per_1m: int = 0
+    ai_output_price_vnd_per_1m: int = 0
+    quota_hard_budget_vnd: int = 0
+    quota_user_rate_per_min: int = 6
+    quota_user_daily_requests: int = 100
+    quota_cost_alert_pct_warn: int = 70
+    quota_cost_alert_pct_alert: int = 85
+    quota_cost_alert_pct_cutoff: int = 100
+
+
+class BillingSettingsUpdate(BaseModel):
+    ai_input_price_vnd_per_1m: int = Field(ge=0)
+    ai_output_price_vnd_per_1m: int = Field(ge=0)
+    quota_hard_budget_vnd: int = Field(ge=0)
+    quota_user_rate_per_min: int = Field(ge=1, le=1000)
+    quota_user_daily_requests: int = Field(ge=1, le=10000)
+    quota_cost_alert_pct_warn: int = Field(ge=1, le=100)
+    quota_cost_alert_pct_alert: int = Field(ge=1, le=100)
+    quota_cost_alert_pct_cutoff: int = Field(ge=1, le=100)

@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     celery_include: str = "all"
     
     billing_currency_code: str = "VND"
+    # Price per 1M tokens in VND. MUST be set in production for cost tracking and budget enforcement.
+    # Example: Gemini Flash input ~375 VND/1M tokens; output ~1500 VND/1M tokens.
+    # If 0, cost tracking is disabled and QUOTA_HARD_BUDGET_VND has no effect.
     ai_input_price_vnd_per_1m: int = 0
     ai_output_price_vnd_per_1m: int = 0
 
@@ -159,7 +162,9 @@ class Settings(BaseSettings):
     )
     max_filename_length: int = 255
 
-    rate_limit_relaxed_mode: bool = True
+    # Safe default: False. Set RATE_LIMIT_RELAXED_MODE=true only in development to disable rate limiting.
+    # Production validation (APP_ENV=production) will REJECT True and refuse to start.
+    rate_limit_relaxed_mode: bool = False
     rate_limit_relaxed_floor: int = 10000
 
     storage_backend: str = "s3"

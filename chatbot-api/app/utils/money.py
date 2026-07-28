@@ -13,8 +13,22 @@ def compute_cost_micros_vnd(
     input_price_vnd_per_1m: int | None = None,
     output_price_vnd_per_1m: int | None = None,
 ) -> int:
-    input_rate = settings.ai_input_price_vnd_per_1m if input_price_vnd_per_1m is None else input_price_vnd_per_1m
-    output_rate = settings.ai_output_price_vnd_per_1m if output_price_vnd_per_1m is None else output_price_vnd_per_1m
+    if input_price_vnd_per_1m is None or output_price_vnd_per_1m is None:
+        try:
+            from app.modules.settings.runtime_manager import RuntimeProviderManager
+            rtm = RuntimeProviderManager.get_instance()
+            if input_price_vnd_per_1m is None:
+                input_price_vnd_per_1m = int(rtm.get_billing("ai_input_price_vnd_per_1m", "0")) or settings.ai_input_price_vnd_per_1m
+            if output_price_vnd_per_1m is None:
+                output_price_vnd_per_1m = int(rtm.get_billing("ai_output_price_vnd_per_1m", "0")) or settings.ai_output_price_vnd_per_1m
+        except Exception:
+            if input_price_vnd_per_1m is None:
+                input_price_vnd_per_1m = settings.ai_input_price_vnd_per_1m
+            if output_price_vnd_per_1m is None:
+                output_price_vnd_per_1m = settings.ai_output_price_vnd_per_1m
+
+    input_rate = input_price_vnd_per_1m
+    output_rate = output_price_vnd_per_1m
     return max(0, (int(prompt_tokens) * int(input_rate)) + (int(completion_tokens) * int(output_rate)))
 
 

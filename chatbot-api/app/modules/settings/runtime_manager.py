@@ -19,6 +19,7 @@ class RuntimeProviderManager:
         self._llm: dict[str, Any] | None = None
         self._parser: dict[str, Any] | None = None
         self._key_cursors: dict[int, int] = {}
+        self._billing: dict[str, str] = {}
 
     @classmethod
     def get_instance(cls) -> "RuntimeProviderManager":
@@ -31,12 +32,14 @@ class RuntimeProviderManager:
     def init(self) -> None:
         """Load active providers from SQLite on startup."""
         self._load_all()
+        self.load_billing()
         self.apply()
 
     def reload(self) -> None:
         """Re-read from SQLite and re-apply to LlamaIndex Settings."""
         self._key_cursors.clear()
         self._load_all()
+        self.load_billing()
         self.apply()
 
     def _load_all(self) -> None:
@@ -52,6 +55,31 @@ class RuntimeProviderManager:
                 self._parser = repo.get_builtin_provider("parser", "docling")
         finally:
             repo.close()
+
+    def load_billing(self) -> None:
+        """Load platform billing settings from SQLite into memory cache."""
+        from app.modules.settings.repository import SettingsRepository
+        repo = SettingsRepository()
+        try:
+            raw = repo.get_all_platform_settings()
+            self._billing = {k: v["value"] for k, v in raw.items()}
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning("Failed to load billing settings", exc_info=True)
+        finally:
+            repo.close()
+
+    def get_billing(self, key: str, default: str = "") -> str:
+        """Get a billing setting value from memory cache."""
+        return self._billing.get(key, default)
+
+    def reload_billing(self) -> None:
+        """Reload only billing settings (lightweight, no LlamaIndex re-init)."""
+        self.load_billing()
+
+    def get_all_billing(self) -> dict[str, str]:
+        """Return a copy of all billing settings."""
+        return dict(self._billing)
 
     def apply(self) -> None:
         """Override Settings.embed_model / Settings.llm from SQLite if available."""

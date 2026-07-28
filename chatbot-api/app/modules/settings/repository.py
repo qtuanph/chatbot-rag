@@ -261,3 +261,32 @@ class SettingsRepository:
             (key_id,),
         )
         self.db.commit()
+
+    # ── Platform Settings ─────────────────────────────────────────────────────────────
+
+    def get_platform_setting(self, key: str, default: str = "") -> str:
+        row = self.db.execute(
+            "SELECT value FROM platform_settings WHERE key = ?", (key,)
+        ).fetchone()
+        return row["value"] if row else default
+
+    def set_platform_setting(self, key: str, value: str) -> None:
+        self.db.execute(
+            "INSERT INTO platform_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)"
+            " ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
+            (key, value),
+        )
+        self.db.commit()
+
+    def get_all_platform_settings(self) -> dict[str, str]:
+        rows = self.db.execute(
+            "SELECT key, value, description, updated_at FROM platform_settings ORDER BY key"
+        ).fetchall()
+        return {
+            row["key"]: {
+                "value": row["value"],
+                "description": row["description"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        }

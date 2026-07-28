@@ -43,6 +43,15 @@ def _month_key() -> str:
     return _vn_now().strftime("%Y%m")
 
 
+def _get_rtm_billing(key: str, default: str) -> int:
+    try:
+        from app.modules.settings.runtime_manager import RuntimeProviderManager
+        val = RuntimeProviderManager.get_instance().get_billing(key, default)
+        return int(val) if val else int(default)
+    except Exception:
+        return int(default)
+
+
 class QuotaService:
     def __init__(self, redis: aioredis.Redis | None, tenant_repo: Any = None) -> None:
         self.redis = redis
@@ -85,7 +94,8 @@ class QuotaService:
             user_count = int(results[0])
             tenant_count = int(results[2])
 
-            user_limit = settings.effective_rate_limit(settings.quota_user_rate_per_min)
+            quota_user_rate = _get_rtm_billing("quota_user_rate_per_min", str(settings.quota_user_rate_per_min))
+            user_limit = settings.effective_rate_limit(quota_user_rate)
             tenant_limit = settings.effective_rate_limit(tenant_rpm)
 
             if user_count > user_limit:
@@ -112,7 +122,7 @@ class QuotaService:
                 ttl = int((midnight - now).total_seconds()) + 60
                 await self.redis.expire(key, ttl)
 
-            limit = settings.quota_user_daily_requests
+            limit = _get_rtm_billing("quota_user_daily_requests", str(settings.quota_user_daily_requests))
             if count > limit:
                 return False, f"daily_request_quota_exceeded:{count}/{limit}"
             return True, "ok"
@@ -175,7 +185,8 @@ class QuotaService:
                     await self.redis.expire(token_key, 35 * 24 * 3600)
 
             # 2. Cost tracking
-            if settings.quota_hard_budget_vnd <= 0:
+            hard_budget_vnd = _get_rtm_billing("quota_hard_budget_vnd", str(settings.quota_hard_budget_vnd))
+            if hard_budget_vnd <= 0:
                 return "ok", 0
 
             cost_key = f"budget:tenant:{tenant_id}:{month}"
@@ -183,13 +194,18 @@ class QuotaService:
             if total_cost <= cost_micros_vnd:
                 await self.redis.expire(cost_key, 35 * 24 * 3600)
 
-            budget_micros = settings.quota_hard_budget_vnd * 1_000_000
+            budget_micros = hard_budget_vnd * 1_000_000
             pct = int(total_cost * 100 / budget_micros) if budget_micros > 0 else 0
-            if pct >= settings.quota_cost_alert_pct_cutoff:
+            
+            cutoff_pct = _get_rtm_billing("quota_cost_alert_pct_cutoff", str(settings.quota_cost_alert_pct_cutoff))
+            alert_pct = _get_rtm_billing("quota_cost_alert_pct_alert", str(settings.quota_cost_alert_pct_alert))
+            warn_pct = _get_rtm_billing("quota_cost_alert_pct_warn", str(settings.quota_cost_alert_pct_warn))
+            
+            if pct >= cutoff_pct:
                 return "hard_stop", pct
-            if pct >= settings.quota_cost_alert_pct_alert:
+            if pct >= alert_pct:
                 return "alert", pct
-            if pct >= settings.quota_cost_alert_pct_warn:
+            if pct >= warn_pct:
                 return "warn", pct
             return "ok", pct
         except Exception as exc:
@@ -198,7 +214,8 @@ class QuotaService:
 
     async def check_budget_before_llm(self, *, tenant_id: str) -> tuple[bool, str]:
         """Check if budget allows LLM call."""
-        if not self.redis or settings.quota_hard_budget_vnd <= 0:
+        hard_budget_vnd = _get_rtm_billing("quota_hard_budget_vnd", str(settings.quota_hard_budget_vnd))
+        if not self.redis or hard_budget_vnd <= 0:
             return True, "ok"
 
         try:
@@ -206,9 +223,11 @@ class QuotaService:
             key = f"budget:tenant:{tenant_id}:{month}"
             raw = await self.redis.get(key)
             current = int(raw or 0)
-            budget_micros = settings.quota_hard_budget_vnd * 1_000_000
+            budget_micros = hard_budget_vnd * 1_000_000
             pct = int(current * 100 / budget_micros) if budget_micros > 0 else 0
-            if pct >= settings.quota_cost_alert_pct_cutoff:
+            
+            cutoff_pct = _get_rtm_billing("quota_cost_alert_pct_cutoff", str(settings.quota_cost_alert_pct_cutoff))
+            if pct >= cutoff_pct:
                 return False, f"hard_budget_exceeded:{pct}%"
             return True, "ok"
         except Exception as exc:
