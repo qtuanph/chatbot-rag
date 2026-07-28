@@ -11,18 +11,18 @@ def _row_to_provider(row: sqlite3.Row, db: sqlite3.Connection | None = None) -> 
     if isinstance(d.get("config"), str):
         d["config"] = json.loads(d["config"]) if d["config"] else {}
 
-    key_count = 0
+    sub_keys = 0
     if db is not None:
         try:
-            key_count = db.execute("SELECT COUNT(*) FROM api_keys WHERE provider_id = ?", (d["id"],)).fetchone()[0]
+            sub_keys = db.execute("SELECT COUNT(*) FROM api_keys WHERE provider_id = ?", (d["id"],)).fetchone()[0]
         except Exception:
-            key_count = 0
+            sub_keys = 0
 
-    if key_count == 0 and d.get("api_key") and str(d["api_key"]).strip():
-        key_count = 1
+    has_main_key = bool(d.get("api_key") and str(d["api_key"]).strip())
+    total_keys = sub_keys + (1 if has_main_key else 0)
 
-    d["key_count"] = key_count
-    d["has_key"] = key_count > 0
+    d["key_count"] = total_keys
+    d["has_key"] = total_keys > 0
     return d
 
 

@@ -34,6 +34,8 @@ class ProviderResponse(BaseModel):
     is_builtin: bool
     priority: int
     config: dict[str, Any] = {}
+    key_count: int = 0
+    has_key: bool = False
     last_test_status: str = "unknown"
     last_test_at: Optional[str] = None
     last_error: str = ""
