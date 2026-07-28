@@ -66,7 +66,7 @@ async def chat_completions(
                     thinking_mode=payload.thinking_mode,
                     temperature=payload.temperature,
                     max_tokens=payload.max_tokens,
-                    user_id=api_context.api_key_id,  # Rate limit per API key, not shared 'anon'
+                    user_id=None,  # Public API: only tenant-level rate limit applies
                     conversation_id=payload.conversation_id,
                 ),
                 media_type="text/event-stream",
@@ -83,7 +83,7 @@ async def chat_completions(
             thinking_mode=payload.thinking_mode,
             temperature=payload.temperature,
             max_tokens=payload.max_tokens,
-            user_id=api_context.api_key_id,  # Rate limit per API key, not shared 'anon'
+            user_id=None,  # Public API: only tenant-level rate limit applies
             conversation_id=payload.conversation_id,
         )
         return {

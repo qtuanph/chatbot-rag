@@ -71,7 +71,12 @@ class QuotaService:
     async def check_and_increment_rate(
         self, *, tenant_id: str, user_id: str | None, tenant_config: dict[str, Any] | None = None
     ) -> tuple[bool, str]:
-        """Check rate limits using tenant's `rate_limit_rpm` set in DB / Webapp."""
+        """Check rate limits.
+
+        - If user_id is provided (internal/JWT auth): enforce both per-user limit AND tenant limit.
+        - If user_id is None (public API key auth): enforce ONLY tenant limit (rate_limit_rpm from DB).
+          Tenant admin sets the single limit for the whole tenant in /admin/tenants.
+        """
         if not self.redis:
             return not settings.quota_fail_closed, "redis_unavailable"
 
@@ -82,24 +87,30 @@ class QuotaService:
             minute = _minute_key()
             pipe = self.redis.pipeline()
 
-            user_key = f"rate:user:{tenant_id}:{user_id or 'anon'}:{minute}"
-            pipe.incr(user_key)
-            pipe.expire(user_key, 90)
+            # Only track per-user counter when we have an actual user identity
+            if user_id is not None:
+                user_key = f"rate:user:{tenant_id}:{user_id}:{minute}"
+                pipe.incr(user_key)
+                pipe.expire(user_key, 90)
 
             tenant_key = f"rate:tenant:{tenant_id}:{minute}"
             pipe.incr(tenant_key)
             pipe.expire(tenant_key, 90)
 
             results = await pipe.execute()
-            user_count = int(results[0])
-            tenant_count = int(results[2])
 
-            quota_user_rate = _get_rtm_billing("quota_user_rate_per_min", str(settings.quota_user_rate_per_min))
-            user_limit = settings.effective_rate_limit(quota_user_rate)
+            if user_id is not None:
+                user_count = int(results[0])
+                tenant_count = int(results[2])
+                quota_user_rate = _get_rtm_billing("quota_user_rate_per_min", str(settings.quota_user_rate_per_min))
+                user_limit = settings.effective_rate_limit(quota_user_rate)
+                if user_count > user_limit:
+                    return False, f"user_rate_limit_exceeded:{user_count}/{user_limit}"
+            else:
+                # Public API: only tenant limit matters
+                tenant_count = int(results[0])
+
             tenant_limit = settings.effective_rate_limit(tenant_rpm)
-
-            if user_count > user_limit:
-                return False, f"user_rate_limit_exceeded:{user_count}/{user_limit}"
             if tenant_count > tenant_limit:
                 return False, f"tenant_rate_limit_exceeded:{tenant_count}/{tenant_limit}"
             return True, "ok"
@@ -108,13 +119,16 @@ class QuotaService:
             return not settings.quota_fail_closed, f"error:{exc}"
 
     async def check_and_increment_daily(self, *, tenant_id: str, user_id: str | None) -> tuple[bool, str]:
-        """Check user daily request quota."""
+        """Check user daily request quota (bypassed for public API calls where user_id is None)."""
+        if user_id is None:
+            return True, "ok"
+
         if not self.redis:
             return not settings.quota_fail_closed, "redis_unavailable"
 
         try:
             date = _date_key()
-            key = f"quota:user_daily:{tenant_id}:{user_id or 'anon'}:{date}"
+            key = f"quota:user_daily:{tenant_id}:{user_id}:{date}"
             count = await self.redis.incr(key)
             if count == 1:
                 now = _vn_now()
