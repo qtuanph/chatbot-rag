@@ -149,6 +149,10 @@ class PublicInferenceService:
         user_id: str | None = None,
         conversation_id: str | None = None,
     ) -> CompletionResult:
+        if not conversation_id:
+            import uuid
+            conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
+
         user_query = self._latest_user_query(messages)
 
         from app.modules.chat.quota.quota_service import QuotaService
@@ -312,6 +316,10 @@ class PublicInferenceService:
         user_id: str | None = None,
         conversation_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
+        if not conversation_id:
+            import uuid
+            conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
+
         user_query = self._latest_user_query(messages)
 
         from app.modules.chat.quota.quota_service import QuotaService
