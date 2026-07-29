@@ -298,7 +298,12 @@ class PublicInferenceService:
                     model_name=result.model,
                     is_cache_hit=False,
                     cached_type=None,
-                    no_answer=not result.content or "chưa đủ căn cứ" in result.content,
+                    no_answer=not result.content
+                    or result.content.strip() == "Empty Response"
+                    or "chưa đủ căn cứ" in result.content.lower()
+                    or "chưa có đủ thông tin" in result.content.lower()
+                    or "chưa có thông tin" in result.content.lower()
+                    or "rất tiếc" in result.content.lower(),
                 )
             except Exception as exc:
                 logger.warning("Failed to dispatch conversation save: %s", exc)
@@ -504,7 +509,12 @@ class PublicInferenceService:
                     model_name=result.model,
                     is_cache_hit=False,
                     cached_type=None,
-                    no_answer=not result.content or "chưa đủ căn cứ" in result.content,
+                    no_answer=not result.content
+                    or result.content.strip() == "Empty Response"
+                    or "chưa đủ căn cứ" in result.content.lower()
+                    or "chưa có đủ thông tin" in result.content.lower()
+                    or "chưa có thông tin" in result.content.lower()
+                    or "rất tiếc" in result.content.lower(),
                 )
             except Exception as exc:
                 logger.warning("Failed to dispatch stream conversation save: %s", exc)
@@ -703,7 +713,7 @@ class PublicInferenceService:
         system_prompt = (
             "Bạn là trợ lý doanh nghiệp hoạt động trong đúng phạm vi tenant hiện tại. "
             "Chỉ được trả lời dựa trên tài liệu của tenant và ngữ cảnh hội thoại được cung cấp. "
-            "Nếu thông tin chưa đủ, hãy nói rõ là chưa đủ và không được bịa nội dung."
+            "Nếu thông tin chưa đủ hoặc không có trong tài liệu, bắt buộc phải phản hồi chứa cụm từ 'Chưa đủ căn cứ' và không được bịa nội dung."
         )
         tenant_instruction = (setting.get("system_instruction") or "").strip()
         if tenant_instruction:
@@ -714,7 +724,7 @@ class PublicInferenceService:
             "\n\nQUY TẮC BẮT BUỘC:"
             "\n- Không được bịa menu, nút, báo cáo, mã trạng thái, trường dữ liệu hoặc quy trình."
             "\n- Chỉ được nêu tên chức năng, đường dẫn menu, bước thao tác khi chúng xuất hiện rõ trong ngữ cảnh truy xuất."
-            "\n- Nếu tài liệu không xác nhận đủ, phải trả lời là chưa đủ căn cứ để hướng dẫn chi tiết."
+            "\n- Nếu tài liệu không xác nhận đủ hoặc không chứa thông tin, bắt buộc phải phản hồi: 'Rất tiếc, chưa đủ căn cứ trong tài liệu để trả lời câu hỏi này.'"
             "\n- Với câu hỏi thao tác phần mềm, ưu tiên trả lời ngắn, đúng, bám sát tài liệu; không suy diễn từ kinh nghiệm chung."
         )
 
