@@ -115,6 +115,16 @@ Base API hiện tại:
 | POST | `/admin/tenants/{tenant_id}/api-keys` |
 | DELETE | `/admin/tenants/{tenant_id}/api-keys/{key_id}` |
 
+### FAQ & Escalation management
+
+| Method | Path |
+|---|---|
+| GET | `/tenants/{tenant_id}/faqs` |
+| POST | `/tenants/{tenant_id}/faqs` |
+| DELETE | `/faqs/{faq_id}` |
+| GET | `/tenants/{tenant_id}/escalations` |
+| POST | `/escalations/{escalation_id}/promote` |
+
 ### Tenant self
 
 | Method | Path |
