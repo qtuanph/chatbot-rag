@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { authApi, tenantsApi } from "@/lib/api-client";
 import { CreateUserRequestSchema } from "@/lib/schemas";
 import type { CreateUserRequest, RoleItem, TenantItem, UserItem } from "@/types/api";
@@ -163,9 +164,18 @@ export default function AdminUsersPage() {
                 )}
                 {visibleColumns["Thao tác"] && (
                   <TableCell className="text-right">
-                    <Button size="sm" variant="destructive" onClick={() => handleDelete(user.username)}>
-                      <Trash2 className="mr-1 h-3 w-3" /> Xóa
-                    </Button>
+                    <TooltipProvider delay={100}>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Button size="icon-sm" variant="destructive" onClick={() => handleDelete(user.username)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          }
+                        />
+                        <TooltipContent>Xóa người dùng</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </TableCell>
                 )}
               </TableRow>

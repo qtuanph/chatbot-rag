@@ -603,9 +603,18 @@ export default function AdminTenantsPage() {
                         <TableCell className="text-sm text-muted-foreground">{formatDateTimeVN(item.expires_at)}</TableCell>
                         <TableCell className="text-right">
                           {item.status === "active" ? (
-                            <Button size="sm" variant="destructive" onClick={() => handleRevokeApiKey(item.id)}>
-                              <Trash2 className="mr-1 h-3 w-3" /> Thu hồi
-                            </Button>
+                            <TooltipProvider delay={100}>
+                              <Tooltip>
+                                <TooltipTrigger
+                                  render={
+                                    <Button size="icon-sm" variant="destructive" onClick={() => handleRevokeApiKey(item.id)}>
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  }
+                                />
+                                <TooltipContent>Thu hồi API Key</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           ) : (
                             <span className="text-xs text-muted-foreground">Đã thu hồi</span>
                           )}
@@ -651,9 +660,18 @@ export default function AdminTenantsPage() {
                         <TableCell className="font-medium">{user.username}</TableCell>
                         <TableCell className="text-sm">{user.role}</TableCell>
                         <TableCell className="text-right">
-                          <Button size="sm" variant="destructive" onClick={() => handleDeleteTenantUser(user.username)}>
-                            <Trash2 className="mr-1 h-3 w-3" /> Xóa
-                          </Button>
+                          <TooltipProvider delay={100}>
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <Button size="icon-sm" variant="destructive" onClick={() => handleDeleteTenantUser(user.username)}>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                }
+                              />
+                              <TooltipContent>Xóa tài khoản admin</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </TableCell>
                       </TableRow>
                     ))}
