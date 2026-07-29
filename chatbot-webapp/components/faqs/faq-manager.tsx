@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, Edit2, HelpCircle, Plus, RefreshCw, Trash2, XCircle } from "lucide-react";
+import { ArrowRight, Check, Edit2, HelpCircle, Plus, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -354,24 +354,37 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="rounded-xl"
-                          onClick={() => openPromote(esc)}
-                        >
-                          Duyệt thành FAQ
-                          <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="rounded-xl"
-                          onClick={() => handleRejectEscalation(esc.id)}
-                        >
-                          <XCircle className="mr-1.5 h-3.5 w-3.5" />
-                          Từ chối (Xóa)
-                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="rounded-xl"
+                                onClick={() => openPromote(esc)}
+                              >
+                                <Check className="h-4 w-4 text-emerald-600" />
+                              </Button>
+                            }
+                          />
+                          <TooltipContent>Duyệt thành FAQ</TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                size="icon"
+                                variant="destructive"
+                                className="rounded-xl"
+                                onClick={() => handleRejectEscalation(esc.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            }
+                          />
+                          <TooltipContent>Từ chối &amp; Xóa khỏi DB</TooltipContent>
+                        </Tooltip>
                       </div>
                     </TableCell>
                   </TableRow>
