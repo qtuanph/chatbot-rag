@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -414,6 +415,7 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
                 value={form.question}
                 onChange={(e) => setForm((prev) => ({ ...prev, question: e.target.value }))}
               />
+              <FieldDescription>Nhập câu hỏi chuẩn mà khách hàng/người dùng thường thắc mắc.</FieldDescription>
             </div>
 
             <div className="grid gap-2">
@@ -434,6 +436,7 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
                   Thêm
                 </Button>
               </div>
+              <FieldDescription>Các câu hỏi tương đương giúp AI khớp câu trả lời nhanh chính xác hơn.</FieldDescription>
               {form.question_variants.length > 0 && (
                 <div className="flex flex-wrap gap-1 pt-1">
                   {form.question_variants.map((v, idx) => (
@@ -459,6 +462,7 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
                 value={form.answer}
                 onChange={(e) => setForm((prev) => ({ ...prev, answer: e.target.value }))}
               />
+              <FieldDescription>Nội dung câu trả lời chính thức. Hệ thống sẽ trả về ngay trong ~20ms mà không tốn chi phí gọi LLM.</FieldDescription>
             </div>
           </div>
 

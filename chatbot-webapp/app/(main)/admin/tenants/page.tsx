@@ -380,64 +380,66 @@ export default function AdminTenantsPage() {
               <Field>
                 <FieldContent>
                   <FieldLabel htmlFor="create_name">Tên tenant</FieldLabel>
-                  <Input id="create_name" value={tenantForm.name || ""} onChange={(e) => setTenantForm((c) => ({ ...c, name: e.target.value }))} />
+                  <Input id="create_name" value={tenantForm.name || ""} onChange={(e) => setTenantForm((c) => ({ ...c, name: e.target.value }))} placeholder="Ví dụ: Công ty CP Công nghệ Alpha" />
+                  <FieldDescription>Tên hiển thị của tổ chức hoặc doanh nghiệp.</FieldDescription>
                 </FieldContent>
               </Field>
               <Field>
                 <FieldContent>
                   <FieldLabel htmlFor="create_slug" className="flex items-center gap-1">
                     Slug
-                    <TooltipProvider delay={100}>
-                      <Tooltip>
-                        <TooltipTrigger type="button"><Info className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
-                        <TooltipContent>Mã định danh dùng trên URL (tự động đổi dấu cách thành dấu gạch ngang).</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
                   </FieldLabel>
-                  <Input id="create_slug" value={tenantForm.slug || ""} onChange={(e) => setTenantForm((c) => ({ ...c, slug: e.target.value.replace(/\s+/g, '-') }))} placeholder="Ví dụ: acme-corp" />
+                  <Input id="create_slug" value={tenantForm.slug || ""} onChange={(e) => setTenantForm((c) => ({ ...c, slug: e.target.value.replace(/\s+/g, '-') }))} placeholder="Ví dụ: alpha-tech" />
+                  <FieldDescription>Mã định danh ngắn trên URL, chỉ gồm chữ cái thường, số và dấu gạch ngang (tự động chuyển thành dấu -).</FieldDescription>
                 </FieldContent>
               </Field>
               <Field>
                 <FieldContent>
                   <FieldLabel htmlFor="create_desc">Mô tả</FieldLabel>
-                  <Textarea id="create_desc" rows={2} value={tenantForm.description || ""} onChange={(e) => setTenantForm((c) => ({ ...c, description: e.target.value }))} />
+                  <Textarea id="create_desc" rows={2} value={tenantForm.description || ""} onChange={(e) => setTenantForm((c) => ({ ...c, description: e.target.value }))} placeholder="Mô tả ngành nghề, ứng dụng hoặc ghi chú bổ sung..." />
+                  <FieldDescription>Mô tả ngắn gọn mục đích sử dụng hoặc ghi chú quản trị của Tenant.</FieldDescription>
                 </FieldContent>
               </Field>
               <Field>
                 <FieldContent>
                   <FieldLabel htmlFor="create_rpm">Rate limit RPM</FieldLabel>
-                  <Input id="create_rpm" type="number" value={tenantForm.rate_limit_rpm ?? 60} onChange={(e) => setTenantForm((c) => ({ ...c, rate_limit_rpm: Number(e.target.value || 60) }))} />
+                  <Input id="create_rpm" type="number" value={tenantForm.rate_limit_rpm ?? 150} onChange={(e) => setTenantForm((c) => ({ ...c, rate_limit_rpm: Number(e.target.value || 150) }))} />
+                  <FieldDescription>Tốc độ giới hạn câu hỏi RAG tối đa trong 1 phút cho tenant này (Mặc định: 150 câu/phút).</FieldDescription>
                 </FieldContent>
               </Field>
               <Field>
                 <FieldContent>
                   <FieldLabel htmlFor="create_quota_req">Quota request / tháng</FieldLabel>
-                  <Input id="create_quota_req" type="number" value={tenantForm.monthly_request_quota ?? ""} onChange={(e) => setTenantForm((c) => ({ ...c, monthly_request_quota: Number(e.target.value || 0) }))} />
+                  <Input id="create_quota_req" type="number" value={tenantForm.monthly_request_quota ?? ""} onChange={(e) => setTenantForm((c) => ({ ...c, monthly_request_quota: Number(e.target.value || 0) }))} placeholder="Ví dụ: 50000" />
+                  <FieldDescription>Tổng số câu hỏi RAG tối đa được phép gọi trong 1 tháng. Để trống nếu không giới hạn.</FieldDescription>
                 </FieldContent>
               </Field>
               <Field>
                 <FieldContent>
                   <FieldLabel htmlFor="create_quota_token">Quota token / tháng</FieldLabel>
-                  <Input id="create_quota_token" type="number" value={tenantForm.monthly_token_quota ?? ""} onChange={(e) => setTenantForm((c) => ({ ...c, monthly_token_quota: Number(e.target.value || 0) }))} />
+                  <Input id="create_quota_token" type="number" value={tenantForm.monthly_token_quota ?? ""} onChange={(e) => setTenantForm((c) => ({ ...c, monthly_token_quota: Number(e.target.value || 0) }))} placeholder="Ví dụ: 10000000" />
+                  <FieldDescription>Trần số lượng token LLM tiêu thụ trong 1 tháng. Để trống nếu không giới hạn.</FieldDescription>
                 </FieldContent>
               </Field>
               <Field>
                 <FieldContent>
                   <FieldLabel htmlFor="create_origins">Allowed origins</FieldLabel>
                   <Textarea id="create_origins" rows={3} value={allowedOriginsDraft} onChange={(e) => setAllowedOriginsDraft(e.target.value)} placeholder={"https://erp.company.vn\nhttps://portal.company.vn"} />
-                  <FieldDescription>Mỗi dòng một origin.</FieldDescription>
+                  <FieldDescription>Danh sách tên miền được phép nhúng Chatbot Widget (Mỗi tên miền trên một dòng).</FieldDescription>
                 </FieldContent>
               </Field>
               <Field>
                 <FieldContent>
                   <FieldLabel htmlFor="create_admin_user">Admin username</FieldLabel>
-                  <Input id="create_admin_user" value={tenantAdminUsername} onChange={(e) => setTenantAdminUsername(e.target.value)} placeholder="Ví dụ: acme.admin" />
+                  <Input id="create_admin_user" value={tenantAdminUsername} onChange={(e) => setTenantAdminUsername(e.target.value)} placeholder="Ví dụ: alpha.admin" />
+                  <FieldDescription>Tên tài khoản quản trị viên trực thuộc quản lý Tenant này.</FieldDescription>
                 </FieldContent>
               </Field>
               <Field>
                 <FieldContent>
                   <FieldLabel htmlFor="create_admin_pass">Admin password</FieldLabel>
                   <Input id="create_admin_pass" type="password" value={tenantAdminPassword} onChange={(e) => setTenantAdminPassword(e.target.value)} placeholder="Ít nhất 6 ký tự" />
+                  <FieldDescription>Mật khẩu đăng nhập cho quản trị viên mới (tối thiểu 6 ký tự).</FieldDescription>
                 </FieldContent>
               </Field>
               <div className="flex justify-end gap-2 pt-2">
@@ -468,51 +470,51 @@ export default function AdminTenantsPage() {
                     <FieldContent>
                       <FieldLabel htmlFor="sheet_name">Tên tenant</FieldLabel>
                       <Input id="sheet_name" value={tenantForm.name || ""} onChange={(e) => setTenantForm((c) => ({ ...c, name: e.target.value }))} />
+                      <FieldDescription>Tên hiển thị của tổ chức hoặc doanh nghiệp.</FieldDescription>
                     </FieldContent>
                   </Field>
                   <Field>
                     <FieldContent>
                       <FieldLabel htmlFor="sheet_slug" className="flex items-center gap-1">
                         Slug
-                        <TooltipProvider delay={100}>
-                          <Tooltip>
-                            <TooltipTrigger type="button"><Info className="h-3 w-3 text-muted-foreground" /></TooltipTrigger>
-                            <TooltipContent>Mã định danh dùng trên URL (tự động đổi dấu cách thành dấu gạch ngang).</TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
                       </FieldLabel>
                       <Input id="sheet_slug" value={tenantForm.slug || ""} onChange={(e) => setTenantForm((c) => ({ ...c, slug: e.target.value.replace(/\s+/g, '-') }))} />
+                      <FieldDescription>Mã định danh ngắn trên URL (chỉ gồm chữ cái thường, số và dấu -).</FieldDescription>
                     </FieldContent>
                   </Field>
                   <Field className="md:col-span-2">
                     <FieldContent>
                       <FieldLabel htmlFor="sheet_desc">Mô tả</FieldLabel>
                       <Textarea id="sheet_desc" rows={2} value={tenantForm.description || ""} onChange={(e) => setTenantForm((c) => ({ ...c, description: e.target.value }))} />
+                      <FieldDescription>Mô tả mục đích sử dụng hoặc ghi chú quản trị của Tenant.</FieldDescription>
                     </FieldContent>
                   </Field>
                   <Field>
                     <FieldContent>
                       <FieldLabel htmlFor="sheet_rpm">Rate limit RPM</FieldLabel>
-                      <Input id="sheet_rpm" type="number" value={tenantForm.rate_limit_rpm ?? 60} onChange={(e) => setTenantForm((c) => ({ ...c, rate_limit_rpm: Number(e.target.value || 60) }))} />
+                      <Input id="sheet_rpm" type="number" value={tenantForm.rate_limit_rpm ?? 150} onChange={(e) => setTenantForm((c) => ({ ...c, rate_limit_rpm: Number(e.target.value || 150) }))} />
+                      <FieldDescription>Giới hạn số câu hỏi RAG tối đa trong 1 phút (Mặc định: 150 RPM).</FieldDescription>
                     </FieldContent>
                   </Field>
                   <Field>
                     <FieldContent>
                       <FieldLabel htmlFor="sheet_quota_req">Quota request / tháng</FieldLabel>
                       <Input id="sheet_quota_req" type="number" value={tenantForm.monthly_request_quota ?? ""} onChange={(e) => setTenantForm((c) => ({ ...c, monthly_request_quota: Number(e.target.value || 0) }))} />
+                      <FieldDescription>Tổng số câu hỏi RAG tối đa trong tháng (Để trống = Không giới hạn).</FieldDescription>
                     </FieldContent>
                   </Field>
                   <Field>
                     <FieldContent>
                       <FieldLabel htmlFor="sheet_quota_token">Quota token / tháng</FieldLabel>
                       <Input id="sheet_quota_token" type="number" value={tenantForm.monthly_token_quota ?? ""} onChange={(e) => setTenantForm((c) => ({ ...c, monthly_token_quota: Number(e.target.value || 0) }))} />
+                      <FieldDescription>Trần token LLM tối đa trong tháng (Để trống = Không giới hạn).</FieldDescription>
                     </FieldContent>
                   </Field>
                   <Field className="md:col-span-2">
                     <FieldContent>
                       <FieldLabel htmlFor="sheet_origins">Allowed origins</FieldLabel>
                       <Textarea id="sheet_origins" rows={3} value={allowedOriginsDraft} onChange={(e) => setAllowedOriginsDraft(e.target.value)} />
-                      <FieldDescription>Mỗi dòng một origin.</FieldDescription>
+                      <FieldDescription>Danh sách tên miền website được phép nhúng Chatbot Widget (Mỗi tên miền trên một dòng).</FieldDescription>
                     </FieldContent>
                   </Field>
                   <div className="flex justify-end md:col-span-2">

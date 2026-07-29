@@ -8,6 +8,7 @@ import { UserSettingsForm } from "@/components/auth/user-settings-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatRoleLabel } from "@/lib/format";
@@ -106,20 +107,22 @@ export default function SettingsPage() {
                     <h3 className="font-medium text-sm">Giá Token API</h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <Label>Input Price (VND/1M tokens)</Label>
+                        <Label>Giá Token đầu vào (VND/1M)</Label>
                         <Input
                           type="number"
                           value={billingData.ai_input_price_vnd_per_1m}
                           onChange={(e) => handleBillingChange("ai_input_price_vnd_per_1m", e.target.value)}
                         />
+                        <FieldDescription>Chi phí mua 1 triệu Token Prompt đầu vào từ provider LLM (0 = chưa đặt giá).</FieldDescription>
                       </div>
                       <div className="space-y-2">
-                        <Label>Output Price (VND/1M tokens)</Label>
+                        <Label>Giá Token đầu ra (VND/1M)</Label>
                         <Input
                           type="number"
                           value={billingData.ai_output_price_vnd_per_1m}
                           onChange={(e) => handleBillingChange("ai_output_price_vnd_per_1m", e.target.value)}
                         />
+                        <FieldDescription>Chi phí mua 1 triệu Token Completion đầu ra từ provider LLM (0 = chưa đặt giá).</FieldDescription>
                       </div>
                     </div>
                   </div>
@@ -134,6 +137,7 @@ export default function SettingsPage() {
                           value={billingData.quota_hard_budget_vnd}
                           onChange={(e) => handleBillingChange("quota_hard_budget_vnd", e.target.value)}
                         />
+                        <FieldDescription>Hạn mức ngân sách tối đa trong tháng cho toàn hệ thống API. Khi đạt 100%, hệ thống tự động tạm ngắt API.</FieldDescription>
                       </div>
                       <div className="space-y-2">
                         <Label>User rate per min</Label>
@@ -142,6 +146,7 @@ export default function SettingsPage() {
                           value={billingData.quota_user_rate_per_min}
                           onChange={(e) => handleBillingChange("quota_user_rate_per_min", e.target.value)}
                         />
+                        <FieldDescription>Tốc độ giới hạn Rate Limit mặc định tính theo số câu hỏi/phút mỗi API Key.</FieldDescription>
                       </div>
                       <div className="space-y-2">
                         <Label>User daily requests</Label>
@@ -150,6 +155,7 @@ export default function SettingsPage() {
                           value={billingData.quota_user_daily_requests}
                           onChange={(e) => handleBillingChange("quota_user_daily_requests", e.target.value)}
                         />
+                        <FieldDescription>Giới hạn số câu hỏi RAG tối đa mỗi ngày của từng người dùng.</FieldDescription>
                       </div>
                     </div>
                     
@@ -161,6 +167,7 @@ export default function SettingsPage() {
                           value={billingData.quota_cost_alert_pct_warn}
                           onChange={(e) => handleBillingChange("quota_cost_alert_pct_warn", e.target.value)}
                         />
+                        <FieldDescription>Ngưỡng gửi email/log cảnh báo ngân sách ban đầu (Mặc định 70%).</FieldDescription>
                       </div>
                       <div className="space-y-2">
                         <Label>Alert Threshold (%)</Label>
@@ -169,6 +176,7 @@ export default function SettingsPage() {
                           value={billingData.quota_cost_alert_pct_alert}
                           onChange={(e) => handleBillingChange("quota_cost_alert_pct_alert", e.target.value)}
                         />
+                        <FieldDescription>Ngưỡng cảnh báo mức độ cao (Mặc định 85%).</FieldDescription>
                       </div>
                       <div className="space-y-2">
                         <Label>Cutoff Threshold (%)</Label>
@@ -177,6 +185,7 @@ export default function SettingsPage() {
                           value={billingData.quota_cost_alert_pct_cutoff}
                           onChange={(e) => handleBillingChange("quota_cost_alert_pct_cutoff", e.target.value)}
                         />
+                        <FieldDescription>Ngưỡng ngắt khẩn cấp dịch vụ API (Mặc định 100%).</FieldDescription>
                       </div>
                     </div>
                   </div>
