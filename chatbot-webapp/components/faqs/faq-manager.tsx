@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, Edit2, HelpCircle, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowRight, Edit2, HelpCircle, Plus, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -177,6 +177,18 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
     }
   }, [loadData]);
 
+  const handleRejectEscalation = useCallback(async (escId: string) => {
+    if (!confirm("Bạn có chắc chắn muốn từ chối và xóa câu hỏi chờ duyệt này khỏi cơ sở dữ liệu?")) return;
+    try {
+      await faqApi.delete(escId);
+      toast.success("Đã từ chối và xóa câu hỏi chờ duyệt khỏi cơ sở dữ liệu");
+      void loadData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể từ chối câu hỏi";
+      toast.error(message);
+    }
+  }, [loadData]);
+
   const modalTitle =
     modalMode === "create" ? "Thêm bài FAQ mới" :
     modalMode === "edit" ? "Chỉnh sửa bài FAQ" :
@@ -341,15 +353,26 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
                       {formatDateTimeVN(esc.created_at)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-xl"
-                        onClick={() => openPromote(esc)}
-                      >
-                        Duyệt thành FAQ
-                        <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl"
+                          onClick={() => openPromote(esc)}
+                        >
+                          Duyệt thành FAQ
+                          <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="rounded-xl"
+                          onClick={() => handleRejectEscalation(esc.id)}
+                        >
+                          <XCircle className="mr-1.5 h-3.5 w-3.5" />
+                          Từ chối (Xóa)
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
