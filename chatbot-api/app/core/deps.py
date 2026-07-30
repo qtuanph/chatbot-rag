@@ -56,4 +56,3 @@ async def get_redis() -> Any:
         yield client
     finally:
         await client.aclose()
-

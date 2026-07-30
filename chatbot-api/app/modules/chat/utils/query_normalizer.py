@@ -106,9 +106,7 @@ def normalize_query(
 
 def remove_stopwords_from_query(text: str, stopwords: set[str] | None = None) -> str:
     """Remove stopwords from query text."""
-    return normalize_query(
-        text, stopwords=stopwords or ALL_DEFAULT_STOPWORDS, remove_stopwords=True
-    )
+    return normalize_query(text, stopwords=stopwords or ALL_DEFAULT_STOPWORDS, remove_stopwords=True)
 
 
 def get_stopwords_for_language(language: str = "vi") -> set[str]:

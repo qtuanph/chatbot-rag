@@ -46,6 +46,7 @@ def _month_key() -> str:
 def _get_rtm_billing(key: str, default: str) -> int:
     try:
         from app.modules.settings.runtime_manager import RuntimeProviderManager
+
         val = RuntimeProviderManager.get_instance().get_billing(key, default)
         return int(val) if val else int(default)
     except Exception:
@@ -210,11 +211,11 @@ class QuotaService:
 
             budget_micros = hard_budget_vnd * 1_000_000
             pct = int(total_cost * 100 / budget_micros) if budget_micros > 0 else 0
-            
+
             cutoff_pct = _get_rtm_billing("quota_cost_alert_pct_cutoff", str(settings.quota_cost_alert_pct_cutoff))
             alert_pct = _get_rtm_billing("quota_cost_alert_pct_alert", str(settings.quota_cost_alert_pct_alert))
             warn_pct = _get_rtm_billing("quota_cost_alert_pct_warn", str(settings.quota_cost_alert_pct_warn))
-            
+
             if pct >= cutoff_pct:
                 return "hard_stop", pct
             if pct >= alert_pct:
@@ -239,7 +240,7 @@ class QuotaService:
             current = int(raw or 0)
             budget_micros = hard_budget_vnd * 1_000_000
             pct = int(current * 100 / budget_micros) if budget_micros > 0 else 0
-            
+
             cutoff_pct = _get_rtm_billing("quota_cost_alert_pct_cutoff", str(settings.quota_cost_alert_pct_cutoff))
             if pct >= cutoff_pct:
                 return False, f"hard_budget_exceeded:{pct}%"

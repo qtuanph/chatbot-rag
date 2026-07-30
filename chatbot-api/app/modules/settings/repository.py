@@ -270,9 +270,7 @@ class SettingsRepository:
     # ── Platform Settings ─────────────────────────────────────────────────────────────
 
     def get_platform_setting(self, key: str, default: str = "") -> str:
-        row = self.db.execute(
-            "SELECT value FROM platform_settings WHERE key = ?", (key,)
-        ).fetchone()
+        row = self.db.execute("SELECT value FROM platform_settings WHERE key = ?", (key,)).fetchone()
         return row["value"] if row else default
 
     def set_platform_setting(self, key: str, value: str) -> None:

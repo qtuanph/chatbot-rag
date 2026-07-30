@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from app.adapters.base import IngestedNode, ParsingMetadata
 from app.adapters.parsers.docx_converter import convert_docx_to_pdf, is_docx
-from app.adapters.parsers.llamaparse_adapter import LlamaParseParser
 from app.modules.documents.ingestion.pipeline import run_ingestion_pipeline
 from app.modules.documents.repositories import SectionRepository
 from app.modules.documents.validators import HierarchyValidator, ValidationReport
@@ -211,7 +210,9 @@ class IngestionService:
                 message = f"Đang index section {phase_processed}/{section_total}, chuẩn bị chuyển sang chunk..."
             elif phase == "chunk":
                 actual_chunk_total = max(phase_processed, chunk_total)
-                message = f"Đang index chunk {phase_processed}/{actual_chunk_total}, dữ liệu đang được ghi vào Qdrant..."
+                message = (
+                    f"Đang index chunk {phase_processed}/{actual_chunk_total}, dữ liệu đang được ghi vào Qdrant..."
+                )
             else:
                 message = "Đang chuẩn bị dữ liệu index cho Qdrant..."
             await report(

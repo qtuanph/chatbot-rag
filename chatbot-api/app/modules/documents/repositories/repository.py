@@ -120,10 +120,14 @@ class DocumentRepository(BaseRepository[Document]):
 
         if tenant_id:
             tenant_uuid = UUID(tenant_id)
-            has_access = select(1).where(
-                TenantDocumentAccess.document_id == self.model.id,
-                TenantDocumentAccess.tenant_id == tenant_uuid,
-            ).exists()
+            has_access = (
+                select(1)
+                .where(
+                    TenantDocumentAccess.document_id == self.model.id,
+                    TenantDocumentAccess.tenant_id == tenant_uuid,
+                )
+                .exists()
+            )
             tenant_filter = (self.model.tenant_id == tenant_uuid) | has_access
             count_stmt = count_stmt.where(tenant_filter)
             stmt = stmt.where(tenant_filter)

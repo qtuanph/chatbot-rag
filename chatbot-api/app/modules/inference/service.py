@@ -70,12 +70,14 @@ class PublicInferenceService:
                 pass
 
         from app.modules.documents.repositories.access_repository import DocumentAccessRepository
+
         access_repo = DocumentAccessRepository(self.section_repo.session)
         doc_ids = await access_repo.get_document_ids_for_tenant(tenant_id)
         if not doc_ids:
             doc_key = tenant_id
         else:
             import hashlib
+
             sorted_ids = ",".join(sorted(doc_ids))
             doc_key = hashlib.sha256(sorted_ids.encode("utf-8")).hexdigest()[:16]
 
@@ -151,6 +153,7 @@ class PublicInferenceService:
     ) -> CompletionResult:
         if not conversation_id:
             import uuid
+
             conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
 
         user_query = self._latest_user_query(messages)
@@ -177,7 +180,10 @@ class PublicInferenceService:
             usage["cached"] = True
             usage["cached_type"] = cache_tier
             res = CompletionResult(
-                content=cached["content"], citations=cached["citations"], usage=usage, model=cached.get("model", "cached")
+                content=cached["content"],
+                citations=cached["citations"],
+                usage=usage,
+                model=cached.get("model", "cached"),
             )
             try:
                 from app.modules.chat.tasks.usage_tasks import log_model_usage_task
@@ -323,6 +329,7 @@ class PublicInferenceService:
     ) -> AsyncGenerator[str, None]:
         if not conversation_id:
             import uuid
+
             conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
 
         user_query = self._latest_user_query(messages)
@@ -609,7 +616,7 @@ class PublicInferenceService:
 
         section_map = {}
         missing_pairs = []
-        
+
         for doc_id, sec_id in section_doc_pairs:
             key = (doc_id, sec_id)
             cache_key = f"rag:section:{doc_id}:{sec_id}"
@@ -619,7 +626,7 @@ class PublicInferenceService:
                     section_map[key] = json.loads(cached)
                     continue
             missing_pairs.append(key)
-            
+
         if missing_pairs:
             section_rows = await self.section_repo.get_sections_for_rag(missing_pairs)
             for row in section_rows:
@@ -627,7 +634,7 @@ class PublicInferenceService:
                 cache_dict = {
                     "content": str(row.get("content") or ""),
                     "title": str(row.get("title") or ""),
-                    "page_range": row.get("page_range")
+                    "page_range": row.get("page_range"),
                 }
                 section_map[key] = cache_dict
                 if self._redis:
@@ -701,12 +708,12 @@ class PublicInferenceService:
             page = f" (page {node.page_range})" if node.page_range else ""
             breadcrumb = " > ".join(node.breadcrumb or ())
             breadcrumb_line = f"\nĐường dẫn: {breadcrumb}" if breadcrumb else ""
-            
+
             block_text = f"[Nguồn {idx}] {title} - {heading}{section_code}{page}{breadcrumb_line}\n{node.full_text}"
-            
+
             if total_chars + len(block_text) > max_chars:
                 break
-                
+
             context_blocks.append(block_text)
             total_chars += len(block_text)
 

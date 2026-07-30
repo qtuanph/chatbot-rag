@@ -16,11 +16,16 @@ def compute_cost_micros_vnd(
     if input_price_vnd_per_1m is None or output_price_vnd_per_1m is None:
         try:
             from app.modules.settings.runtime_manager import RuntimeProviderManager
+
             rtm = RuntimeProviderManager.get_instance()
             if input_price_vnd_per_1m is None:
-                input_price_vnd_per_1m = int(rtm.get_billing("ai_input_price_vnd_per_1m", "0")) or settings.ai_input_price_vnd_per_1m
+                input_price_vnd_per_1m = (
+                    int(rtm.get_billing("ai_input_price_vnd_per_1m", "0")) or settings.ai_input_price_vnd_per_1m
+                )
             if output_price_vnd_per_1m is None:
-                output_price_vnd_per_1m = int(rtm.get_billing("ai_output_price_vnd_per_1m", "0")) or settings.ai_output_price_vnd_per_1m
+                output_price_vnd_per_1m = (
+                    int(rtm.get_billing("ai_output_price_vnd_per_1m", "0")) or settings.ai_output_price_vnd_per_1m
+                )
         except Exception:
             if input_price_vnd_per_1m is None:
                 input_price_vnd_per_1m = settings.ai_input_price_vnd_per_1m

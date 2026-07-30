@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     celery_include: str = "all"
-    
+
     billing_currency_code: str = "VND"
     # Price per 1M tokens in VND. MUST be set in production for cost tracking and budget enforcement.
     # Example: Gemini Flash input ~375 VND/1M tokens; output ~1500 VND/1M tokens.

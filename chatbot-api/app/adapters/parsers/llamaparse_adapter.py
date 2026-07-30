@@ -32,6 +32,7 @@ class LlamaParseParser(BaseParser):
     def __init__(self, api_key: str | None = None, api_base: str | None = None):
         if not api_key or not api_base:
             from app.modules.settings.runtime_manager import RuntimeProviderManager
+
             mgr = RuntimeProviderManager.get_instance()
             parser_config = mgr.get_parser_config() or {}
             self.api_key = api_key or mgr.get_parser_api_key()
@@ -39,7 +40,7 @@ class LlamaParseParser(BaseParser):
         else:
             self.api_key = api_key
             self.api_base = api_base
-        
+
         if not self.api_key:
             logger.warning("LlamaParse API Key is missing. Parsing will fail.")
 

@@ -121,7 +121,7 @@ class EmbeddingAdapter:
         client = self._get_client()
 
         payload: dict[str, Any] = {"input": texts, "model": self.model}
-        
+
         actual_input_type = input_type or self.config.get("input_type")
         if not actual_input_type:
             model_lower = self.model.lower()
@@ -129,7 +129,7 @@ class EmbeddingAdapter:
                 actual_input_type = "passage"
             elif "embed-multilingual-v3" in model_lower:
                 actual_input_type = "search_document"
-                
+
         if actual_input_type:
             payload["input_type"] = actual_input_type
         try:

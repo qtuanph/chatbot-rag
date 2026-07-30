@@ -183,6 +183,7 @@ async def delete_key(
 async def get_billing_settings(_auth=Depends(require_admin)):
     """Get platform billing & quota settings."""
     from app.modules.settings.runtime_manager import RuntimeProviderManager
+
     rtm = RuntimeProviderManager.get_instance()
     billing = rtm.get_all_billing()
     return BillingSettingsResponse(
@@ -205,7 +206,7 @@ async def update_billing_settings(
     """Update platform billing & quota settings. Changes take effect immediately."""
     from app.modules.settings.runtime_manager import RuntimeProviderManager
     from app.modules.settings.repository import SettingsRepository
-    
+
     updates = {
         "ai_input_price_vnd_per_1m": str(data.ai_input_price_vnd_per_1m),
         "ai_output_price_vnd_per_1m": str(data.ai_output_price_vnd_per_1m),
@@ -222,8 +223,8 @@ async def update_billing_settings(
             repo.set_platform_setting(key, value)
     finally:
         repo.close()
-    
+
     rtm = RuntimeProviderManager.get_instance()
     rtm.reload_billing()
-    
+
     return await get_billing_settings(_auth=_auth)

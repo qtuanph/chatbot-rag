@@ -15,9 +15,7 @@ class TenantDocumentAccess(Base, TimestampMixin):
 
     __table_args__ = (UniqueConstraint("tenant_id", "document_id", name="uq_tenant_document_access"),)
 
-    id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
-    )
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     tenant_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )

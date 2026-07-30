@@ -165,6 +165,7 @@ async def _save_conversation_turn_async(
         if no_answer:
             try:
                 from app.modules.chat.repositories.escalation_repository import EscalationRepository
+
                 esc_repo = EscalationRepository(session)
                 await esc_repo.create(
                     tenant_id=tenant_id,

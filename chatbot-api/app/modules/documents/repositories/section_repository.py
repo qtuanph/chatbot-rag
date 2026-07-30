@@ -17,7 +17,9 @@ class SectionRepository(BaseRepository[DocumentSection]):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, DocumentSection)
 
-    async def store_sections(self, document_id: str, tenant_id: str | None, sections: list[dict[str, Any]]) -> list[str]:
+    async def store_sections(
+        self, document_id: str, tenant_id: str | None, sections: list[dict[str, Any]]
+    ) -> list[str]:
         """Bulk insert sections for a document using multi-row INSERT for 10x performance."""
         try:
             # Delete old sections first (atomic within transaction)
@@ -91,6 +93,7 @@ class SectionRepository(BaseRepository[DocumentSection]):
         if not document_ids:
             return []
         from uuid import UUID
+
         doc_uuids = [UUID(d) for d in document_ids]
         stmt = (
             select(self.model)

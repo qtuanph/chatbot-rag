@@ -59,12 +59,14 @@ class RuntimeProviderManager:
     def load_billing(self) -> None:
         """Load platform billing settings from SQLite into memory cache."""
         from app.modules.settings.repository import SettingsRepository
+
         repo = SettingsRepository()
         try:
             raw = repo.get_all_platform_settings()
             self._billing = {k: v["value"] for k, v in raw.items()}
         except Exception:
             import logging
+
             logging.getLogger(__name__).warning("Failed to load billing settings", exc_info=True)
         finally:
             repo.close()
@@ -92,6 +94,7 @@ class RuntimeProviderManager:
                 api_key = self._get_effective_key(emb) or "no-key"
                 if emb.get("provider_name") != "dmr" and api_key == "no-key":
                     from app.modules.settings.repository import SettingsRepository
+
                     repo = SettingsRepository()
                     try:
                         dmr_emb = repo.get_builtin_provider("embedding", "dmr")
