@@ -78,6 +78,9 @@ jobs:
   backend-ci:
     name: Backend Pytest & Linter
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: chatbot-api
 
     steps:
       - name: Checkout Code
@@ -93,7 +96,6 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          cd chatbot-api
           pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Black & Flake8 Linter
@@ -103,12 +105,14 @@ jobs:
 
       - name: Run Pytest Suite
         run: |
-          cd chatbot-api
           pytest tests/
 
   frontend-ci:
     name: Frontend TypeScript Verification
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: chatbot-webapp
 
     steps:
       - name: Checkout Code
@@ -123,12 +127,10 @@ jobs:
 
       - name: Install Webapp Dependencies
         run: |
-          cd chatbot-webapp
           npm ci
 
       - name: Run TypeScript Compiler Check
         run: |
-          cd chatbot-webapp
           npx tsc --noEmit
 
   secret-scan:
