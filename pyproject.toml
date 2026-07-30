@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chatbot-rag"
+version = "0.10.4"
+description = "Enterprise Multi-Tenant RAG Platform with Tiered Cache & Public API Gateway"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "Proprietary & Confidential" }
+authors = [
+  { name = "Quoc Tuan", email = "qtuan.ph@gmail.com" }
+]
+
+[tool.black]
+line-length = 120
+target-version = ['py313']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | \.next
+  | build
+  | dist
+)/
+'''
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers"
+testpaths = [
+    "chatbot-api/tests",
+]
+python_files = [
+    "test_*.py",
+    "*_test.py",
+]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+exclude = [".git", ".venv", ".next", "node_modules"]
