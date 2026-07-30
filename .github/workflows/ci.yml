@@ -106,6 +106,11 @@ jobs:
       - name: Run Pytest Suite
         env:
           PYTHONPATH: .
+          APP_ENV: testing
+          JWT_SECRET: Test_Jwt_Secret_Key_At_Least_32_Chars_123!
+          S3_SECRET_KEY: test_s3_secret_key_123
+          S3_ACCESS_KEY: test_s3_access_key_123
+          DATABASE_URL: sqlite+aiosqlite:///:memory:
         run: |
           python -m pytest tests/
 

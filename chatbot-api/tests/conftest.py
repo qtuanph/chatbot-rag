@@ -1,4 +1,12 @@
 
+import os
+
+os.environ.setdefault("APP_ENV", "testing")
+os.environ.setdefault("JWT_SECRET", "Test_Jwt_Secret_Key_At_Least_32_Chars_123!")
+os.environ.setdefault("S3_SECRET_KEY", "test_s3_secret_key_123")
+os.environ.setdefault("S3_ACCESS_KEY", "test_s3_access_key_123")
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+
 import pytest
 import asyncio
 from typing import AsyncGenerator
