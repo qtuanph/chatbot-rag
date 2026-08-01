@@ -51,16 +51,16 @@ class AuthRepository:
         user = await self.session.get(User, user_id)
         if user is None:
             return None
-        
+
         for key, value in updates.items():
             setattr(user, key, value)
-            
+
         if commit:
             await self.session.commit()
             await self.session.refresh(user)
         else:
             await self.session.flush()
-            
+
         return self._user_to_dict(user)
 
     async def delete_user(self, user_id: str) -> bool:

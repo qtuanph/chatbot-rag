@@ -482,6 +482,10 @@ CREATE TABLE IF NOT EXISTS escalations (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_escalations_published_faq ON escalations(tenant_id, status) WHERE status = 'published_faq';
+ALTER TABLE escalations ADD COLUMN IF NOT EXISTS question_variants JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE escalations ADD COLUMN IF NOT EXISTS query_hashes JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE escalations ADD COLUMN IF NOT EXISTS hit_count INTEGER DEFAULT 0;
+ALTER TABLE escalations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL;
 GRANT ALL ON escalations TO app_rw;
 
 -- ============= Usage Extensions =============

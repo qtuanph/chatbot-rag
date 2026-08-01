@@ -161,4 +161,20 @@ async def _save_conversation_turn_async(
             citations=citations or [],
             no_answer=no_answer,
         )
+
+        if no_answer:
+            try:
+                from app.modules.chat.repositories.escalation_repository import EscalationRepository
+
+                esc_repo = EscalationRepository(session)
+                await esc_repo.create(
+                    tenant_id=tenant_id,
+                    question=user_content,
+                    answer=assistant_content,
+                    status="open",
+                    conversation_id=conversation_id,
+                )
+            except Exception as esc_err:
+                logger.warning("Failed to record escalation: %s", esc_err)
+
         await session.commit()

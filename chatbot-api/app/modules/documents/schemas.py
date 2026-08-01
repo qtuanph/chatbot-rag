@@ -99,4 +99,3 @@ class DocumentDetailResponse(BaseModel):
     updated_at: str
     node_count: int = 0
     allowed_tenants: list[TenantBrief] = Field(default_factory=list)
-

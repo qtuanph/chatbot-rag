@@ -43,7 +43,9 @@ class DocumentService:
     async def get_task_status(self, task_id: str) -> dict:
         return await self.task_service.get_task_status(task_id)
 
-    async def check_duplicate(self, sha256: str, filename: str, tenant_id: str | None = None) -> tuple[dict | None, int]:
+    async def check_duplicate(
+        self, sha256: str, filename: str, tenant_id: str | None = None
+    ) -> tuple[dict | None, int]:
         detector_key = tenant_id or "global"
         if not await self.detector.exists(detector_key, sha256):
             next_version = await self.doc_repo.get_next_version(filename, tenant_id)
@@ -166,9 +168,7 @@ class DocumentService:
         tenants = await self.access_repo.get_tenants_with_name_for_document(document_id)
         return {"document_id": document_id, "tenants": tenants}
 
-    async def set_document_access(
-        self, document_id: str, tenant_ids: list[str], granted_by: str | None = None
-    ) -> dict:
+    async def set_document_access(self, document_id: str, tenant_ids: list[str], granted_by: str | None = None) -> dict:
         doc = await self.doc_repo.get_full_document(document_id)
         if doc is None:
             raise ValueError("Document not found")

@@ -128,7 +128,6 @@ async def upload_document(
     return UploadAcceptedResponse(task_id=task_id, status="queued", document_id=document_id)
 
 
-
 @router.get("/status/{task_id}", response_model=TaskStatusResponse)
 async def get_status(
     task_id: str,
@@ -290,7 +289,6 @@ async def update_document_access(
         )
     except ValueError as e:
         raise http_errors.not_found(str(e)) from None
-
 
 
 @router.delete("/documents/{document_id}", response_model=DocumentDeleteResponse)

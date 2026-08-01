@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Brain, Cpu, Network, RefreshCw, ThumbsDown, TimerReset, Trash2 } from "lucide-react";
+import { Brain, Cpu, Network, RefreshCw, ThumbsDown, TimerReset, Trash2, Zap } from "lucide-react";
 
 import { analyticsApi } from "@/lib/api-client";
 import { formatDateTimeVN, formatLatency, formatNumber, formatVnd, microsVndToRoundedVnd } from "@/lib/format";
@@ -190,7 +190,7 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
 
       {stats && (
         <>
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Tổng request</CardTitle>
@@ -209,6 +209,22 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
                 <p className="text-xs text-muted-foreground">
                   In {formatNumber(stats.total_tokens_in)} • Out {formatNumber(stats.total_tokens_out)}
                 </p>
+              </CardContent>
+            </Card>
+            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <div className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-500">
+                    <Zap className="h-4 w-4" />
+                  </div>
+                  Tỷ lệ Cache Hit
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {stats.total_messages > 0 ? Math.max(0, Math.round(((stats.total_messages - stats.by_model_type.llm.call_count) / stats.total_messages) * 100)) : 0}%
+                </div>
+                <p className="text-xs text-muted-foreground">Phản hồi ~20ms từ FAQ & Cache</p>
               </CardContent>
             </Card>
             <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
@@ -235,7 +251,7 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
               <CardContent>
                 <div className="text-2xl font-bold">{formatVnd(stats.cost_vnd_rounded)}</div>
                 <p className="text-xs text-muted-foreground">
-                  {stats.currency_code} • model {stats.pricing.model}
+                  {stats.currency_code} • model {stats.pricing.model || "chatbot-rag"}
                 </p>
               </CardContent>
             </Card>

@@ -43,6 +43,16 @@ def _month_key() -> str:
     return _vn_now().strftime("%Y%m")
 
 
+def _get_rtm_billing(key: str, default: str) -> int:
+    try:
+        from app.modules.settings.runtime_manager import RuntimeProviderManager
+
+        val = RuntimeProviderManager.get_instance().get_billing(key, default)
+        return int(val) if val else int(default)
+    except Exception:
+        return int(default)
+
+
 class QuotaService:
     def __init__(self, redis: aioredis.Redis | None, tenant_repo: Any = None) -> None:
         self.redis = redis
@@ -62,7 +72,12 @@ class QuotaService:
     async def check_and_increment_rate(
         self, *, tenant_id: str, user_id: str | None, tenant_config: dict[str, Any] | None = None
     ) -> tuple[bool, str]:
-        """Check rate limits using tenant's `rate_limit_rpm` set in DB / Webapp."""
+        """Check rate limits.
+
+        - If user_id is provided (internal/JWT auth): enforce both per-user limit AND tenant limit.
+        - If user_id is None (public API key auth): enforce ONLY tenant limit (rate_limit_rpm from DB).
+          Tenant admin sets the single limit for the whole tenant in /admin/tenants.
+        """
         if not self.redis:
             return not settings.quota_fail_closed, "redis_unavailable"
 
@@ -73,23 +88,30 @@ class QuotaService:
             minute = _minute_key()
             pipe = self.redis.pipeline()
 
-            user_key = f"rate:user:{tenant_id}:{user_id or 'anon'}:{minute}"
-            pipe.incr(user_key)
-            pipe.expire(user_key, 90)
+            # Only track per-user counter when we have an actual user identity
+            if user_id is not None:
+                user_key = f"rate:user:{tenant_id}:{user_id}:{minute}"
+                pipe.incr(user_key)
+                pipe.expire(user_key, 90)
 
             tenant_key = f"rate:tenant:{tenant_id}:{minute}"
             pipe.incr(tenant_key)
             pipe.expire(tenant_key, 90)
 
             results = await pipe.execute()
-            user_count = int(results[0])
-            tenant_count = int(results[2])
 
-            user_limit = settings.effective_rate_limit(settings.quota_user_rate_per_min)
+            if user_id is not None:
+                user_count = int(results[0])
+                tenant_count = int(results[2])
+                quota_user_rate = _get_rtm_billing("quota_user_rate_per_min", str(settings.quota_user_rate_per_min))
+                user_limit = settings.effective_rate_limit(quota_user_rate)
+                if user_count > user_limit:
+                    return False, f"user_rate_limit_exceeded:{user_count}/{user_limit}"
+            else:
+                # Public API: only tenant limit matters
+                tenant_count = int(results[0])
+
             tenant_limit = settings.effective_rate_limit(tenant_rpm)
-
-            if user_count > user_limit:
-                return False, f"user_rate_limit_exceeded:{user_count}/{user_limit}"
             if tenant_count > tenant_limit:
                 return False, f"tenant_rate_limit_exceeded:{tenant_count}/{tenant_limit}"
             return True, "ok"
@@ -98,13 +120,16 @@ class QuotaService:
             return not settings.quota_fail_closed, f"error:{exc}"
 
     async def check_and_increment_daily(self, *, tenant_id: str, user_id: str | None) -> tuple[bool, str]:
-        """Check user daily request quota."""
+        """Check user daily request quota (bypassed for public API calls where user_id is None)."""
+        if user_id is None:
+            return True, "ok"
+
         if not self.redis:
             return not settings.quota_fail_closed, "redis_unavailable"
 
         try:
             date = _date_key()
-            key = f"quota:user_daily:{tenant_id}:{user_id or 'anon'}:{date}"
+            key = f"quota:user_daily:{tenant_id}:{user_id}:{date}"
             count = await self.redis.incr(key)
             if count == 1:
                 now = _vn_now()
@@ -112,7 +137,7 @@ class QuotaService:
                 ttl = int((midnight - now).total_seconds()) + 60
                 await self.redis.expire(key, ttl)
 
-            limit = settings.quota_user_daily_requests
+            limit = _get_rtm_billing("quota_user_daily_requests", str(settings.quota_user_daily_requests))
             if count > limit:
                 return False, f"daily_request_quota_exceeded:{count}/{limit}"
             return True, "ok"
@@ -175,7 +200,8 @@ class QuotaService:
                     await self.redis.expire(token_key, 35 * 24 * 3600)
 
             # 2. Cost tracking
-            if settings.quota_hard_budget_vnd <= 0:
+            hard_budget_vnd = _get_rtm_billing("quota_hard_budget_vnd", str(settings.quota_hard_budget_vnd))
+            if hard_budget_vnd <= 0:
                 return "ok", 0
 
             cost_key = f"budget:tenant:{tenant_id}:{month}"
@@ -183,13 +209,18 @@ class QuotaService:
             if total_cost <= cost_micros_vnd:
                 await self.redis.expire(cost_key, 35 * 24 * 3600)
 
-            budget_micros = settings.quota_hard_budget_vnd * 1_000_000
+            budget_micros = hard_budget_vnd * 1_000_000
             pct = int(total_cost * 100 / budget_micros) if budget_micros > 0 else 0
-            if pct >= settings.quota_cost_alert_pct_cutoff:
+
+            cutoff_pct = _get_rtm_billing("quota_cost_alert_pct_cutoff", str(settings.quota_cost_alert_pct_cutoff))
+            alert_pct = _get_rtm_billing("quota_cost_alert_pct_alert", str(settings.quota_cost_alert_pct_alert))
+            warn_pct = _get_rtm_billing("quota_cost_alert_pct_warn", str(settings.quota_cost_alert_pct_warn))
+
+            if pct >= cutoff_pct:
                 return "hard_stop", pct
-            if pct >= settings.quota_cost_alert_pct_alert:
+            if pct >= alert_pct:
                 return "alert", pct
-            if pct >= settings.quota_cost_alert_pct_warn:
+            if pct >= warn_pct:
                 return "warn", pct
             return "ok", pct
         except Exception as exc:
@@ -198,7 +229,8 @@ class QuotaService:
 
     async def check_budget_before_llm(self, *, tenant_id: str) -> tuple[bool, str]:
         """Check if budget allows LLM call."""
-        if not self.redis or settings.quota_hard_budget_vnd <= 0:
+        hard_budget_vnd = _get_rtm_billing("quota_hard_budget_vnd", str(settings.quota_hard_budget_vnd))
+        if not self.redis or hard_budget_vnd <= 0:
             return True, "ok"
 
         try:
@@ -206,9 +238,11 @@ class QuotaService:
             key = f"budget:tenant:{tenant_id}:{month}"
             raw = await self.redis.get(key)
             current = int(raw or 0)
-            budget_micros = settings.quota_hard_budget_vnd * 1_000_000
+            budget_micros = hard_budget_vnd * 1_000_000
             pct = int(current * 100 / budget_micros) if budget_micros > 0 else 0
-            if pct >= settings.quota_cost_alert_pct_cutoff:
+
+            cutoff_pct = _get_rtm_billing("quota_cost_alert_pct_cutoff", str(settings.quota_cost_alert_pct_cutoff))
+            if pct >= cutoff_pct:
                 return False, f"hard_budget_exceeded:{pct}%"
             return True, "ok"
         except Exception as exc:

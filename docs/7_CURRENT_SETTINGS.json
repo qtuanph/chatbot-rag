@@ -106,15 +106,18 @@
     "tiered_cache": "L1 Exact -> L2 Semantic"
   },
   "quota_and_budget": {
-    "user_rate_per_min": 6,
-    "user_daily_requests": 100,
+    "user_rate_per_min": "Quản lý qua SQLite platform_settings. Fallback to env var nếu không có.",
+    "user_daily_requests": "Quản lý qua SQLite platform_settings. Fallback to env var.",
     "tenant_rate_per_min": 30,
     "tenant_monthly_llm_calls": 1000,
-    "alert_pct_warn": 70,
-    "alert_pct_alert": 85,
-    "alert_pct_cutoff": 100,
-    "hard_budget_vnd": 0,
-    "fail_closed": true
+    "alert_pct_warn": "Quản lý qua SQLite platform_settings (70%).",
+    "alert_pct_alert": "Quản lý qua SQLite platform_settings (85%).",
+    "alert_pct_cutoff": "Quản lý qua SQLite platform_settings (100%).",
+    "hard_budget_vnd": "Quản lý qua SQLite platform_settings. Giá trị mặc định 0.",
+    "fail_closed": true,
+    "ai_input_price_vnd_per_1m": "Quản lý qua SQLite platform_settings. Giá trị mặc định 0.",
+    "ai_output_price_vnd_per_1m": "Quản lý qua SQLite platform_settings. Giá trị mặc định 0.",
+    "rate_limit_relaxed_mode": "MUST be false in production. Default is now false in config.py (safe default)."
   },
   "usage_tracking": {
     "currency_code": "VND",

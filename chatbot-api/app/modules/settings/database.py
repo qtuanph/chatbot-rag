@@ -88,10 +88,18 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_providers_service_type ON ai_providers(service_type);
             CREATE INDEX IF NOT EXISTS idx_keys_provider_id ON api_keys(provider_id);
+
+            CREATE TABLE IF NOT EXISTS platform_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         db.commit()
         _migrate_schema(db)
         _seed_templates(db)
+        _seed_platform_settings(db)
         _sync_builtin_defaults(db)
     finally:
         db.close()
@@ -235,4 +243,19 @@ def _sync_builtin_defaults(db: sqlite3.Connection) -> None:
     db.commit()
 
 
-
+def _seed_platform_settings(db: sqlite3.Connection) -> None:
+    defaults = [
+        ("ai_input_price_vnd_per_1m", "0", "Giá token đầu vào (VND/1M tokens). 0 = chưa cấu hình."),
+        ("ai_output_price_vnd_per_1m", "0", "Giá token đầu ra (VND/1M tokens). 0 = chưa cấu hình."),
+        ("quota_hard_budget_vnd", "0", "Trần ngân sách API Cloud tháng (VND). 0 = không giới hạn."),
+        ("quota_user_rate_per_min", "6", "Số câu hỏi/phút tối đa mỗi API key."),
+        ("quota_user_daily_requests", "100", "Số câu hỏi/ngày tối đa mỗi user."),
+        ("quota_cost_alert_pct_warn", "70", "Ngưỡng cảnh báo ngân sách (%)"),
+        ("quota_cost_alert_pct_alert", "85", "Ngưỡng cảnh báo ngân sách cao (%)"),
+        ("quota_cost_alert_pct_cutoff", "100", "Ngưỡng hard stop ngân sách (%)"),
+    ]
+    db.executemany(
+        "INSERT OR IGNORE INTO platform_settings (key, value, description) VALUES (?, ?, ?)",
+        defaults,
+    )
+    db.commit()

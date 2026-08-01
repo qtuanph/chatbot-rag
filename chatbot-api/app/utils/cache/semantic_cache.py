@@ -111,7 +111,13 @@ class SemanticCache(BaseRedisCache):
             key = self._build_key(tenant_id, query_text)
             query_bytes = np.array(query_vector, dtype=np.float32).tobytes()
             await self._r.hset(
-                key, mapping={"tenant_id": tenant_id, "query_text": query_text, "vector": query_bytes, "result_json": json.dumps(result)}
+                key,
+                mapping={
+                    "tenant_id": tenant_id,
+                    "query_text": query_text,
+                    "vector": query_bytes,
+                    "result_json": json.dumps(result),
+                },
             )
             await self._r.expire(key, 86400)
         except Exception as e:
@@ -185,7 +191,13 @@ class SemanticCache(BaseRedisCache):
             key = self._build_key(tenant_id, query_text)
             query_bytes = np.array(query_vector, dtype=np.float32).tobytes()
             self._r.hset(
-                key, mapping={"tenant_id": tenant_id, "query_text": query_text, "vector": query_bytes, "result_json": json.dumps(result)}
+                key,
+                mapping={
+                    "tenant_id": tenant_id,
+                    "query_text": query_text,
+                    "vector": query_bytes,
+                    "result_json": json.dumps(result),
+                },
             )
             self._r.expire(key, 86400)
         except Exception as e:

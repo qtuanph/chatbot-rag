@@ -15,8 +15,9 @@
   "must_know": {
     "mode": "multi-tenant SaaS with shared Knowledge Bases",
     "chat": "stateless for users, fire-and-forget async audit persistence for admins (90d retention)",
-    "caching": "Tiered L1 Exact (Redis ~0.5ms) + L2 Semantic (0.95 threshold) with circuit breaker",
-    "quota": "Dynamic rates & quotas read from DB tenants table (RPM, monthly requests/tokens)",
+    "caching": "Tiered L0 FAQ O(1) ~20ms -> L1 Exact (Redis ~0.5ms) -> L2 Semantic (0.95 threshold) with refusal empty payload guard",
+    "escalations": "Auto-creates open escalation row on AI refusal ('Chưa đủ căn cứ') for admin review into FAQ",
+    "quota": "Dynamic rates & quotas read from DB tenants table (RPM, monthly requests/tokens) & SQLite platform_settings",
     "gateway": "Browser -> /api/bep/* -> Next.js proxy -> FastAPI",
     "money": "VND, lưu integer cost_micros_vnd",
     "time": "DB lưu UTC, backend/frontend format giờ Việt Nam khi hiển thị",

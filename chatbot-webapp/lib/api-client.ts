@@ -14,6 +14,7 @@ import type {
   LoginRequest,
   UpdateProfileRequest,
   ProviderTemplate,
+  BillingSettings,
   RoleItem,
   TaskStatus,
   TenantApiKeyCreateRequest,
@@ -396,6 +397,15 @@ export const settingsApi = {
 
   getTemplates: (): Promise<ProviderTemplate[]> =>
     apiFetchParse(z.array(s.ProviderTemplateSchema), "/settings/templates"),
+
+  getBilling: (): Promise<BillingSettings> =>
+    apiFetchParse(s.BillingSettingsSchema, "/settings/billing"),
+
+  updateBilling: (data: BillingSettings): Promise<BillingSettings> =>
+    apiFetchParse(s.BillingSettingsSchema, "/settings/billing", {
+      method: "PUT",
+      body: JSON.stringify(parseRequest(s.BillingSettingsSchema, data)),
+    }),
 };
 
 export const conversationsApi = {

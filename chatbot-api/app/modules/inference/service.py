@@ -70,12 +70,14 @@ class PublicInferenceService:
                 pass
 
         from app.modules.documents.repositories.access_repository import DocumentAccessRepository
+
         access_repo = DocumentAccessRepository(self.section_repo.session)
         doc_ids = await access_repo.get_document_ids_for_tenant(tenant_id)
         if not doc_ids:
             doc_key = tenant_id
         else:
             import hashlib
+
             sorted_ids = ",".join(sorted(doc_ids))
             doc_key = hashlib.sha256(sorted_ids.encode("utf-8")).hexdigest()[:16]
 
@@ -123,6 +125,10 @@ class PublicInferenceService:
         query_vector: list[float] | None = None,
         normalized_query: str | None = None,
     ) -> None:
+        content = payload.get("content", "") if payload else ""
+        if not content or content.strip() in ("", "Empty Response"):
+            return
+
         if settings.exact_cache_enabled and self._redis:
             from app.modules.chat.cache.exact_cache import exact_cache_set
 
@@ -145,6 +151,11 @@ class PublicInferenceService:
         user_id: str | None = None,
         conversation_id: str | None = None,
     ) -> CompletionResult:
+        if not conversation_id:
+            import uuid
+
+            conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
+
         user_query = self._latest_user_query(messages)
 
         from app.modules.chat.quota.quota_service import QuotaService
@@ -169,7 +180,10 @@ class PublicInferenceService:
             usage["cached"] = True
             usage["cached_type"] = cache_tier
             res = CompletionResult(
-                content=cached["content"], citations=cached["citations"], usage=usage, model=cached.get("model", "cached")
+                content=cached["content"],
+                citations=cached["citations"],
+                usage=usage,
+                model=cached.get("model", "cached"),
             )
             try:
                 from app.modules.chat.tasks.usage_tasks import log_model_usage_task
@@ -290,7 +304,12 @@ class PublicInferenceService:
                     model_name=result.model,
                     is_cache_hit=False,
                     cached_type=None,
-                    no_answer=not result.content or "chưa đủ căn cứ" in result.content,
+                    no_answer=not result.content
+                    or result.content.strip() == "Empty Response"
+                    or "chưa đủ căn cứ" in result.content.lower()
+                    or "chưa có đủ thông tin" in result.content.lower()
+                    or "chưa có thông tin" in result.content.lower()
+                    or "rất tiếc" in result.content.lower(),
                 )
             except Exception as exc:
                 logger.warning("Failed to dispatch conversation save: %s", exc)
@@ -308,6 +327,11 @@ class PublicInferenceService:
         user_id: str | None = None,
         conversation_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
+        if not conversation_id:
+            import uuid
+
+            conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
+
         user_query = self._latest_user_query(messages)
 
         from app.modules.chat.quota.quota_service import QuotaService
@@ -492,7 +516,12 @@ class PublicInferenceService:
                     model_name=result.model,
                     is_cache_hit=False,
                     cached_type=None,
-                    no_answer=not result.content or "chưa đủ căn cứ" in result.content,
+                    no_answer=not result.content
+                    or result.content.strip() == "Empty Response"
+                    or "chưa đủ căn cứ" in result.content.lower()
+                    or "chưa có đủ thông tin" in result.content.lower()
+                    or "chưa có thông tin" in result.content.lower()
+                    or "rất tiếc" in result.content.lower(),
                 )
             except Exception as exc:
                 logger.warning("Failed to dispatch stream conversation save: %s", exc)
@@ -587,7 +616,7 @@ class PublicInferenceService:
 
         section_map = {}
         missing_pairs = []
-        
+
         for doc_id, sec_id in section_doc_pairs:
             key = (doc_id, sec_id)
             cache_key = f"rag:section:{doc_id}:{sec_id}"
@@ -597,7 +626,7 @@ class PublicInferenceService:
                     section_map[key] = json.loads(cached)
                     continue
             missing_pairs.append(key)
-            
+
         if missing_pairs:
             section_rows = await self.section_repo.get_sections_for_rag(missing_pairs)
             for row in section_rows:
@@ -605,7 +634,7 @@ class PublicInferenceService:
                 cache_dict = {
                     "content": str(row.get("content") or ""),
                     "title": str(row.get("title") or ""),
-                    "page_range": row.get("page_range")
+                    "page_range": row.get("page_range"),
                 }
                 section_map[key] = cache_dict
                 if self._redis:
@@ -679,19 +708,19 @@ class PublicInferenceService:
             page = f" (page {node.page_range})" if node.page_range else ""
             breadcrumb = " > ".join(node.breadcrumb or ())
             breadcrumb_line = f"\nĐường dẫn: {breadcrumb}" if breadcrumb else ""
-            
+
             block_text = f"[Nguồn {idx}] {title} - {heading}{section_code}{page}{breadcrumb_line}\n{node.full_text}"
-            
+
             if total_chars + len(block_text) > max_chars:
                 break
-                
+
             context_blocks.append(block_text)
             total_chars += len(block_text)
 
         system_prompt = (
             "Bạn là trợ lý doanh nghiệp hoạt động trong đúng phạm vi tenant hiện tại. "
             "Chỉ được trả lời dựa trên tài liệu của tenant và ngữ cảnh hội thoại được cung cấp. "
-            "Nếu thông tin chưa đủ, hãy nói rõ là chưa đủ và không được bịa nội dung."
+            "Nếu thông tin chưa đủ hoặc không có trong tài liệu, bắt buộc phải phản hồi chứa cụm từ 'Chưa đủ căn cứ' và không được bịa nội dung."
         )
         tenant_instruction = (setting.get("system_instruction") or "").strip()
         if tenant_instruction:
@@ -702,7 +731,7 @@ class PublicInferenceService:
             "\n\nQUY TẮC BẮT BUỘC:"
             "\n- Không được bịa menu, nút, báo cáo, mã trạng thái, trường dữ liệu hoặc quy trình."
             "\n- Chỉ được nêu tên chức năng, đường dẫn menu, bước thao tác khi chúng xuất hiện rõ trong ngữ cảnh truy xuất."
-            "\n- Nếu tài liệu không xác nhận đủ, phải trả lời là chưa đủ căn cứ để hướng dẫn chi tiết."
+            "\n- Nếu tài liệu không xác nhận đủ hoặc không chứa thông tin, bắt buộc phải phản hồi: 'Rất tiếc, chưa đủ căn cứ trong tài liệu để trả lời câu hỏi này.'"
             "\n- Với câu hỏi thao tác phần mềm, ưu tiên trả lời ngắn, đúng, bám sát tài liệu; không suy diễn từ kinh nghiệm chung."
         )
 

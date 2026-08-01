@@ -17,4 +17,3 @@ class ChatCompletionsRequest(BaseModel):
     max_tokens: int | None = Field(default=None, ge=1, le=32768)
     metadata: dict[str, str | int | float | bool | None] | None = None
     conversation_id: str | None = Field(default=None, max_length=255)
-

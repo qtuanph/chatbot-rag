@@ -1,3 +1,4 @@
+from typing import Any
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from app.core.config import settings
 
@@ -11,14 +12,24 @@ async_url = settings.database_url
 if "postgresql://" in async_url and "psycopg" not in async_url:
     async_url = async_url.replace("postgresql://", "postgresql+psycopg://")
 
+engine_kwargs: dict[str, Any] = {
+    "pool_pre_ping": True,
+}
+if "sqlite" not in async_url:
+    engine_kwargs.update(
+        {
+            "pool_size": _pool_size,
+            "max_overflow": _max_overflow,
+            "pool_recycle": 1800,
+            "pool_timeout": 30,
+        }
+    )
+if "postgresql+psycopg://" in async_url:
+    engine_kwargs["connect_args"] = {"options": "-c timezone=Asia/Ho_Chi_Minh"}
+
 engine = create_async_engine(
     async_url,
-    pool_pre_ping=True,
-    pool_size=_pool_size,
-    max_overflow=_max_overflow,
-    pool_recycle=1800,
-    pool_timeout=30,
-    connect_args={"options": "-c timezone=Asia/Ho_Chi_Minh"} if "postgresql+psycopg://" in async_url else {},
+    **engine_kwargs,
 )
 
 AsyncSessionLocal = async_sessionmaker(

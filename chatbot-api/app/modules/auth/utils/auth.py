@@ -17,6 +17,7 @@ def hash_password(password: str) -> str:
     hashed_password = bcrypt.hashpw(password=pwd_bytes, salt=salt)
     return hashed_password.decode("utf-8")
 
+
 def create_access_token(
     *, subject: str, role: str, tenant_id: str | None = None, expires_delta: timedelta | None = None
 ) -> str:

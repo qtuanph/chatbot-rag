@@ -50,7 +50,9 @@ def get_reranker(top_k: int | None = None) -> LocalRerankerPostprocessor | Nvidi
                 kwargs["embedding_url"] = f"{kwargs['base_url']}/engines/v1"
                 kwargs["model_name"] = dmr.get("model") if dmr else None
                 return LocalRerankerPostprocessor(**kwargs)
-            kwargs["base_url"] = cfg.get("url") or "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
+            kwargs["base_url"] = (
+                cfg.get("url") or "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking"
+            )
             kwargs["model_name"] = cfg.get("model") or "nvidia/llama-nemotron-rerank-1b-v2"
             kwargs["api_key"] = effective_key
             kwargs["timeout"] = settings.nvidia_reranker_timeout

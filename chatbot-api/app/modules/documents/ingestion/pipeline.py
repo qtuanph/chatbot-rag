@@ -228,10 +228,9 @@ async def _ensure_collection(vector_store: QdrantVectorStore) -> None:
 
     hw = get_hardware()
     quantization_config = (
-        rest.ScalarQuantization(
-            scalar=rest.ScalarQuantizationConfig(type=rest.ScalarType.INT8, always_ram=True)
-        )
-        if hw.qdrant_quantization else None
+        rest.ScalarQuantization(scalar=rest.ScalarQuantizationConfig(type=rest.ScalarType.INT8, always_ram=True))
+        if hw.qdrant_quantization
+        else None
     )
     hnsw_config = rest.HnswConfigDiff(m=hw.qdrant_hnsw_m, ef_construct=hw.qdrant_hnsw_ef)
 

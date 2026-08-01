@@ -16,9 +16,7 @@ class ConversationRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def upsert_conversation(
-        self, *, tenant_id: str, conversation_id: str, retention_days: int = 90
-    ) -> str:
+    async def upsert_conversation(self, *, tenant_id: str, conversation_id: str, retention_days: int = 90) -> str:
         """Get or create conversation; returns PK UUID str."""
         expires_at = datetime.now(timezone.utc) + timedelta(days=retention_days)
         stmt = (
@@ -92,9 +90,7 @@ class ConversationRepository:
             )
         return items, total
 
-    async def get_messages(
-        self, conversation_id: str, *, tenant_id: str | None = None
-    ) -> list[dict]:
+    async def get_messages(self, conversation_id: str, *, tenant_id: str | None = None) -> list[dict]:
         """Get all messages for a specific conversation_id for Admin Audit."""
         stmt = select(ConversationMessage).join(Conversation, Conversation.id == ConversationMessage.conversation_pk)
         stmt = stmt.where(Conversation.conversation_id == conversation_id)

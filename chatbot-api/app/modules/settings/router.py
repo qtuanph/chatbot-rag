@@ -8,6 +8,8 @@ from app.modules.settings.schemas import (
     ProviderTemplate,
     ProviderUpdate,
     TestResult,
+    BillingSettingsResponse,
+    BillingSettingsUpdate,
 )
 from app.modules.settings.service import SettingsService
 from app.modules.auth.deps import require_admin
@@ -172,3 +174,57 @@ async def delete_key(
 
         raise http_errors.not_found("Key not found")
     return {"status": "deleted"}
+
+
+# ── Platform Billing & Quota ───────────────────────────────────────────────────────
+
+
+@router.get("/billing", response_model=BillingSettingsResponse)
+async def get_billing_settings(_auth=Depends(require_admin)):
+    """Get platform billing & quota settings."""
+    from app.modules.settings.runtime_manager import RuntimeProviderManager
+
+    rtm = RuntimeProviderManager.get_instance()
+    billing = rtm.get_all_billing()
+    return BillingSettingsResponse(
+        ai_input_price_vnd_per_1m=int(billing.get("ai_input_price_vnd_per_1m", "0")),
+        ai_output_price_vnd_per_1m=int(billing.get("ai_output_price_vnd_per_1m", "0")),
+        quota_hard_budget_vnd=int(billing.get("quota_hard_budget_vnd", "0")),
+        quota_user_rate_per_min=int(billing.get("quota_user_rate_per_min", "6")),
+        quota_user_daily_requests=int(billing.get("quota_user_daily_requests", "100")),
+        quota_cost_alert_pct_warn=int(billing.get("quota_cost_alert_pct_warn", "70")),
+        quota_cost_alert_pct_alert=int(billing.get("quota_cost_alert_pct_alert", "85")),
+        quota_cost_alert_pct_cutoff=int(billing.get("quota_cost_alert_pct_cutoff", "100")),
+    )
+
+
+@router.put("/billing", response_model=BillingSettingsResponse)
+async def update_billing_settings(
+    data: BillingSettingsUpdate,
+    _auth=Depends(require_admin),
+):
+    """Update platform billing & quota settings. Changes take effect immediately."""
+    from app.modules.settings.runtime_manager import RuntimeProviderManager
+    from app.modules.settings.repository import SettingsRepository
+
+    updates = {
+        "ai_input_price_vnd_per_1m": str(data.ai_input_price_vnd_per_1m),
+        "ai_output_price_vnd_per_1m": str(data.ai_output_price_vnd_per_1m),
+        "quota_hard_budget_vnd": str(data.quota_hard_budget_vnd),
+        "quota_user_rate_per_min": str(data.quota_user_rate_per_min),
+        "quota_user_daily_requests": str(data.quota_user_daily_requests),
+        "quota_cost_alert_pct_warn": str(data.quota_cost_alert_pct_warn),
+        "quota_cost_alert_pct_alert": str(data.quota_cost_alert_pct_alert),
+        "quota_cost_alert_pct_cutoff": str(data.quota_cost_alert_pct_cutoff),
+    }
+    repo = SettingsRepository()
+    try:
+        for key, value in updates.items():
+            repo.set_platform_setting(key, value)
+    finally:
+        repo.close()
+
+    rtm = RuntimeProviderManager.get_instance()
+    rtm.reload_billing()
+
+    return await get_billing_settings(_auth=_auth)

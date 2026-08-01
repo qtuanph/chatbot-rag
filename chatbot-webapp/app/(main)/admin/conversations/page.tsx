@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { conversationsApi } from "@/lib/api-client";
 
 interface ConversationItem {
@@ -139,7 +141,7 @@ export default function AdminConversationsPage() {
 
       {/* Dialog Detail View */}
       <Dialog open={!!selectedConvId} onOpenChange={() => setSelectedConvId(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl border border-border/80 shadow-2xl backdrop-blur-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
               <MessageSquare className="h-4 w-4 text-primary" />
@@ -164,13 +166,13 @@ export default function AdminConversationsPage() {
                 return (
                   <div
                     key={msg.id}
-                    className={`p-3.5 rounded-lg border text-sm ${
+                    className={`p-4 rounded-xl border text-sm ${
                       isUser
-                        ? "bg-muted/40 border-border/60 ml-6"
-                        : "bg-card border-border mr-6"
+                        ? "bg-muted/30 border-border/50 ml-6"
+                        : "bg-card border-border/80 mr-6 shadow-sm"
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center justify-between gap-2 mb-2.5">
                       <div className="flex items-center gap-2">
                         <Badge
                           variant={isUser ? "outline" : "default"}
@@ -180,7 +182,7 @@ export default function AdminConversationsPage() {
                         </Badge>
 
                         {msg.is_cache_hit && (
-                          <Badge variant="outline" className="text-[10px] h-4 bg-primary/10 border-primary/20 text-primary">
+                          <Badge variant="outline" className="text-[10px] h-4 bg-primary/10 border-primary/20 text-primary font-medium">
                             <Zap className="h-3 w-3 mr-1" /> Cache HIT ({msg.cached_type || "L1"})
                           </Badge>
                         )}
@@ -199,8 +201,16 @@ export default function AdminConversationsPage() {
                     </div>
 
                     {/* Content */}
-                    <div className="whitespace-pre-wrap leading-relaxed">
-                      {msg.content}
+                    <div className="text-sm leading-relaxed text-foreground">
+                      {isUser ? (
+                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                      ) : (
+                        <div className="prose prose-sm dark:prose-invert max-w-none space-y-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h1]:text-base [&_h2]:text-base [&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_p]:my-1.5 [&_li]:my-0.5 [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:font-mono [&_code]:text-xs [&_pre]:bg-muted/80 [&_pre]:p-3 [&_pre]:rounded-lg [&_table]:border-collapse [&_table]:w-full [&_th]:border [&_th]:border-border [&_th]:p-2 [&_td]:border [&_td]:border-border [&_td]:p-2">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {msg.content}
+                          </ReactMarkdown>
+                        </div>
+                      )}
                     </div>
 
                     {/* Citations */}

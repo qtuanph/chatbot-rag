@@ -1,6 +1,6 @@
 # chatbot-rag
 
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg?style=flat-square)](./LICENSE) [![Backend: FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/) [![Frontend: Next.js 16](https://img.shields.io/badge/Frontend-Next.js%2016-black?style=flat-square&logo=next.js)](https://nextjs.org/) [![Vector DB: Qdrant](https://img.shields.io/badge/Vector%20DB-Qdrant-red?style=flat-square&logo=qdrant)](https://qdrant.tech/) [![Database: PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/) [![Cache: Redis](https://img.shields.io/badge/Redis-%23DD0031.svg?style=flat-square&logo=redis&logoColor=white)](https://redis.io/) [![Workers: Celery](https://img.shields.io/badge/Celery-%23a9cc54.svg?style=flat-square&logo=celery&logoColor=f9f9f9)](https://docs.celeryq.dev/) [![Deployment: Docker](https://img.shields.io/badge/Docker-%230db7ed.svg?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/) [![UI: shadcn/ui](https://img.shields.io/badge/UI-shadcn%2Fui-black?style=flat-square)](https://ui.shadcn.com/) [![Audited by AuditAI](https://img.shields.io/badge/Audited_by-AuditAI-7c5cfc?style=flat-square)](https://github.com/iZenDeveloper/auditai)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg?style=flat-square)](./LICENSE) [![Backend: FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/) [![Frontend: Next.js 16](https://img.shields.io/badge/Frontend-Next.js%2016-black?style=flat-square&logo=next.js)](https://nextjs.org/) [![Vector DB: Qdrant](https://img.shields.io/badge/Vector%20DB-Qdrant-red?style=flat-square&logo=qdrant)](https://qdrant.tech/) [![Database: PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/) [![Cache: Redis](https://img.shields.io/badge/Redis-%23DD0031.svg?style=flat-square&logo=redis&logoColor=white)](https://redis.io/) [![Workers: Celery](https://img.shields.io/badge/Celery-%23a9cc54.svg?style=flat-square&logo=celery&logoColor=f9f9f9)](https://docs.celeryq.dev/) [![Deployment: Docker](https://img.shields.io/badge/Docker-%230db7ed.svg?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/) [![UI: shadcn/ui](https://img.shields.io/badge/UI-shadcn%2Fui-black?style=flat-square)](https://ui.shadcn.com/)
 
 A self-hosted, multi-tenant RAG chatbot platform built for SaaS-style operations and real product integration.
 
@@ -263,13 +263,7 @@ If you are contributing or maintaining the project, start here:
 
 ---
 
-## Acknowledgments
-
-Special thanks to our contributors:
-- **[iZenDeveloper](https://github.com/iZenDeveloper)** for integrating the [AuditAI](https://github.com/iZenDeveloper/auditai) RAG quality smoke suite into the project, helping us measure and improve retrieval accuracy and safety.
-
----
-
 ## License
 
-Licensed under **AGPL-3.0**.
+Proprietary & Confidential Software. Copyright (c) 2026 Quoc Tuan (qtuanph). All rights reserved.
+Unauthorized copying, reproduction, or public redistribution of this software is strictly prohibited.

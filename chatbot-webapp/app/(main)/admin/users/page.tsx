@@ -7,11 +7,12 @@ import { toast } from "sonner";
 import { TenantSelect } from "@/components/tenants/tenant-select";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Field, FieldContent, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { authApi, tenantsApi } from "@/lib/api-client";
 import { CreateUserRequestSchema } from "@/lib/schemas";
 import type { CreateUserRequest, RoleItem, TenantItem, UserItem } from "@/types/api";
@@ -163,9 +164,18 @@ export default function AdminUsersPage() {
                 )}
                 {visibleColumns["Thao tác"] && (
                   <TableCell className="text-right">
-                    <Button size="sm" variant="destructive" onClick={() => handleDelete(user.username)}>
-                      <Trash2 className="mr-1 h-3 w-3" /> Xóa
-                    </Button>
+                    <TooltipProvider delay={100}>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Button size="icon-sm" variant="destructive" onClick={() => handleDelete(user.username)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          }
+                        />
+                        <TooltipContent>Xóa người dùng</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </TableCell>
                 )}
               </TableRow>
@@ -183,13 +193,15 @@ export default function AdminUsersPage() {
             <Field>
               <FieldContent>
                 <FieldLabel htmlFor="username">Tên đăng nhập</FieldLabel>
-                <Input id="username" value={form.username} onChange={(e) => setForm((c) => ({ ...c, username: e.target.value }))} />
+                <Input id="username" value={form.username} onChange={(e) => setForm((c) => ({ ...c, username: e.target.value }))} placeholder="Ví dụ: alpha.admin" />
+                <FieldDescription>Tên tài khoản dùng để đăng nhập vào trang quản trị (viết liền, không khoảng trắng).</FieldDescription>
               </FieldContent>
             </Field>
             <Field>
               <FieldContent>
                 <FieldLabel htmlFor="password">Mật khẩu</FieldLabel>
-                <Input id="password" type="password" value={form.password} onChange={(e) => setForm((c) => ({ ...c, password: e.target.value }))} />
+                <Input id="password" type="password" value={form.password} onChange={(e) => setForm((c) => ({ ...c, password: e.target.value }))} placeholder="Tối thiểu 6 ký tự" />
+                <FieldDescription>Mật khẩu quản trị viên (tối thiểu 6 ký tự).</FieldDescription>
               </FieldContent>
             </Field>
             <Field>
@@ -209,6 +221,7 @@ export default function AdminUsersPage() {
                     <NativeSelectOption key={role.id} value={role.name}>{role.name}</NativeSelectOption>
                   ))}
                 </NativeSelect>
+                <FieldDescription>Platform Admin có toàn quyền hệ thống; Tenant Admin chỉ quản lý dữ liệu thuộc Tenant được phân công.</FieldDescription>
               </FieldContent>
             </Field>
             <Field>
@@ -220,6 +233,7 @@ export default function AdminUsersPage() {
                   onValueChange={(tenantId) => setForm((c) => ({ ...c, tenant_id: tenantId }))}
                   disabled={form.role !== "tenant_admin"}
                 />
+                <FieldDescription>Chọn Tenant mà tài khoản này trực thuộc quản lý.</FieldDescription>
               </FieldContent>
             </Field>
             <div className="flex justify-end gap-2 pt-2">

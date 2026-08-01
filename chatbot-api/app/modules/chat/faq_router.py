@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import get_redis_client
-from app.db.session import get_db_session
+from app.db.session import get_async_session
 from app.modules.auth.deps import get_auth_context
 from app.modules.auth.context import AuthContext
 from app.modules.chat.repositories.escalation_repository import EscalationRepository
@@ -28,10 +28,11 @@ class FAQCreateSchema(BaseModel):
 
 
 class FAQUpdateSchema(BaseModel):
-    question: str | None = None
-    answer: str | None = None
+    question: str | None = Field(default=None, min_length=2)
+    answer: str | None = Field(default=None, min_length=2)
     question_variants: list[str] | None = None
     citations: list[dict[str, Any]] | None = None
+    status: str | None = Field(default=None, pattern="^(published|draft|archived)$")
 
 
 class FAQPromoteSchema(BaseModel):
@@ -41,7 +42,7 @@ class FAQPromoteSchema(BaseModel):
     citations: list[dict[str, Any]] = Field(default_factory=list)
 
 
-def _verify_platform_admin(ctx: AuthContext) -> None:
+def _verify_platform_admin(ctx: AuthContext = Depends(get_auth_context)) -> None:
     if ctx.role != "platform_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -49,7 +50,7 @@ def _verify_platform_admin(ctx: AuthContext) -> None:
         )
 
 
-def _get_faq_service(db: AsyncSession = Depends(get_db_session)) -> FAQService:
+def _get_faq_service(db: AsyncSession = Depends(get_async_session)) -> FAQService:
     repo = EscalationRepository(db)
     redis_client = get_redis_client()
     return FAQService(repo=repo, redis_client=redis_client)

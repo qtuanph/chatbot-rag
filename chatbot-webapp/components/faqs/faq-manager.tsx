@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, Edit2, HelpCircle, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Edit2, HelpCircle, Plus, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -173,6 +174,18 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
       void loadData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Không thể xóa FAQ";
+      toast.error(message);
+    }
+  }, [loadData]);
+
+  const handleRejectEscalation = useCallback(async (escId: string) => {
+    if (!confirm("Bạn có chắc chắn muốn từ chối và xóa câu hỏi chờ duyệt này khỏi cơ sở dữ liệu?")) return;
+    try {
+      await faqApi.delete(escId);
+      toast.success("Đã từ chối và xóa câu hỏi chờ duyệt khỏi cơ sở dữ liệu");
+      void loadData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể từ chối câu hỏi";
       toast.error(message);
     }
   }, [loadData]);
@@ -341,15 +354,39 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
                       {formatDateTimeVN(esc.created_at)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-xl"
-                        onClick={() => openPromote(esc)}
-                      >
-                        Duyệt thành FAQ
-                        <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="rounded-xl"
+                                onClick={() => openPromote(esc)}
+                              >
+                                <Check className="h-4 w-4 text-emerald-600" />
+                              </Button>
+                            }
+                          />
+                          <TooltipContent>Duyệt thành FAQ</TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                size="icon"
+                                variant="destructive"
+                                className="rounded-xl"
+                                onClick={() => handleRejectEscalation(esc.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            }
+                          />
+                          <TooltipContent>Từ chối &amp; Xóa khỏi DB</TooltipContent>
+                        </Tooltip>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -378,6 +415,7 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
                 value={form.question}
                 onChange={(e) => setForm((prev) => ({ ...prev, question: e.target.value }))}
               />
+              <FieldDescription>Nhập câu hỏi chuẩn mà khách hàng/người dùng thường thắc mắc.</FieldDescription>
             </div>
 
             <div className="grid gap-2">
@@ -398,6 +436,7 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
                   Thêm
                 </Button>
               </div>
+              <FieldDescription>Các câu hỏi tương đương giúp AI khớp câu trả lời nhanh chính xác hơn.</FieldDescription>
               {form.question_variants.length > 0 && (
                 <div className="flex flex-wrap gap-1 pt-1">
                   {form.question_variants.map((v, idx) => (
@@ -423,6 +462,7 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
                 value={form.answer}
                 onChange={(e) => setForm((prev) => ({ ...prev, answer: e.target.value }))}
               />
+              <FieldDescription>Nội dung câu trả lời chính thức. Hệ thống sẽ trả về ngay trong ~20ms mà không tốn chi phí gọi LLM.</FieldDescription>
             </div>
           </div>
 

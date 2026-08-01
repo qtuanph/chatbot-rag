@@ -347,25 +347,29 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
             <Field>
               <FieldContent>
                 <FieldLabel htmlFor="add-name">Tên hiển thị</FieldLabel>
-                <Input id="add-name" value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} required />
+                <Input id="add-name" value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} placeholder="Ví dụ: 9Router Proxy LLM" required />
+                <FieldDescription>Tên gợi nhớ hiển thị trên giao diện quản trị.</FieldDescription>
               </FieldContent>
             </Field>
             <Field>
               <FieldContent>
-                <FieldLabel htmlFor="add-url">URL</FieldLabel>
-                <Input id="add-url" value={formData.url} onChange={(e) => setFormData({ ...formData, url: e.target.value })} required />
+                <FieldLabel htmlFor="add-url">URL Endpoint</FieldLabel>
+                <Input id="add-url" value={formData.url} onChange={(e) => setFormData({ ...formData, url: e.target.value })} placeholder="http://ai-proxy:2908/v1" required />
+                <FieldDescription>Địa chỉ URL kết nối dịch vụ API Model Proxy hoặc Inference Engine.</FieldDescription>
               </FieldContent>
             </Field>
             <Field>
               <FieldContent>
-                <FieldLabel htmlFor="add-model">Model</FieldLabel>
-                <Input id="add-model" value={formData.model} onChange={(e) => setFormData({ ...formData, model: e.target.value })} />
+                <FieldLabel htmlFor="add-model">Model ID</FieldLabel>
+                <Input id="add-model" value={formData.model} onChange={(e) => setFormData({ ...formData, model: e.target.value })} placeholder="Ví dụ: chatbot-rag, gpt-4o, qwen3-embedding" />
+                <FieldDescription>Mã định danh mô hình AI chính xác theo cấu hình upstream.</FieldDescription>
               </FieldContent>
             </Field>
             <Field>
               <FieldContent>
                 <FieldLabel htmlFor="add-api_key">API Key</FieldLabel>
-                <Input id="add-api_key" type="password" value={formData.api_key} onChange={(e) => setFormData({ ...formData, api_key: e.target.value })} />
+                <Input id="add-api_key" type="password" value={formData.api_key} onChange={(e) => setFormData({ ...formData, api_key: e.target.value })} placeholder="Dán API Key bảo mật..." />
+                <FieldDescription>Khóa API bảo mật của nhà cung cấp (để trống nếu sử dụng Proxy nội bộ).</FieldDescription>
               </FieldContent>
             </Field>
             </FieldGroup>

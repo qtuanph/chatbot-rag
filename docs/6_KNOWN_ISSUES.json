@@ -146,7 +146,14 @@
       "symptom": "API returns 500 error with `psycopg.errors.UndefinedTable: relation conversations does not exist` when accessing new endpoints.",
       "root_cause": "PostgreSQL init scripts in `/docker-entrypoint-initdb.d/init.sql` only execute during initial container volume creation. Subsequent schema updates added to `ops/init.sql` require explicit DDL execution on pre-existing database volumes.",
       "resolution": "Executed `ops/init.sql` DDL statements using the database superuser `db-admin` (`psql -U db-admin -d ragbot < ops/init.sql`), which created the new `conversations`, `conversation_messages`, `knowledge_bases`, `tenant_knowledge_bases`, `products`, `product_versions`, `tenant_products`, and `escalations` tables.",
-      "lesson_learned": "When adding new tables to `ops/init.sql` on an existing Docker environment, always run the DDL update script with the database superuser."
+    },
+    {
+      "issue_id": 18,
+      "title": "Public API Requests Shared Low Per-User Rate Limit Bucket",
+      "symptom": "Clients sending requests via Tenant API Key hit 429 rate limit error after only a few requests in multi-user environment.",
+      "root_cause": "The public inference router passed `user_id=None`. In `QuotaService`, `user_id=None` caused all API key requests for that tenant to fall back to a shared `'anon'` counter bucket, enforcing a strict per-user limit (6 req/min) and daily request quota across the whole tenant.",
+      "resolution": "Updated `QuotaService.check_and_increment_rate` and `check_and_increment_daily` to bypass per-user counters completely when `user_id` is None (Public API key calls). Public API requests are now strictly governed by a single Tenant-scoped limit (`rate_limit_rpm` from PostgreSQL `tenants` table) set by Tenant Admin.",
+      "lesson_learned": "Public API callers (M2M / integrations) do not have user identity context. Do not force an 'anon' user bucket on public API requests; enforce single-level tenant-scoped quotas instead."
     }
   ]
 }
