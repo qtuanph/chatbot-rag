@@ -173,7 +173,7 @@ class Settings(BaseSettings):
     s3_secret_key: str = "replace-me"
     s3_bucket: str = "rag-documents"
     s3_secure: bool = False
-    allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0,test"
+    allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0,test,testserver"
     cors_origins: str = "http://localhost"
 
     embedding_model: str = "dmr"
