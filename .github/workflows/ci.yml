@@ -93,10 +93,15 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'chatbot-api/requirements.txt'
 
-      - name: Install Dependencies
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0 poppler-utils
+
+      - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-dev.txt
 
       - name: Black & Flake8 Linter
         run: |
