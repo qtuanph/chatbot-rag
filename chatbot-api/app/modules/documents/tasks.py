@@ -50,89 +50,93 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 status_message="[1/4] Đang khởi tạo môi trường nạp liệu...",
             )
 
-            async_redis = get_redis_client()
-            try:
-                document = await doc_repo.get_full_document(document_id)
-                if not document:
-                    logger.warning("[%s] Document not found in DB (maybe deleted). Skipping ingestion.", document_id)
-                    return {"status": "skipped", "reason": "document_deleted"}
+            from app.core.redis import get_worker_redis
 
-                raw_tenant_id = document.get("tenant_id")
-                clean_tenant_id = (
-                    str(raw_tenant_id) if (raw_tenant_id is not None and str(raw_tenant_id) != "None") else None
-                )
+            async with get_worker_redis() as async_redis:
+                try:
+                    document = await doc_repo.get_full_document(document_id)
+                    if not document:
+                        logger.warning(
+                            "[%s] Document not found in DB (maybe deleted). Skipping ingestion.", document_id
+                        )
+                        return {"status": "skipped", "reason": "document_deleted"}
 
-                content = await asyncio.to_thread(storage.download_bytes, file_path)
-                section_repo = SectionRepository(session)
-
-                pipeline = IngestionService(
-                    redis_client=async_redis,
-                    db_session=session,
-                    section_repo=section_repo,
-                )
-
-                async def _progress_callback(stage: str, percent: int, message: str = ""):
-                    logger.info("[%s] Progress: %d%% - %s", document_id, percent, message)
-                    try:
-                        async with AsyncSessionLocal() as fresh_session:
-                            fresh_repo = DocumentRepository(fresh_session)
-                            await fresh_repo.update_status(
-                                document_id,
-                                status="processing",
-                                stage=stage,
-                                progress_percent=percent,
-                                status_message=message,
-                            )
-                    except Exception as status_err:
-                        logger.warning("[%s] Failed to update progress in DB: %s", document_id, status_err)
-
-                ingestion_result = await pipeline.ingest(
-                    filename=document.get("file_name") or filename,
-                    content=content,
-                    user_id=user_id or "system",
-                    document_id=document_id,
-                    tenant_id=clean_tenant_id,
-                    progress_callback=_progress_callback,
-                )
-
-                verify = await _verify_ingestion(document_id, storage)
-
-                if ingestion_result.parse_metadata and ingestion_result.parse_metadata.sections_data:
-                    for sec in ingestion_result.parse_metadata.sections_data:
-                        title = sec.get("title", "")
-                        if title and title not in ("Untitled",) and not title.startswith("Phan "):
-                            if title != filename:
-                                await doc_repo.update_title(document_id, title)
-                            break
-
-                if ingestion_result.success:
-                    artifact_dict = ingestion_result.parse_metadata.to_dict() if ingestion_result.parse_metadata else {}
-                    artifact_dict["verification"] = verify
-                    await doc_repo.finalize_ingestion(
-                        document_id,
-                        artifact_dict=artifact_dict,
-                        node_count=ingestion_result.node_count,
-                        total_text_chars=ingestion_result.total_text_chars,
-                        progress_percent=100,
+                    raw_tenant_id = document.get("tenant_id")
+                    clean_tenant_id = (
+                        str(raw_tenant_id) if (raw_tenant_id is not None and str(raw_tenant_id) != "None") else None
                     )
-                else:
-                    raise ValueError(f"Ingestion failed: {', '.join(ingestion_result.errors)}")
 
-                return ingestion_result
+                    content = await asyncio.to_thread(storage.download_bytes, file_path)
+                    section_repo = SectionRepository(session)
 
-            except Exception as e:
-                error_msg = str(e)
-                if len(error_msg) > 480:
-                    error_msg = error_msg[:480] + "..."
-                await doc_repo.update_status(
-                    document_id,
-                    status="failed",
-                    stage="failed",
-                    status_message=f"Loi: {error_msg}",
-                )
-                raise e
-            finally:
-                await async_redis.aclose()
+                    pipeline = IngestionService(
+                        redis_client=async_redis,
+                        db_session=session,
+                        section_repo=section_repo,
+                    )
+
+                    async def _progress_callback(stage: str, percent: int, message: str = ""):
+                        logger.info("[%s] Progress: %d%% - %s", document_id, percent, message)
+                        try:
+                            async with AsyncSessionLocal() as fresh_session:
+                                fresh_repo = DocumentRepository(fresh_session)
+                                await fresh_repo.update_status(
+                                    document_id,
+                                    status="processing",
+                                    stage=stage,
+                                    progress_percent=percent,
+                                    status_message=message,
+                                )
+                        except Exception as status_err:
+                            logger.warning("[%s] Failed to update progress in DB: %s", document_id, status_err)
+
+                    ingestion_result = await pipeline.ingest(
+                        filename=document.get("file_name") or filename,
+                        content=content,
+                        user_id=user_id or "system",
+                        document_id=document_id,
+                        tenant_id=clean_tenant_id,
+                        progress_callback=_progress_callback,
+                    )
+
+                    verify = await _verify_ingestion(document_id, storage)
+
+                    if ingestion_result.parse_metadata and ingestion_result.parse_metadata.sections_data:
+                        for sec in ingestion_result.parse_metadata.sections_data:
+                            title = sec.get("title", "")
+                            if title and title not in ("Untitled",) and not title.startswith("Phan "):
+                                if title != filename:
+                                    await doc_repo.update_title(document_id, title)
+                                break
+
+                    if ingestion_result.success:
+                        artifact_dict = (
+                            ingestion_result.parse_metadata.to_dict() if ingestion_result.parse_metadata else {}
+                        )
+                        artifact_dict["verification"] = verify
+                        await doc_repo.finalize_ingestion(
+                            document_id,
+                            artifact_dict=artifact_dict,
+                            node_count=ingestion_result.node_count,
+                            total_text_chars=ingestion_result.total_text_chars,
+                            progress_percent=100,
+                        )
+                    else:
+                        raise ValueError(f"Ingestion failed: {', '.join(ingestion_result.errors)}")
+
+                    return ingestion_result
+
+                except Exception as e:
+                    error_msg = str(e)
+                    if len(error_msg) > 480:
+                        error_msg = error_msg[:480] + "..."
+                    await doc_repo.update_status(
+                        document_id,
+                        status="failed",
+                        stage="failed",
+                        status_message=f"Loi: {error_msg}",
+                    )
+                    raise e
 
     try:
         result = asyncio.run(_run_async_pipeline())

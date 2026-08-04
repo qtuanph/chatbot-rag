@@ -106,11 +106,12 @@ class SemanticCache(BaseRedisCache):
         return None
 
     async def set(self, tenant_id: str, query_text: str, query_vector: list[float], result: dict[str, Any]) -> None:
-        """Store a result in the semantic cache (Async)."""
+        """Store a result in the semantic cache (Async) in single pipeline RTT."""
         try:
             key = self._build_key(tenant_id, query_text)
             query_bytes = np.array(query_vector, dtype=np.float32).tobytes()
-            await self._r.hset(
+            pipe = self._r.pipeline()
+            pipe.hset(
                 key,
                 mapping={
                     "tenant_id": tenant_id,
@@ -119,7 +120,8 @@ class SemanticCache(BaseRedisCache):
                     "result_json": json.dumps(result),
                 },
             )
-            await self._r.expire(key, 86400)
+            pipe.expire(key, 86400)
+            await pipe.execute()
         except Exception as e:
             logger.error("Failed to store semantic cache (Async): %s", e)
 

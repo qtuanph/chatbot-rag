@@ -64,7 +64,7 @@ class TaskService:
     async def enqueue_ingestion(self, document_id: str, object_uri: str, filename: str, user_id: str) -> str:
         task_id = str(uuid4())
         if self.redis:
-            await self.redis.set(f"{TASK_TO_DOC_KEY}{task_id}", document_id)
+            await self.redis.set(f"{TASK_TO_DOC_KEY}{task_id}", document_id, ex=604800)
 
         await asyncio.to_thread(
             celery_app.send_task,
@@ -90,7 +90,7 @@ class TaskService:
     async def enqueue_rechunk(self, document_id: str, user_id: str) -> str:
         task_id = str(uuid4())
         if self.redis:
-            await self.redis.set(f"{TASK_TO_DOC_KEY}{task_id}", document_id)
+            await self.redis.set(f"{TASK_TO_DOC_KEY}{task_id}", document_id, ex=604800)
 
         await asyncio.to_thread(
             celery_app.send_task,

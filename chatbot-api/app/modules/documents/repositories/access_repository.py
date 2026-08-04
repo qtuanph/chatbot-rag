@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -37,12 +39,29 @@ class DocumentAccessRepository:
         result = await self.session.execute(stmt)
         return [{"id": str(row[0]), "name": row[1]} for row in result.all()]
 
-    async def get_document_ids_for_tenant(self, tenant_id: str) -> list[str]:
-        """Get list of document UUIDs accessible by a given tenant."""
+    async def get_document_ids_for_tenant(self, tenant_id: str, redis: Any = None) -> list[str]:
+        """Get list of document UUIDs accessible by a given tenant with Redis L1 caching (< 0.5ms latency)."""
+        cache_key = f"doc_access:{tenant_id}"
+        if redis:
+            try:
+                cached = await redis.get(cache_key)
+                if cached:
+                    return json.loads(cached)
+            except Exception as exc:
+                logger.warning("Redis get_document_ids_for_tenant cache read error: %s", exc)
+
         tenant_uuid = UUID(tenant_id)
         stmt = select(TenantDocumentAccess.document_id).where(TenantDocumentAccess.tenant_id == tenant_uuid)
         result = await self.session.execute(stmt)
-        return [str(row[0]) for row in result.all()]
+        doc_ids = [str(row[0]) for row in result.all()]
+
+        if redis and doc_ids:
+            try:
+                await redis.setex(cache_key, 3600, json.dumps(doc_ids))
+            except Exception as exc:
+                logger.warning("Redis get_document_ids_for_tenant cache write error: %s", exc)
+
+        return doc_ids
 
     async def get_tenants_for_documents(self, document_ids: list[str]) -> dict[str, list[dict[str, str]]]:
         """Batch fetch tenants for multiple documents in a single SQL query (prevents N+1 query lag)."""

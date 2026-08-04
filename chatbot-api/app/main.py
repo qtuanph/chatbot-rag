@@ -90,6 +90,12 @@ async def lifespan(application: FastAPI):
     yield
 
     logger.info("Application shutting down: %s", settings.app_name)
+    try:
+        from app.core.redis import close_redis_pools
+
+        await close_redis_pools()
+    except Exception as exc:
+        logger.warning("Failed to close Redis pools on shutdown: %s", exc)
 
 
 app = FastAPI(title=settings.app_name, docs_url=None, redoc_url=None, lifespan=lifespan)

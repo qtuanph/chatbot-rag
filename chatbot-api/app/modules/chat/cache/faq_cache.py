@@ -43,15 +43,13 @@ async def faq_lookup(redis: aioredis.Redis, tenant_id: str, question: str) -> di
 async def faq_cache_sync_item(
     redis: aioredis.Redis, tenant_id: str, query_hashes: list[str], payload: dict[str, Any]
 ) -> None:
-    """Sync a published FAQ entry's query hashes to Redis index."""
+    """Sync a published FAQ entry's query hashes to Redis index using Redis 8 native batch HSET."""
     try:
         key = f"faq_idx:{tenant_id}"
         val = json.dumps(payload, ensure_ascii=False)
-        pipe = redis.pipeline()
-        for h in query_hashes:
-            if h:
-                pipe.hset(key, h, val)
-        await pipe.execute()
+        mapping = {h: val for h in query_hashes if h}
+        if mapping:
+            await redis.hset(key, mapping=mapping)
     except Exception as exc:
         logger.warning("faq_cache_sync_item error: %s", exc)
 

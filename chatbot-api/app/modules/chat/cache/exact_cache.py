@@ -24,14 +24,17 @@ def _build_cache_key(doc_key_or_tenant_id: str, normalized_query: str) -> str:
     return f"{_EXACT_CACHE_PREFIX}:{doc_key_or_tenant_id}:{digest}"
 
 
-async def exact_cache_get(redis: aioredis.Redis, doc_key_or_tenant_id: str, question: str) -> dict[str, Any] | None:
-    """L1 lookup. Returns None on miss, error, or empty normalized query."""
+async def exact_cache_get(
+    redis: aioredis.Redis, doc_key_or_tenant_id: str, question: str, ttl_seconds: int = 2592000
+) -> dict[str, Any] | None:
+    """L1 lookup with automatic sliding TTL extension on cache hit."""
     try:
         normalized = normalize_query(question, stopwords=ALL_DEFAULT_STOPWORDS)
         if not normalized:
             return None
         key = _build_cache_key(doc_key_or_tenant_id, normalized)
-        raw = await redis.get(key)
+        # Atomic read + TTL extension in single Redis command
+        raw = await redis.getex(key, ex=ttl_seconds)
         if raw is None:
             return None
         return json.loads(raw)

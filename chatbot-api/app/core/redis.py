@@ -16,10 +16,12 @@ logger = logging.getLogger(__name__)
 
 
 def create_redis_pool(max_connections: int | None = None) -> redis.ConnectionPool:
-    """Create a new Async Redis ConnectionPool."""
+    """Create a new Async Redis ConnectionPool with health checking and auto-retry."""
     return redis.ConnectionPool.from_url(
         settings.redis_url_auth,
         max_connections=max_connections or hardware.redis_pool_size,
+        decode_responses=True,
+        health_check_interval=30,
         retry=Retry(ExponentialBackoff(), retries=3),
         retry_on_timeout=True,
     )
@@ -73,9 +75,30 @@ def get_sync_redis_client() -> Any:
     """
     global _sync_pool
     import redis as redis_sync
+    from redis.backoff import ExponentialBackoff as SyncBackoff
+    from redis.retry import Retry as SyncRetry
 
     if _sync_pool is None:
         _sync_pool = redis_sync.ConnectionPool.from_url(
-            settings.redis_url_auth, max_connections=10, decode_responses=True
+            settings.redis_url_auth,
+            max_connections=10,
+            decode_responses=True,
+            health_check_interval=30,
+            retry=SyncRetry(SyncBackoff(), retries=3),
+            retry_on_timeout=True,
         )
     return redis_sync.Redis(connection_pool=_sync_pool)
+
+
+async def close_redis_pools() -> None:
+    """Gracefully close all global API Redis connection pools on shutdown."""
+    global _api_pool, _api_loop
+    if _api_pool is not None:
+        try:
+            await _api_pool.disconnect()
+            logger.info("Closed API Redis connection pool")
+        except Exception as exc:
+            logger.warning("Error disconnecting API Redis pool: %s", exc)
+        finally:
+            _api_pool = None
+            _api_loop = None

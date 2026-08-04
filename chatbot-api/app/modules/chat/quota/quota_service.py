@@ -130,12 +130,15 @@ class QuotaService:
         try:
             date = _date_key()
             key = f"quota:user_daily:{tenant_id}:{user_id}:{date}"
-            count = await self.redis.incr(key)
-            if count == 1:
-                now = _vn_now()
-                midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-                ttl = int((midnight - now).total_seconds()) + 60
-                await self.redis.expire(key, ttl)
+            now = _vn_now()
+            midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            ttl = int((midnight - now).total_seconds()) + 60
+
+            pipe = self.redis.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, ttl)
+            results = await pipe.execute()
+            count = int(results[0])
 
             limit = _get_rtm_billing("quota_user_daily_requests", str(settings.quota_user_daily_requests))
             if count > limit:
@@ -163,9 +166,11 @@ class QuotaService:
 
             month = _month_key()
             key = f"quota:tenant_monthly_requests:{tenant_id}:{month}"
-            count = await self.redis.incr(key)
-            if count == 1:
-                await self.redis.expire(key, 35 * 24 * 3600)
+            pipe = self.redis.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, 35 * 24 * 3600)
+            results = await pipe.execute()
+            count = int(results[0])
 
             if count > monthly_limit:
                 await self.redis.decr(key)
@@ -190,24 +195,27 @@ class QuotaService:
         try:
             month = _month_key()
             config = tenant_config or await self._get_tenant_config(tenant_id)
+            pipe = self.redis.pipeline()
 
             # 1. Token quota check
             token_quota = config.get("monthly_token_quota", 0)
             if token_quota > 0 and total_tokens > 0:
                 token_key = f"quota:tenant_monthly_tokens:{tenant_id}:{month}"
-                current_tokens = await self.redis.incrby(token_key, total_tokens)
-                if current_tokens <= total_tokens:
-                    await self.redis.expire(token_key, 35 * 24 * 3600)
+                pipe.incrby(token_key, total_tokens)
+                pipe.expire(token_key, 35 * 24 * 3600)
 
             # 2. Cost tracking
             hard_budget_vnd = _get_rtm_billing("quota_hard_budget_vnd", str(settings.quota_hard_budget_vnd))
-            if hard_budget_vnd <= 0:
-                return "ok", 0
-
             cost_key = f"budget:tenant:{tenant_id}:{month}"
-            total_cost = await self.redis.incrby(cost_key, cost_micros_vnd)
-            if total_cost <= cost_micros_vnd:
-                await self.redis.expire(cost_key, 35 * 24 * 3600)
+            if hard_budget_vnd > 0 and cost_micros_vnd > 0:
+                pipe.incrby(cost_key, cost_micros_vnd)
+                pipe.expire(cost_key, 35 * 24 * 3600)
+
+            if len(pipe) > 0:
+                results = await pipe.execute()
+                total_cost = int(results[-2]) if (hard_budget_vnd > 0 and cost_micros_vnd > 0) else 0
+            else:
+                total_cost = 0
 
             budget_micros = hard_budget_vnd * 1_000_000
             pct = int(total_cost * 100 / budget_micros) if budget_micros > 0 else 0

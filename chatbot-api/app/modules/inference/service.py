@@ -617,18 +617,28 @@ class PublicInferenceService:
         section_map = {}
         missing_pairs = []
 
-        for doc_id, sec_id in section_doc_pairs:
-            key = (doc_id, sec_id)
-            cache_key = f"rag:section:{doc_id}:{sec_id}"
-            if self._redis:
-                cached = await self._redis.get(cache_key)
-                if cached:
-                    section_map[key] = json.loads(cached)
-                    continue
-            missing_pairs.append(key)
+        if self._redis and section_doc_pairs:
+            cache_keys = [f"rag:section:{d}:{s}" for d, s in section_doc_pairs]
+            try:
+                cached_list = await self._redis.mget(cache_keys)
+                for (doc_id, sec_id), cached in zip(section_doc_pairs, cached_list):
+                    key = (doc_id, sec_id)
+                    if cached:
+                        try:
+                            section_map[key] = json.loads(cached)
+                            continue
+                        except Exception:
+                            pass
+                    missing_pairs.append(key)
+            except Exception as exc:
+                logger.warning("_hydrate_rag_nodes redis mget error: %s", exc)
+                missing_pairs = list(section_doc_pairs)
+        else:
+            missing_pairs = list(section_doc_pairs)
 
         if missing_pairs:
             section_rows = await self.section_repo.get_sections_for_rag(missing_pairs)
+            pipe = self._redis.pipeline() if self._redis else None
             for row in section_rows:
                 key = (str(row.get("document_id") or ""), str(row.get("section_id") or ""))
                 cache_dict = {
@@ -637,8 +647,13 @@ class PublicInferenceService:
                     "page_range": row.get("page_range"),
                 }
                 section_map[key] = cache_dict
-                if self._redis:
-                    await self._redis.setex(f"rag:section:{key[0]}:{key[1]}", 3600, json.dumps(cache_dict))
+                if pipe:
+                    pipe.setex(f"rag:section:{key[0]}:{key[1]}", 3600, json.dumps(cache_dict))
+            if pipe:
+                try:
+                    await pipe.execute()
+                except Exception as exc:
+                    logger.warning("_hydrate_rag_nodes redis pipeline error: %s", exc)
         hydrated_nodes: list[RagNode] = []
         for node in context.nodes:
             key = (node.document_id, node.section_id or "")

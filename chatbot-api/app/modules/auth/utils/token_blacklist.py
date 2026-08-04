@@ -15,6 +15,5 @@ class TokenBlacklist:
             await self.client.setex(f"blacklist:{jti}", ttl, "1")
 
     async def is_revoked(self, jti: str) -> bool:
-        """Check if a token has been revoked."""
-        val = await self.client.get(f"blacklist:{jti}")
-        return val is not None
+        """Check if a token has been revoked using atomic boolean EXISTS check."""
+        return bool(await self.client.exists(f"blacklist:{jti}"))

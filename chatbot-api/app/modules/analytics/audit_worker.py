@@ -40,7 +40,11 @@ def process_audit_stream(batch_size: int = 100):
             # 2. Process Pending (Recovery)
             pending = await local_redis.xpending_range(stream_key, CONSUMER_GROUP, min="-", max="+", count=batch_size)
             if pending:
-                await _process_events(local_redis, stream_key, [p["message_id"] for p in pending])
+                min_id = pending[0]["message_id"]
+                max_id = pending[-1]["message_id"]
+                pending_events = await local_redis.xrange(stream_key, min=min_id, max=max_id, count=batch_size)
+                if pending_events:
+                    await _process_events(local_redis, stream_key, pending_events)
 
             # 3. Read New (Blocking)
             streams = await local_redis.xreadgroup(
@@ -50,8 +54,7 @@ def process_audit_stream(batch_size: int = 100):
                 return 0
 
             events = streams[0][1]
-            event_ids = [e[0] for e in events]
-            return await _process_events(local_redis, stream_key, event_ids)
+            return await _process_events(local_redis, stream_key, events)
 
     try:
         count = asyncio.run(_process_loop())
@@ -63,23 +66,15 @@ def process_audit_stream(batch_size: int = 100):
         return 0
 
 
-async def _process_events(local_redis, stream_key: str, event_ids: list[str]) -> int:
+async def _process_events(local_redis, stream_key: str, events: list[tuple[str, dict]]) -> int:
     """Process and acknowledge audit events."""
-    if not event_ids:
+    if not events:
         return 0
 
-    raw_events = []
-    for eid in event_ids:
-        event = await local_redis.xrange(stream_key, min=eid, max=eid, count=1)
-        if event:
-            raw_events.append(event[0])
-
-    if not raw_events:
-        return 0
-
+    event_ids = [e[0] for e in events]
     async with AsyncSessionLocal() as session:
-        for event_id, fields in raw_events:
-            action = fields.get("action", "").strip()
+        for event_id, fields in events:
+            action = (fields.get("action") or "").strip()
             if not action:
                 await local_redis.xack(stream_key, CONSUMER_GROUP, event_id)
                 continue
@@ -98,4 +93,4 @@ async def _process_events(local_redis, stream_key: str, event_ids: list[str]) ->
         await session.commit()
         await local_redis.xack(stream_key, CONSUMER_GROUP, *event_ids)
 
-    return len(raw_events)
+    return len(events)
