@@ -1,4 +1,4 @@
-﻿.env
+.env
 __pycache__/
 *.pyc
 *.pyo
@@ -22,3 +22,14 @@ scratch/
 htmlcov/
 dist/
 build/
+
+# SSL / TLS Certificate files & Private Keys
+*.key
+*.crt
+*.pem
+*.cer
+*.pfx
+*.p12
+chatbot-api/ops/certs/*
+!chatbot-api/ops/certs/.gitkeep
+
