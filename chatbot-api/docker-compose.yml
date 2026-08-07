@@ -195,18 +195,19 @@ services:
       - internal
     labels:
       - "traefik.enable=true"
-      # — Production Router: media.sse.net.vn (RustFS S3 API / File Storage - Port 9000)
-      - "traefik.http.routers.rustfs-s3.rule=Host(`media.sse.net.vn`) || Host(`s3.localhost`)"
+      # — Production Router: media.chatbot.sse.net.vn (RustFS S3 API / File Storage - Port 9000)
+      - "traefik.http.routers.rustfs-s3.rule=Host(`media.chatbot.sse.net.vn`) || Host(`s3.localhost`)"
       - "traefik.http.routers.rustfs-s3.entrypoints=web,websecure"
       - "traefik.http.routers.rustfs-s3.tls=true"
       - "traefik.http.routers.rustfs-s3.service=rustfs-s3"
       - "traefik.http.services.rustfs-s3.loadbalancer.server.port=9000"
-      # — Production Router: console.media.sse.net.vn (RustFS Console UI - Port 9001)
-      - "traefik.http.routers.rustfs-console.rule=Host(`console.media.sse.net.vn`) || Host(`rustfs.localhost`)"
+      # — Production Router: console.media.chatbot.sse.net.vn (RustFS Console UI - Port 9001)
+      - "traefik.http.routers.rustfs-console.rule=Host(`console.media.chatbot.sse.net.vn`) || Host(`rustfs.localhost`)"
       - "traefik.http.routers.rustfs-console.entrypoints=web,websecure"
       - "traefik.http.routers.rustfs-console.tls=true"
       - "traefik.http.routers.rustfs-console.service=rustfs-console"
       - "traefik.http.services.rustfs-console.loadbalancer.server.port=9001"
+
 
 
   qdrant:
