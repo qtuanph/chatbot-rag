@@ -176,7 +176,8 @@ class Settings(BaseSettings):
     s3_secret_key: str = "replace-me"
     s3_bucket: str = "rag-documents"
     s3_secure: bool = False
-    allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0,test,testserver,api.chatbot.sse.net.vn,9router.sse.net.vn,api"
+    allowed_hosts: str = "localhost,127.0.0.1,0.0.0.0,test,testserver,api.chatbot.sse.net.vn,9router.sse.net.vn,media.sse.net.vn,console.media.sse.net.vn,api"
+
 
     cors_origins: str = "http://localhost"
 
