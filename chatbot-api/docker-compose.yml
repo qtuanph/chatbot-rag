@@ -44,8 +44,8 @@ services:
       - "model-runner.docker.internal:host-gateway"
     labels:
       - "traefik.enable=true"
-      # — Production Router: chatbot-api.sse.net.vn / api.chatbot.sse.net.vn
-      - "traefik.http.routers.api.rule=Host(`chatbot-api.sse.net.vn`) || Host(`api.chatbot.sse.net.vn`)"
+      # — Production Router: chatbot-api.sse.net.vn
+      - "traefik.http.routers.api.rule=Host(`chatbot-api.sse.net.vn`)"
       - "traefik.http.routers.api.entrypoints=web,websecure"
       - "traefik.http.routers.api.tls=true"
       - "traefik.http.routers.api.priority=100"
@@ -102,8 +102,8 @@ services:
       JWT_SECRET: ${AI_PROXY_JWT_SECRET}
       INITIAL_PASSWORD: ${AI_PROXY_INITIAL_PASSWORD:-123456}
       NODE_ENV: production
-      BASE_URL: ${AI_PROXY_PUBLIC_URL:-http://9router.sse.net.vn}
-      NEXT_PUBLIC_BASE_URL: ${AI_PROXY_PUBLIC_URL:-http://9router.sse.net.vn}
+      BASE_URL: ${AI_PROXY_PUBLIC_URL:-https://chatbot-9router.sse.net.vn}
+      NEXT_PUBLIC_BASE_URL: ${AI_PROXY_PUBLIC_URL:-https://chatbot-9router.sse.net.vn}
       REQUIRE_API_KEY: "false"
       AUTH_COOKIE_SECURE: "false"
     ports:
@@ -121,8 +121,8 @@ services:
       - internal
     labels:
       - "traefik.enable=true"
-      # — Production Router: chatbot-9router.sse.net.vn / 9router.sse.net.vn
-      - "traefik.http.routers.ai-proxy.rule=Host(`chatbot-9router.sse.net.vn`) || Host(`9router.sse.net.vn`)"
+      # — Production Router: chatbot-9router.sse.net.vn
+      - "traefik.http.routers.ai-proxy.rule=Host(`chatbot-9router.sse.net.vn`)"
       - "traefik.http.routers.ai-proxy.entrypoints=web,websecure"
       - "traefik.http.routers.ai-proxy.tls=true"
       - "traefik.http.services.ai-proxy.loadbalancer.server.port=2908"
@@ -196,13 +196,13 @@ services:
     labels:
       - "traefik.enable=true"
       # — Production Router: chatbot-media.sse.net.vn (RustFS S3 API - Port 9000)
-      - "traefik.http.routers.rustfs-s3.rule=Host(`chatbot-media.sse.net.vn`) || Host(`media.chatbot.sse.net.vn`)"
+      - "traefik.http.routers.rustfs-s3.rule=Host(`chatbot-media.sse.net.vn`)"
       - "traefik.http.routers.rustfs-s3.entrypoints=web,websecure"
       - "traefik.http.routers.rustfs-s3.tls=true"
       - "traefik.http.routers.rustfs-s3.service=rustfs-s3"
       - "traefik.http.services.rustfs-s3.loadbalancer.server.port=9000"
       # — Production Router: chatbot-console.sse.net.vn (RustFS Console UI - Port 9001)
-      - "traefik.http.routers.rustfs-console.rule=Host(`chatbot-console.sse.net.vn`) || Host(`console.media.chatbot.sse.net.vn`)"
+      - "traefik.http.routers.rustfs-console.rule=Host(`chatbot-console.sse.net.vn`)"
       - "traefik.http.routers.rustfs-console.entrypoints=web,websecure"
       - "traefik.http.routers.rustfs-console.tls=true"
       - "traefik.http.routers.rustfs-console.service=rustfs-console"
