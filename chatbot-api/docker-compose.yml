@@ -44,8 +44,8 @@ services:
       - "model-runner.docker.internal:host-gateway"
     labels:
       - "traefik.enable=true"
-      # — Traffic from localhost or 127.0.0.1 goes to API
-      - "traefik.http.routers.api.rule=Host(`localhost`) || Host(`127.0.0.1`)"
+      # — Traffic from api.chatbot.sse.net.vn, localhost or 127.0.0.1 goes to API
+      - "traefik.http.routers.api.rule=Host(`api.chatbot.sse.net.vn`) || Host(`localhost`) || Host(`127.0.0.1`)"
       - "traefik.http.routers.api.entrypoints=web"
       - "traefik.http.routers.api.priority=100"
       - "traefik.http.services.api.loadbalancer.server.port=8000"
@@ -101,8 +101,8 @@ services:
       JWT_SECRET: ${AI_PROXY_JWT_SECRET}
       INITIAL_PASSWORD: ${AI_PROXY_INITIAL_PASSWORD:-123456}
       NODE_ENV: production
-      BASE_URL: http://localhost:2908
-      NEXT_PUBLIC_BASE_URL: http://localhost:2908
+      BASE_URL: ${AI_PROXY_PUBLIC_URL:-http://9router.sse.net.vn}
+      NEXT_PUBLIC_BASE_URL: ${AI_PROXY_PUBLIC_URL:-http://9router.sse.net.vn}
       REQUIRE_API_KEY: "false"
       AUTH_COOKIE_SECURE: "false"
     ports:
@@ -120,8 +120,8 @@ services:
       - internal
     labels:
       - "traefik.enable=true"
-      # — Traffic from 9router.localhost goes to AI Proxy
-      - "traefik.http.routers.ai-proxy.rule=Host(`9router.localhost`)"
+      # — Traffic from 9router.sse.net.vn or 9router.localhost goes to AI Proxy
+      - "traefik.http.routers.ai-proxy.rule=Host(`9router.sse.net.vn`) || Host(`9router.localhost`)"
       - "traefik.http.routers.ai-proxy.entrypoints=web"
       - "traefik.http.services.ai-proxy.loadbalancer.server.port=2908"
 
