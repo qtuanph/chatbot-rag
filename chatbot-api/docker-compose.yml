@@ -47,6 +47,7 @@ services:
       # — Production Router: api.chatbot.sse.net.vn
       - "traefik.http.routers.api.rule=Host(`api.chatbot.sse.net.vn`)"
       - "traefik.http.routers.api.entrypoints=web,websecure"
+      - "traefik.http.routers.api.tls=true"
       - "traefik.http.routers.api.priority=100"
       - "traefik.http.services.api.loadbalancer.server.port=8000"
       - "traefik.http.middlewares.api-ratelimit.ratelimit.average=100"
@@ -123,6 +124,7 @@ services:
       # — Production Router: 9router.sse.net.vn
       - "traefik.http.routers.ai-proxy.rule=Host(`9router.sse.net.vn`)"
       - "traefik.http.routers.ai-proxy.entrypoints=web,websecure"
+      - "traefik.http.routers.ai-proxy.tls=true"
       - "traefik.http.services.ai-proxy.loadbalancer.server.port=2908"
 
   db:
@@ -240,6 +242,8 @@ services:
       - "--serversTransport.forwardingTimeouts.idleConnTimeout=600s"
       - "--entrypoints.web.http.encodedCharacters.allowEncodedSlash=true"
       - "--entrypoints.websecure.http.encodedCharacters.allowEncodedSlash=true"
+      - "--providers.file.filename=/etc/traefik/dynamic_tls.yml"
+      - "--providers.file.watch=true"
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@sse.net.vn}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
@@ -249,6 +253,8 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./ops/certs:/etc/traefik/certs:ro
+      - ./ops/traefik-tls.yml:/etc/traefik/dynamic_tls.yml:ro
       - letsencrypt-data:/letsencrypt
     depends_on:
       api:
