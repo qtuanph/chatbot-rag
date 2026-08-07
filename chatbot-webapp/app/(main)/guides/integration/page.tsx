@@ -28,6 +28,8 @@ import {
   DownloadIcon,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 
 import { OpenAIStreamChunkSchema } from "@/lib/schemas";
 
@@ -61,7 +63,7 @@ function CodeBlock({ code, lang = "" }: { code: string; lang?: string }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
-const API_BASE = "https://api.qtuanph.dev/v1";
+const API_BASE = "http://localhost:8000/v1";
 const API_URL = `${API_BASE}/chat/completions`;
 const PLACEHOLDER_KEY = "trg_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 
@@ -598,7 +600,7 @@ export function LiveChatPlayground() {
     setMessages(nextMessages);
 
     try {
-      const response = await fetch("https://api.qtuanph.dev/v1/chat/completions", {
+      const response = await fetch("http://localhost:8000/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -666,8 +668,20 @@ interface ChatMessage {
 }
 
 function LivePlayground() {
-  const [targetUrl, setTargetUrl] = useState("http://localhost/v1/chat/completions");
-  const [apiKey, setApiKey] = useState("");
+  const [targetUrl, setTargetUrl] = useState(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("rag_playground_target_url") || "http://localhost/v1/chat/completions";
+    }
+    return "http://localhost/v1/chat/completions";
+  });
+
+  const [apiKey, setApiKey] = useState(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("rag_playground_api_key") || "";
+    }
+    return "";
+  });
+
   const [showKey, setShowKey] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState("");
@@ -676,8 +690,27 @@ function LivePlayground() {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (apiKey) {
+        sessionStorage.setItem("rag_playground_api_key", apiKey);
+      } else {
+        sessionStorage.removeItem("rag_playground_api_key");
+      }
+    }
+  }, [apiKey]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (targetUrl) {
+        sessionStorage.setItem("rag_playground_target_url", targetUrl);
+      }
+    }
+  }, [targetUrl]);
+
+  useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
 
   const handleFeedback = async (index: number, feedbackType: "like" | "dislike") => {
     if (!apiKey.trim()) return;
@@ -697,7 +730,7 @@ function LivePlayground() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey.trim()}`,
+          "Authorization": `Bearer ${encodeURIComponent(apiKey.trim())}`,
         },
         body: JSON.stringify({
           feedback_type: feedbackType,
@@ -734,7 +767,7 @@ function LivePlayground() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey.trim()}`,
+          "Authorization": `Bearer ${encodeURIComponent(apiKey.trim())}`,
         },
         body: JSON.stringify({
           model: "chatbot-rag",
@@ -753,10 +786,11 @@ function LivePlayground() {
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
       let fullText = "";
+      let streamDone = false;
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done || streamDone) break;
 
         buffer += decoder.decode(value, { stream: true });
         
@@ -767,16 +801,32 @@ function LivePlayground() {
 
           if (!line.startsWith("data: ")) continue;
           const dataPayload = line.slice(6).trim();
-          if (dataPayload === "[DONE]") continue;
+          if (dataPayload === "[DONE]") {
+            streamDone = true;
+            setIsLoading(false);
+            break;
+          }
 
-          const chunk = getStreamContentChunk(dataPayload);
-          if (chunk) {
-            fullText += chunk;
-            setMessages((prev) => {
-              const list = [...prev];
-              list[assistantIndex] = { role: "assistant", content: fullText };
-              return list;
-            });
+          try {
+            const parsed = JSON.parse(dataPayload);
+            const chunk = parsed?.choices?.[0]?.delta?.content || "";
+            const finishReason = parsed?.choices?.[0]?.finish_reason;
+
+            if (chunk) {
+              fullText += chunk;
+              setMessages((prev) => {
+                const list = [...prev];
+                list[assistantIndex] = { role: "assistant", content: fullText };
+                return list;
+              });
+            }
+
+            if (finishReason === "stop" || finishReason === "length") {
+              streamDone = true;
+              setIsLoading(false);
+            }
+          } catch {
+            // Ignore invalid JSON payloads
           }
         }
       }
@@ -856,7 +906,8 @@ function LivePlayground() {
                         <RefreshCwIcon className="w-3 h-3 animate-spin" /> Đang nhận phản hồi...
                       </span>
                     ) : (
-                      <ReactMarkdown>{m.content}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+
                     )}
                   </div>
                   {(!isLoading || idx !== messages.length - 1) && m.content !== "" && !m.feedback && (

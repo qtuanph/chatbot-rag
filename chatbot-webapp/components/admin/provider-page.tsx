@@ -27,8 +27,10 @@ const PROVIDER_COLORS: Record<string, string> = {
   openai: "bg-green-500/15 text-green-600 dark:text-green-400",
   openrouter: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
   "9router": "bg-violet-500/15 text-violet-600 dark:text-violet-400",
+  deepseek: "bg-teal-500/15 text-teal-600 dark:text-teal-400",
   cohere: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
   gemini: "bg-rose-500/15 text-rose-600 dark:text-rose-400",
+  fpt: "bg-red-500/15 text-red-600 dark:text-red-400",
   llamaparse: "bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-400",
   docling: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400",
 };
@@ -39,8 +41,10 @@ const PROVIDER_LETTERS: Record<string, string> = {
   openai: "OA",
   openrouter: "OR",
   "9router": "9R",
+  deepseek: "DS",
   cohere: "CH",
   gemini: "GM",
+  fpt: "FPT",
   llamaparse: "LP",
   docling: "DL",
 };
@@ -88,8 +92,6 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
     loadProviders().finally(() => setLoading(false));
   }, [tab]);
 
-  const llmBuiltin = tab === "llm";
-
   const resetForm = () => {
     setFormData({ service_type: tab, provider_name: "", display_name: "", url: "", model: "", api_key: "" });
   };
@@ -126,6 +128,43 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
     if (f["edit-url"]) data.url = f["edit-url"].value;
     if (f["edit-model"]) data.model = f["edit-model"].value;
     if (f["edit-api_key"] && f["edit-api_key"].value.trim()) data.api_key = f["edit-api_key"].value.trim();
+
+    const config: Record<string, unknown> = { ...(editDialog.config || {}) };
+    if (f["edit-max_sequence_length"]) {
+      const v = f["edit-max_sequence_length"].value.trim();
+      if (v) {
+        const num = parseInt(v, 10);
+        if (!isNaN(num) && num > 0) config.max_sequence_length = num;
+      } else {
+        delete config.max_sequence_length;
+      }
+    }
+    if (f["edit-sparse"]) {
+      const v = f["edit-sparse"].value;
+      if (v && v !== "auto") config.sparse = v;
+      else delete config.sparse;
+    }
+    if (f["edit-reasoning"]) {
+      const v = f["edit-reasoning"].value;
+      if (v && v !== "none") config.reasoning_effort = v;
+      else delete config.reasoning_effort;
+    }
+
+    if (f["edit-thinking"]) {
+      const v = f["edit-thinking"].value;
+      if (v && v !== "none") config.thinking = { type: v };
+      else delete config.thinking;
+    }
+    if (f["edit-custom-json"] && f["edit-custom-json"].value.trim()) {
+      try {
+        const customObj = JSON.parse(f["edit-custom-json"].value.trim());
+        Object.assign(config, customObj);
+      } catch {
+        toast.error("JSON cấu hình nâng cao không hợp lệ");
+        return;
+      }
+    }
+    data.config = config;
 
     const parsedData = AIProviderUpdateSchema.safeParse(data);
     if (!parsedData.success) {
@@ -231,11 +270,9 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
     <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{TAB_LABELS[tab]}</h1>
-        {!llmBuiltin && (
-          <Button className="gap-2" onClick={() => { setFormData({ service_type: tab, provider_name: "", display_name: "", url: "", model: "", api_key: "" }); setAddDialog(true); }}>
-            <Plus className="h-4 w-4" /> Thêm provider
-          </Button>
-        )}
+        <Button className="gap-2" onClick={() => { setFormData({ service_type: tab, provider_name: "", display_name: "", url: "", model: "", api_key: "" }); setAddDialog(true); }}>
+          <Plus className="h-4 w-4" /> Thêm provider
+        </Button>
       </div>
 
       {loading ? (
@@ -310,16 +347,14 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    {!llmBuiltin && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        title={p.is_active ? "Tắt provider" : "Kích hoạt provider"}
-                        onClick={() => handleToggleActive(p)}
-                      >
-                        <Power className={`h-3.5 w-3.5 ${p.is_active ? "text-emerald-500 font-bold" : "text-muted-foreground hover:text-primary"}`} />
-                      </Button>
-                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title={p.is_active ? "Tắt provider" : "Kích hoạt provider"}
+                      onClick={() => handleToggleActive(p)}
+                    >
+                      <Power className={`h-3.5 w-3.5 ${p.is_active ? "text-emerald-500 font-bold" : "text-muted-foreground hover:text-primary"}`} />
+                    </Button>
                     <Button variant="ghost" size="icon-sm" title="Kiểm tra" onClick={() => handleTest(p)}>
                       <TestTube className="h-3.5 w-3.5" />
                     </Button>
@@ -343,6 +378,67 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
             <SheetTitle>Thêm provider — {TAB_LABELS[tab]}</SheetTitle>
           </SheetHeader>
           <form id="add-form" onSubmit={handleAdd}>
+            {tab === "llm" && (
+              <div className="mb-4 rounded-xl border bg-muted/30 p-3">
+                <span className="text-xs font-semibold text-muted-foreground block mb-2">⚡ Chọn mẫu kết nối nhanh (Presets):</span>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs rounded-lg border-teal-500/30 hover:bg-teal-500/10 text-teal-600 dark:text-teal-400 font-semibold"
+                    onClick={() => setFormData({
+                      service_type: "llm",
+                      provider_name: "deepseek",
+                      display_name: "DeepSeek Official",
+                      url: "https://api.deepseek.com/v1",
+                      model: "deepseek-v4-flash",
+                      api_key: "",
+                    })}
+                  >
+                    🐳 DeepSeek Official
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs rounded-lg border-red-500/30 hover:bg-red-500/10 text-red-600 dark:text-red-400 font-semibold"
+                    onClick={() => setFormData({
+                      service_type: "llm",
+                      provider_name: "fpt",
+                      display_name: "FPT Cloud LLM",
+                      url: "https://mkp-api.fptcloud.com/v1",
+                      model: "gpt-oss-20b",
+                      api_key: "",
+                      config: {
+                        top_k: 40,
+                        top_p: 1,
+                        presence_penalty: 0,
+                        frequency_penalty: 0,
+                      },
+                    })}
+                  >
+                    🔴 FPT Cloud LLM
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs rounded-lg"
+                    onClick={() => setFormData({
+                      service_type: "llm",
+                      provider_name: "openai",
+                      display_name: "OpenAI Official",
+                      url: "https://api.openai.com/v1",
+                      model: "gpt-4o",
+                      api_key: "",
+                    })}
+                  >
+                    🟢 OpenAI Official
+                  </Button>
+                </div>
+              </div>
+            )}
             <FieldGroup>
             <Field>
               <FieldContent>
@@ -401,6 +497,107 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
                 <Input id="edit-model" name="edit-model" defaultValue={editDialog?.model} />
               </FieldContent>
             </Field>
+
+            {tab === "embedding" && (
+              <>
+                <Field>
+                  <FieldContent>
+                    <FieldLabel htmlFor="edit-max_sequence_length">Max Sequence Length (Độ dài chuỗi tối đa - Tokens)</FieldLabel>
+                    <Input
+                      id="edit-max_sequence_length"
+                      name="edit-max_sequence_length"
+                      type="number"
+                      defaultValue={
+                        (editDialog?.config?.max_sequence_length as number) ||
+                        (editDialog?.config?.context_window as number) ||
+                        (editDialog?.config?.max_length as number) ||
+                        2048
+                      }
+                      placeholder="2048"
+                    />
+                    <FieldDescription>
+                      Giới hạn độ dài ngữ cảnh tối đa của mô hình Embedding (Ví dụ: Vietnamese Embedding Model = 2048).
+                    </FieldDescription>
+                  </FieldContent>
+                </Field>
+
+                <Field>
+                  <FieldContent>
+                    <FieldLabel htmlFor="edit-sparse">Chế độ Sparse Vectors (BM25 / Hybrid)</FieldLabel>
+                    <select
+                      id="edit-sparse"
+                      name="edit-sparse"
+                      defaultValue={(editDialog?.config?.sparse as string) || "auto"}
+                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="auto">Tự động phát hiện (Auto Probe)</option>
+                      <option value="native">Native Sparse (Dùng sparse weights của model)</option>
+                      <option value="bm25">BM25 Fallback (Dùng BM25 của Qdrant)</option>
+                    </select>
+                    <FieldDescription>Cấu hình cách tạo sparse vectors cho tìm kiếm Hybrid.</FieldDescription>
+                  </FieldContent>
+                </Field>
+              </>
+            )}
+
+            {tab === "llm" && (
+              <>
+                <Field>
+                  <FieldContent>
+                    <FieldLabel htmlFor="edit-reasoning">Reasoning Effort (Mức độ suy luận)</FieldLabel>
+                    <select
+                      id="edit-reasoning"
+                      name="edit-reasoning"
+                      defaultValue={(editDialog?.config?.reasoning_effort as string) || "none"}
+                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="none">Mặc định (Không đặt)</option>
+                      <option value="high">high (Cao)</option>
+                      <option value="medium">medium (Trung bình)</option>
+                      <option value="low">low (Thấp)</option>
+                    </select>
+                    <FieldDescription>Tham số reasoning_effort điều khiển độ sâu suy luận của LLM.</FieldDescription>
+                  </FieldContent>
+                </Field>
+
+                <Field>
+                  <FieldContent>
+                    <FieldLabel htmlFor="edit-thinking">Chế độ Thinking Mode (extra_body)</FieldLabel>
+                    <select
+                      id="edit-thinking"
+                      name="edit-thinking"
+                      defaultValue={(editDialog?.config?.thinking as { type?: string })?.type || "none"}
+                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="none">Mặc định (Không đặt)</option>
+                      <option value="enabled">enabled (Bật suy luận)</option>
+                      <option value="disabled">disabled (Tắt suy luận)</option>
+                    </select>
+                    <FieldDescription>Tự động đính kèm extra_body: &#123;&quot;thinking&quot;: &#123;&quot;type&quot;: &quot;enabled&quot;&#125;&#125; cho các mô hình suy luận.</FieldDescription>
+                  </FieldContent>
+                </Field>
+              </>
+            )}
+
+            <Field>
+              <FieldContent>
+                <FieldLabel htmlFor="edit-custom-json">JSON Cấu hình tùy chỉnh bổ sung (SQLite config)</FieldLabel>
+                <textarea
+                  id="edit-custom-json"
+                  name="edit-custom-json"
+                  rows={3}
+                  defaultValue={
+                    editDialog?.config && Object.keys(editDialog.config).length > 0
+                      ? JSON.stringify(editDialog.config, null, 2)
+                      : ""
+                  }
+                  placeholder='{"temperature": 0.7}'
+                  className="w-full rounded-lg border border-input bg-background p-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <FieldDescription>Cấu hình JSON bổ sung lưu trực tiếp vào SQLite `ai_providers.config`.</FieldDescription>
+              </FieldContent>
+            </Field>
+
             </FieldGroup>
           </form>
           

@@ -196,6 +196,14 @@ class SectionRepository(BaseRepository[DocumentSection]):
         rows = result.all()
         return {str(row[0]) for row in rows}
 
+    async def get_all_sections(self) -> list[dict[str, Any]]:
+        """Get all sections across documents (for system/global retrieval)."""
+        stmt = select(self.model).order_by(self.model.document_id, self.model.order_index)
+        result = await self.session.execute(stmt)
+        rows = result.scalars().all()
+        return [self._to_dict(s) for s in rows]
+
+
     def _to_dict(self, section: DocumentSection) -> dict[str, Any]:
         """Custom override for DocumentSection conversion."""
         if section is None:

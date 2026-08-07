@@ -1,5 +1,7 @@
 "use client";
 
+import * as React from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
@@ -163,8 +165,13 @@ function PlatformSwitcher() {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: session } = useSession();
+  const [mounted, setMounted] = React.useState(false);
 
-  const groups = session?.role === "platform_admin" ? platformGroups : tenantGroups;
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const groups = mounted && session?.role === "platform_admin" ? platformGroups : tenantGroups;
 
   return (
     <Sidebar collapsible="icon" variant="inset" {...props}>

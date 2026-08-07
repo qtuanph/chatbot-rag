@@ -107,18 +107,29 @@ class RuntimeProviderManager:
                 model_name = emb.get("model")
                 if not model_name:
                     raise ValueError("Embedding model is missing in SQLite configuration.")
+
+                emb_cfg = emb.get("config") if isinstance(emb.get("config"), dict) else {}
+                context_win = (
+                    emb_cfg.get("context_window")
+                    or emb_cfg.get("max_length")
+                    or emb_cfg.get("max_sequence_length")
+                    or 2048
+                )
                 Settings.embed_model = SequentialOpenAIEmbedding(
                     model_name=model_name,
                     api_base=emb["url"].rstrip("/"),
                     api_key=api_key,
                     embed_batch_size=settings.embedding_batch_size,
+                    context_window=int(context_win),
                 )
+
+
             except Exception:
                 import logging
 
                 logging.getLogger(__name__).warning("Failed to override embedding provider", exc_info=True)
 
-        # Override LLM from SQLite — 9Router is now managed via SQLite/webapp
+        # Override LLM from SQLite — 9Router / DeepSeek is managed via SQLite/webapp
         llm = self._llm
         if llm and llm.get("url"):
             try:
@@ -128,6 +139,15 @@ class RuntimeProviderManager:
                 model_name = llm.get("model")
                 if not model_name:
                     raise ValueError("LLM model is missing in SQLite configuration.")
+
+                config = llm.get("config") if isinstance(llm.get("config"), dict) else {}
+                extra_kwargs = {}
+                for k, v in config.items():
+                    if k == "thinking" and isinstance(v, dict):
+                        extra_kwargs["extra_body"] = {"thinking": v}
+                    elif v is not None:
+                        extra_kwargs[k] = v
+
                 Settings.llm = OpenAILike(
                     model=model_name,
                     api_base=llm["url"].rstrip("/"),
@@ -138,6 +158,7 @@ class RuntimeProviderManager:
                     temperature=settings.ai_temperature,
                     max_tokens=settings.ai_max_output_tokens,
                     timeout=settings.ai_proxy_timeout,
+                    additional_kwargs=extra_kwargs if extra_kwargs else None,
                 )
             except Exception:
                 import logging

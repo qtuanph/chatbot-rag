@@ -102,7 +102,7 @@ app = FastAPI(title=settings.app_name, docs_url=None, redoc_url=None, lifespan=l
 
 app.add_middleware(CorrelationIDMiddleware)
 
-if settings.app_env == "production":
+if settings.app_env == "production" and getattr(settings, "enforce_https", False):
     app.add_middleware(HTTPSRedirectMiddleware)
 
 app.add_middleware(

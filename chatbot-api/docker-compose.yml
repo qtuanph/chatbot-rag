@@ -13,6 +13,7 @@ services:
       - HF_HOME=/home/qtuanph/.cache/huggingface
       - HUGGINGFACE_HUB_CACHE=/home/qtuanph/.cache/huggingface
       - FASTEMBED_CACHE_PATH=/home/qtuanph/.cache/huggingface/fastembed
+      - EMBEDDING_BATCH_SIZE=20
     secrets:
       - hf_token
     volumes:
@@ -43,8 +44,8 @@ services:
       - "model-runner.docker.internal:host-gateway"
     labels:
       - "traefik.enable=true"
-      # — Traffic from localhost, 127.0.0.1, or api.qtuanph.dev goes to API
-      - "traefik.http.routers.api.rule=Host(`localhost`) || Host(`127.0.0.1`) || Host(`api.qtuanph.dev`)"
+      # — Traffic from localhost or 127.0.0.1 goes to API
+      - "traefik.http.routers.api.rule=Host(`localhost`) || Host(`127.0.0.1`)"
       - "traefik.http.routers.api.entrypoints=web"
       - "traefik.http.routers.api.priority=100"
       - "traefik.http.services.api.loadbalancer.server.port=8000"
@@ -65,6 +66,7 @@ services:
       - HF_HOME=/home/qtuanph/.cache/huggingface
       - HUGGINGFACE_HUB_CACHE=/home/qtuanph/.cache/huggingface
       - FASTEMBED_CACHE_PATH=/home/qtuanph/.cache/huggingface/fastembed
+      - EMBEDDING_BATCH_SIZE=20
     secrets:
       - hf_token
     volumes:
@@ -118,8 +120,8 @@ services:
       - internal
     labels:
       - "traefik.enable=true"
-      # — Traffic from 9router.localhost or 9router.qtuanph.dev goes to AI Proxy
-      - "traefik.http.routers.ai-proxy.rule=Host(`9router.localhost`) || Host(`9router.qtuanph.dev`)"
+      # — Traffic from 9router.localhost goes to AI Proxy
+      - "traefik.http.routers.ai-proxy.rule=Host(`9router.localhost`)"
       - "traefik.http.routers.ai-proxy.entrypoints=web"
       - "traefik.http.services.ai-proxy.loadbalancer.server.port=2908"
 
@@ -135,6 +137,10 @@ services:
       - app.app_rw_password=${APP_DB_PASSWORD:-replace-me}
       - -c
       - app.db_admin_password=${POSTGRES_PASSWORD:-replace-me}
+      - -c
+      - app.admin_username=${ADMIN_USERNAME:-replace-me}
+      - -c
+      - app.admin_password=${ADMIN_PASSWORD:-replace-me}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ragbot}
       POSTGRES_USER: ${POSTGRES_USER:-db-admin}
@@ -185,6 +191,18 @@ services:
     restart: unless-stopped
     networks:
       - internal
+    labels:
+      - "traefik.enable=true"
+      # — Traffic from rustfs.localhost goes to RustFS Console UI (Port 9001)
+      - "traefik.http.routers.rustfs-console.rule=Host(`rustfs.localhost`)"
+      - "traefik.http.routers.rustfs-console.entrypoints=web"
+      - "traefik.http.routers.rustfs-console.service=rustfs-console"
+      - "traefik.http.services.rustfs-console.loadbalancer.server.port=9001"
+      # — Traffic from s3.localhost goes to RustFS S3 API (Port 9000)
+      - "traefik.http.routers.rustfs-s3.rule=Host(`s3.localhost`)"
+      - "traefik.http.routers.rustfs-s3.entrypoints=web"
+      - "traefik.http.routers.rustfs-s3.service=rustfs-s3"
+      - "traefik.http.services.rustfs-s3.loadbalancer.server.port=9000"
 
   qdrant:
     image: qdrant/qdrant:latest

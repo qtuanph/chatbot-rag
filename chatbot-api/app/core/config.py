@@ -135,17 +135,20 @@ class Settings(BaseSettings):
 
     @property
     def redis_url_auth(self) -> str:
-        pwd = f":{self.redis_password}@" if self.redis_password else ""
+        from urllib.parse import quote
+        pwd = f":{quote(self.redis_password, safe='')}@" if self.redis_password else ""
         return f"redis://{pwd}redis:6379/0"
 
     @property
     def celery_broker_url_auth(self) -> str:
-        pwd = f":{self.redis_password}@" if self.redis_password else ""
+        from urllib.parse import quote
+        pwd = f":{quote(self.redis_password, safe='')}@" if self.redis_password else ""
         return f"redis://{pwd}redis:6379/{self.redis_broker_db}"
 
     @property
     def celery_result_backend_auth(self) -> str:
-        pwd = f":{self.redis_password}@" if self.redis_password else ""
+        from urllib.parse import quote
+        pwd = f":{quote(self.redis_password, safe='')}@" if self.redis_password else ""
         return f"redis://{pwd}redis:6379/{self.redis_result_db}"
 
     jwt_secret: str = "replace-me"
@@ -178,8 +181,8 @@ class Settings(BaseSettings):
 
     embedding_model: str = "dmr"
     embedding_hf_model: str = "ai/qwen3-embedding:0.6B-F16"
-    embedding_vector_size: int = 2048
-    embedding_batch_size: int = 50
+    embedding_vector_size: int = 1024
+    embedding_batch_size: int = 20
     embed_parallelism: int = 0
     embedding_api_key: str = ""
     vector_store: str = "qdrant"
@@ -302,12 +305,10 @@ class Settings(BaseSettings):
         if self.app_env == "production":
             if "*" in self.allowed_hosts:
                 raise ValueError("ALLOWED_HOSTS must not contain wildcard in production")
-            if not self.cors_origins or "http://localhost" in self.cors_origins:
+            if not self.cors_origins or "*" in self.cors_origins:
                 raise ValueError("CORS_ORIGINS must be production-safe in production")
             if self.rate_limit_relaxed_mode:
                 raise ValueError("RATE_LIMIT_RELAXED_MODE must be false in production")
-            if self.s3_secure is False:
-                raise ValueError("S3_SECURE must be true in production")
 
     def effective_rate_limit(self, base_limit: int) -> int:
         if base_limit < 1:

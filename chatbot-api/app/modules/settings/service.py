@@ -60,6 +60,13 @@ TEMPLATES: list[dict] = [
         "url": "https://api.cohere.com/v1",
         "model": "embed-multilingual-v3.0",
     },
+    {
+        "service_type": "embedding",
+        "provider_name": "fpt",
+        "display_name": "FPT AI Factory",
+        "url": "https://api.fptcloud.com/v1",
+        "model": "AITeamVN/Vietnamese_Embedding",
+    },
     # Reranker
     {
         "service_type": "reranker",
@@ -197,6 +204,12 @@ class SettingsService:
             else:
                 test_url = f"{url}/chat/completions"
                 payload = {"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1}
+                config = provider.get("config") if isinstance(provider.get("config"), dict) else {}
+                for k, v in config.items():
+                    if k == "thinking" and isinstance(v, dict):
+                        payload["extra_body"] = {"thinking": v}
+                    elif v is not None:
+                        payload[k] = v
 
             if (
                 provider["service_type"] == "reranker"

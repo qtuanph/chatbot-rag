@@ -12,17 +12,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.conversation import Conversation, ConversationMessage
 
 
+def _safe_uuid(val: Any) -> uuid.UUID | None:
+    if isinstance(val, uuid.UUID):
+        return val
+    if isinstance(val, str) and val:
+        try:
+            return uuid.UUID(val)
+        except (ValueError, AttributeError):
+            return None
+    return None
+
+
 class ConversationRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
     async def upsert_conversation(self, *, tenant_id: str, conversation_id: str, retention_days: int = 90) -> str:
         """Get or create conversation; returns PK UUID str."""
+        parsed_tenant = _safe_uuid(tenant_id)
+        if not parsed_tenant:
+            return ""
         expires_at = datetime.now(timezone.utc) + timedelta(days=retention_days)
         stmt = (
             pg_insert(Conversation)
             .values(
-                tenant_id=uuid.UUID(tenant_id),
+                tenant_id=parsed_tenant,
                 conversation_id=conversation_id,
                 expires_at=expires_at,
             )
@@ -35,6 +49,7 @@ class ConversationRepository:
         result = await self.session.execute(stmt)
         return str(result.scalar_one())
 
+
     async def add_message(
         self,
         *,
@@ -45,9 +60,13 @@ class ConversationRepository:
         **kwargs,
     ) -> str:
         """Insert a message row; returns PK UUID str."""
+        parsed_pk = _safe_uuid(conversation_pk)
+        parsed_tenant = _safe_uuid(tenant_id)
+        if not parsed_pk or not parsed_tenant:
+            return ""
         msg = ConversationMessage(
-            conversation_pk=uuid.UUID(conversation_pk),
-            tenant_id=uuid.UUID(tenant_id),
+            conversation_pk=parsed_pk,
+            tenant_id=parsed_tenant,
             role=role,
             content=content,
             **{k: v for k, v in kwargs.items() if hasattr(ConversationMessage, k)},
@@ -55,9 +74,10 @@ class ConversationRepository:
         self.session.add(msg)
         await self.session.execute(
             update(Conversation)
-            .where(Conversation.id == uuid.UUID(conversation_pk))
+            .where(Conversation.id == parsed_pk)
             .values(message_count=Conversation.message_count + 1, last_message_at=func.now())
         )
+
         await self.session.flush()
         return str(msg.id)
 

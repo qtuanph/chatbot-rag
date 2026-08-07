@@ -38,7 +38,7 @@ async function proxyHandler(
   } as RequestInit & { duplex: string };
 
   // Detect SSE or Upload requests to adjust timeout
-  const isSSERequest = path.some((segment) => segment === "stream");
+  const isSSERequest = path.some((segment) => segment === "stream" || segment === "completions" || segment === "chat");
   const isUploadRequest = path.some((segment) => segment === "upload");
 
   let controller: AbortController | null = null;

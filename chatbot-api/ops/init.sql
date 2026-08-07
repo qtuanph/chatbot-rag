@@ -291,10 +291,18 @@ VALUES
     ('tenant_admin', 'Tenant administrator with tenant-scoped access')
 ON CONFLICT (name) DO NOTHING;
 
-INSERT INTO users (role_id, tenant_id, username, password_hash, is_active)
-SELECT r.id, NULL, 'admin', '$2b$12$Zu/0SxKObaExq.O16nsgXOxP6VVhPMTaYG0Gy1vQecXfShKhtAed6', true
-FROM roles r WHERE r.name = 'platform_admin'
-ON CONFLICT (username) DO NOTHING;
+DO $$
+DECLARE
+    seed_admin_username text := current_setting('app.admin_username', true);
+    seed_admin_password text := current_setting('app.admin_password', true);
+BEGIN
+    IF seed_admin_username IS NOT NULL AND seed_admin_username <> '' AND seed_admin_password IS NOT NULL AND seed_admin_password <> '' THEN
+        INSERT INTO users (role_id, tenant_id, username, password_hash, is_active)
+        SELECT r.id, NULL, seed_admin_username, crypt(seed_admin_password, gen_salt('bf', 12)), true
+        FROM roles r WHERE r.name = 'platform_admin'
+        ON CONFLICT (username) DO NOTHING;
+    END IF;
+END $$;
 
 -- ============= AI Model Usage Quota Tracking =============
 CREATE TABLE IF NOT EXISTS ai_model_usage (

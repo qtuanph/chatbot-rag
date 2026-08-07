@@ -80,6 +80,66 @@ function ModelTypeCard({
   );
 }
 
+function RequestTabCard({ stats, days }: { stats: AnalyticsStats; days: number }) {
+  const [activeTab, setActiveTab] = useState<"llm" | "embedding" | "reranker" | "total">("llm");
+
+  const tabData = {
+    llm: {
+      title: "Request LLM",
+      count: stats.by_model_type.llm.call_count,
+      sub: "Mô hình Chat",
+    },
+    embedding: {
+      title: "Request Embedding",
+      count: stats.by_model_type.embedding.call_count,
+      sub: "Trích xuất véc-tơ",
+    },
+    reranker: {
+      title: "Request Reranker",
+      count: stats.by_model_type.reranker.call_count,
+      sub: "Sắp xếp ngữ cảnh",
+    },
+    total: {
+      title: "Tổng request",
+      count: stats.total_messages,
+      sub: `Tất cả (${days} ngày)`,
+    },
+  };
+
+  const current = tabData[activeTab];
+
+  return (
+    <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-[140px] flex flex-col justify-between p-4">
+      <div className="space-y-1">
+        <div className="text-sm font-medium text-muted-foreground">{current.title}</div>
+        <div className="text-2xl font-bold">{formatNumber(current.count)}</div>
+        <p className="text-xs text-muted-foreground">{current.sub}</p>
+      </div>
+
+      {/* Shadcn Theme Dot Tab Switcher */}
+      <div className="flex items-center justify-center gap-2 pt-1">
+        {(["llm", "embedding", "reranker", "total"] as const).map((tabKey) => {
+          const isActive = activeTab === tabKey;
+          return (
+            <button
+              key={tabKey}
+              type="button"
+              onClick={() => setActiveTab(tabKey)}
+              className={cn(
+                "w-2.5 h-2.5 rounded-full transition-all duration-200 cursor-pointer focus:outline-none",
+                isActive
+                  ? "bg-primary shadow-sm ring-2 ring-primary/20 scale-110"
+                  : "border border-muted-foreground/40 bg-transparent hover:border-primary/60 hover:bg-primary/10"
+              )}
+              title={tabData[tabKey].title}
+            />
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 function RequestRow({ row }: { row: RecentRequest }) {
   return (
     <TableRow>
@@ -162,7 +222,6 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
             <Button
               key={range.value}
               size="sm"
-                className=""
               variant={days === range.value ? "default" : "outline"}
               onClick={() => setDays(range.value)}
             >
@@ -191,85 +250,72 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
       {stats && (
         <>
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Tổng request</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatNumber(stats.total_messages)}</div>
-                <p className="text-xs text-muted-foreground">Theo cửa sổ {days} ngày</p>
-              </CardContent>
-            </Card>
-            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Tổng token</CardTitle>
-              </CardHeader>
-              <CardContent>
+            <RequestTabCard stats={stats} days={days} />
+
+            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-[140px] flex flex-col justify-between p-4">
+              <div className="text-sm font-medium text-muted-foreground">Tổng Token</div>
+              <div>
                 <div className="text-2xl font-bold">{formatNumber(stats.total_tokens)}</div>
-                <p className="text-xs text-muted-foreground">
-                  In {formatNumber(stats.total_tokens_in)} • Out {formatNumber(stats.total_tokens_out)}
+                <p className="text-xs text-muted-foreground pt-1">
+                  Vào: {formatNumber(stats.total_tokens_in)} • Ra: {formatNumber(stats.total_tokens_out)}
                 </p>
-              </CardContent>
+              </div>
             </Card>
-            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <div className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-500">
-                    <Zap className="h-4 w-4" />
-                  </div>
-                  Tỷ lệ Cache Hit
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+
+            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-[140px] flex flex-col justify-between p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <div className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-500">
+                  <Zap className="h-4 w-4" />
+                </div>
+                Tỷ lệ Cache Hit
+              </div>
+              <div>
                 <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                   {stats.total_messages > 0 ? Math.max(0, Math.round(((stats.total_messages - stats.by_model_type.llm.call_count) / stats.total_messages) * 100)) : 0}%
                 </div>
-                <p className="text-xs text-muted-foreground">Phản hồi ~20ms từ FAQ & Cache</p>
-              </CardContent>
+                <p className="text-xs text-muted-foreground pt-1">Phản hồi siêu tốc ~20ms</p>
+              </div>
             </Card>
-            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <div className="p-1.5 rounded-md bg-orange-500/10 text-orange-500">
-                    <TimerReset className="h-4 w-4" />
-                  </div>
-                  Độ trễ trung bình
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+
+            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-[140px] flex flex-col justify-between p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <div className="p-1.5 rounded-md bg-orange-500/10 text-orange-500">
+                  <TimerReset className="h-4 w-4" />
+                </div>
+                Độ trễ trung bình
+              </div>
+              <div>
                 <div className="text-2xl font-bold">{formatLatency(stats.avg_latency_ms)}</div>
-                <p className="text-xs text-muted-foreground">Theo request đã ghi nhận</p>
-              </CardContent>
+                <p className="text-xs text-muted-foreground pt-1">Thời gian phản hồi TB</p>
+              </div>
             </Card>
-            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden">
+
+            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-[140px] flex flex-col justify-between p-4 relative overflow-hidden">
               <div className="absolute top-0 right-0 p-4 opacity-10">
                 <span className="text-6xl font-black">$</span>
               </div>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Chi phí ước tính</CardTitle>
-              </CardHeader>
-              <CardContent>
+              <div className="text-sm font-medium text-muted-foreground">Chi phí ước tính</div>
+              <div>
                 <div className="text-2xl font-bold">{formatVnd(stats.cost_vnd_rounded)}</div>
-                <p className="text-xs text-muted-foreground">
-                  {stats.currency_code} • model {stats.pricing.model || "chatbot-rag"}
+                <p className="text-xs text-muted-foreground pt-1">
+                  Ước tính theo giá API Cloud
                 </p>
-              </CardContent>
+              </div>
             </Card>
-            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <div className="p-1.5 rounded-md bg-destructive/10 text-destructive">
-                    <ThumbsDown className="h-4 w-4" />
-                  </div>
-                  Tỷ lệ dislike
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+
+            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-[140px] flex flex-col justify-between p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <div className="p-1.5 rounded-md bg-destructive/10 text-destructive">
+                  <ThumbsDown className="h-4 w-4" />
+                </div>
+                Đánh giá không thích
+              </div>
+              <div>
                 <div className="text-2xl font-bold">{Math.round((stats.feedback_summary.dislike_rate || 0) * 100)}%</div>
-                <p className="text-xs text-muted-foreground">
-                  {formatNumber(stats.feedback_summary.dislike_count)} dislike • {formatNumber(stats.feedback_summary.like_count)} like
+                <p className="text-xs text-muted-foreground pt-1">
+                  {formatNumber(stats.feedback_summary.like_count)} Thích • {formatNumber(stats.feedback_summary.dislike_count)} Không thích
                 </p>
-              </CardContent>
+              </div>
             </Card>
           </div>
 

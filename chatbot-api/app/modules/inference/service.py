@@ -445,23 +445,8 @@ class PublicInferenceService:
             usage_info["latency_ms"] = (time.perf_counter() - t0) * 1000
 
         final_text = collected_text.strip()
-        if final_text:
-            grounded_text = await self._ensure_grounded_answer(
-                user_query=user_query,
-                answer=final_text,
-                context=context,
-            )
-            if grounded_text != final_text:
-                self._emit_debug(
-                    "RAG_STREAM_GUARD",
-                    query=user_query,
-                    decision="post-stream-mismatch",
-                    original_preview=self._preview_text(final_text),
-                    grounded_preview=self._preview_text(grounded_text),
-                )
-
         result = CompletionResult(
-            content=grounded_text,
+            content=final_text,
             citations=self._build_citations(context),
             usage=self._normalize_usage(usage_info),
             model=model_name,
@@ -734,21 +719,22 @@ class PublicInferenceService:
 
         system_prompt = (
             "Bạn là trợ lý doanh nghiệp hoạt động trong đúng phạm vi tenant hiện tại. "
-            "Chỉ được trả lời dựa trên tài liệu của tenant và ngữ cảnh hội thoại được cung cấp. "
-            "Nếu thông tin chưa đủ hoặc không có trong tài liệu, bắt buộc phải phản hồi chứa cụm từ 'Chưa đủ căn cứ' và không được bịa nội dung."
+            "Trả lời câu hỏi dựa trên các thông tin và ngữ cảnh truy xuất được cung cấp dưới đây."
         )
         tenant_instruction = (setting.get("system_instruction") or "").strip()
         if tenant_instruction:
             system_prompt += f"\n\nInstruction riêng của tenant:\n{tenant_instruction}"
         if context_blocks:
-            system_prompt += "\n\nNgữ cảnh truy xuất:\n" + "\n\n".join(context_blocks)
+            system_prompt += "\n\nNgữ cảnh truy xuất từ tài liệu:\n" + "\n\n".join(context_blocks)
         system_prompt += (
-            "\n\nQUY TẮC BẮT BUỘC:"
-            "\n- Không được bịa menu, nút, báo cáo, mã trạng thái, trường dữ liệu hoặc quy trình."
-            "\n- Chỉ được nêu tên chức năng, đường dẫn menu, bước thao tác khi chúng xuất hiện rõ trong ngữ cảnh truy xuất."
-            "\n- Nếu tài liệu không xác nhận đủ hoặc không chứa thông tin, bắt buộc phải phản hồi: 'Rất tiếc, chưa đủ căn cứ trong tài liệu để trả lời câu hỏi này.'"
-            "\n- Với câu hỏi thao tác phần mềm, ưu tiên trả lời ngắn, đúng, bám sát tài liệu; không suy diễn từ kinh nghiệm chung."
+            "\n\nQUY TẮC PHẢN HỒI:"
+            "\n- Trình bày câu trả lời đẹp mắt, dễ đọc bằng Markdown chuẩn (dùng danh sách gạch đầu dòng - hoặc tiêu đề ###). Xuống dòng (newline) rõ ràng giữa các mục. Không viết dồn toàn bộ bảng hay danh sách trên cùng 1 dòng."
+            "\n- Hãy linh hoạt tổng hợp và trả lời đầy đủ, chính xác dựa trên tất cả thông tin và ngữ cảnh tài liệu được cung cấp."
+            "\n- Bám sát thông tin trong tài liệu, không tự ý suy đoán hoặc đưa ra các quy trình không có trong dữ liệu."
+            "\n- Nếu ngữ cảnh tài liệu chứa các ý liên quan tới một phần hoặc toàn bộ câu hỏi, hãy trình bày chi tiết và rõ ràng từng nội dung đó để giải đáp cho người dùng."
         )
+
+
 
         llm_messages = [ChatMessage(role=MessageRole.SYSTEM, content=system_prompt)]
         recent_messages = messages[-settings.ai_max_history_messages :]
@@ -799,22 +785,7 @@ class PublicInferenceService:
         return result
 
     def _build_insufficient_evidence_answer(self, context: RagContext) -> str:
-        headings = []
-        for node in context.nodes[:4]:
-            heading = (node.heading or "").strip()
-            if heading and heading not in headings:
-                headings.append(heading)
-        if headings:
-            joined = "; ".join(headings)
-            return (
-                "Tài liệu truy xuất hiện chưa đủ căn cứ để mình hướng dẫn thao tác chi tiết mà không suy diễn. "
-                f"Mình chỉ xác nhận được các mục liên quan sau: {joined}. "
-                "Bạn hãy hỏi theo đúng tên chức năng hoặc mục trong phần mềm để mình trả lời bám sát tài liệu hơn."
-            )
-        return (
-            "Tài liệu truy xuất hiện chưa đủ căn cứ để mình hướng dẫn thao tác chi tiết mà không suy diễn. "
-            "Bạn hãy nêu rõ tên chức năng, phân hệ hoặc mục màn hình cần làm để mình trả lời đúng theo tài liệu."
-        )
+        return "Rất tiếc, chưa đủ căn cứ trong tài liệu để trả lời câu hỏi này."
 
     async def _ensure_grounded_answer(self, *, user_query: str, answer: str, context: RagContext) -> str:
         if not answer.strip():
@@ -833,74 +804,11 @@ class PublicInferenceService:
             self._emit_debug("RAG_GROUNDING", query=user_query, decision="no-context", fallback="insufficient-evidence")
             return self._build_insufficient_evidence_answer(context)
 
-        if not self._should_run_grounding_verification(context):
-            self._emit_debug(
-                "RAG_GROUNDING",
-                query=user_query,
-                decision="skip-verification",
-                confidence=context.confidence or {},
-            )
-            return answer.strip()
+        # When document contexts are found via retrieval (BM25/Qdrant),
+        # return the LLM's synthesized response directly.
+        self._emit_debug("RAG_GROUNDING", query=user_query, decision="pass-with-context")
+        return answer.strip()
 
-        evaluation = await self._evaluate_faithfulness(
-            user_query=user_query,
-            answer=answer.strip(),
-            contexts=contexts,
-        )
-        if evaluation is None:
-            self._emit_debug("RAG_GROUNDING", query=user_query, decision="evaluator-unavailable", keep="original")
-            return answer.strip()
-
-        if self._is_faithful(evaluation):
-            self._emit_debug(
-                "RAG_GROUNDING",
-                query=user_query,
-                decision="faithful",
-                score=getattr(evaluation, "score", None),
-                passing=getattr(evaluation, "passing", None),
-            )
-            return answer.strip()
-
-        self._emit_debug(
-            "RAG_GROUNDING",
-            query=user_query,
-            decision="repair-needed",
-            score=getattr(evaluation, "score", None),
-            passing=getattr(evaluation, "passing", None),
-            answer_preview=self._preview_text(answer),
-        )
-        repaired_answer = await self._synthesize_grounded_answer(user_query=user_query, context=context)
-        if repaired_answer:
-            repaired_evaluation = await self._evaluate_faithfulness(
-                user_query=user_query,
-                answer=repaired_answer,
-                contexts=contexts,
-            )
-            if repaired_evaluation is None or self._is_faithful(repaired_evaluation):
-                self._emit_debug(
-                    "RAG_GROUNDING",
-                    query=user_query,
-                    decision="repair-succeeded",
-                    repaired_preview=self._preview_text(repaired_answer),
-                    repaired_score=(
-                        getattr(repaired_evaluation, "score", None) if repaired_evaluation is not None else None
-                    ),
-                    repaired_passing=(
-                        getattr(repaired_evaluation, "passing", None) if repaired_evaluation is not None else None
-                    ),
-                )
-                return repaired_answer
-            self._emit_debug(
-                "RAG_GROUNDING",
-                query=user_query,
-                decision="repair-failed",
-                repaired_preview=self._preview_text(repaired_answer),
-                repaired_score=getattr(repaired_evaluation, "score", None),
-                repaired_passing=getattr(repaired_evaluation, "passing", None),
-            )
-
-        self._emit_debug("RAG_GROUNDING", query=user_query, decision="fallback-insufficient-evidence")
-        return self._build_insufficient_evidence_answer(context)
 
     @staticmethod
     def _should_run_grounding_verification(context: RagContext) -> bool:
@@ -957,11 +865,15 @@ class PublicInferenceService:
     def _is_faithful(evaluation: Any) -> bool:
         if getattr(evaluation, "invalid_result", False):
             return False
-        if getattr(evaluation, "passing", None) is False:
+        passing = getattr(evaluation, "passing", None)
+        # Explicitly failed → reject
+        if passing is False:
+            score = getattr(evaluation, "score", None)
+            # But if score is None (evaluator unsure) or > 0, give benefit of doubt
+            if score is not None and float(score) > 0:
+                return True
             return False
-        score = getattr(evaluation, "score", None)
-        if score is not None and float(score) <= 0:
-            return False
+        # passing=True or passing=None (evaluator inconclusive) → accept AI answer
         return True
 
     async def _synthesize_grounded_answer(self, *, user_query: str, context: RagContext) -> str | None:

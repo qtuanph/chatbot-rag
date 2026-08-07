@@ -188,3 +188,64 @@
   scrollbar-width: thin;
   scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
 }
+
+/* Markdown Typography & Table Styling */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  border: 1px solid var(--border);
+}
+
+.prose th {
+  background-color: var(--muted);
+  color: var(--foreground);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+}
+
+.prose td {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.prose tr:nth-child(even) {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.dark .prose tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.prose ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+  margin: 0.5rem 0;
+}
+
+.prose ol {
+  list-style-type: decimal;
+  padding-left: 1.25rem;
+  margin: 0.5rem 0;
+}
+
+.prose li {
+  margin: 0.25rem 0;
+}
+
+.prose p {
+  margin: 0.5rem 0;
+}
+
+.prose blockquote {
+  border-left: 3px solid var(--primary);
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+  color: var(--muted-foreground);
+  font-style: italic;
+}

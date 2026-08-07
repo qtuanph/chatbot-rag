@@ -25,32 +25,10 @@ def get_db() -> sqlite3.Connection:
     return db
 
 
-def _migrate_schema(db: sqlite3.Connection) -> None:
-    """Add new columns for existing databases (idempotent — ignores IF NOT EXISTS via try/except)."""
-    migrations = [
-        # ai_providers additions
-        "ALTER TABLE ai_providers ADD COLUMN config TEXT NOT NULL DEFAULT '{}'",
-        "ALTER TABLE ai_providers ADD COLUMN last_test_status TEXT NOT NULL DEFAULT 'unknown'",
-        "ALTER TABLE ai_providers ADD COLUMN last_test_at TIMESTAMP",
-        "ALTER TABLE ai_providers ADD COLUMN last_error TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE ai_providers ADD COLUMN last_error_at TIMESTAMP",
-        # api_keys additions
-        "ALTER TABLE api_keys ADD COLUMN rate_limited_until TIMESTAMP",
-        "ALTER TABLE api_keys ADD COLUMN backoff_level INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE api_keys ADD COLUMN last_error TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE api_keys ADD COLUMN last_error_at TIMESTAMP",
-    ]
-    for sql in migrations:
-        try:
-            db.execute(sql)
-        except sqlite3.OperationalError:
-            pass  # column already exists
-    db.commit()
-
-
 def init_db() -> None:
     db = get_db()
     try:
+        # ── 1. Create tables (idempotent) ──────────────────────────────────
         db.executescript("""
             CREATE TABLE IF NOT EXISTS ai_providers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,120 +75,106 @@ def init_db() -> None:
             );
         """)
         db.commit()
+
+        # ── 2. Column migrations (idempotent) ──────────────────────────────
         _migrate_schema(db)
+
+        # ── 3. Dedup + enforce UNIQUE index (safe for existing DBs) ────────
+        _ensure_unique_index(db)
+
+        # ── 4. Seed built-in templates (INSERT OR IGNORE → never duplicates)
         _seed_templates(db)
+
+        # ── 5. Platform settings defaults ──────────────────────────────────
         _seed_platform_settings(db)
+
+        # ── 6. Sync built-in defaults (URL/model may change per release) ───
         _sync_builtin_defaults(db)
     finally:
         db.close()
 
 
-def _seed_templates(db: sqlite3.Connection) -> None:
-    count = db.execute("SELECT COUNT(*) FROM ai_providers").fetchone()[0]
-    if count > 0:
-        return
-
-    templates = [
-        # Embedding
-        (
-            "embedding",
-            "dmr",
-            "Docker Model Runner",
-            "http://model-runner.docker.internal:12434/engines/v1",
-            "ai/qwen3-embedding:0.6B-F16",
-            "",
-            1,
-            1,
-            0,
-        ),
-        ("embedding", "openai", "OpenAI", "https://api.openai.com/v1", "text-embedding-ada-002", "", 0, 0, 1),
-        (
-            "embedding",
-            "openrouter",
-            "OpenRouter",
-            "https://openrouter.ai/api/v1",
-            "openai/text-embedding-3-small",
-            "",
-            0,
-            0,
-            2,
-        ),
-        ("embedding", "nvidia", "NVIDIA NIM", "https://integrate.api.nvidia.com/v1", "baai/bge-m3", "", 0, 0, 3),
-        (
-            "embedding",
-            "gemini",
-            "Google Gemini",
-            "https://generativelanguage.googleapis.com/v1",
-            "text-embedding-004",
-            "",
-            0,
-            0,
-            4,
-        ),
-        ("embedding", "cohere", "Cohere", "https://api.cohere.com/v1", "embed-multilingual-v3.0", "", 0, 0, 5),
-        # Reranker
-        (
-            "reranker",
-            "dmr",
-            "Docker Model Runner (Fallback)",
-            "http://model-runner.docker.internal:12434",
-            "ai/qwen3-reranker:0.6B",
-            "",
-            0,
-            1,
-            1,
-        ),
-        (
-            "reranker",
-            "nvidia",
-            "NVIDIA NIM",
-            "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking",
-            "nvidia/llama-nemotron-rerank-1b-v2",
-            "",
-            1,
-            0,
-            0,
-        ),
-        ("reranker", "cohere", "Cohere", "https://api.cohere.com", "rerank-multilingual-v3.0", "", 0, 0, 2),
-        # LLM (9Router built-in) — seeded from .env so webapp can manage it
-        (
-            "llm",
-            "9router",
-            "9Router (Built-in)",
-            "http://ai-proxy:2908/v1",
-            "chatbot-rag",
-            "",
-            1,
-            1,
-            0,
-        ),
-        # Parser Engine
-        (
-            "parser",
-            "llamaparse",
-            "LlamaParse (Cloud)",
-            "https://api.cloud.llamaindex.ai",
-            "",
-            "",
-            0,
-            0,
-            1,
-        ),
-        (
-            "parser",
-            "docling",
-            "Docling (Local OCR)",
-            "",
-            "",
-            "",
-            1,
-            1,
-            0,
-        ),
+def _migrate_schema(db: sqlite3.Connection) -> None:
+    """Add new columns for existing databases (idempotent)."""
+    migrations = [
+        # ai_providers additions
+        "ALTER TABLE ai_providers ADD COLUMN config TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE ai_providers ADD COLUMN last_test_status TEXT NOT NULL DEFAULT 'unknown'",
+        "ALTER TABLE ai_providers ADD COLUMN last_test_at TIMESTAMP",
+        "ALTER TABLE ai_providers ADD COLUMN last_error TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE ai_providers ADD COLUMN last_error_at TIMESTAMP",
+        # api_keys additions
+        "ALTER TABLE api_keys ADD COLUMN rate_limited_until TIMESTAMP",
+        "ALTER TABLE api_keys ADD COLUMN backoff_level INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE api_keys ADD COLUMN last_error TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE api_keys ADD COLUMN last_error_at TIMESTAMP",
     ]
+    for sql in migrations:
+        try:
+            db.execute(sql)
+        except sqlite3.OperationalError:
+            pass  # column already exists
+    db.commit()
 
+
+def _ensure_unique_index(db: sqlite3.Connection) -> None:
+    """
+    Guarantee (service_type, provider_name) is unique in ai_providers.
+
+    Safe for existing DBs that may have duplicate rows from earlier builds:
+    1. Remove duplicates first (keep lowest id).
+    2. Create the UNIQUE index — now guaranteed to succeed.
+    """
+    db.execute("PRAGMA foreign_keys=OFF")
+    # Remove any duplicate rows, keeping the oldest (min id)
+    db.execute("""
+        DELETE FROM ai_providers
+        WHERE id NOT IN (
+            SELECT MIN(id) FROM ai_providers
+            GROUP BY service_type, provider_name
+        )
+    """)
+    db.commit()
+    db.execute("PRAGMA foreign_keys=ON")
+
+    # Create the unique index only if it doesn't exist yet
+    db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_providers_unique ON ai_providers(service_type, provider_name)"
+    )
+    db.commit()
+
+
+def _seed_templates(db: sqlite3.Connection) -> None:
+    """
+    Insert built-in provider templates.
+
+    Uses INSERT OR IGNORE which relies on the UNIQUE index created by
+    _ensure_unique_index() — so this is always safe to call, even on
+    subsequent container restarts or rebuilds.
+    """
+    templates = [
+        # ── Embedding ────────────────────────────────────────────────────
+        ("embedding", "dmr", "Docker Model Runner", "http://model-runner.docker.internal:12434/engines/v1", "ai/qwen3-embedding:0.6B-F16", "", 1, 1, 0),
+        ("embedding", "openai", "OpenAI", "https://api.openai.com/v1", "text-embedding-ada-002", "", 0, 0, 1),
+        ("embedding", "openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "openai/text-embedding-3-small", "", 0, 0, 2),
+        ("embedding", "nvidia", "NVIDIA NIM", "https://integrate.api.nvidia.com/v1", "baai/bge-m3", "", 0, 0, 3),
+        ("embedding", "gemini", "Google Gemini", "https://generativelanguage.googleapis.com/v1", "text-embedding-004", "", 0, 0, 4),
+        ("embedding", "cohere", "Cohere", "https://api.cohere.com/v1", "embed-multilingual-v3.0", "", 0, 0, 5),
+        ("embedding", "fpt", "FPT AI Factory", "https://mkp-api.fptcloud.com/v1", "Vietnamese_Embedding", "", 0, 0, 6),
+        # ── Reranker ─────────────────────────────────────────────────────
+        ("reranker", "dmr", "Docker Model Runner (Fallback)", "http://model-runner.docker.internal:12434", "ai/qwen3-reranker:0.6B", "", 0, 1, 1),
+        ("reranker", "nvidia", "NVIDIA NIM", "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-1b-v2/reranking", "nvidia/llama-nemotron-rerank-1b-v2", "", 1, 0, 0),
+        ("reranker", "cohere", "Cohere", "https://api.cohere.com", "rerank-multilingual-v3.0", "", 0, 0, 2),
+        # ── LLM ──────────────────────────────────────────────────────────
+        ("llm", "9router", "9Router (Built-in)", "http://ai-proxy:2908/v1", "chatbot-rag", "", 1, 1, 0),
+        ("llm", "deepseek", "DeepSeek Official", "https://api.deepseek.com/v1", "deepseek-v4-flash", "", 0, 0, 1),
+        ("llm", "fpt", "FPT Cloud LLM", "https://mkp-api.fptcloud.com/v1", "gpt-oss-20b", "", 0, 0, 2),
+        # ── Parser Engine ─────────────────────────────────────────────────
+        ("parser", "llamaparse", "LlamaParse (Cloud)", "https://api.cloud.llamaindex.ai", "", "", 0, 0, 1),
+        ("parser", "docling", "Docling (Local OCR)", "", "", "", 1, 1, 0),
+    ]
     db.executemany(
-        """INSERT INTO ai_providers
+        """INSERT OR IGNORE INTO ai_providers
            (service_type, provider_name, display_name, url, model, api_key, is_active, is_builtin, priority)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         templates,
@@ -219,26 +183,22 @@ def _seed_templates(db: sqlite3.Connection) -> None:
 
 
 def _sync_builtin_defaults(db: sqlite3.Connection) -> None:
+    """Keep built-in provider URLs/models in sync with the current release defaults."""
     db.execute(
         """
         UPDATE ai_providers
         SET display_name = ?, url = ?, model = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE service_type = 'embedding' AND is_builtin = 1
+        WHERE service_type = 'embedding' AND provider_name = 'dmr' AND is_builtin = 1
         """,
         ("Docker Model Runner", "http://model-runner.docker.internal:12434/engines/v1", "ai/qwen3-embedding:0.6B-F16"),
     )
     db.execute(
         """
         UPDATE ai_providers
-        SET provider_name = ?, display_name = ?, url = ?, model = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE service_type = 'reranker' AND is_builtin = 1
+        SET display_name = ?, url = ?, model = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE service_type = 'reranker' AND provider_name = 'dmr' AND is_builtin = 1
         """,
-        (
-            "dmr",
-            "Docker Model Runner (Fallback)",
-            "http://model-runner.docker.internal:12434",
-            "ai/qwen3-reranker:0.6B",
-        ),
+        ("Docker Model Runner (Fallback)", "http://model-runner.docker.internal:12434", "ai/qwen3-reranker:0.6B"),
     )
     db.commit()
 

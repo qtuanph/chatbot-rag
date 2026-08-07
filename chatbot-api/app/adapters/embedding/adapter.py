@@ -129,9 +129,20 @@ class EmbeddingAdapter:
                 actual_input_type = "passage"
             elif "embed-multilingual-v3" in model_lower:
                 actual_input_type = "search_document"
+            elif "vietnamese_embedding" in model_lower:
+                actual_input_type = "passage"
 
         if actual_input_type:
             payload["input_type"] = actual_input_type
+
+        # Extra optional params some providers accept (e.g. FPT AI Factory)
+        if self.config.get("dimensions"):
+            payload["dimensions"] = int(self.config["dimensions"])
+        if self.config.get("encoding_format"):
+            payload["encoding_format"] = self.config["encoding_format"]
+        if self.config.get("input_text_truncate"):
+            payload["input_text_truncate"] = self.config["input_text_truncate"]
+
         try:
             resp = await client.post(
                 f"{self.api_base}/embeddings",

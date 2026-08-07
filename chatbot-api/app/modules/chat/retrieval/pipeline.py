@@ -27,6 +27,8 @@ logger = logging.getLogger("uvicorn.error")
 
 SECTION_CODE_QUERY_RE = re.compile(r"\b\d+(?:\.\d+)+\b")
 SECTION_ROUTE_ROOT_ID = "sections_root"
+SECTION_ROUTE_PREFIX = "section::"
+
 
 
 def _estimate_tokens_from_chars(text: str) -> int:
@@ -172,24 +174,37 @@ def _query_mode() -> VectorStoreQueryMode:
 async def _load_tenant_sections_and_doc_ids(
     tenant_id: str | None,
 ) -> tuple[list[str], list[dict[str, Any]]]:
-    if not tenant_id:
-        return [], []
     async with AsyncSessionLocal() as session:
         from app.modules.documents.repositories import DocumentAccessRepository, SectionRepository
 
         access_repo = DocumentAccessRepository(session)
         section_repo = SectionRepository(session)
-        doc_ids = await access_repo.get_document_ids_for_tenant(tenant_id)
+        doc_ids = []
+        if tenant_id:
+            doc_ids = await access_repo.get_document_ids_for_tenant(tenant_id)
         if doc_ids:
             sections = await section_repo.get_sections_by_allowed_documents(doc_ids)
-        else:
+        elif tenant_id:
             sections = await section_repo.get_sections_by_tenant(tenant_id)
+        else:
+            sections = await section_repo.get_all_sections()
         return doc_ids, sections
 
 
+
+from llama_index.core.storage.docstore import SimpleDocumentStore
+
+
+class SafeKVDocumentStore(SimpleDocumentStore):
+    def get_document(self, doc_id: str, raise_error: bool = True) -> Any:
+        return super().get_document(doc_id, raise_error=False)
+
+
 def _build_parent_storage_context(sections: list[dict[str, Any]]) -> StorageContext:
-    storage_context = StorageContext.from_defaults()
+    docstore = SafeKVDocumentStore()
+    storage_context = StorageContext.from_defaults(docstore=docstore)
     parent_nodes: list[TextNode] = []
+
     for section in sections:
         artifact_metadata = dict(section.get("artifact_metadata") or {})
         child_ids = [str(node_id) for node_id in artifact_metadata.get("chunk_node_ids", []) if str(node_id)]
@@ -233,12 +248,48 @@ def _build_section_index() -> VectorStoreIndex:
     return VectorStoreIndex.from_vector_store(get_section_vector_store())
 
 
+class SafeRecursiveRetriever(RecursiveRetriever):
+    """RecursiveRetriever that dynamically creates child retrievers for unmapped section IDs."""
+
+    def __init__(
+        self,
+        *,
+        tenant_id: str | None,
+        allowed_doc_ids: list[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self._tenant_id = tenant_id
+        self._allowed_doc_ids = allowed_doc_ids
+
+    def _get_object(self, query_id: str) -> Any:
+        if query_id in self._retriever_dict:
+            return self._retriever_dict[query_id]
+        if query_id in self._query_engine_dict:
+            return self._query_engine_dict[query_id]
+
+        if query_id.startswith(SECTION_ROUTE_PREFIX):
+            sec_id = query_id[len(SECTION_ROUTE_PREFIX) :]
+            chunk_index = _build_chunk_index()
+            retriever = chunk_index.as_retriever(
+                filters=_tenant_filters(self._tenant_id, allowed_doc_ids=self._allowed_doc_ids, section_id=sec_id),
+                vector_store_query_mode=_query_mode(),
+                similarity_top_k=settings.retrieval_recursive_top_k,
+                hybrid_top_k=settings.retrieval_recursive_top_k,
+                sparse_top_k=settings.retrieval_recursive_top_k,
+            )
+            self._retriever_dict[query_id] = retriever
+            return retriever
+
+        return self._retriever_dict.get(SECTION_ROUTE_ROOT_ID)
+
+
 def _build_section_recursive_retriever(
     *,
     tenant_id: str | None,
     allowed_doc_ids: list[str] | None = None,
     sections: list[dict[str, Any]],
-) -> RecursiveRetriever:
+) -> SafeRecursiveRetriever:
     section_index = _build_section_index()
     chunk_index = _build_chunk_index()
     common_kwargs = {
@@ -254,14 +305,36 @@ def _build_section_recursive_retriever(
         )
     }
     for section in sections:
-        retriever_dict[f"section::{section['section_id']}"] = chunk_index.as_retriever(
+        retriever_dict[f"{SECTION_ROUTE_PREFIX}{section['section_id']}"] = chunk_index.as_retriever(
             filters=_tenant_filters(tenant_id, allowed_doc_ids=allowed_doc_ids, section_id=str(section["section_id"])),
             vector_store_query_mode=_query_mode(),
             similarity_top_k=settings.retrieval_recursive_top_k,
             hybrid_top_k=settings.retrieval_recursive_top_k,
             sparse_top_k=settings.retrieval_recursive_top_k,
         )
-    return RecursiveRetriever(root_id=SECTION_ROUTE_ROOT_ID, retriever_dict=retriever_dict)
+    return SafeRecursiveRetriever(
+        root_id=SECTION_ROUTE_ROOT_ID,
+        retriever_dict=retriever_dict,
+        tenant_id=tenant_id,
+        allowed_doc_ids=allowed_doc_ids,
+    )
+
+
+
+class SafeAutoMergingRetriever(AutoMergingRetriever):
+    """AutoMergingRetriever that safely strips un-stored sibling node relationships before merging."""
+
+    def _fill_in_nodes(self, nodes: list[NodeWithScore]) -> tuple[list[NodeWithScore], bool]:
+        cleaned_nodes: list[NodeWithScore] = []
+        for n in nodes:
+            node = n.node
+            if hasattr(node, "next_node") and node.next_node and not self._storage_context.docstore.document_exists(node.next_node.node_id):
+                node.relationships.pop(NodeRelationship.NEXT, None)
+            if hasattr(node, "prev_node") and node.prev_node and not self._storage_context.docstore.document_exists(node.prev_node.node_id):
+                node.relationships.pop(NodeRelationship.PREVIOUS, None)
+            cleaned_nodes.append(n)
+        return super()._fill_in_nodes(cleaned_nodes)
+
 
 
 def _build_auto_merging_retriever(
@@ -269,7 +342,7 @@ def _build_auto_merging_retriever(
     tenant_id: str | None,
     allowed_doc_ids: list[str] | None = None,
     storage_context: StorageContext,
-) -> AutoMergingRetriever:
+) -> SafeAutoMergingRetriever:
     chunk_index = _build_chunk_index()
     vector_retriever = chunk_index.as_retriever(
         filters=_tenant_filters(tenant_id, allowed_doc_ids=allowed_doc_ids),
@@ -278,12 +351,13 @@ def _build_auto_merging_retriever(
         hybrid_top_k=settings.retrieval_chunk_top_k,
         sparse_top_k=settings.retrieval_chunk_top_k,
     )
-    return AutoMergingRetriever(
+    return SafeAutoMergingRetriever(
         vector_retriever=vector_retriever,
         storage_context=storage_context,
         simple_ratio_thresh=settings.retrieval_auto_merge_ratio_threshold,
         verbose=False,
     )
+
 
 
 def _dedupe_nodes(nodes: list[NodeWithScore]) -> list[NodeWithScore]:
@@ -389,79 +463,49 @@ async def retrieve_context(
 
         skip_rerank, skip_reason = _should_skip_rerank(query, query_nodes)
         if not skip_rerank:
-            try:
-                if reranker is None:
-                    reranker = get_reranker(top_k=limit)
-                t0_rerank = time.perf_counter()
-                reranked_nodes = await reranker.postprocess_nodes(query_nodes, qb)
-                rerank_latency_ms = (time.perf_counter() - t0_rerank) * 1000
-                rerank_model_name = (
-                    getattr(reranker, "model_name", None)
-                    or getattr(reranker, "base_url", None)
-                    or reranker.__class__.__name__
-                )
-                rerank_prompt_tokens = _estimate_tokens_from_chars(query) + _estimate_tokens_from_chars(
-                    "".join(node.node.get_content() for node in query_nodes)
-                )
-                _dispatch_model_usage(
-                    model_name=str(rerank_model_name),
-                    model_type="reranker",
-                    prompt_tokens=rerank_prompt_tokens,
-                    completion_tokens=0,
-                    latency_ms=rerank_latency_ms,
-                    endpoint="retrieval.rerank",
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                )
-                _emit_debug(
-                    "RAG_RERANK",
-                    query=query,
-                    tenant_id=tenant_id,
-                    model=str(rerank_model_name),
-                    latency_ms=round(rerank_latency_ms, 2),
-                    before=_serialize_nodes_for_debug(query_nodes),
-                    after=_serialize_nodes_for_debug(reranked_nodes or []),
-                )
-                if reranked_nodes:
-                    query_nodes = reranked_nodes
-            except Exception as e:
-                logger.warning(
-                    "Reranker failed for query='%s': %s. Attempting fallback to DMR reranker.", query, str(e)
-                )
+            if reranker is None:
+                reranker = get_reranker(top_k=limit)
+            if reranker is not None:
                 try:
-                    from app.adapters.reranker.local_postprocessor import LocalRerankerPostprocessor
-                    from app.modules.settings.repository import SettingsRepository
-
-                    repo = SettingsRepository()
-                    try:
-                        dmr = repo.get_builtin_provider("reranker", "dmr")
-                    finally:
-                        repo.close()
-
-                    if not dmr:
-                        raise ValueError("DMR provider not found in SQLite.")
-
-                    fallback_url = dmr.get("url")
-                    fallback_model = dmr.get("model")
-
-                    fallback_reranker = LocalRerankerPostprocessor(
-                        base_url=fallback_url,
-                        model_name=fallback_model,
-                        timeout=settings.ai_reranker_timeout,
+                    t0_rerank = time.perf_counter()
+                    reranked_nodes = await reranker.postprocess_nodes(query_nodes, qb)
+                    rerank_latency_ms = (time.perf_counter() - t0_rerank) * 1000
+                    rerank_model_name = (
+                        getattr(reranker, "model_name", None)
+                        or getattr(reranker, "base_url", None)
+                        or reranker.__class__.__name__
                     )
-
-                    reranked_nodes = await fallback_reranker.postprocess_nodes(query_nodes, qb)
+                    rerank_prompt_tokens = _estimate_tokens_from_chars(query) + _estimate_tokens_from_chars(
+                        "".join(node.node.get_content() for node in query_nodes)
+                    )
+                    _dispatch_model_usage(
+                        model_name=str(rerank_model_name),
+                        model_type="reranker",
+                        prompt_tokens=rerank_prompt_tokens,
+                        completion_tokens=0,
+                        latency_ms=rerank_latency_ms,
+                        endpoint="retrieval.rerank",
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                    )
+                    _emit_debug(
+                        "RAG_RERANK",
+                        query=query,
+                        tenant_id=tenant_id,
+                        model=str(rerank_model_name),
+                        latency_ms=round(rerank_latency_ms, 2),
+                        before=_serialize_nodes_for_debug(query_nodes),
+                        after=_serialize_nodes_for_debug(reranked_nodes or []),
+                    )
                     if reranked_nodes:
                         query_nodes = reranked_nodes
-                        logger.info("Successfully used DMR fallback reranker.")
-                except Exception:
-                    logger.warning(
-                        "Fallback DMR reranker also failed for query='%s'; fallback to pre-rerank nodes.",
-                        query,
-                        exc_info=True,
-                    )
+                except Exception as e:
+                    logger.warning("Reranker failed for query='%s': %s; using pre-rerank nodes.", query, str(e))
+            else:
+                _emit_debug("RAG_RERANK_SKIPPED", query=query, reason="disabled_in_settings")
         else:
             logger.info("Skip reranker for query='%s' (%s).", query, skip_reason)
+
 
         if reorder is not None:
             query_nodes = reorder.postprocess_nodes(query_nodes, qb)

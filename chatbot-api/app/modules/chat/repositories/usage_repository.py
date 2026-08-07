@@ -36,8 +36,26 @@ class UsageRepository:
         cached_type: str | None = None,
     ) -> None:
         """Log an AI model usage event asynchronously."""
-        tid = UUID(tenant_id) if isinstance(tenant_id, str) and tenant_id else tenant_id
-        uid = UUID(user_id) if isinstance(user_id, str) and user_id else user_id
+        tid = None
+        if tenant_id:
+            if isinstance(tenant_id, UUID):
+                tid = tenant_id
+            elif isinstance(tenant_id, str):
+                try:
+                    tid = UUID(tenant_id)
+                except (ValueError, AttributeError):
+                    tid = None
+
+        uid = None
+        if user_id:
+            if isinstance(user_id, UUID):
+                uid = user_id
+            elif isinstance(user_id, str):
+                try:
+                    uid = UUID(user_id)
+                except (ValueError, AttributeError):
+                    uid = None
+
 
         total = prompt_tokens + completion_tokens
         entry = AiModelUsage(

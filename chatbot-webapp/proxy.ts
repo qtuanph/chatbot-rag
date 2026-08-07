@@ -50,8 +50,7 @@ export default auth((req) => {
   }
 
   // Add security headers
-  const isDevelopment = process.env.NODE_ENV !== "production";
-  const connectSrc = isDevelopment ? "'self' ws: http://localhost:* ws://localhost:* https://api.qtuanph.dev" : "'self' https://api.qtuanph.dev";
+  const connectSrc = "'self' ws: http://localhost:* ws://localhost:*";
 
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-Content-Type-Options", "nosniff");

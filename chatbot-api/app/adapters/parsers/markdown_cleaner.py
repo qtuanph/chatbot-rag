@@ -57,8 +57,8 @@ class MarkdownCleaner:
     def _is_page_number(text: str) -> bool:
         if not text:
             return False
-        # Pure digits, 1-4 chars (common page number range)
-        return bool(re.match(r"^\d{1,4}$", text))
+        # Match explicit page number formats like 'Trang 12', 'Page 12', '- 12 -'
+        return bool(re.match(r"^(?:trang|page|-)\s*\d{1,4}\s*(?:-)?$", text, re.IGNORECASE))
 
     @staticmethod
     def _is_header_footer(text: str) -> bool:

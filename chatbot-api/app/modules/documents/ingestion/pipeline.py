@@ -138,48 +138,51 @@ def _build_chunk_nodes(
             continue
 
         metadata = _base_metadata(section, document_id, tenant_id)
-        parser_metadata = _parser_metadata(section, document_id, tenant_id)
-        sentence_parser = SentenceWindowNodeParser.from_defaults(
-            window_size=settings.retrieval_sentence_window_size,
-            window_metadata_key=WINDOW_METADATA_KEY,
-            original_text_metadata_key=ORIGINAL_TEXT_METADATA_KEY,
-            include_prev_next_rel=False,
-            id_func=lambda idx, doc, section_id=section["section_id"]: _chunk_node_id(document_id, section_id, idx),
-        )
-        document = LlamaDocument(
-            id_=document_id,
-            text=content,
-            metadata=parser_metadata,
-        )
-
-        sentence_nodes = sentence_parser.get_nodes_from_documents([document])
-
         parent_node = TextNode(
             id_=_section_parent_node_id(document_id, section["section_id"]),
             text=content,
             metadata={**metadata, "node_kind": "section_parent"},
         )
 
-        child_refs = []
-        for node in sentence_nodes:
-            node.metadata.update(metadata)
-            node.metadata["node_kind"] = "chunk"
-            node.relationships[NodeRelationship.PARENT] = parent_node.as_related_node_info()
-            child_refs.append(node.as_related_node_info())
-            # Contextual prepending: prepend doc context to embedding text,
-            # while keeping metadata["window"] clean for LLM context.
-            context_prefix = (
-                f"[Tài liệu: {metadata.get('document_title', '')}" f" | Mục: {metadata.get('heading', '')}]"
+        doc_title = metadata.get("document_title", "")
+        heading = metadata.get("heading", "")
+        breadcrumb_text = metadata.get("breadcrumb_text") or heading
+        context_prefix = f"[Tài liệu: {doc_title} | Mục: {heading}]\nĐường dẫn: {breadcrumb_text}"
+
+        # If section content is <= 2000 chars, keep it intact as a single complete chunk
+        if len(content) <= 2000:
+            node = TextNode(
+                id_=_chunk_node_id(document_id, section["section_id"], 0),
+                text=f"{context_prefix}\n\n{content}",
+                metadata={**metadata, "node_kind": "chunk", "window": content},
             )
-            node.text = f"{context_prefix}\n{node.metadata.get('window', node.text)}"
+            node.relationships[NodeRelationship.PARENT] = parent_node.as_related_node_info()
+            child_refs = [node.as_related_node_info()]
             chunk_nodes.append(node)
+        else:
+            # For longer sections, split with larger chunk size (1024) to preserve lists
+            from llama_index.core.node_parser import SentenceSplitter
+            splitter = SentenceSplitter(chunk_size=1024, chunk_overlap=100)
+            doc_obj = LlamaDocument(id_=document_id, text=content)
+            sub_nodes = splitter.get_nodes_from_documents([doc_obj])
+            child_refs = []
+            for idx, s_node in enumerate(sub_nodes):
+                c_text = str(s_node.text or "").strip()
+                s_node.id_ = _chunk_node_id(document_id, section["section_id"], idx)
+                s_node.text = f"{context_prefix}\n\n{c_text}"
+                s_node.metadata.update(metadata)
+                s_node.metadata["node_kind"] = "chunk"
+                s_node.metadata["window"] = c_text
+                s_node.relationships[NodeRelationship.PARENT] = parent_node.as_related_node_info()
+                child_refs.append(s_node.as_related_node_info())
+                chunk_nodes.append(s_node)
 
         parent_node.relationships[NodeRelationship.CHILD] = child_refs
         parent_nodes.append(parent_node)
 
-        section["chunk_count"] = len(sentence_nodes)
+        section["chunk_count"] = len(child_refs)
         artifact_metadata = dict(section.get("artifact_metadata") or {})
-        artifact_metadata["chunk_node_ids"] = [node.node_id for node in sentence_nodes]
+        artifact_metadata["chunk_node_ids"] = [ref.node_id for ref in child_refs]
         artifact_metadata["parent_node_id"] = parent_node.node_id
         section["artifact_metadata"] = artifact_metadata
 
@@ -189,12 +192,27 @@ def _build_chunk_nodes(
 async def _ensure_collection(vector_store: QdrantVectorStore) -> None:
     aclient = get_async_qdrant_client()
     payload_indexes = get_payload_indexes()
-    exists = await aclient.collection_exists(collection_name=vector_store.collection_name)
+    collection_name = vector_store.collection_name
+    needs_sparse = vector_store.enable_hybrid and bool(vector_store.sparse_vector_name)
+
+    exists = await aclient.collection_exists(collection_name=collection_name)
+    if exists:
+        if needs_sparse:
+            info = await aclient.get_collection(collection_name)
+            has_sparse = bool(info.config.params.sparse_vectors)
+            if not has_sparse:
+                logger.warning(
+                    "Collection '%s' exists but missing sparse vectors — recreating with correct schema.",
+                    collection_name,
+                )
+                await aclient.delete_collection(collection_name)
+                exists = False
+
     if exists:
         for payload_index in payload_indexes:
             try:
                 await aclient.create_payload_index(
-                    collection_name=vector_store.collection_name,
+                    collection_name=collection_name,
                     field_name=payload_index["field_name"],
                     field_schema=payload_index["field_schema"],
                     wait=True,
@@ -223,8 +241,12 @@ async def _ensure_collection(vector_store: QdrantVectorStore) -> None:
         )
 
     sparse_vectors_config = None
-    if vector_store.enable_hybrid and sparse_name:
-        sparse_vectors_config = {sparse_name: rest.SparseVectorParams()}
+    if needs_sparse:
+        sparse_vectors_config = {
+            sparse_name: rest.SparseVectorParams(
+                index=rest.SparseIndexParams(on_disk=False),
+            )
+        }
 
     hw = get_hardware()
     quantization_config = (
@@ -235,17 +257,23 @@ async def _ensure_collection(vector_store: QdrantVectorStore) -> None:
     hnsw_config = rest.HnswConfigDiff(m=hw.qdrant_hnsw_m, ef_construct=hw.qdrant_hnsw_ef)
 
     await aclient.create_collection(
-        collection_name=vector_store.collection_name,
+        collection_name=collection_name,
         vectors_config=vectors_config,
         sparse_vectors_config=sparse_vectors_config,
         hnsw_config=hnsw_config,
         quantization_config=quantization_config,
     )
+    logger.info(
+        "Created collection '%s' | sparse=%s | dense=%s",
+        collection_name,
+        sparse_name or "none",
+        dense_name or "unnamed",
+    )
 
     for payload_index in payload_indexes:
         try:
             await aclient.create_payload_index(
-                collection_name=vector_store.collection_name,
+                collection_name=collection_name,
                 field_name=payload_index["field_name"],
                 field_schema=payload_index["field_schema"],
                 wait=True,
@@ -255,6 +283,7 @@ async def _ensure_collection(vector_store: QdrantVectorStore) -> None:
             if "already exists" in message or "duplicate" in message:
                 continue
             raise
+
 
 
 def _index_nodes_sync(
