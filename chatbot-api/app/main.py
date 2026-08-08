@@ -105,14 +105,11 @@ app.add_middleware(CorrelationIDMiddleware)
 if settings.app_env == "production" and getattr(settings, "enforce_https", False):
     app.add_middleware(HTTPSRedirectMiddleware)
 
-allowed_hosts_list = [host.strip() for host in settings.allowed_hosts.split(",") if host.strip()]
-if "*" not in allowed_hosts_list:
-    allowed_hosts_list.append("*")
-
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=allowed_hosts_list,
+    allowed_hosts=[host.strip() for host in settings.allowed_hosts.split(",") if host.strip()],
 )
+
 
 
 app.add_middleware(
