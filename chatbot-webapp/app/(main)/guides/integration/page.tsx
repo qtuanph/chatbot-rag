@@ -671,10 +671,14 @@ interface ChatMessage {
 function LivePlayground() {
   const [targetUrl, setTargetUrl] = useState(() => {
     if (typeof window !== "undefined") {
-      return sessionStorage.getItem("rag_playground_target_url") || "http://localhost/v1/chat/completions";
+      const stored = sessionStorage.getItem("rag_playground_target_url");
+      if (stored && !stored.includes("localhost")) {
+        return stored;
+      }
     }
-    return "http://localhost/v1/chat/completions";
+    return API_URL;
   });
+
 
   const [apiKey, setApiKey] = useState(() => {
     if (typeof window !== "undefined") {
