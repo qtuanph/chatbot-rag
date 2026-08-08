@@ -72,3 +72,19 @@ async def exact_cache_invalidate_tenant(redis: aioredis.Redis, tenant_id: str) -
     except Exception as exc:
         logger.warning("exact_cache_invalidate_tenant error: %s", exc)
         return 0
+
+
+async def exact_cache_delete(redis: aioredis.Redis, tenant_id: str, question: str) -> None:
+    """Delete L1 exact cache for a specific query upon dislike feedback."""
+    try:
+        normalized = normalize_query(question, stopwords=ALL_DEFAULT_STOPWORDS)
+        if not normalized:
+            return
+        digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        pattern = f"{_EXACT_CACHE_PREFIX}:*:{digest}"
+        keys = [key async for key in redis.scan_iter(match=pattern)]
+        if keys:
+            await redis.delete(*keys)
+    except Exception as exc:
+        logger.warning("exact_cache_delete error: %s", exc)
+

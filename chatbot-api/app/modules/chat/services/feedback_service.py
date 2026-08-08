@@ -8,9 +8,10 @@ from app.modules.settings.runtime_manager import RuntimeProviderManager
 
 
 class FeedbackService:
-    def __init__(self, repo: FeedbackRepository, semantic_cache: Any = None) -> None:
+    def __init__(self, repo: FeedbackRepository, semantic_cache: Any = None, redis_client: Any = None) -> None:
         self.repo = repo
         self.semantic_cache = semantic_cache
+        self.redis_client = redis_client
 
     async def submit_feedback(
         self,
@@ -51,11 +52,16 @@ class FeedbackService:
             "citations": citations,
             "metadata": metadata or {},
         }
-        if self.semantic_cache:
-            normalized_query = normalize_query(query_text, stopwords=ALL_DEFAULT_STOPWORDS)
-            if feedback_type == "dislike":
+        if feedback_type == "dislike":
+            if self.semantic_cache:
+                normalized_query = normalize_query(query_text, stopwords=ALL_DEFAULT_STOPWORDS)
                 await self.semantic_cache.delete(tenant_id, normalized_query)
-            elif feedback_type == "like":
-                await self.semantic_cache.extend_ttl(tenant_id, normalized_query, 86400 * 7)
+            if self.redis_client:
+                from app.modules.chat.cache.exact_cache import exact_cache_delete
+                await exact_cache_delete(self.redis_client, tenant_id, query_text)
+        elif feedback_type == "like" and self.semantic_cache:
+            normalized_query = normalize_query(query_text, stopwords=ALL_DEFAULT_STOPWORDS)
+            await self.semantic_cache.extend_ttl(tenant_id, normalized_query, 86400 * 7)
 
         return await self.repo.create_feedback(payload)
+

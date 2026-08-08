@@ -5,7 +5,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_async_session
-from app.core.deps import get_semantic_cache
+from app.core.deps import get_semantic_cache, get_redis
 
 
 async def get_feedback_repo(session: AsyncSession = Depends(get_async_session)) -> Any:
@@ -15,8 +15,11 @@ async def get_feedback_repo(session: AsyncSession = Depends(get_async_session)) 
 
 
 async def get_feedback_service(
-    repo: Any = Depends(get_feedback_repo), semantic_cache: Any = Depends(get_semantic_cache)
+    repo: Any = Depends(get_feedback_repo),
+    semantic_cache: Any = Depends(get_semantic_cache),
+    redis_client: Any = Depends(get_redis),
 ) -> Any:
     from app.modules.chat.services import FeedbackService
 
-    return FeedbackService(repo=repo, semantic_cache=semantic_cache)
+    return FeedbackService(repo=repo, semantic_cache=semantic_cache, redis_client=redis_client)
+
