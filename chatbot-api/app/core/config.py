@@ -121,9 +121,10 @@ class Settings(BaseSettings):
     retrieval_history_query_count: int = 0
     retrieval_section_hydration_enabled: bool = True
     retrieval_section_hydration_top_k: int = 6
-    retrieval_rerank_skip_enabled: bool = True
+    retrieval_rerank_skip_enabled: bool = False
     retrieval_rerank_skip_query_max_chars: int = 48
     retrieval_rerank_skip_query_max_terms: int = 8
+
     retrieval_rerank_skip_dominance_ratio: float = 1.35
     qdrant_search_indexed_only: bool = False
 
