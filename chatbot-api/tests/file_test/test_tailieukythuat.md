@@ -1,15 +1,15 @@
-``` 
-CÔNG TY CP GIẢI PHÁP PHẦN MỀM DOANH NGHIỆP
-VPHN: Tầng 2, Tòa nhà 262 Nguyễn Huy Tưởng, Q.Thanh Xuân, TP.HN
-VPHCM: Tầng 5 Tòa nhà SONGDO số 62A Phạm Ngọc Thạch, P.6, Q.3, TP.HCM
-Tel: 02435682222; Hotline: 0942584285; W: http://www.sse.net.vn; M: Supports@sse.net.vn
-``**Tài liệu đào tạo** # Hướng dẫn sử dụng SAO`Tên tài liệu: NAME_DATE```` Lưu trữ`- Loại tài liệu - Đường dẫn``
-Ngày tạo
-Người tạo Cao Thị Uyên
-Chức vụ Chuyên viên tư vấn
-Người duyệt Trần Duy Tăng
-Chức vụ Giám đốc
-```
+# Hướng dẫn sử dụng SAO — SSE Accounting Online
+
+## Thông tin tài liệu
+- **Đơn vị phát hành**: CÔNG TY CP GIẢI PHÁP PHẦN MỀM DOANH NGHIỆP (SSE)
+- **Tên tài liệu**: Hướng dẫn sử dụng SAO (SSE Accounting Online)
+- **Loại tài liệu**: Tài liệu đào tạo & Hướng dẫn kỹ thuật
+- **Người tạo tài liệu**: Cao Thị Uyên (Chuyên viên tư vấn)
+- **Người duyệt tài liệu**: Trần Duy Tăng (Giám đốc)
+- **Trụ sở**: Tầng 2, Tòa nhà 262 Nguyễn Huy Tưởng, Q.Thanh Xuân, TP.Hà Nội
+- **Chi nhánh**: Tầng 5 Tòa nhà SONGDO số 62A Phạm Ngọc Thạch, P.6, Q.3, TP.HCM
+- **Liên hệ**: Tel: 02435682222 | Hotline: 0942584285 | Email: Supports@sse.net.vn | Website: http://www.sse.net.vn
+
 
 ## Mục lục
 
