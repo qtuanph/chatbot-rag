@@ -37,7 +37,8 @@ flowchart TB
 
     %% Client -> Gateway
     User -->|HTTP/HTTPS| Traefik
-    Traefik -->|Host('api.qtuanph.dev')| FastAPI
+    Traefik -->|Host('chatbot-api.sse.net.vn')| FastAPI
+
 
     %% Gateway -> Core
 

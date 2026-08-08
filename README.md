@@ -11,7 +11,7 @@ A self-hosted, multi-tenant RAG chatbot platform built for SaaS-style operations
 ## Table of Contents
 
 - [Overview](#overview)
-- [Retrieval Accuracy](#retrieval-accuracy)
+- [Evaluation Metrics](#evaluation-metrics)
 - [Key Capabilities](#key-capabilities)
 - [System Architecture](#system-architecture)
 - [Technology Stack](#technology-stack)
@@ -41,20 +41,55 @@ The result is a platform that serves as a robust foundation for embedding AI ass
 
 ---
 
-## Retrieval Accuracy
+## Evaluation Metrics
 
-The platform is continuously audited and stress-tested using conversational, real-world Vietnamese queries mimicking non-technical end-users. 
+The platform is continuously audited and stress-tested using conversational, real-world Vietnamese queries mimicking non-technical end-users.
 
-In our latest live production evaluation (July 2026) using the **BGE-M3** semantic embedding model and **Qdrant** Hybrid Search, the system achieved a perfect score against complex technical manuals:
+### Retrieval Metrics ("Did we find the right document?")
+
+In our latest live production evaluation (July 2026) using **BGE-M3** semantic embeddings and **Qdrant Hybrid Search (Dense + BM25 Sparse)**, the system achieved a perfect score against complex technical ERP manuals:
 
 ```text
-Queries: 10 conversational, non-standard questions
-MRR: 1.0000 (100%)
-Hit@1: 1.0000 (100%)
-nDCG@5: 1.0000 (100%)
+Dataset  : 10 conversational, non-standard Vietnamese questions
+           (e.g. slang, typos, casual phrasing from accounting staff)
+MRR      : 1.0000  — relevant doc always ranked #1
+Hit@1    : 1.0000  — 100% first-try accuracy
+Recall@5 : 1.0000  — all relevant docs found in top-5
+nDCG@5   : 1.0000  — perfect ranking quality
 ```
 
-**Conclusion:** The RAG engine reliably retrieves the exact document ID on the very first try, demonstrating high resilience against slang, formatting variations, and casual phrasing.
+**Conclusion:** The Hybrid RAG engine reliably retrieves the exact document on the very first attempt, demonstrating extreme resilience against Vietnamese slang, formatting variations, and casual conversational phrasing.
+
+### Generation Metrics ("Is the answer accurate & grounded?")
+
+| Metric | What it measures | Target |
+|---|---|---|
+| **Faithfulness** | Answer derived only from retrieved context — no hallucination | > 0.90 |
+| **Answer Relevance** | Answer actually addresses the user's question | > 0.85 |
+| **Context Precision** | Relevant chunks ranked higher than irrelevant ones | > 0.85 |
+| **Context Recall** | Retrieved context contains all info needed to answer | > 0.80 |
+
+> Faithfulness and Answer Relevance are evaluated using the **LLM-as-a-Judge** pattern (RAGAS framework).
+> A strong LLM (e.g. GPT-4o or Claude) scores each response against the retrieved context automatically.
+
+### Performance Metrics ("Is it fast enough for production?")
+
+| Metric | Description | Target |
+|---|---|---|
+| **TTFT** (Time To First Token) | Latency until streaming starts | < 1.5s |
+| **P95 Response Time** | 95th percentile end-to-end latency | < 6s |
+| **Cache Hit Latency (L1 Exact)** | O(1) Redis lookup for repeated queries | < 50ms |
+| **Cache Hit Rate** | % of queries served from cache (no LLM cost) | > 30% |
+| **Token Cost per Query** | Average LLM API spend per chat turn | Track & minimize |
+
+### Diagnostic Guide — What low scores mean
+
+| If this is low... | And this is high... | The problem is likely... |
+|---|---|---|
+| **Context Recall** | **Faithfulness** | Retriever missing info — improve chunking or embedding |
+| **Answer Relevance** | **Faithfulness** | Retriever finds data but it’s off-topic — improve query rewriting |
+| **Faithfulness** | **Context Recall** | LLM is hallucinating — tighten grounding prompt |
+| **Hit@1** | *any* | Embedding model or BM25 tuning needed |
 
 ---
 
@@ -232,7 +267,7 @@ npm run dev
 
 ### Useful endpoints
 - **Web app (Local):** `http://localhost:3000`
-- **Backend API:** `https://api.qtuanph.dev/v1/health`
+- **Backend API (Production):** `https://chatbot-api.sse.net.vn/v1/health`
 - **Qdrant dashboard:** `http://localhost:6333/dashboard`
 - **9Router:** `http://localhost:2908`
 - **Traefik dashboard:** `http://localhost:8080`

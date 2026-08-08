@@ -21,8 +21,8 @@ Tài liệu deployment bám theo `docker-compose.yml` hiện tại.
 
 - `qdrant` ở `qdrant/qdrant:latest`
 - `postgres` pin ở `postgres:18.4-trixie`
-- `redis` pin ở `redis:8.8.0-trixie`
-- `traefik` pin ở `traefik:v3.7.8`
+- `redis` pin ở `redis:8.10.0-trixie`
+- `traefik` pin ở `traefik:v3.7.10`
 - embedding mặc định: Docker Model Runner (Qwen3-Embedding / BGE-M3)
 - reranker mặc định: NVIDIA NIM
 - local reranker chỉ là fallback
@@ -31,7 +31,7 @@ Tài liệu deployment bám theo `docker-compose.yml` hiện tại.
 
 | Thành phần | Ghi chú |
 |---|---|
-| `traefik` | public entry (`Host('api.qtuanph.dev')` → API) |
+| `traefik` | public entry — SNI routing theo domain production (`chatbot-api.sse.net.vn`, `chatbot-9router.sse.net.vn`, `chatbot-media.sse.net.vn`, `chatbot-console.sse.net.vn`) |
 | `/api/bep/*` | proxy từ Next.js (Cloudflare Pages) sang backend |
 | `ai-proxy:2908` | 9Router nội bộ |
 
@@ -67,7 +67,7 @@ Hệ thống được thiết kế tối ưu với module **Auto-Tuning** (`app/
 ### API / proxy
 
 - `NEXT_PUBLIC_API_URL=/api/bep`
-- `API_INTERNAL_URL=https://api.qtuanph.dev/v1`
+- `API_INTERNAL_URL=https://chatbot-api.sse.net.vn/v1`
 
 ### AI
 

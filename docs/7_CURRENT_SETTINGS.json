@@ -127,7 +127,7 @@
     "cache_hit_tracking": true
   },
   "deployment": {
-    "reverse_proxy": "Traefik",
+    "reverse_proxy": "Traefik v3.7.10",
     "webapp_proxy_base": "/api/bep",
     "api_internal_url": "http://api:8000/v1",
     "ai_proxy_service": "ai-proxy",
@@ -135,8 +135,18 @@
     "hf_token_source": "docker secret hf_token",
     "fastembed_cache_path": "/home/qtuanph/.cache/huggingface/fastembed",
     "worker_prewarm_sparse_model": "Qdrant/bm25",
-    "native_sparse_inject": true
+    "native_sparse_inject": true,
+    "production_domains": {
+      "webapp": "chatbot.sse.net.vn",
+      "api": "chatbot-api.sse.net.vn",
+      "ai_proxy": "chatbot-9router.sse.net.vn",
+      "object_storage": "chatbot-media.sse.net.vn",
+      "storage_console": "chatbot-console.sse.net.vn"
+    },
+    "server_ip": "103.200.25.140",
+    "open_ports": [80, 443]
   },
+
   "frontend": {
     "validation_library": "zod v4.4.3",
     "validation_import_path": "zod/v4",
