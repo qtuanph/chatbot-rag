@@ -176,7 +176,8 @@ class Settings(BaseSettings):
     s3_secret_key: str = "replace-me"
     s3_bucket: str = "rag-documents"
     s3_secure: bool = False
-    allowed_hosts: str = "chatbot.sse.net.vn,chatbot-api.sse.net.vn,chatbot-9router.sse.net.vn,chatbot-media.sse.net.vn,chatbot-console.sse.net.vn"
+    allowed_hosts: str = "chatbot.sse.net.vn,chatbot-api.sse.net.vn,chatbot-9router.sse.net.vn,chatbot-media.sse.net.vn,chatbot-console.sse.net.vn,api,localhost,127.0.0.1,*"
+
 
 
 
