@@ -50,7 +50,8 @@ export default auth((req) => {
   }
 
   // Add security headers
-  const connectSrc = "'self' ws: http://localhost:* ws://localhost:*";
+  const connectSrc = "'self' ws: https: http://localhost:* ws://localhost:* https://*.sse.net.vn";
+
 
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-Content-Type-Options", "nosniff");
