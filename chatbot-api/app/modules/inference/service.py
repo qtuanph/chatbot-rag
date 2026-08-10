@@ -727,14 +727,14 @@ class PublicInferenceService:
         if context_blocks:
             system_prompt += "\n\nNgữ cảnh truy xuất từ tài liệu:\n" + "\n\n".join(context_blocks)
         system_prompt += (
-            "\n\nQUY TẮC PHẢN HỒI:"
-            "\n- Trình bày câu trả lời đẹp mắt, dễ đọc bằng Markdown chuẩn (dùng danh sách gạch đầu dòng - hoặc tiêu đề ###). Xuống dòng (newline) rõ ràng giữa các mục. Không viết dồn toàn bộ bảng hay danh sách trên cùng 1 dòng."
+            "\n\nQUY TẮC PHẢN HỒI BẮT BUỘC:"
+            "\n- ĐỌC KỸ TOÀN BỘ tất cả các [Nguồn 1], [Nguồn 2], ... được cung cấp ở trên trước khi đưa ra câu trả lời."
+            "\n- Kiểm tra kỹ cả các phần metadata tiêu đề, người tạo, người duyệt, ngày tháng ở phần đầu các nguồn thông tin."
+            "\n- Trình bày câu trả lời đẹp mắt, dễ đọc bằng Markdown chuẩn (dùng danh sách gạch đầu dòng - hoặc tiêu đề ###). Xuống dòng rõ ràng giữa các mục."
             "\n- Hãy linh hoạt tổng hợp và trả lời đầy đủ, chính xác dựa trên tất cả thông tin và ngữ cảnh tài liệu được cung cấp."
             "\n- Bám sát thông tin trong tài liệu, không tự ý suy đoán hoặc đưa ra các quy trình không có trong dữ liệu."
             "\n- Nếu ngữ cảnh tài liệu chứa các ý liên quan tới một phần hoặc toàn bộ câu hỏi, hãy trình bày chi tiết và rõ ràng từng nội dung đó để giải đáp cho người dùng."
         )
-
-
 
         llm_messages = [ChatMessage(role=MessageRole.SYSTEM, content=system_prompt)]
         recent_messages = messages[-settings.ai_max_history_messages :]
