@@ -7,7 +7,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { 
-  CodeIcon, 
   CopyIcon, 
   CheckCircle2Icon, 
   KeyIcon, 
@@ -204,7 +203,7 @@ public class ChatbotService
       {/* ── 2. DỮ LIỆU TRUYỀN VÀO API (REQUEST BODY PAYLOAD) ── */}
       <section className="space-y-4">
         <h2 className="text-xl font-bold text-foreground border-b pb-2 flex items-center gap-2">
-          <CodeIcon className="w-5 h-5 text-primary" />
+          <TerminalIcon className="w-5 h-5 text-primary" />
           2. Dữ liệu truyền vào API (Request Payload Specs)
         </h2>
 

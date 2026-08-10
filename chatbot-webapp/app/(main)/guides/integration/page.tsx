@@ -15,7 +15,6 @@ import {
   KeyIcon,
   DatabaseIcon,
   RocketIcon,
-  CodeIcon,
   ZapIcon,
   InfoIcon,
   SendIcon,
