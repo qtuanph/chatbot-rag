@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { MessageSquare, RefreshCw, Zap, ShieldAlert, BookOpen, Clock, FileText, ChevronRight } from "lucide-react";
+import { MessageSquare, RefreshCw, Zap, ShieldAlert, BookOpen, Clock, FileText, ChevronRight, HelpCircle, Sparkles, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { conversationsApi } from "@/lib/api-client";
+import { conversationsApi, faqApi } from "@/lib/api-client";
 
 interface ConversationItem {
   id: string;
@@ -40,8 +43,18 @@ export default function AdminConversationsPage() {
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
+  const [selectedTenantId, setSelectedTenantId] = useState<string>("");
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
+
+  // FAQ Modal states
+  const [faqModalOpen, setFaqModalOpen] = useState(false);
+  const [faqTenantId, setFaqTenantId] = useState("");
+  const [faqQuestion, setFaqQuestion] = useState("");
+  const [faqAnswer, setFaqAnswer] = useState("");
+  const [faqVariants, setFaqVariants] = useState("");
+  const [faqCitations, setFaqCitations] = useState<any[]>([]);
+  const [submittingFaq, setSubmittingFaq] = useState(false);
 
   const fetchConversations = async () => {
     setLoading(true);
@@ -59,8 +72,9 @@ export default function AdminConversationsPage() {
     fetchConversations();
   }, []);
 
-  const openConversationDetail = async (convId: string) => {
+  const openConversationDetail = async (convId: string, tenantId: string) => {
     setSelectedConvId(convId);
+    setSelectedTenantId(tenantId);
     setLoadingDetail(true);
     try {
       const res = await conversationsApi.getMessages(convId);
@@ -71,6 +85,49 @@ export default function AdminConversationsPage() {
       setLoadingDetail(false);
     }
   };
+
+  const handleOpenFaqModal = (question: string, answer: string, citations?: any[], tenantId?: string) => {
+    setFaqTenantId(tenantId || selectedTenantId || "default");
+    setFaqQuestion(question);
+    setFaqAnswer(answer);
+    setFaqVariants("");
+    setFaqCitations(citations || []);
+    setFaqModalOpen(true);
+  };
+
+  const handleCreateFaq = async () => {
+    if (!faqQuestion.trim() || !faqAnswer.trim()) {
+      toast.error("Câu hỏi và câu trả lời không được để trống!");
+      return;
+    }
+    if (!faqTenantId.trim()) {
+      toast.error("Vui lòng nhập Tenant ID!");
+      return;
+    }
+
+    setSubmittingFaq(true);
+    try {
+      const variants = faqVariants
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      await faqApi.create(faqTenantId.trim(), {
+        question: faqQuestion.trim(),
+        answer: faqAnswer.trim(),
+        question_variants: variants,
+        citations: faqCitations,
+      });
+
+      toast.success("🎉 Đã lưu câu trả lời thành FAQ thành công! Các câu hỏi tương tự từ bây giờ sẽ nhận phản hồi O(1) tức thì từ Redis Cache.");
+      setFaqModalOpen(false);
+    } catch (err: any) {
+      toast.error("Không thể tạo FAQ: " + (err?.message || "Lỗi hệ thống"));
+    } finally {
+      setSubmittingFaq(false);
+    }
+  };
+
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6">
@@ -104,7 +161,7 @@ export default function AdminConversationsPage() {
             {conversations.map((item) => (
               <div
                 key={item.id}
-                onClick={() => openConversationDetail(item.conversation_id)}
+                onClick={() => openConversationDetail(item.conversation_id, item.tenant_id)}
                 className="p-4 flex items-center justify-between hover:bg-muted/50 transition-colors cursor-pointer group"
               >
                 <div className="flex items-center gap-3.5 min-w-0">
@@ -161,8 +218,13 @@ export default function AdminConversationsPage() {
             <div className="p-8 text-center text-sm text-muted-foreground">Không có tin nhắn nào.</div>
           ) : (
             <div className="space-y-3.5 py-2">
-              {messages.map((msg) => {
+              {messages.map((msg, idx) => {
                 const isUser = msg.role === "user";
+                const prevUserMsg = messages
+                  .slice(0, idx)
+                  .reverse()
+                  .find((m) => m.role === "user");
+
                 return (
                   <div
                     key={msg.id}
@@ -173,7 +235,7 @@ export default function AdminConversationsPage() {
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2 mb-2.5">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Badge
                           variant={isUser ? "outline" : "default"}
                           className="text-[10px] h-4 font-semibold uppercase tracking-wider"
@@ -193,11 +255,24 @@ export default function AdminConversationsPage() {
                         )}
                       </div>
 
-                      {msg.created_at && (
-                        <span className="text-[11px] text-muted-foreground font-mono">
-                          {new Date(msg.created_at).toLocaleTimeString("vi-VN")}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {!isUser && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[11px] font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 gap-1.5 transition-colors"
+                            onClick={() => handleOpenFaqModal(prevUserMsg?.content || "", msg.content, msg.citations, selectedTenantId)}
+                          >
+                            <Sparkles className="h-3 w-3" /> Biến thành FAQ
+                          </Button>
+                        )}
+
+                        {msg.created_at && (
+                          <span className="text-[11px] text-muted-foreground font-mono">
+                            {new Date(msg.created_at).toLocaleTimeString("vi-VN")}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Content */}
@@ -246,6 +321,78 @@ export default function AdminConversationsPage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+
+      {/* FAQ Promote Dialog */}
+      <Dialog open={faqModalOpen} onOpenChange={setFaqModalOpen}>
+        <DialogContent className="max-w-xl rounded-2xl border border-border/80 shadow-2xl backdrop-blur-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold text-amber-600 dark:text-amber-400">
+              <Sparkles className="h-4 w-4" />
+              Tạo FAQ từ Lượt trả lời này
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Lưu câu hỏi & phản hồi xuất sắc này thành FAQ chuẩn. Các câu hỏi tương tự từ bây giờ sẽ được trả lời tức thì O(1) từ Cache mà không mất phí LLM.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 text-sm">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Tenant ID</Label>
+              <Input
+                value={faqTenantId}
+                onChange={(e) => setFaqTenantId(e.target.value)}
+                placeholder="Nhập tenant_id (ví dụ: acbed622-c97f-42bd-9d5b-c836a45ad8e6)"
+                className="font-mono text-xs"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Câu hỏi chuẩn (User Question)</Label>
+              <Input
+                value={faqQuestion}
+                onChange={(e) => setFaqQuestion(e.target.value)}
+                placeholder="Nhập câu hỏi..."
+                className="text-xs font-medium"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Câu hỏi biến thể (Tùy chọn)</Label>
+              <Input
+                value={faqVariants}
+                onChange={(e) => setFaqVariants(e.target.value)}
+                placeholder="Các câu tương tự, phân cách bằng dấu phẩy (ví dụ: ai tạo file, ai là người viết...)"
+                className="text-xs"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Câu trả lời chuẩn (AI Answer)</Label>
+              <Textarea
+                value={faqAnswer}
+                onChange={(e) => setFaqAnswer(e.target.value)}
+                rows={6}
+                className="text-xs font-mono leading-relaxed"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button variant="ghost" size="sm" onClick={() => setFaqModalOpen(false)}>
+              Hủy
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleCreateFaq}
+              disabled={submittingFaq}
+              className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+            >
+              {submittingFaq ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+              Lưu thành FAQ
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
   );
 }
+
