@@ -11,7 +11,10 @@ import {
   MousePointerClickIcon,
   CheckCircle2Icon,
   ClockIcon,
-  AlertTriangleIcon
+  AlertTriangleIcon,
+  ShieldCheckIcon,
+  Trash2Icon,
+  WorkflowIcon,
 } from "lucide-react";
 
 export default function DocumentsGuidePage() {
@@ -19,39 +22,39 @@ export default function DocumentsGuidePage() {
     <div className="space-y-8 pb-16 max-w-4xl">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Quản lý Tài liệu (Knowledge Base)</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Quản lý Kho Tài liệu &amp; Tri thức RAG</h1>
         <p className="text-sm text-muted-foreground mt-2">
-          Cách hệ thống đọc, băm nhỏ và vector hóa các tài liệu nghiệp vụ nội bộ.
+          Hướng dẫn tải file, xử lý băm nhỏ (Semantic Chunking) và phân quyền tri thức tài liệu cho từng Công ty.
         </p>
       </div>
 
       {/* Security alert */}
-      <Alert>
-        <InfoIcon className="h-4 w-4" />
-        <AlertTitle className="font-bold">Bảo mật dữ liệu nội bộ</AlertTitle>
-        <AlertDescription className="text-sm leading-6 mt-1 text-muted-foreground">
-          Dữ liệu của từng Tenant được cô lập hoàn toàn ở tầng vật lý (Database Filter). Hệ thống <strong>tuyệt đối không</strong> sử dụng tài liệu của bạn để train lại cho các model công cộng của OpenAI hay NVIDIA.
+      <Alert className="border-border bg-card">
+        <ShieldCheckIcon className="h-5 w-5 text-primary" />
+        <AlertTitle className="font-bold text-foreground">Bảo mật dữ liệu &amp; Cô lập tài liệu</AlertTitle>
+        <AlertDescription className="text-xs leading-5 mt-1 text-muted-foreground">
+          Dữ liệu tài liệu của từng Tenant được bảo vệ bằng cơ chế phân quyền <code>tenant_document_access</code>. Hệ thống <strong>tuyệt đối không</strong> gửi tài liệu của bạn để huấn luyện cho bất kỳ mô hình công cộng nào ngoài internet.
         </AlertDescription>
       </Alert>
 
-      {/* Guide & Rules */}
+      {/* Upload guide & Best practices */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* Upload guide */}
         <div className="border border-border rounded-xl p-5 bg-card space-y-3">
           <h2 className="text-base font-bold text-foreground flex items-center gap-2">
             <MousePointerClickIcon className="w-4 h-4 text-primary" />
-            Các bước Upload Tài liệu
+            Các bước Tải &amp; Quản lý Tài liệu
           </h2>
           <ol className="list-decimal pl-4 text-xs text-muted-foreground space-y-2.5">
-            <li>Truy cập menu <strong>Dữ liệu &gt; Tài liệu</strong> (Chỉ hiển thị với Tenant Admin).</li>
-            <li>Bấm nút <strong>Tải file lên</strong> ở góc trên.</li>
-            <li>Chọn file từ máy tính. Định dạng hỗ trợ tốt nhất là <strong>PDF (dạng text)</strong>, <strong>DOCX</strong>, <strong>TXT</strong> và <strong>Markdown</strong>.</li>
-            <li>Theo dõi trạng thái xử lý tài liệu trong bảng:
+            <li>Truy cập menu <strong>Tri thức &gt; Kho Tài liệu</strong>.</li>
+            <li>Bấm nút <strong>Tải file lên</strong> ở góc trên bên phải.</li>
+            <li>Chọn file từ máy tính. Các định dạng được hỗ trợ: <strong>PDF (dạng text)</strong>, <strong>DOCX</strong>, <strong>TXT</strong> và <strong>Markdown (.md)</strong>.</li>
+            <li>Theo dõi trạng thái băm file trong bảng dữ liệu:
               <ul className="mt-2 space-y-1.5 list-none pl-0 font-medium">
-                <li className="flex items-center gap-1.5"><ClockIcon className="w-3.5 h-3.5 text-amber-500" /> <code>Processing</code>: Đang băm và trích xuất.</li>
-                <li className="flex items-center gap-1.5"><CheckCircle2Icon className="w-3.5 h-3.5 text-emerald-500" /> <code>Ready</code>: AI đã học xong và có thể trả lời.</li>
-                <li className="flex items-center gap-1.5"><AlertTriangleIcon className="w-3.5 h-3.5 text-destructive" /> <code>Failed</code>: Lỗi đọc file (file scan ảnh không có text hoặc bị khóa mật khẩu).</li>
+                <li className="flex items-center gap-1.5"><ClockIcon className="w-3.5 h-3.5 text-amber-500" /> <code>Processing</code>: Đang trích xuất văn bản &amp; băm chunk.</li>
+                <li className="flex items-center gap-1.5"><CheckCircle2Icon className="w-3.5 h-3.5 text-emerald-500" /> <code>Ready</code>: AI đã học xong tri thức và sẵn sàng trả lời.</li>
+                <li className="flex items-center gap-1.5"><AlertTriangleIcon className="w-3.5 h-3.5 text-destructive" /> <code>Failed</code>: File bị khóa mật khẩu hoặc là PDF scan ảnh.</li>
               </ul>
             </li>
           </ol>
@@ -61,63 +64,37 @@ export default function DocumentsGuidePage() {
         <div className="border border-border rounded-xl p-5 bg-card space-y-3">
           <h2 className="text-base font-bold text-foreground flex items-center gap-2">
             <InfoIcon className="w-4 h-4 text-primary" />
-            Kinh nghiệm soạn tài liệu (Best Practices)
+            Kinh nghiệm chuẩn hóa tài liệu (Best Practices)
           </h2>
           <ul className="list-disc pl-4 text-xs text-muted-foreground space-y-2.5">
             <li>
-              <strong>Tránh PDF dạng ảnh chụp (Scanned):</strong> OCR tự động có độ sai lệch cao. Hãy ưu tiên file Word (.docx) hoặc PDF xuất trực tiếp từ máy tính.
+              <strong>Khuyên dùng PDF xuất từ Word / Markdown:</strong> Tránh file scan ảnh không có text. Văn bản thô càng sạch thì AI đọc trả lời càng chính xác.
             </li>
             <li>
-              <strong>Dọn dẹp thông tin rác:</strong> Loại bỏ các trang bìa lớn, mục lục dài hoặc các lời mở đầu thừa thãi để tránh gây nhiễu cho AI khi tìm kiếm ngữ nghĩa.
+              <strong>Cấu trúc tiêu đề rõ ràng:</strong> Đặt tiêu đề mục (Heading 1, Heading 2...) rõ ràng để bộ băm <code>Section Chunking</code> giữ nguyên cấu trúc văn bản.
             </li>
             <li>
-              <strong>Đặt tên file mô tả đúng nội dung:</strong> Tên file là một siêu dữ liệu (Metadata) quan trọng. Ví dụ đặt tên: <code className="bg-muted px-1 rounded text-foreground text-[11px]">Chinh_sach_nhan_su_2026.pdf</code> thay vì <code className="bg-muted px-1 rounded text-[11px]">Doc_final_v2.pdf</code>.
+              <strong>Đặt tên file chuẩn hóa:</strong> Đặt tên file thể hiện đúng chủ đề. Ví dụ: <code className="bg-muted px-1 rounded text-foreground text-[11px]">Huong_dan_Ke_toan_Tong_hop_2026.pdf</code> thay vì <code className="bg-muted px-1 rounded text-[11px]">File_v1.pdf</code>.
             </li>
             <li>
-              <strong>Xóa bỏ tài liệu hết hạn:</strong> Khi có chính sách mới thay thế bản cũ, hãy xóa bản cũ khỏi hệ thống để tránh AI đọc phải thông tin mâu thuẫn.
+              <strong>Phân quyền cho Tenant:</strong> Sau khi nạp file, nhớ gán quyền tài liệu cho Tenant tương ứng để AI truy xuất dữ liệu.
             </li>
           </ul>
         </div>
 
       </div>
 
-      {/* Under the hood workflow */}
-      <section className="space-y-4">
-        <h2 className="text-xl font-bold text-foreground border-b pb-2">Hành trình của một file tài liệu (Under the hood)</h2>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-2">
-            <FileUpIcon className="w-6 h-6 text-primary" />
-            <h3 className="font-bold text-sm text-foreground">1. Đọc thô (Parsing)</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Trích xuất toàn bộ văn bản thô từ file, loại bỏ hình ảnh trang trí, font chữ màu mè.
-            </p>
-          </div>
-
-          <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-2">
-            <DatabaseIcon className="w-6 h-6 text-primary" />
-            <h3 className="font-bold text-sm text-foreground">2. Băm nhỏ (Chunking)</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Băm văn bản thành các đoạn nhỏ (khoảng 500-1000 từ) để AI dễ đọc và định vị chính xác thông tin.
-            </p>
-          </div>
-
-          <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-2">
-            <SearchIcon className="w-6 h-6 text-primary" />
-            <h3 className="font-bold text-sm text-foreground">3. Số hóa (Embedding)</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Chuyển các đoạn văn bản thành Vector đa chiều lưu vào Vector DB (Qdrant).
-            </p>
-          </div>
-
-          <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-2">
-            <BotIcon className="w-6 h-6 text-primary" />
-            <h3 className="font-bold text-sm text-foreground">4. Truy xuất (Retrieval)</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Quét nhanh hàng triệu vector, lọc ra 5 đoạn văn bản khớp ý nghĩa nhất đưa vào Prompt cho LLM.
-            </p>
-          </div>
-        </div>
+      {/* Hard Delete Rules */}
+      <section className="border border-border rounded-xl p-5 bg-card space-y-3">
+        <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+          <Trash2Icon className="w-4 h-4 text-destructive" />
+          Quy trình Xóa tài liệu triệt để (Hard-Delete Standard)
+        </h2>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Khi xóa một tài liệu khỏi Kho tri thức, hệ thống thực thi xóa triệt để theo thứ tự bắt buộc: 
+          <strong> 1. Vector Qdrant ➔ 2. Section Chunks trong DB ➔ 3. File nguồn trên Storage ➔ 4. Dòng dữ liệu DB</strong>.
+          Quy trình này bảo đảm tài liệu xóa sẽ biến mất hoàn toàn khỏi bộ nhớ AI và không để lại vector rác.
+        </p>
       </section>
     </div>
   );

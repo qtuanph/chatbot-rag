@@ -3,24 +3,24 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { CheckCircle2Icon, KeyIcon, UsersIcon, ShieldAlertIcon, SettingsIcon, UserCheckIcon } from "lucide-react";
+import { CheckCircle2Icon, KeyIcon, UsersIcon, ShieldAlertIcon, SettingsIcon, UserCheckIcon, Building2Icon, SparklesIcon, FilterIcon } from "lucide-react";
 
 export default function TenantsGuidePage() {
   return (
     <div className="space-y-8 pb-16 max-w-4xl">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Quản lý Tenant &amp; API Key</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Quản lý Tenant &amp; Phân quyền Đa Doanh nghiệp</h1>
         <p className="text-sm text-muted-foreground mt-2">
-          Tìm hiểu cơ chế đa người dùng (Multi-tenant) và cách cấp phát khóa kết nối API.
+          Cơ chế cô lập đa người dùng (Multi-tenant Security Boundary), quản lý API Key và phân quyền FAQ theo từng công ty.
         </p>
       </div>
 
-      {/* Guide Steps - Separate Accordions to avoid nested card boxing */}
+      {/* Guide Steps */}
       <section className="space-y-4">
         <h2 className="text-xl font-bold text-foreground flex items-center gap-2 border-b pb-2">
           <UsersIcon className="w-5 h-5 text-primary" />
-          Hướng dẫn thiết lập cho Platform Admin
+          1. Quy trình thiết lập cho Platform Admin &amp; Tenant Admin
         </h2>
 
         <div className="space-y-3">
@@ -30,16 +30,16 @@ export default function TenantsGuidePage() {
               <AccordionTrigger className="px-5 hover:no-underline font-semibold text-foreground text-sm">
                 <div className="flex items-center gap-3">
                   <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0">1</span>
-                  Khởi tạo Tenant (Doanh nghiệp)
+                  Khởi tạo Tenant (Công ty / Khách hàng)
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-5 pb-5 text-muted-foreground text-xs leading-relaxed space-y-2">
                 <p>Chỉ tài khoản <strong>Platform Admin</strong> mới có quyền tạo mới Tenant:</p>
                 <ul className="list-disc pl-4 space-y-1">
-                  <li>Truy cập menu <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">Tenant</code> ở mục quản trị phía trái.</li>
-                  <li>Bấm nút <strong>Tạo mới</strong> ở góc trên bên phải.</li>
-                  <li>Nhập <strong>Tên Tenant</strong> (Ví dụ: <code>Tổng công ty ABC</code>).</li>
-                  <li>Nhập <strong>Slug</strong> (Mã định danh viết liền không dấu, dùng để mapping dữ liệu).</li>
+                  <li>Truy cập menu <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">Quản lý Công ty (Tenants)</code> ở sidebar phía trái.</li>
+                  <li>Bấm nút <strong>Tạo mới Tenant</strong> ở góc trên bên phải.</li>
+                  <li>Nhập <strong>Tên Công ty</strong> (Ví dụ: <code>CÔNG TY CỔ PHẦN SSE ERP</code>).</li>
+                  <li>Nhập <strong>Slug</strong> (Mã định danh duy nhất viết liền không dấu, ví dụ: <code>sse-erp</code>).</li>
                 </ul>
               </AccordionContent>
             </AccordionItem>
@@ -51,15 +51,15 @@ export default function TenantsGuidePage() {
               <AccordionTrigger className="px-5 hover:no-underline font-semibold text-foreground text-sm">
                 <div className="flex items-center gap-3">
                   <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0">2</span>
-                  Thiết lập hạn ngạch sử dụng (Quota)
+                  Phân quyền Tài liệu cho Tenant (Document Access Grant)
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-5 pb-5 text-muted-foreground text-xs leading-relaxed space-y-2">
-                <p>Mỗi Tenant cần được giới hạn tài nguyên để bảo vệ hạ tầng chung:</p>
+                <p>Một tài liệu trong Kho tài liệu chỉ phục vụ cho Tenant khi được gán quyền:</p>
                 <ul className="list-disc pl-4 space-y-1">
-                  <li><strong>Monthly Token Quota:</strong> Số lượng token tối đa LLM được sử dụng mỗi tháng.</li>
-                  <li><strong>Monthly Request Quota:</strong> Số lượt gọi API tối đa mỗi tháng.</li>
-                  <li><strong>Rate Limit RPM:</strong> Tốc độ gọi tối đa (Requests Per Minute). Khi vượt quá, hệ thống trả về lỗi <code className="text-destructive font-mono">429 Too Many Requests</code>.</li>
+                  <li>Vào trang <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">Kho Tài liệu</code> ➔ Chọn tài liệu cần gán.</li>
+                  <li>Chọn Tenant được phép truy cập tài liệu này.</li>
+                  <li>Nếu Tenant chưa được phân quyền tài liệu nào, hệ thống AI sẽ kích hoạt <strong>Strict Empty Context Guardrail</strong> để bảo đảm không trả lời sai hay dùng kiến thức ngoài internet.</li>
                 </ul>
               </AccordionContent>
             </AccordionItem>
@@ -71,22 +71,16 @@ export default function TenantsGuidePage() {
               <AccordionTrigger className="px-5 hover:no-underline font-semibold text-foreground text-sm">
                 <div className="flex items-center gap-3">
                   <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0">3</span>
-                  Cấp tài khoản Tenant Admin
+                  Áp dụng FAQ cho Nhiều Công ty (Multi-Tenant FAQ Grid)
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-5 pb-5 text-muted-foreground text-xs leading-relaxed space-y-2">
-                <p>Giao quyền quản lý Tenant cho khách hàng:</p>
+                <p>Tối ưu hóa quản lý câu hỏi thường gặp cho hệ thống nhiều công ty:</p>
                 <ul className="list-disc pl-4 space-y-1">
-                  <li>Vào mục <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">Người dùng</code>.</li>
-                  <li>Tạo tài khoản mới với vai trò là <strong>Tenant Admin</strong>.</li>
-                  <li>Liên kết tài khoản này với Tenant tương ứng đã tạo ở bước 1.</li>
+                  <li>Vào mục <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">Nhật ký Hỏi &amp; Đáp</code> hoặc <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">Quản lý FAQ</code>.</li>
+                  <li>Khi tạo FAQ mới hoặc bấm <strong>Sparkles Tạo FAQ từ AI</strong>, hệ thống hiển thị lưới danh sách tích chọn Công ty (Multi-Tenant Grid).</li>
+                  <li>Admin có thể tích chọn 1 hoặc nhiều Công ty cùng lúc để áp dụng bộ FAQ này đồng thời.</li>
                 </ul>
-                <div className="bg-accent text-accent-foreground p-3 rounded-lg mt-2 flex items-start gap-2 text-xs border border-border">
-                  <UserCheckIcon className="w-4 h-4 shrink-0 mt-0.5" />
-                  <div>
-                    <strong>Tự động phân quyền:</strong> Khi Tenant Admin đăng nhập, họ chỉ có thể quản lý tài liệu, cài đặt chatbot, và sinh API Key thuộc về Tenant đó. Họ hoàn toàn bị cô lập khỏi dữ liệu của Tenant khác.
-                  </div>
-                </div>
               </AccordionContent>
             </AccordionItem>
           </Accordion>
@@ -97,42 +91,39 @@ export default function TenantsGuidePage() {
       <section className="space-y-4">
         <h2 className="text-xl font-bold text-foreground flex items-center gap-2 border-b pb-2">
           <KeyIcon className="w-5 h-5 text-primary" />
-          API Key (Chìa khóa kết nối)
+          2. API Key (Xác thực Chìa khóa kết nối)
         </h2>
 
         <div className="border border-border rounded-xl p-5 bg-card space-y-4">
           <div className="text-sm text-muted-foreground leading-relaxed space-y-3">
             <p>
-              Khi muốn tích hợp chatbot vào các phần mềm bên ngoài (ví dụ như ERP, CRM, mobile app), bạn không dùng tài khoản/mật khẩu thông thường vì lý do bảo mật. Thay vào đó, bạn sử dụng <strong>API Key</strong>.
-            </p>
-            <p>
-              Tenant Admin có thể tạo nhiều API Key khác nhau trong phần <strong>Cấu hình Tenant</strong>. Các key này có prefix là <code>trg_</code> để phân biệt:
+              Để nhúng chatbot vào phần mềm ERP, CRM hoặc Website khách hàng, ứng dụng sẽ gọi API kèm theo <strong>Tenant API Key</strong> trong HTTP Header: <code>Authorization: Bearer trg_...</code>
             </p>
           </div>
 
           <div className="bg-zinc-950 dark:bg-zinc-900 p-4 rounded-xl flex flex-col gap-1 border border-border">
-            <span className="text-zinc-500 text-[10px] uppercase font-semibold font-sans">API Key format (Chỉ hiển thị 1 lần)</span>
-            <code className="text-xs font-mono text-emerald-400">trg_fkbZ8COIca3X9F7Kmp3Bw9O52evXaFryFz...</code>
+            <span className="text-zinc-500 text-[10px] uppercase font-semibold font-sans">API Key format (Bảo mật Hash DB)</span>
+            <code className="text-xs font-mono text-emerald-400">trg_3210J-qApeNar4P5GwAxBMFNrF8XVyDjkVBSLlj8jLg</code>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
             <div className="border border-border rounded-lg p-4 bg-muted/20 space-y-2">
               <div className="flex items-center gap-2">
                 <ShieldAlertIcon className="w-4 h-4 text-primary" />
-                <h4 className="font-bold text-xs text-foreground">Tự động định tuyến (Auto-routing)</h4>
+                <h4 className="font-bold text-xs text-foreground">Định tuyến an toàn (Key Hash Lookup)</h4>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Hệ thống lưu hash của API Key trong DB. Khi có request gửi lên, hệ thống tự động giải mã để biết request thuộc về Tenant nào và áp dụng đúng cấu hình, tài liệu RAG của Tenant đó.
+                Backend chỉ lưu SHA-256 hash của Key trong database. Khi nhận request, hệ thống giải mã hash để xác định <code>tenant_id</code> và tự động lọc dữ liệu đúng phạm vi.
               </p>
             </div>
 
             <div className="border border-border rounded-lg p-4 bg-muted/20 space-y-2">
               <div className="flex items-center gap-2">
                 <SettingsIcon className="w-4 h-4 text-primary" />
-                <h4 className="font-bold text-xs text-foreground">Thu hồi dễ dàng (Revoke)</h4>
+                <h4 className="font-bold text-xs text-foreground">Thu hồi khẩn cấp (Revoke)</h4>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Nếu một API Key bị lộ hoặc không còn sử dụng, Tenant Admin chỉ cần nhấn nút Thu hồi (Revoke). Key đó sẽ lập tức bị vô hiệu hóa mà không ảnh hưởng đến các key khác hay tài khoản đăng nhập.
+                Nếu một API Key bị lộ, Tenant Admin chỉ cần nhấn nút Thu hồi (Revoke). Key đó sẽ lập tức bị vô hiệu hóa tức thì mà không ảnh hưởng tới các Key khác.
               </p>
             </div>
           </div>

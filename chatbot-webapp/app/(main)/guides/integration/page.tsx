@@ -65,7 +65,7 @@ function CodeBlock({ code, lang = "" }: { code: string; lang?: string }) {
 /* ═══════════════════════════════════════════════════════════════ */
 const API_BASE = "https://chatbot-api.sse.net.vn/v1";
 const API_URL = `${API_BASE}/chat/completions`;
-const PLACEHOLDER_KEY = "trg_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+const PLACEHOLDER_KEY = "trg_3210J-qApeNar4P5GwAxBMFNrF8XVyDjkVBSLlj8jLg";
 
 
 function getStreamContentChunk(dataPayload: string): string {
