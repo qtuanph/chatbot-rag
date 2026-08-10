@@ -773,8 +773,9 @@
         }
 
         // Khai báo URL, API key cho chatbot
-        const LLM_API_URL = "https://api.qtuanph.dev/v1/chat/completions";
+        const LLM_API_URL = "https://chatbot-api.sse.net.vn/v1/chat/completions";
         const API_KEY = '<%= ConfigurationManager.AppSettings("Chatbot_ApiKey") %>';
+
 
         // Context của chatbot khi đưa lên llm
         let chatContext = { statistics: null, lastQuery: null, uploadedData: null, isTyping: false, history: [] };
