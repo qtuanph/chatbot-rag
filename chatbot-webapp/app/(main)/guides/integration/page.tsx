@@ -86,12 +86,6 @@ function getStreamContentChunk(dataPayload: string): string {
 const webConfigCode = `<!-- Web.config trong ứng dụng ASP.NET ERP -->
 <configuration>
   <appSettings>
-    <!-- Cấu hình các Key chung -->
-    <add key="BIDV_ClientCertificate" value="MIIDgjCCAmqg..." />
-    <add key="BIDV_PrivateKey" value="-----BEGIN PRIVATE KEY-----..." />
-    
-    <!-- Cấu hình Chatbot RAG Enterprise -->
-    <add key="Chatbot_ApiUrl" value="${API_URL}" />
     <add key="Chatbot_ApiKey" value="${PLACEHOLDER_KEY}" />
   </appSettings>
 </configuration>`;
@@ -1110,14 +1104,14 @@ export default function IntegrationGuidePage() {
                 <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-3">
                   <h4 className="font-bold text-xs text-foreground flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">A</span>
-                    Copy 2 file tĩnh vào thư mục dự án ERP
+                    Tải và dán 2 file tĩnh vào thư mục dự án ERP
                   </h4>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Copy 2 file từ thư mục <code>congty/</code> trong bộ cài đặt vào dự án Web ERP của bạn:
+                    Tải 2 file tĩnh <code>Chatbot.css</code> và <code>Chatbot.js</code> xuống và dán vào thư mục tương ứng trong dự án Web ERP của bạn:
                   </p>
                   <ul className="list-disc pl-5 text-xs text-muted-foreground space-y-1 font-mono">
-                    <li>Copy <code className="text-primary font-semibold">congty/Chatbot.css</code> ➔ Dán vào thư mục <code className="text-foreground">/Css/Chatbot.css</code></li>
-                    <li>Copy <code className="text-primary font-semibold">congty/Chatbot.js</code> ➔ Dán vào thư mục <code className="text-foreground">/Js/Chatbot.js</code></li>
+                    <li>Dán file <code className="text-primary font-semibold">Chatbot.css</code> vào thư mục <code className="text-foreground">/Css/Chatbot.css</code></li>
+                    <li>Dán file <code className="text-primary font-semibold">Chatbot.js</code> vào thư mục <code className="text-foreground">/Js/Chatbot.js</code></li>
                   </ul>
                 </div>
 
