@@ -1,0 +1,502 @@
+/* ==========================================================================
+   CHATBOT STYLES - ADAPTED FOR SSE ERP MAIN.CSS
+   Theme: SSE ERP Corporate Blue (#326DC7 / #254173)
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. ISOLATION RESET - Protect chatbot from Main.css global inheritance
+   -------------------------------------------------------------------------- */
+#chatbot-icon, #chatbot-icon *,
+#chatbot-box, #chatbot-box * {
+    box-sizing: border-box !important;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+    vertical-align: baseline;
+    line-height: 1.4;
+    letter-spacing: normal;
+    text-transform: none;
+    text-indent: 0;
+    text-shadow: none;
+    float: none;
+    clear: none;
+}
+
+/* --------------------------------------------------------------------------
+   2. FLOATING ACTION BUTTON (#chatbot-icon)
+   -------------------------------------------------------------------------- */
+#chatbot-icon {
+    position: fixed !important;
+    bottom: 24px !important;
+    right: 24px !important;
+    z-index: 999999 !important;
+    width: 56px !important;
+    height: 56px !important;
+    background: linear-gradient(135deg, #326DC7 0%, #254173 100%) !important;
+    border-radius: 50% !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: 0 6px 20px rgba(50, 109, 199, 0.4) !important;
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease !important;
+}
+
+#chatbot-icon:hover {
+    transform: scale(1.08) translateY(-2px) !important;
+    box-shadow: 0 10px 28px rgba(50, 109, 199, 0.55) !important;
+}
+
+#chatbot-icon:active {
+    transform: scale(0.95) !important;
+}
+
+#chatbot-icon img {
+    width: 28px !important;
+    height: 28px !important;
+    filter: brightness(0) invert(1) !important;
+    display: block !important;
+    pointer-events: none !important;
+}
+
+/* Online indicator dot */
+#chatbot-icon::after {
+    content: '' !important;
+    position: absolute !important;
+    top: 2px !important;
+    right: 2px !important;
+    width: 12px !important;
+    height: 12px !important;
+    background: #22c55e !important;
+    border-radius: 50% !important;
+    border: 2px solid #ffffff !important;
+    animation: chatbot-pulse 2s infinite !important;
+}
+
+@keyframes chatbot-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.25); opacity: 0.75; }
+}
+
+/* --------------------------------------------------------------------------
+   3. CHAT WINDOW BOX (#chatbot-box)
+   -------------------------------------------------------------------------- */
+#chatbot-box {
+    position: fixed !important;
+    bottom: 90px !important;
+    right: 24px !important;
+    z-index: 999998 !important;
+    width: 380px !important;
+    height: 530px !important;
+    max-width: calc(100vw - 32px) !important;
+    max-height: calc(100vh - 110px) !important;
+    background: #ffffff !important;
+    border-radius: 12px !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(50, 109, 199, 0.15) !important;
+    overflow: hidden !important;
+    border: 1px solid #95B8E7 !important;
+    display: none !important;
+    flex-direction: column !important;
+    transform-origin: bottom right !important;
+}
+
+#chatbot-box.is-open {
+    display: flex !important;
+    animation: chatbot-pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
+}
+
+#chatbot-box.is-closing {
+    display: flex !important;
+    animation: chatbot-pop-out 0.2s ease-in forwards !important;
+}
+
+@keyframes chatbot-pop-in {
+    from { opacity: 0; transform: scale(0.88) translateY(16px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes chatbot-pop-out {
+    from { opacity: 1; transform: scale(1) translateY(0); }
+    to   { opacity: 0; transform: scale(0.88) translateY(16px); }
+}
+
+/* --------------------------------------------------------------------------
+   4. CHAT HEADER - Gradient Navy/Blue SSE ERP
+   -------------------------------------------------------------------------- */
+#chatbot-header {
+    background: linear-gradient(135deg, #254173 0%, #326DC7 100%) !important;
+    color: #ffffff !important;
+    padding: 14px 48px !important;
+    text-align: center !important;
+    position: relative !important;
+    flex-shrink: 0 !important;
+    min-height: 60px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
+#chatbot-header h3 {
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1.2 !important;
+}
+
+#chatbot-header p {
+    font-size: 11.5px !important;
+    color: rgba(255, 255, 255, 0.85) !important;
+    margin: 3px 0 0 0 !important;
+    padding: 0 !important;
+    line-height: 1.2 !important;
+}
+
+/* Header Action Buttons */
+#chatbot-reset, #chatbot-close {
+    position: absolute !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    background: rgba(255, 255, 255, 0.18) !important;
+    border: none !important;
+    color: #ffffff !important;
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50% !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+    transition: background 0.2s ease, transform 0.2s ease !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    outline: none !important;
+}
+
+#chatbot-reset {
+    left: 12px !important;
+}
+
+#chatbot-close {
+    right: 12px !important;
+}
+
+#chatbot-reset:hover, #chatbot-close:hover {
+    background: rgba(255, 255, 255, 0.35) !important;
+}
+
+#chatbot-reset:hover {
+    transform: translateY(-50%) rotate(-180deg) !important;
+}
+
+#chatbot-reset svg {
+    width: 15px !important;
+    height: 15px !important;
+    stroke: #ffffff !important;
+}
+
+#chatbot-close *, #chatbot-reset * {
+    pointer-events: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   5. CHAT MESSAGES BODY & SCROLLBAR
+   -------------------------------------------------------------------------- */
+#chatbot-messages {
+    flex: 1 1 auto !important;
+    overflow-y: auto !important;
+    padding: 16px 12px 16px 14px !important;
+    background: #dfe8f6 !important; /* Matches body background in Main.css */
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    scrollbar-width: thin !important;
+    scrollbar-color: #99bbe8 transparent !important;
+}
+
+#chatbot-messages::-webkit-scrollbar {
+    width: 5px !important;
+}
+#chatbot-messages::-webkit-scrollbar-track {
+    background: transparent !important;
+}
+#chatbot-messages::-webkit-scrollbar-thumb {
+    background: #99bbe8 !important;
+    border-radius: 3px !important;
+}
+#chatbot-messages::-webkit-scrollbar-thumb:hover {
+    background: #326DC7 !important;
+}
+
+/* Generic Message Bubble */
+#chatbot-messages .message {
+    max-width: 84% !important;
+    word-break: break-word !important;
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+    animation: chatbot-msg-slide 0.25s ease-out !important;
+    display: block !important;
+}
+
+@keyframes chatbot-msg-slide {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Bot Message - Clean White Card with SSE Blue Border */
+#chatbot-messages .message.bot {
+    background: #ffffff !important;
+    color: #1d2129 !important;
+    align-self: flex-start !important;
+    margin-right: auto !important;
+    margin-left: 0 !important;
+    padding: 10px 14px !important;
+    border-radius: 12px 12px 12px 3px !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08) !important;
+    border: 1px solid #95B8E7 !important;
+    border-left: 3.5px solid #326DC7 !important;
+}
+
+/* User Message - SSE ERP Corporate Blue */
+#chatbot-messages .message.user {
+    background: linear-gradient(135deg, #326DC7 0%, #254173 100%) !important;
+    color: #ffffff !important;
+    align-self: flex-end !important;
+    margin-left: auto !important;
+    margin-right: 0 !important;
+    text-align: left !important;
+    padding: 9px 13px !important;
+    border-radius: 12px 12px 3px 12px !important;
+    box-shadow: 0 2px 6px rgba(50, 109, 199, 0.3) !important;
+}
+
+/* Timestamp */
+#chatbot-messages .timestamp {
+    font-size: 10px !important;
+    opacity: 0.75 !important;
+    margin-top: 4px !important;
+    display: block !important;
+}
+
+#chatbot-messages .message.user .timestamp {
+    color: rgba(255, 255, 255, 0.85) !important;
+    text-align: right !important;
+}
+
+#chatbot-messages .message.bot .timestamp {
+    color: #696969 !important;
+}
+
+/* Typing Indicator */
+#chatbot-messages .typing-indicator {
+    align-self: flex-start !important;
+    background: #ffffff !important;
+    padding: 10px 14px !important;
+    border-radius: 12px 12px 12px 3px !important;
+    border: 1px solid #95B8E7 !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06) !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+#chatbot-messages .typing-dots {
+    display: flex !important;
+    gap: 4px !important;
+}
+
+#chatbot-messages .typing-dots span {
+    width: 6px !important;
+    height: 6px !important;
+    background: #326DC7 !important;
+    border-radius: 50% !important;
+    display: inline-block !important;
+    animation: chatbot-bounce 1.4s infinite ease-in-out !important;
+}
+
+#chatbot-messages .typing-dots span:nth-child(1) { animation-delay: -0.32s !important; }
+#chatbot-messages .typing-dots span:nth-child(2) { animation-delay: -0.16s !important; }
+
+@keyframes chatbot-bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+/* --------------------------------------------------------------------------
+   6. MARKDOWN FORMATTING INSIDE BOT MESSAGES
+   -------------------------------------------------------------------------- */
+#chatbot-messages .message.bot p {
+    margin-bottom: 6px !important;
+    line-height: 1.5 !important;
+}
+#chatbot-messages .message.bot p:last-child {
+    margin-bottom: 0 !important;
+}
+
+#chatbot-messages .message.bot ul,
+#chatbot-messages .message.bot ol {
+    margin: 6px 0 6px 16px !important;
+}
+#chatbot-messages .message.bot li {
+    margin-bottom: 3px !important;
+    display: list-item !important;
+}
+
+#chatbot-messages .message.bot strong,
+#chatbot-messages .message.bot b {
+    font-weight: 700 !important;
+    color: #1d2129 !important;
+}
+
+#chatbot-messages .message.bot code {
+    background: #f1f5f9 !important;
+    color: #c53030 !important;
+    padding: 2px 5px !important;
+    border-radius: 4px !important;
+    font-family: Consolas, Monaco, monospace !important;
+    font-size: 11.5px !important;
+}
+
+#chatbot-messages .message.bot pre {
+    background: #1d2129 !important;
+    color: #ffffff !important;
+    padding: 8px 10px !important;
+    border-radius: 6px !important;
+    overflow-x: auto !important;
+    margin: 6px 0 !important;
+}
+
+#chatbot-messages .message.bot pre code {
+    background: transparent !important;
+    color: inherit !important;
+    padding: 0 !important;
+}
+
+/* Feedback Buttons */
+#chatbot-messages .feedback-actions {
+    display: flex !important;
+    gap: 6px !important;
+    margin-top: 6px !important;
+    justify-content: flex-end !important;
+}
+
+#chatbot-messages .feedback-btn {
+    background: #ffffff !important;
+    border: 1px solid #95B8E7 !important;
+    color: #254173 !important;
+    border-radius: 4px !important;
+    padding: 2px 7px !important;
+    font-size: 11px !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+}
+
+#chatbot-messages .feedback-btn:hover {
+    background: #ebf1fa !important;
+    border-color: #326DC7 !important;
+}
+
+/* --------------------------------------------------------------------------
+   7. INPUT AREA (Fixed Horizontal Flex Layout)
+   -------------------------------------------------------------------------- */
+#chatbot-input {
+    padding: 10px 12px !important;
+    background: #ffffff !important;
+    border-top: 1px solid #95B8E7 !important;
+    flex-shrink: 0 !important;
+}
+
+#chatbot-input .input-group,
+#chatbot-input .chatbot-input-group {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+#chatbot-input #user-input {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    height: 38px !important;
+    padding: 0 14px !important;
+    border: 1px solid #95B8E7 !important;
+    border-radius: 19px !important;
+    font-size: 12.5px !important;
+    color: #1d2129 !important;
+    background: #ffffff !important;
+    outline: none !important;
+    box-shadow: none !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+    margin: 0 !important;
+}
+
+#chatbot-input #user-input:focus {
+    border-color: #326DC7 !important;
+    box-shadow: 0 0 0 3px rgba(50, 109, 199, 0.2) !important;
+}
+
+#chatbot-input .send-btn {
+    flex: 0 0 38px !important;
+    width: 38px !important;
+    height: 38px !important;
+    background: linear-gradient(135deg, #326DC7 0%, #254173 100%) !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 50% !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: 0 3px 8px rgba(50, 109, 199, 0.35) !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    outline: none !important;
+}
+
+#chatbot-input .send-btn:hover {
+    transform: scale(1.05) !important;
+    box-shadow: 0 4px 12px rgba(50, 109, 199, 0.45) !important;
+}
+
+#chatbot-input .send-btn:active {
+    transform: scale(0.95) !important;
+}
+
+#chatbot-input .send-btn:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+}
+
+#chatbot-input .send-btn svg {
+    width: 16px !important;
+    height: 16px !important;
+    stroke: #ffffff !important;
+    fill: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   8. RESPONSIVE BREAKPOINTS
+   -------------------------------------------------------------------------- */
+@media (max-width: 480px) {
+    #chatbot-box {
+        width: calc(100vw - 24px) !important;
+        right: 12px !important;
+        bottom: 84px !important;
+        height: 75vh !important;
+    }
+    #chatbot-icon {
+        right: 16px !important;
+        bottom: 16px !important;
+    }
+}
