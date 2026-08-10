@@ -65,7 +65,7 @@ function CodeBlock({ code, lang = "" }: { code: string; lang?: string }) {
 /* ═══════════════════════════════════════════════════════════════ */
 const API_BASE = "https://chatbot-api.sse.net.vn/v1";
 const API_URL = `${API_BASE}/chat/completions`;
-const PLACEHOLDER_KEY = "trg_3210J-qApeNar4P5GwAxBMFNrF8XVyDjkVBSLlj8jLg";
+const PLACEHOLDER_KEY = "trg_YOUR_TENANT_API_KEY";
 
 
 function getStreamContentChunk(dataPayload: string): string {
@@ -1067,34 +1067,6 @@ export default function IntegrationGuidePage() {
             <AccordionTrigger className="px-5 hover:no-underline font-semibold text-foreground text-sm">
               <div className="flex items-center gap-3">
                 <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0">3</span>
-                <CodeIcon className="w-4 h-4 text-primary shrink-0" />
-                Demo gọi API phía Backend (Python/Node.js/cURL)
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="px-5 pb-5 space-y-4 text-muted-foreground text-xs">
-              <p>
-                Để test nhanh kết nối từ các tool backend hoặc terminal:
-              </p>
-              <Tabs defaultValue="python">
-                <TabsList>
-                  <TabsTrigger value="python">Python</TabsTrigger>
-                  <TabsTrigger value="nodejs">Node.js</TabsTrigger>
-                  <TabsTrigger value="curl">cURL</TabsTrigger>
-                </TabsList>
-                <TabsContent value="python" className="mt-2"><CodeBlock code={pythonCode} lang="python" /></TabsContent>
-                <TabsContent value="nodejs" className="mt-2"><CodeBlock code={nodejsCode} lang="js" /></TabsContent>
-                <TabsContent value="curl" className="mt-2"><CodeBlock code={curlCode} lang="shell" /></TabsContent>
-              </Tabs>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-
-        {/* ── BƯỚC 4 ── */}
-        <Accordion multiple className="border border-border rounded-xl shadow-sm bg-card">
-          <AccordionItem value="step-4">
-            <AccordionTrigger className="px-5 hover:no-underline font-semibold text-foreground text-sm">
-              <div className="flex items-center gap-3">
-                <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0">4</span>
                 <ZapIcon className="w-4 h-4 text-primary shrink-0" />
                 Nhúng Chatbot Widget vào file giao diện (Main.master)
               </div>
@@ -1180,12 +1152,12 @@ export default function IntegrationGuidePage() {
           </AccordionItem>
         </Accordion>
 
-        {/* ── BƯỚC 5: HỘP THỬ NGHIỆM TRỰC TIẾP (API PLAYGROUND) ── */}
+        {/* ── BƯỚC 4: HỘP THỬ NGHIỆM TRỰC TIẾP (API PLAYGROUND) ── */}
         <Accordion multiple className="border border-border rounded-xl shadow-sm bg-card">
-          <AccordionItem value="step-5">
+          <AccordionItem value="step-4">
             <AccordionTrigger className="px-5 hover:no-underline font-semibold text-foreground text-sm">
               <div className="flex items-center gap-3">
-                <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0">5</span>
+                <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0">4</span>
                 <TerminalIcon className="w-4 h-4 text-primary shrink-0" />
                 Thử nghiệm API trực tuyến (Interactive Playground)
               </div>
