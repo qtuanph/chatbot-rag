@@ -209,7 +209,7 @@ def _seed_platform_settings(db: sqlite3.Connection) -> None:
         ("ai_output_price_vnd_per_1m", "0", "Giá token đầu ra (VND/1M tokens). 0 = chưa cấu hình."),
         ("quota_hard_budget_vnd", "0", "Trần ngân sách API Cloud tháng (VND). 0 = không giới hạn."),
         ("quota_user_rate_per_min", "6", "Số câu hỏi/phút tối đa mỗi API key."),
-        ("quota_user_daily_requests", "100", "Số câu hỏi/ngày tối đa mỗi user."),
+        ("quota_user_daily_requests", "0", "Số câu hỏi/ngày tối đa mỗi user (0 = Không giới hạn)."),
         ("quota_cost_alert_pct_warn", "70", "Ngưỡng cảnh báo ngân sách (%)"),
         ("quota_cost_alert_pct_alert", "85", "Ngưỡng cảnh báo ngân sách cao (%)"),
         ("quota_cost_alert_pct_cutoff", "100", "Ngưỡng hard stop ngân sách (%)"),

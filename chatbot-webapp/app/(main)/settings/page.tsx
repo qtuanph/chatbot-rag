@@ -155,7 +155,7 @@ export default function SettingsPage() {
                           value={billingData.quota_user_daily_requests}
                           onChange={(e) => handleBillingChange("quota_user_daily_requests", e.target.value)}
                         />
-                        <FieldDescription>Giới hạn số câu hỏi RAG tối đa mỗi ngày của từng người dùng.</FieldDescription>
+                        <FieldDescription>Giới hạn số câu hỏi RAG tối đa mỗi ngày của từng người dùng (Đặt 0 để KHÔNG GIỚI HẠN / Unlimited).</FieldDescription>
                       </div>
                     </div>
                     

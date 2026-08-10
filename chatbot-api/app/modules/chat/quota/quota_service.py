@@ -141,7 +141,7 @@ class QuotaService:
             count = int(results[0])
 
             limit = _get_rtm_billing("quota_user_daily_requests", str(settings.quota_user_daily_requests))
-            if count > limit:
+            if limit > 0 and count > limit:
                 return False, f"daily_request_quota_exceeded:{count}/{limit}"
             return True, "ok"
         except Exception as exc:

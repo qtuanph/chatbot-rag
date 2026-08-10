@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     retrieval_semantic_cache_threshold: float = 0.95
 
     quota_user_rate_per_min: int = 6
-    quota_user_daily_requests: int = 100
+    quota_user_daily_requests: int = 0
     quota_tenant_rate_per_min: int = 30
     quota_tenant_monthly_llm_calls: int = 1000
     quota_cost_alert_pct_warn: int = 70
