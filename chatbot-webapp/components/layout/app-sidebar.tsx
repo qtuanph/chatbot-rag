@@ -17,6 +17,7 @@ import {
   MessageSquareIcon,
   HelpCircle,
   CheckIcon,
+  CodeIcon,
 } from "lucide-react";
 
 import { NavMain } from "@/components/layout/nav-main";
@@ -93,6 +94,7 @@ const guidesNavGroups: NavGroup[] = [
     items: [
       { title: "Giới thiệu Hướng dẫn", href: "/guides/introduction", icon: <BookOpenIcon /> },
       { title: "Tích hợp phần mềm", href: "/guides/integration", icon: <CpuIcon /> },
+      { title: "Đặc tả API Enterprise", href: "/guides/api-reference", icon: <CodeIcon /> },
     ],
   },
   {
