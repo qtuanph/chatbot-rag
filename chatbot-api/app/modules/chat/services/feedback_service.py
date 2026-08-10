@@ -58,10 +58,10 @@ class FeedbackService:
                 await self.semantic_cache.delete(tenant_id, normalized_query)
             if self.redis_client:
                 from app.modules.chat.cache.exact_cache import exact_cache_delete
+
                 await exact_cache_delete(self.redis_client, tenant_id, query_text)
         elif feedback_type == "like" and self.semantic_cache:
             normalized_query = normalize_query(query_text, stopwords=ALL_DEFAULT_STOPWORDS)
             await self.semantic_cache.extend_ttl(tenant_id, normalized_query, 86400 * 7)
 
         return await self.repo.create_feedback(payload)
-

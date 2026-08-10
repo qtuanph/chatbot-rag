@@ -22,4 +22,3 @@ async def get_feedback_service(
     from app.modules.chat.services import FeedbackService
 
     return FeedbackService(repo=repo, semantic_cache=semantic_cache, redis_client=redis_client)
-

@@ -743,7 +743,6 @@ class PublicInferenceService:
                 "\n- TUYỆT ĐỐI KHÔNG DÙNG kiến thức chung bên ngoài hay tự đoán định nghĩa (ví dụ: không được tự ý giải thích các thuật ngữ công nghệ bên ngoài tài liệu)."
             )
 
-
         llm_messages = [ChatMessage(role=MessageRole.SYSTEM, content=system_prompt)]
         recent_messages = messages[-settings.ai_max_history_messages :]
         for message in recent_messages:
@@ -816,7 +815,6 @@ class PublicInferenceService:
         # return the LLM's synthesized response directly.
         self._emit_debug("RAG_GROUNDING", query=user_query, decision="pass-with-context")
         return answer.strip()
-
 
     @staticmethod
     def _should_run_grounding_verification(context: RagContext) -> bool:

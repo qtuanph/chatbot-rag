@@ -203,7 +203,6 @@ class SectionRepository(BaseRepository[DocumentSection]):
         rows = result.scalars().all()
         return [self._to_dict(s) for s in rows]
 
-
     def _to_dict(self, section: DocumentSection) -> dict[str, Any]:
         """Custom override for DocumentSection conversion."""
         if section is None:

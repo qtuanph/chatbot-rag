@@ -14,6 +14,7 @@ from llama_index.core import StorageContext
 from llama_index.core.postprocessor import LongContextReorder
 from llama_index.core.retrievers import AutoMergingRetriever, RecursiveRetriever
 from llama_index.core.schema import NodeRelationship, NodeWithScore, RelatedNodeInfo, TextNode
+from llama_index.core.storage.docstore import SimpleDocumentStore
 from llama_index.core.vector_stores.types import FilterCondition, MetadataFilter, MetadataFilters, VectorStoreQueryMode
 
 from app.adapters.reranker import get_reranker
@@ -28,7 +29,6 @@ logger = logging.getLogger("uvicorn.error")
 SECTION_CODE_QUERY_RE = re.compile(r"\b\d+(?:\.\d+)+\b")
 SECTION_ROUTE_ROOT_ID = "sections_root"
 SECTION_ROUTE_PREFIX = "section::"
-
 
 
 def _estimate_tokens_from_chars(text: str) -> int:
@@ -191,10 +191,6 @@ async def _load_tenant_sections_and_doc_ids(
         return doc_ids, sections
 
 
-
-from llama_index.core.storage.docstore import SimpleDocumentStore
-
-
 class SafeKVDocumentStore(SimpleDocumentStore):
     def get_document(self, doc_id: str, raise_error: bool = True) -> Any:
         return super().get_document(doc_id, raise_error=False)
@@ -320,7 +316,6 @@ def _build_section_recursive_retriever(
     )
 
 
-
 class SafeAutoMergingRetriever(AutoMergingRetriever):
     """AutoMergingRetriever that safely strips un-stored sibling node relationships before merging."""
 
@@ -328,13 +323,20 @@ class SafeAutoMergingRetriever(AutoMergingRetriever):
         cleaned_nodes: list[NodeWithScore] = []
         for n in nodes:
             node = n.node
-            if hasattr(node, "next_node") and node.next_node and not self._storage_context.docstore.document_exists(node.next_node.node_id):
+            if (
+                hasattr(node, "next_node")
+                and node.next_node
+                and not self._storage_context.docstore.document_exists(node.next_node.node_id)
+            ):
                 node.relationships.pop(NodeRelationship.NEXT, None)
-            if hasattr(node, "prev_node") and node.prev_node and not self._storage_context.docstore.document_exists(node.prev_node.node_id):
+            if (
+                hasattr(node, "prev_node")
+                and node.prev_node
+                and not self._storage_context.docstore.document_exists(node.prev_node.node_id)
+            ):
                 node.relationships.pop(NodeRelationship.PREVIOUS, None)
             cleaned_nodes.append(n)
         return super()._fill_in_nodes(cleaned_nodes)
-
 
 
 def _build_auto_merging_retriever(
@@ -357,7 +359,6 @@ def _build_auto_merging_retriever(
         simple_ratio_thresh=settings.retrieval_auto_merge_ratio_threshold,
         verbose=False,
     )
-
 
 
 def _dedupe_nodes(nodes: list[NodeWithScore]) -> list[NodeWithScore]:
@@ -505,7 +506,6 @@ async def retrieve_context(
                 _emit_debug("RAG_RERANK_SKIPPED", query=query, reason="disabled_in_settings")
         else:
             logger.info("Skip reranker for query='%s' (%s).", query, skip_reason)
-
 
         if reorder is not None:
             query_nodes = reorder.postprocess_nodes(query_nodes, qb)

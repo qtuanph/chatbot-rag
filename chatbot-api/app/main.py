@@ -111,7 +111,6 @@ app.add_middleware(
 )
 
 
-
 cors_origins_list = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
 is_wildcard_cors = "*" in cors_origins_list or not cors_origins_list
 

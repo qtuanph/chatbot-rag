@@ -56,7 +56,6 @@ class UsageRepository:
                 except (ValueError, AttributeError):
                     uid = None
 
-
         total = prompt_tokens + completion_tokens
         entry = AiModelUsage(
             model_name=model_name,

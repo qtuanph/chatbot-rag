@@ -87,4 +87,3 @@ async def exact_cache_delete(redis: aioredis.Redis, tenant_id: str, question: st
             await redis.delete(*keys)
     except Exception as exc:
         logger.warning("exact_cache_delete error: %s", exc)
-

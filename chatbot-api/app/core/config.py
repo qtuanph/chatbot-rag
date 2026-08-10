@@ -137,18 +137,21 @@ class Settings(BaseSettings):
     @property
     def redis_url_auth(self) -> str:
         from urllib.parse import quote
+
         pwd = f":{quote(self.redis_password, safe='')}@" if self.redis_password else ""
         return f"redis://{pwd}redis:6379/0"
 
     @property
     def celery_broker_url_auth(self) -> str:
         from urllib.parse import quote
+
         pwd = f":{quote(self.redis_password, safe='')}@" if self.redis_password else ""
         return f"redis://{pwd}redis:6379/{self.redis_broker_db}"
 
     @property
     def celery_result_backend_auth(self) -> str:
         from urllib.parse import quote
+
         pwd = f":{quote(self.redis_password, safe='')}@" if self.redis_password else ""
         return f"redis://{pwd}redis:6379/{self.redis_result_db}"
 
@@ -177,14 +180,9 @@ class Settings(BaseSettings):
     s3_secret_key: str = "replace-me"
     s3_bucket: str = "rag-documents"
     s3_secure: bool = False
-    allowed_hosts: str = "chatbot.sse.net.vn,chatbot-api.sse.net.vn,chatbot-9router.sse.net.vn,chatbot-media.sse.net.vn,chatbot-console.sse.net.vn,api,localhost,127.0.0.1"
-
-
-
-
-
-
-
+    allowed_hosts: str = (
+        "chatbot.sse.net.vn,chatbot-api.sse.net.vn,chatbot-9router.sse.net.vn,chatbot-media.sse.net.vn,chatbot-console.sse.net.vn,api,localhost,127.0.0.1"
+    )
 
     cors_origins: str = "http://localhost"
 

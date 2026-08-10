@@ -10,7 +10,6 @@ from typing import Any, Awaitable, Callable
 from llama_index.core import Document as LlamaDocument
 from llama_index.core import Settings as LlamaSettings
 from llama_index.core import StorageContext, VectorStoreIndex
-from llama_index.core.node_parser import SentenceWindowNodeParser
 from llama_index.core.postprocessor import MetadataReplacementPostProcessor
 from llama_index.core.schema import IndexNode, NodeRelationship, TextNode
 from llama_index.vector_stores.qdrant import QdrantVectorStore
@@ -162,6 +161,7 @@ def _build_chunk_nodes(
         else:
             # For longer sections, split with larger chunk size (1024) to preserve lists
             from llama_index.core.node_parser import SentenceSplitter
+
             splitter = SentenceSplitter(chunk_size=1024, chunk_overlap=100)
             doc_obj = LlamaDocument(id_=document_id, text=content)
             sub_nodes = splitter.get_nodes_from_documents([doc_obj])
@@ -283,7 +283,6 @@ async def _ensure_collection(vector_store: QdrantVectorStore) -> None:
             if "already exists" in message or "duplicate" in message:
                 continue
             raise
-
 
 
 def _index_nodes_sync(
