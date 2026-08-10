@@ -393,6 +393,8 @@ export default function AdminConversationsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
   );
 }
+
 
