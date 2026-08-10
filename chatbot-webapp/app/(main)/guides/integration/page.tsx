@@ -83,11 +83,16 @@ function getStreamContentChunk(dataPayload: string): string {
 
 /* ─── Code strings ────────────────────────────────────────────── */
 
-const webConfigCode = `<!-- Web.config -->
+const webConfigCode = `<!-- Web.config trong ứng dụng ASP.NET ERP -->
 <configuration>
   <appSettings>
-    <add key="Chatbot_ApiUrl"  value="${API_URL}" />
-    <add key="Chatbot_ApiKey"  value="${PLACEHOLDER_KEY}" />
+    <!-- Cấu hình các Key chung -->
+    <add key="BIDV_ClientCertificate" value="MIIDgjCCAmqg..." />
+    <add key="BIDV_PrivateKey" value="-----BEGIN PRIVATE KEY-----..." />
+    
+    <!-- Cấu hình Chatbot RAG Enterprise -->
+    <add key="Chatbot_ApiUrl" value="${API_URL}" />
+    <add key="Chatbot_ApiKey" value="${PLACEHOLDER_KEY}" />
   </appSettings>
 </configuration>`;
 
@@ -1101,43 +1106,72 @@ export default function IntegrationGuidePage() {
               </div>
             </AccordionTrigger>
             <AccordionContent className="px-5 pb-5 space-y-4 text-muted-foreground text-xs">
-              <Alert className="bg-primary/5 border-primary/20 text-foreground">
-                <InfoIcon className="h-4 w-4 text-primary" />
-                <AlertTitle className="text-sm font-semibold">Cơ chế inject API Key trực tiếp từ Server</AlertTitle>
-                <AlertDescription className="text-xs mt-1 text-muted-foreground">
-                  Vì file <code>Main.master</code> chạy trên server ASP.NET, bạn có thể gọi mã biểu thức 
-                  <code>{"<%= ConfigurationManager.AppSettings(\"Chatbot_ApiKey\") %>"}</code> để render động key vào trong script trước khi trả về browser.
-                  Điều này giúp client kết nối trực tiếp đến API Server của RAG, đồng thời không bao giờ lộ API Key tĩnh trong source code git.
-                </AlertDescription>
-              </Alert>
-
-              <div className="flex items-center gap-3 p-4 bg-muted/30 border border-border rounded-lg">
-                <div className="flex-1">
-                  <h4 className="text-sm font-semibold text-foreground">File Mẫu Tích Hợp (Main.master)</h4>
-                  <p className="text-xs text-muted-foreground mt-1">Tải xuống file Main.master đã được nhúng sẵn Chatbot UI và logic gọi API. Lập trình viên có thể dùng file này để đối chiếu hoặc thay thế trực tiếp vào dự án ERP cũ.</p>
+              <div className="space-y-4">
+                <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-3">
+                  <h4 className="font-bold text-xs text-foreground flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">A</span>
+                    Copy 2 file tĩnh vào thư mục dự án ERP
+                  </h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Copy 2 file từ thư mục <code>congty/</code> trong bộ cài đặt vào dự án Web ERP của bạn:
+                  </p>
+                  <ul className="list-disc pl-5 text-xs text-muted-foreground space-y-1 font-mono">
+                    <li>Copy <code className="text-primary font-semibold">congty/Chatbot.css</code> ➔ Dán vào thư mục <code className="text-foreground">/Css/Chatbot.css</code></li>
+                    <li>Copy <code className="text-primary font-semibold">congty/Chatbot.js</code> ➔ Dán vào thư mục <code className="text-foreground">/Js/Chatbot.js</code></li>
+                  </ul>
                 </div>
-                <Button size="sm" className="shrink-0 gap-2" onClick={() => window.open("/downloads/Main.master", "_blank")}>
-                  <DownloadIcon className="w-4 h-4" />
-                  Tải xuống file mẫu
-                </Button>
-              </div>
 
-              <Tabs defaultValue="css">
-                <TabsList>
-                  <TabsTrigger value="css">CSS Giao diện</TabsTrigger>
-                  <TabsTrigger value="html">HTML Khung</TabsTrigger>
-                  <TabsTrigger value="js">JavaScript Logic (Direct Call)</TabsTrigger>
-                </TabsList>
-                <TabsContent value="css" className="mt-2">
-                  <CodeBlock code={cssCode} lang="css" />
-                </TabsContent>
-                <TabsContent value="html" className="mt-2">
-                  <CodeBlock code={htmlCode} lang="xml" />
-                </TabsContent>
-                <TabsContent value="js" className="mt-2">
-                  <CodeBlock code={jsVbnet} lang="js" />
-                </TabsContent>
-              </Tabs>
+                <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-3">
+                  <h4 className="font-bold text-xs text-foreground flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">B</span>
+                    Khai báo thẻ &lt;head&gt; trong file Main.master
+                  </h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Ở đầu file <code>Main.master</code>, thêm đường dẫn CSS vào thẻ <code>&lt;head&gt;</code>:
+                  </p>
+                  <CodeBlock
+                    code={`<!-- ================= CHATBOT CSS ================= -->
+<link href="~/Css/Chatbot.css" rel="stylesheet" type="text/css" />
+<!-- =============================================== -->`}
+                    lang="xml"
+                  />
+                </div>
+
+                <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-3">
+                  <h4 className="font-bold text-xs text-foreground flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">C</span>
+                    Khai báo Script trong thẻ &lt;form&gt; ở cuối file Main.master
+                  </h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Ở cuối file <code>Main.master</code>, dán đoạn Script khởi tạo ngay trước thẻ đóng <code>&lt;/form&gt;</code>:
+                  </p>
+                  <CodeBlock
+                    code={`<!-- ================= CHATBOT SCRIPTS ================= -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script type="text/javascript">
+    marked.setOptions({ breaks: true, gfm: true });
+    window.CHATBOT_API_URL = "https://chatbot-api.sse.net.vn/v1/chat/completions";
+    window.CHATBOT_API_KEY = '<%= ConfigurationManager.AppSettings("Chatbot_ApiKey") %>';
+</script>
+<script src="<%= ResolveUrl("~/Js/Chatbot.js") %>" type="text/javascript"></script>
+<!-- =================================================== -->`}
+                    lang="xml"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3 p-4 bg-muted/30 border border-border rounded-lg">
+                  <div className="flex-1">
+                    <h4 className="text-sm font-semibold text-foreground">File Mẫu Tích Hợp Đã Chuẩn Hóa (Main.master)</h4>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Tải xuống file <code>Main.master</code> mẫu đã tích hợp hoàn chỉnh theo đúng quy chuẩn sản xuất trên.
+                    </p>
+                  </div>
+                  <Button size="sm" className="shrink-0 gap-2" onClick={() => window.open("/downloads/Main.master", "_blank")}>
+                    <DownloadIcon className="w-4 h-4" />
+                    Tải xuống Main.master
+                  </Button>
+                </div>
+              </div>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
