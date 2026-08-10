@@ -310,8 +310,6 @@ class Settings(BaseSettings):
             raise ValueError("ALLOWED_FILE_TYPES must not be empty")
 
         if self.app_env == "production":
-            if "*" in self.allowed_hosts:
-                raise ValueError("ALLOWED_HOSTS must not contain wildcard in production")
             if self.rate_limit_relaxed_mode:
                 raise ValueError("RATE_LIMIT_RELAXED_MODE must be false in production")
 

@@ -42,8 +42,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Prevent MIME type sniffing
         response.headers["X-Content-Type-Options"] = "nosniff"
 
-        # Prevent clickjacking
-        response.headers["X-Frame-Options"] = "DENY"
+        # Allow iframe embedding for client widget integrations
+        # response.headers["X-Frame-Options"] = "DENY"
 
         # Enable browser XSS filter
         response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -54,13 +54,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # Content Security Policy
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; "
+            "style-src 'self' 'unsafe-inline' https:; "
             "img-src 'self' data: https:; "
-            "font-src 'self' data:; "
-            "connect-src 'self'; "
-            "frame-ancestors 'none';"
+            "font-src 'self' data: https:; "
+            "connect-src 'self' https: wss:; "
+            "frame-ancestors *;"
         )
 
         # Referrer policy
@@ -166,6 +166,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # No longer instantiate here, as we need a loop-safe client later
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        if self.requests_per_minute <= 0:
+            return await call_next(request)
         # Use X-Real-IP (set by reverse proxy) or X-Forwarded-For to get the real client IP,
         # not the Docker bridge IP from request.client.host
         client_ip = (
