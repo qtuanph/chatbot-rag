@@ -112,12 +112,15 @@ app.add_middleware(
 
 
 
+cors_origins_list = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+is_wildcard_cors = "*" in cors_origins_list or not cors_origins_list
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_origins=["*"] if is_wildcard_cors else cors_origins_list,
+    allow_credentials=not is_wildcard_cors,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.add_middleware(SecurityHeadersMiddleware, enable_hsts=settings.app_env == "production")
