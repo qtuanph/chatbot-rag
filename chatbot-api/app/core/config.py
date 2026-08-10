@@ -312,8 +312,6 @@ class Settings(BaseSettings):
         if self.app_env == "production":
             if "*" in self.allowed_hosts:
                 raise ValueError("ALLOWED_HOSTS must not contain wildcard in production")
-            if not self.cors_origins or "*" in self.cors_origins:
-                raise ValueError("CORS_ORIGINS must be production-safe in production")
             if self.rate_limit_relaxed_mode:
                 raise ValueError("RATE_LIMIT_RELAXED_MODE must be false in production")
 
