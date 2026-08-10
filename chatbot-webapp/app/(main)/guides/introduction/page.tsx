@@ -1,8 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { 
   Building2Icon, 
   DatabaseIcon, 
@@ -24,9 +28,43 @@ import {
   FileTextIcon,
   CheckCircle2Icon,
   BotIcon,
+  PlayIcon,
+  RotateCcwIcon,
+  ChevronRightIcon,
+  ActivityIcon,
 } from "lucide-react";
 
 export default function IntroductionGuidePage() {
+  // Live Simulator step state
+  const [simStep, setSimStep] = useState<number>(0);
+
+  const simStepsData = [
+    {
+      title: "1. Client Gửi Yêu cầu & Xác thực",
+      desc: "Ứng dụng ERP / Widget gửi câu hỏi kèm API Key (Authorization: Bearer trg_...). FastAPI Gateway xác thực Tenant & áp dụng Wildcard CORS.",
+      badge: "FastAPI Gateway",
+      highlight: "gateway",
+    },
+    {
+      title: "2. Kiểm tra Redis Cache O(1)",
+      desc: "Hệ thống chuẩn hóa câu hỏi và tra cứu ngay trong Redis Cache. Nếu khớp Exact Cache hoặc FAQ Cache, kết quả trả về ngay (0ms) mà không tốn Token LLM.",
+      badge: "Redis O(1) Cache",
+      highlight: "cache",
+    },
+    {
+      title: "3. Truy xuất Vector & Reranking & Guardrail",
+      desc: "Số hóa câu hỏi thành Vector ➔ Quét Qdrant theo tenant_id ➔ Chấm điểm bằng NVIDIA NIM Reranker. Nếu rỗng tài liệu, kích hoạt Strict Empty Context Guardrail.",
+      badge: "Qdrant + NVIDIA Reranker",
+      highlight: "rag",
+    },
+    {
+      title: "4. LLM Streaming & Audit Logging",
+      desc: "LLM (9Router) sinh câu trả lời theo luồng Stream (SSE). Kết quả được ghi lại vào Nhật ký Hỏi & Đáp (Admin Audit Dashboard) để Admin theo dõi.",
+      badge: "9Router + Audit Log",
+      highlight: "llm",
+    },
+  ];
+
   return (
     <div className="space-y-8 pb-16 max-w-4xl">
       {/* Title & Overview */}
@@ -52,101 +90,229 @@ export default function IntroductionGuidePage() {
         </AlertDescription>
       </Alert>
 
-      {/* ── BẢN ĐỒ KIẾN TRÚC HỆ THỐNG ── */}
-      <section className="border border-border rounded-xl p-6 bg-card space-y-6">
-        <div className="space-y-1">
-          <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <NetworkIcon className="w-5 h-5 text-primary" />
-            Sơ đồ kiến trúc &amp; Luồng xử lý dữ liệu
-          </h2>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Mô hình tương tác 4 tầng: Client Layer (ERP/Widget) ➔ API Gateway ➔ RAG Core Service ➔ Storage &amp; AI Provider
-          </p>
-        </div>
-
-        {/* CSS Architecture Flow Chart */}
-        <div className="flex flex-col gap-4 pt-2">
-          {/* Top Row: Client layer */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="border border-border rounded-lg p-3 bg-muted/20 flex flex-col items-center justify-center text-center space-y-1">
-              <span className="text-[10px] uppercase font-semibold text-muted-foreground">Client Layer</span>
-              <span className="font-bold text-xs text-foreground">Phần mềm Doanh nghiệp (ERP / CRM / Web)</span>
-              <p className="text-[10px] text-muted-foreground">Nhúng Widget Chatbot hoặc gọi trực tiếp API REST</p>
-            </div>
-            <div className="border border-border rounded-lg p-3 bg-muted/20 flex flex-col items-center justify-center text-center space-y-1">
-              <span className="text-[10px] uppercase font-semibold text-muted-foreground">Control Plane</span>
-              <span className="font-bold text-xs text-foreground">Webapp Dashboard (Next.js)</span>
-              <p className="text-[10px] text-muted-foreground">Admin quản lý Tenants, Kho tài liệu, Audit AI &amp; FAQ</p>
-            </div>
-          </div>
-
-          {/* Vertical Arrow */}
-          <div className="flex justify-center text-muted-foreground my-1">
-            <ArrowRightLeftIcon className="w-4 h-4 rotate-90" />
-          </div>
-
-          {/* Middle Row: Backend Layer */}
-          <div className="border border-border rounded-lg p-4 bg-muted/10 space-y-3">
-            <div className="flex justify-between items-center border-b border-border pb-2">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground">Backend Engine Layer (FastAPI + Redis + Celery)</span>
-              <Badge variant="outline" className="text-[10px]">Docker Microservices</Badge>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
-              <div className="border border-border bg-card rounded p-2.5 text-center">
-                <span className="font-semibold text-xs text-foreground block">FastAPI Gateway</span>
-                <span className="text-[10px] text-muted-foreground">Xác thực Tenant API Key, xử lý Wildcard CORS &amp; Rate Limit</span>
-              </div>
-              <div className="border border-border bg-card rounded p-2.5 text-center">
-                <span className="font-semibold text-xs text-foreground block">Exact &amp; FAQ Cache</span>
-                <span className="text-[10px] text-muted-foreground">Tra cứu O(1) tức thì từ Redis Cache, tiết kiệm Token LLM</span>
-              </div>
-              <div className="border border-border bg-card rounded p-2.5 text-center">
-                <span className="font-semibold text-xs text-foreground block">RAG Engine</span>
-                <span className="text-[10px] text-muted-foreground">Truy xuất Vector Qdrant, Reranker NVIDIA NIM &amp; Prompt Lock</span>
-              </div>
-              <div className="border border-border bg-card rounded p-2.5 text-center">
-                <span className="font-semibold text-xs text-foreground block">Celery Workers</span>
-                <span className="text-[10px] text-muted-foreground">Tiến trình ngầm: Parse tài liệu, băm chunk &amp; số hóa vector</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Vertical Arrow */}
-          <div className="flex justify-center text-muted-foreground my-1">
-            <ArrowRightLeftIcon className="w-4 h-4 rotate-90" />
-          </div>
-
-          {/* Bottom Row: Data & AI Layer */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="border border-border rounded-lg p-3 bg-muted/20 space-y-2">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground block text-center">Data Storage Layer</span>
-              <div className="grid grid-cols-2 gap-2 text-center text-xs">
-                <div className="border border-border bg-card p-2 rounded">
-                  <span className="font-semibold text-foreground block text-[11px]">PostgreSQL</span>
-                  <span className="text-[9px] text-muted-foreground">Tenants, API Keys, Audit Logs, FAQS</span>
-                </div>
-                <div className="border border-border bg-card p-2 rounded">
-                  <span className="font-semibold text-foreground block text-[11px]">Qdrant (Vector DB)</span>
-                  <span className="text-[9px] text-muted-foreground">Chỉ mục Vector tài liệu băm nhỏ</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="border border-border rounded-lg p-3 bg-muted/20 space-y-2">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground block text-center">AI Model Provider Layer</span>
-              <div className="grid grid-cols-2 gap-2 text-center text-xs">
-                <div className="border border-border bg-card p-2 rounded">
-                  <span className="font-semibold text-foreground block text-[11px]">LLM &amp; Reranker</span>
-                  <span className="text-[9px] text-muted-foreground">9Router LLM, NVIDIA NIM Reranker</span>
-                </div>
-                <div className="border border-border bg-card p-2 rounded">
-                  <span className="font-semibold text-foreground block text-[11px]">Docker Model Runner</span>
-                  <span className="text-[9px] text-muted-foreground">Embedding local &amp; Fallback engine</span>
-                </div>
-              </div>
-            </div>
+      {/* ── BẢN ĐỒ KIẾN TRÚC HỆ THỐNG VÀ MÔ PHỎNG TRỰC QUAN (INTERACTIVE TABS) ── */}
+      <section className="border border-border rounded-xl p-6 bg-card space-y-6 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+              <NetworkIcon className="w-5 h-5 text-primary" />
+              Sơ đồ Kiến trúc &amp; Luồng Dữ liệu Trực quan
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Khám phá sơ đồ tổng quan hoặc chạy Mô phỏng luồng RAG tương tác trực tiếp.
+            </p>
           </div>
         </div>
+
+        <Tabs defaultValue="architecture" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 max-w-md">
+            <TabsTrigger value="architecture" className="text-xs font-semibold">
+              <LayersIcon className="w-3.5 h-3.5 mr-1.5" /> Sơ đồ Kiến trúc 4 Tầng
+            </TabsTrigger>
+            <TabsTrigger value="simulator" className="text-xs font-semibold">
+              <ActivityIcon className="w-3.5 h-3.5 mr-1.5" /> Mô phỏng Luồng RAG (Live)
+            </TabsTrigger>
+          </TabsList>
+
+          {/* TAB 1: SƠ ĐỒ KIẾN TRÚC 4 TẦNG TRỰC QUAN */}
+          <TabsContent value="architecture" className="pt-4 space-y-4">
+            <div className="flex flex-col gap-3">
+              {/* Tầng 1: Client & Admin Layer */}
+              <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                    <Building2Icon className="w-3.5 h-3.5" /> Tầng 1: Client &amp; Control Plane
+                  </span>
+                  <Badge variant="outline" className="text-[10px]">Headless Integration</Badge>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="border border-border bg-card p-3 rounded-lg flex items-start gap-3">
+                    <div className="p-2 rounded-md bg-primary/10 text-primary shrink-0">
+                      <MessageSquareTextIcon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-xs text-foreground">Phần mềm Doanh nghiệp (ERP / CRM)</h4>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">Nhúng Chatbot Widget hoặc REST API</p>
+                    </div>
+                  </div>
+
+                  <div className="border border-border bg-card p-3 rounded-lg flex items-start gap-3">
+                    <div className="p-2 rounded-md bg-primary/10 text-primary shrink-0">
+                      <ShieldCheckIcon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-xs text-foreground">Webapp Admin Control Plane</h4>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">Quản lý Tenants, Tài liệu, Audit AI &amp; FAQ</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Arrow Down */}
+              <div className="flex justify-center text-muted-foreground">
+                <ArrowRightLeftIcon className="w-4 h-4 rotate-90" />
+              </div>
+
+              {/* Tầng 2: FastAPI Gateway & Cache */}
+              <div className="border border-border rounded-xl p-4 bg-muted/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                    <ServerIcon className="w-3.5 h-3.5" /> Tầng 2: API Gateway &amp; High-Speed Cache
+                  </span>
+                  <Badge variant="outline" className="text-[10px]">FastAPI + Redis</Badge>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                  <div className="border border-border bg-card p-3 rounded-lg text-center">
+                    <KeyIcon className="w-4 h-4 text-primary mx-auto mb-1" />
+                    <h5 className="font-semibold text-xs text-foreground">Tenant Auth &amp; CORS</h5>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Xác thực Key `trg_...`, Mở Wildcard CORS `*`</p>
+                  </div>
+
+                  <div className="border border-border bg-card p-3 rounded-lg text-center">
+                    <ZapIcon className="w-4 h-4 text-amber-500 mx-auto mb-1" />
+                    <h5 className="font-semibold text-xs text-foreground">Exact &amp; FAQ Cache O(1)</h5>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Tra cứu tức thì Redis 0ms, không tốn Token</p>
+                  </div>
+
+                  <div className="border border-border bg-card p-3 rounded-lg text-center">
+                    <WorkflowIcon className="w-4 h-4 text-primary mx-auto mb-1" />
+                    <h5 className="font-semibold text-xs text-foreground">Celery Worker Pool</h5>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Tiến trình ngầm băm nhỏ &amp; số hóa vector</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Arrow Down */}
+              <div className="flex justify-center text-muted-foreground">
+                <ArrowRightLeftIcon className="w-4 h-4 rotate-90" />
+              </div>
+
+              {/* Tầng 3 & 4: Storage & AI Providers */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="border border-border rounded-xl p-4 bg-card space-y-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                    <DatabaseIcon className="w-3.5 h-3.5" /> Tầng 3: Data Storage
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                    <div className="border border-border bg-muted/20 p-2.5 rounded-lg">
+                      <span className="font-semibold text-foreground block text-[11px]">PostgreSQL</span>
+                      <span className="text-[10px] text-muted-foreground">Tenants, Keys, FAQs, Logs</span>
+                    </div>
+                    <div className="border border-border bg-muted/20 p-2.5 rounded-lg">
+                      <span className="font-semibold text-foreground block text-[11px]">Qdrant Vector DB</span>
+                      <span className="text-[10px] text-muted-foreground">Chỉ mục Vector tài liệu băm</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border border-border rounded-xl p-4 bg-card space-y-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                    <CpuIcon className="w-3.5 h-3.5" /> Tầng 4: AI Model Provider &amp; Fallback
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                    <div className="border border-border bg-muted/20 p-2.5 rounded-lg">
+                      <span className="font-semibold text-foreground block text-[11px]">Cloud AI &amp; NIM</span>
+                      <span className="text-[10px] text-muted-foreground">9Router LLM, NVIDIA NIM Reranker</span>
+                    </div>
+                    <div className="border border-border bg-muted/20 p-2.5 rounded-lg">
+                      <span className="font-semibold text-foreground block text-[11px]">Docker Model Runner</span>
+                      <span className="text-[10px] text-muted-foreground">Embedding local &amp; Fallback engine</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* TAB 2: MÔ PHỎNG LUỒNG DỮ LIỆU TƯƠNG TÁC (LIVE SIMULATOR) */}
+          <TabsContent value="simulator" className="pt-4 space-y-4">
+            <div className="border border-border/80 rounded-xl p-5 bg-muted/10 space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
+                    <ActivityIcon className="w-4 h-4 text-primary animate-pulse" />
+                    Mô phỏng Tiến trình Xử lý Yêu cầu Chat RAG
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Bấm các nút điều khiển bên dưới để quan sát luồng dữ liệu di chuyển thực tế qua từng thành phần hệ thống.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs gap-1"
+                    onClick={() => setSimStep(0)}
+                  >
+                    <RotateCcwIcon className="w-3.5 h-3.5" /> Reset
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs gap-1 bg-primary text-primary-foreground"
+                    onClick={() => setSimStep((prev) => (prev >= 4 ? 1 : prev + 1))}
+                  >
+                    <PlayIcon className="w-3.5 h-3.5" /> {simStep === 0 ? "Bắt đầu mô phỏng" : simStep === 4 ? "Chạy lại từ đầu" : "Bước tiếp theo"}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Timeline Progress */}
+              <div className="grid grid-cols-4 gap-2 pt-2">
+                {[1, 2, 3, 4].map((step) => {
+                  const isActive = simStep === step;
+                  const isDone = simStep > step;
+                  return (
+                    <div
+                      key={step}
+                      onClick={() => setSimStep(step)}
+                      className={`p-2.5 rounded-lg border text-center cursor-pointer transition-all ${
+                        isActive
+                          ? "bg-primary/10 border-primary text-primary font-bold shadow-xs"
+                          : isDone
+                          ? "bg-card border-border/80 text-foreground font-medium"
+                          : "bg-muted/30 border-border/40 text-muted-foreground opacity-60"
+                      }`}
+                    >
+                      <div className="text-[10px] uppercase font-semibold">Bước {step}</div>
+                      <div className="text-xs truncate font-semibold mt-0.5">
+                        {step === 1 && "1. Gateway"}
+                        {step === 2 && "2. Redis Cache"}
+                        {step === 3 && "3. RAG Search"}
+                        {step === 4 && "4. LLM Stream"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Active Step Display Box */}
+              {simStep > 0 ? (
+                <Card className="border-primary/30 bg-card shadow-sm">
+                  <CardHeader className="p-4 pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary">
+                        <CheckCircle2Icon className="w-4 h-4" />
+                        {simStepsData[simStep - 1].title}
+                      </CardTitle>
+                      <Badge variant="secondary" className="text-[10px] font-mono">
+                        {simStepsData[simStep - 1].badge}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-1 text-xs text-muted-foreground leading-relaxed">
+                    {simStepsData[simStep - 1].desc}
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="p-6 text-center border border-dashed border-border rounded-xl text-xs text-muted-foreground">
+                  Nhấn nút <strong>"Bắt đầu mô phỏng"</strong> ở góc phải để kích hoạt mô hình trực quan.
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       </section>
 
       {/* ── CHI TIẾT CÁC QUY TRÌNH HỆ THỐNG ── */}
