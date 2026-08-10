@@ -324,8 +324,8 @@ export default function AdminConversationsPage() {
 
       {/* FAQ Promote Dialog */}
       <Dialog open={faqModalOpen} onOpenChange={setFaqModalOpen}>
-        <DialogContent className="max-w-xl rounded-2xl border border-border/80 shadow-2xl backdrop-blur-xl">
-          <DialogHeader>
+        <DialogContent className="max-w-xl max-h-[85vh] flex flex-col rounded-2xl border border-border/80 shadow-2xl backdrop-blur-xl p-6 overflow-hidden">
+          <DialogHeader className="shrink-0 pb-2">
             <DialogTitle className="flex items-center gap-2 text-base font-semibold text-amber-600 dark:text-amber-400">
               <Sparkles className="h-4 w-4" />
               Tạo FAQ từ Lượt trả lời này
@@ -335,7 +335,7 @@ export default function AdminConversationsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2 text-sm">
+          <div className="space-y-4 py-2 text-sm overflow-y-auto max-h-[55vh] pr-2.5 scrollbar-thin">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Tenant ID</Label>
               <Input
@@ -372,12 +372,12 @@ export default function AdminConversationsPage() {
                 value={faqAnswer}
                 onChange={(e) => setFaqAnswer(e.target.value)}
                 rows={6}
-                className="text-xs font-mono leading-relaxed"
+                className="text-xs font-mono leading-relaxed resize-y max-h-48"
               />
             </div>
           </div>
 
-          <DialogFooter className="gap-2 pt-2">
+          <DialogFooter className="gap-2 pt-3 border-t border-border/50 shrink-0 mt-2">
             <Button variant="ghost" size="sm" onClick={() => setFaqModalOpen(false)}>
               Hủy
             </Button>
@@ -396,5 +396,6 @@ export default function AdminConversationsPage() {
     </div>
   );
 }
+
 
 
