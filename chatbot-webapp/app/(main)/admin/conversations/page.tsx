@@ -11,11 +11,10 @@ import {
   Clock,
   FileText,
   ChevronRight,
-  Sparkles,
-  CheckCircle2,
-  Building2,
+  Plus,
+  Check,
+  Building,
   Filter,
-  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -93,7 +92,7 @@ export default function AdminConversationsPage() {
       const res = await conversationsApi.list(0, 50, tenantParam);
       setConversations(res.items || []);
     } catch (err: any) {
-      toast.error("Không thể tải nhật ký hội thoại: " + (err?.message || "Lỗi server"));
+      toast.error("Không thể tải nhật ký hội thoại: " + (err?.message || "Lỗi kết nối"));
     } finally {
       setLoading(false);
     }
@@ -122,7 +121,7 @@ export default function AdminConversationsPage() {
       const res = await conversationsApi.getMessages(convId);
       setMessages(res.messages || []);
     } catch (err: any) {
-      toast.error("Không thể tải nội dung chi tiết: " + (err?.message || "Lỗi server"));
+      toast.error("Không thể tải nội dung chi tiết: " + (err?.message || "Lỗi kết nối"));
     } finally {
       setLoadingDetail(false);
     }
@@ -141,7 +140,7 @@ export default function AdminConversationsPage() {
   const toggleFaqTenantSelection = (tenantId: string) => {
     setFaqSelectedTenants((prev) => {
       if (prev.includes(tenantId)) {
-        if (prev.length === 1) return prev; // Keep at least one selected
+        if (prev.length === 1) return prev;
         return prev.filter((id) => id !== tenantId);
       } else {
         return [...prev, tenantId];
@@ -151,11 +150,11 @@ export default function AdminConversationsPage() {
 
   const handleCreateFaq = async () => {
     if (!faqQuestion.trim() || !faqAnswer.trim()) {
-      toast.error("Câu hỏi và câu trả lời không được để trống!");
+      toast.error("Câu hỏi và câu trả lời không được để trống.");
       return;
     }
     if (faqSelectedTenants.length === 0) {
-      toast.error("Vui lòng chọn ít nhất 1 Công ty/Tenant!");
+      toast.error("Vui lòng chọn ít nhất 1 công ty/tenant.");
       return;
     }
 
@@ -166,7 +165,6 @@ export default function AdminConversationsPage() {
         .map((s) => s.trim())
         .filter(Boolean);
 
-      // Create FAQ entries for all selected tenants
       let successCount = 0;
       for (const tId of faqSelectedTenants) {
         await faqApi.create(tId, {
@@ -178,9 +176,7 @@ export default function AdminConversationsPage() {
         successCount++;
       }
 
-      toast.success(
-        `🎉 Đã tạo thành công FAQ cho ${successCount} Công ty! Phản hồi sẽ diễn ra O(1) tức thì từ Redis Cache.`
-      );
+      toast.success(`Đã tạo thành công FAQ cho ${successCount} công ty. Phản hồi sẽ được xử lý qua Redis Cache.`);
       setFaqModalOpen(false);
     } catch (err: any) {
       toast.error("Không thể tạo FAQ: " + (err?.message || "Lỗi hệ thống"));
@@ -194,12 +190,9 @@ export default function AdminConversationsPage() {
       {/* Header & Filter Controls */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <MessageSquare className="h-6 w-6 text-primary" />
-            Nhật ký Hỏi & Đáp (Admin Audit Dashboard)
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight">Nhật ký Hội thoại & Kiểm toán</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Quản lý hội thoại thực tế, giám sát chất lượng phản hồi và tạo FAQ trực tiếp cho từng Công ty/Tenant.
+            Quản lý lịch sử tương tác người dùng, giám sát độ trễ và khởi tạo FAQ chuẩn hóa cho hệ thống.
           </p>
         </div>
 
@@ -212,7 +205,7 @@ export default function AdminConversationsPage() {
               onChange={(e) => setFilterTenantId(e.target.value)}
               className="w-56"
             >
-              <NativeSelectOption value="ALL">🏢 Tất cả Công ty (Tenants)</NativeSelectOption>
+              <NativeSelectOption value="ALL">Tất cả công ty (Tenants)</NativeSelectOption>
               {tenants.map((t) => (
                 <NativeSelectOption key={t.id} value={t.id}>
                   {t.name} ({t.slug})
@@ -227,17 +220,16 @@ export default function AdminConversationsPage() {
         </div>
       </div>
 
-      {/* Conversations Table / Card List */}
-      <Card className="p-0 overflow-hidden border border-border/80 shadow-sm">
+      {/* Conversations List Card */}
+      <Card className="p-0 overflow-hidden border border-border shadow-none">
         {loading ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
             <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
-            Đang tải nhật ký hội thoại...
+            Đang tải dữ liệu hội thoại...
           </div>
         ) : conversations.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
-            <MessageSquare className="h-8 w-8 mx-auto mb-3 text-muted-foreground/40" />
-            Không có cuộc hội thoại nào cho bộ lọc này.
+            Không tìm thấy cuộc hội thoại nào cho bộ lọc đã chọn.
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -249,17 +241,16 @@ export default function AdminConversationsPage() {
                 <div
                   key={item.id}
                   onClick={() => openConversationDetail(item.conversation_id, item.tenant_id)}
-                  className="p-4 flex items-center justify-between hover:bg-muted/50 transition-colors cursor-pointer group"
+                  className="p-4 flex items-center justify-between hover:bg-muted/40 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="size-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0 group-hover:scale-105 transition-transform">
-                      <MessageSquare className="h-4.5 w-4.5" />
+                    <div className="size-9 rounded-md bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                      <MessageSquare className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        {/* Tenant Name Badge */}
-                        <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs font-semibold gap-1">
-                          <Building2 className="h-3 w-3" />
+                        <Badge variant="outline" className="text-xs font-semibold gap-1">
+                          <Building className="h-3 w-3" />
                           {tenantDisplayName}
                         </Badge>
 
@@ -273,17 +264,17 @@ export default function AdminConversationsPage() {
                       </div>
 
                       <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1 font-mono">
                           <Clock className="h-3 w-3" />
-                          Lần cuối: {item.last_message_at ? new Date(item.last_message_at).toLocaleString("vi-VN") : "N/A"}
+                          Thời gian: {item.last_message_at ? new Date(item.last_message_at).toLocaleString("vi-VN") : "N/A"}
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0 text-muted-foreground group-hover:text-primary transition-colors">
+                  <div className="flex items-center gap-1 shrink-0 text-muted-foreground group-hover:text-foreground transition-colors">
                     <span className="text-xs font-medium">Chi tiết</span>
-                    <ChevronRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
+                    <ChevronRight className="h-4 w-4" />
                   </div>
                 </div>
               );
@@ -294,32 +285,31 @@ export default function AdminConversationsPage() {
 
       {/* Dialog Detail View */}
       <Dialog open={!!selectedConvId} onOpenChange={() => setSelectedConvId(null)}>
-        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col rounded-2xl border border-border/80 shadow-2xl backdrop-blur-xl p-6 overflow-hidden">
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col rounded-xl border border-border shadow-lg p-6 overflow-hidden">
           <DialogHeader className="shrink-0 pb-2">
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
-              <MessageSquare className="h-4 w-4 text-primary" />
-              Chi tiết Phiên Hỏi & Đáp
+              Chi tiết Phiên Hội thoại
               {selectedTenantId && (
-                <Badge variant="outline" className="ml-2 bg-primary/10 text-primary border-primary/20 text-xs font-semibold gap-1">
-                  <Building2 className="h-3 w-3" />
+                <Badge variant="outline" className="ml-2 text-xs font-semibold gap-1">
+                  <Building className="h-3 w-3" />
                   {tenantMap.get(selectedTenantId)?.name || selectedTenantId}
                 </Badge>
               )}
             </DialogTitle>
             <DialogDescription className="font-mono text-xs">
-              ID Phiên: {selectedConvId}
+              Mã phiên: {selectedConvId}
             </DialogDescription>
           </DialogHeader>
 
           {loadingDetail ? (
             <div className="p-8 text-center text-sm text-muted-foreground">
               <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2 text-primary" />
-              Đang tải tin nhắn...
+              Đang tải danh sách tin nhắn...
             </div>
           ) : messages.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">Không có tin nhắn nào.</div>
+            <div className="p-8 text-center text-sm text-muted-foreground">Không có tin nhắn nào trong phiên này.</div>
           ) : (
-            <div className="space-y-3.5 py-2 overflow-y-auto max-h-[60vh] pr-2.5 scrollbar-thin">
+            <div className="space-y-3.5 py-2 overflow-y-auto max-h-[60vh] pr-2 scrollbar-thin">
               {messages.map((msg, idx) => {
                 const isUser = msg.role === "user";
                 const prevUserMsg = messages
@@ -330,10 +320,8 @@ export default function AdminConversationsPage() {
                 return (
                   <div
                     key={msg.id}
-                    className={`p-4 rounded-xl border text-sm ${
-                      isUser
-                        ? "bg-muted/30 border-border/50 ml-6"
-                        : "bg-card border-border/80 mr-6 shadow-sm"
+                    className={`p-4 rounded-lg border text-sm ${
+                      isUser ? "bg-muted/30 border-border/50 ml-6" : "bg-card border-border mr-6"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2 mb-2.5">
@@ -346,8 +334,8 @@ export default function AdminConversationsPage() {
                         </Badge>
 
                         {msg.is_cache_hit && (
-                          <Badge variant="outline" className="text-[10px] h-4 bg-primary/10 border-primary/20 text-primary font-medium">
-                            <Zap className="h-3 w-3 mr-1" /> Cache HIT ({msg.cached_type || "L1"})
+                          <Badge variant="outline" className="text-[10px] h-4 font-medium">
+                            <Zap className="h-3 w-3 mr-1 text-primary" /> Cache HIT ({msg.cached_type || "L1"})
                           </Badge>
                         )}
                         {msg.no_answer && (
@@ -362,10 +350,10 @@ export default function AdminConversationsPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-6 px-2.5 text-[11px] font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 gap-1.5 transition-colors"
+                            className="h-6 px-2.5 text-[11px] font-medium gap-1"
                             onClick={() => handleOpenFaqModal(prevUserMsg?.content || "", msg.content, msg.citations, selectedTenantId)}
                           >
-                            <Sparkles className="h-3 w-3" /> Biến thành FAQ
+                            <Plus className="h-3 w-3" /> Tạo FAQ từ lượt này
                           </Button>
                         )}
 
@@ -397,8 +385,8 @@ export default function AdminConversationsPage() {
                           <BookOpen className="h-3.5 w-3.5" /> Dẫn chứng ({msg.citations.length}):
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                          {msg.citations.map((c, idx) => (
-                            <Badge key={idx} variant="secondary" className="text-[11px] font-normal">
+                          {msg.citations.map((c, cIdx) => (
+                            <Badge key={cIdx} variant="secondary" className="text-[11px] font-normal">
                               <FileText className="h-3 w-3 mr-1" /> {c.title || "Tài liệu"} {c.page_range ? `(Trang ${c.page_range})` : ""}
                             </Badge>
                           ))}
@@ -409,7 +397,7 @@ export default function AdminConversationsPage() {
                     {/* Stats */}
                     {!isUser && (
                       <div className="mt-2.5 text-[11px] text-muted-foreground flex flex-wrap items-center gap-3 pt-2 border-t border-border/40 font-mono">
-                        {msg.model_name && <span>Model: {msg.model_name}</span>}
+                        {msg.model_name && <span>Mô hình: {msg.model_name}</span>}
                         {msg.latency_ms !== undefined && <span>Độ trễ: {msg.latency_ms.toFixed(0)}ms</span>}
                         {msg.prompt_tokens !== undefined && (
                           <span>Tokens: {msg.prompt_tokens + (msg.completion_tokens || 0)}</span>
@@ -426,48 +414,42 @@ export default function AdminConversationsPage() {
 
       {/* FAQ Promote Dialog */}
       <Dialog open={faqModalOpen} onOpenChange={setFaqModalOpen}>
-        <DialogContent className="max-w-xl max-h-[85vh] flex flex-col rounded-2xl border border-border/80 shadow-2xl backdrop-blur-xl p-6 overflow-hidden">
+        <DialogContent className="max-w-xl max-h-[85vh] flex flex-col rounded-xl border border-border shadow-lg p-6 overflow-hidden">
           <DialogHeader className="shrink-0 pb-2">
-            <DialogTitle className="flex items-center gap-2 text-base font-semibold text-amber-600 dark:text-amber-400">
-              <Sparkles className="h-4.5 w-4.5" />
-              Tạo FAQ từ Lượt trả lời này
-            </DialogTitle>
+            <DialogTitle className="text-base font-semibold">Tạo FAQ từ Phản hồi Hội thoại</DialogTitle>
             <DialogDescription className="text-xs">
-              Lưu câu hỏi & phản hồi này thành FAQ chuẩn. Chọn công ty được áp dụng FAQ bên dưới.
+              Thiết lập câu hỏi và phản hồi chuẩn hóa. Các yêu cầu phù hợp sẽ được xử lý trực tiếp từ Cache.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2 text-sm overflow-y-auto max-h-[55vh] pr-2.5 scrollbar-thin">
+          <div className="space-y-4 py-2 text-sm overflow-y-auto max-h-[55vh] pr-2 scrollbar-thin">
             {/* Multi-tenant Selection Grid */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Building2 className="h-3.5 w-3.5 text-primary" />
-                  Áp dụng cho Công ty (Tenants):
-                </span>
+                <span>Áp dụng cho các công ty (Tenants):</span>
                 <span className="text-[11px] text-muted-foreground font-normal">
-                  (Đã chọn {faqSelectedTenants.length} công ty)
+                  (Đã chọn {faqSelectedTenants.length} đơn vị)
                 </span>
               </Label>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 rounded-xl border border-border/60 bg-muted/20">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 rounded-lg border border-border bg-muted/20">
                 {tenants.map((t) => {
                   const isChecked = faqSelectedTenants.includes(t.id);
                   return (
                     <label
                       key={t.id}
                       onClick={() => toggleFaqTenantSelection(t.id)}
-                      className={`flex items-center justify-between p-2.5 rounded-lg border text-xs font-medium cursor-pointer transition-all ${
+                      className={`flex items-center justify-between p-2.5 rounded border text-xs font-medium cursor-pointer transition-all ${
                         isChecked
-                          ? "bg-primary/10 border-primary text-primary shadow-xs"
-                          : "bg-card border-border/60 hover:bg-muted/50 text-foreground"
+                          ? "bg-primary/10 border-primary text-primary"
+                          : "bg-card border-border hover:bg-muted/50 text-foreground"
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate">
-                        <Building2 className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                        <Building className="h-3.5 w-3.5 shrink-0 opacity-70" />
                         <span className="truncate">{t.name}</span>
                       </div>
-                      {isChecked && <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />}
+                      {isChecked && <Check className="h-4 w-4 text-primary shrink-0" />}
                     </label>
                   );
                 })}
@@ -475,27 +457,27 @@ export default function AdminConversationsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Câu hỏi chuẩn (User Question)</Label>
+              <Label className="text-xs font-semibold">Câu hỏi chuẩn</Label>
               <Input
                 value={faqQuestion}
                 onChange={(e) => setFaqQuestion(e.target.value)}
-                placeholder="Nhập câu hỏi chuẩn..."
+                placeholder="Nhập câu hỏi chuẩn hóa..."
                 className="text-xs font-medium"
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Câu hỏi biến thể (Tùy chọn)</Label>
+              <Label className="text-xs font-semibold">Biến thể câu hỏi (Phân cách bằng dấu phẩy)</Label>
               <Input
                 value={faqVariants}
                 onChange={(e) => setFaqVariants(e.target.value)}
-                placeholder="Các câu tương tự, phân cách bằng dấu phẩy (ví dụ: ai tạo file, ai là người viết...)"
+                placeholder="Ví dụ: ai tao file, ai viet tai lieu..."
                 className="text-xs"
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Câu trả lời chuẩn (AI Answer)</Label>
+              <Label className="text-xs font-semibold">Câu trả lời chuẩn</Label>
               <Textarea
                 value={faqAnswer}
                 onChange={(e) => setFaqAnswer(e.target.value)}
@@ -505,18 +487,13 @@ export default function AdminConversationsPage() {
             </div>
           </div>
 
-          <DialogFooter className="gap-2 pt-3 border-t border-border/50 shrink-0 mt-2">
+          <DialogFooter className="gap-2 pt-3 border-t border-border shrink-0 mt-2">
             <Button variant="ghost" size="sm" onClick={() => setFaqModalOpen(false)}>
               Hủy
             </Button>
-            <Button
-              size="sm"
-              onClick={handleCreateFaq}
-              disabled={submittingFaq}
-              className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
-            >
-              {submittingFaq ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-              Lưu thành FAQ cho {faqSelectedTenants.length} Công ty
+            <Button size="sm" onClick={handleCreateFaq} disabled={submittingFaq} className="gap-1.5">
+              {submittingFaq ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              Lưu FAQ cho {faqSelectedTenants.length} công ty
             </Button>
           </DialogFooter>
         </DialogContent>
