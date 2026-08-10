@@ -1107,9 +1107,19 @@ export default function IntegrationGuidePage() {
                     Tải và dán 2 file tĩnh vào thư mục dự án ERP
                   </h4>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Tải 2 file tĩnh <code>Chatbot.css</code> và <code>Chatbot.js</code> xuống và dán vào thư mục tương ứng trong dự án Web ERP của bạn:
+                    Tải 2 file tĩnh <code>Chatbot.css</code> và <code>Chatbot.js</code> trực tiếp bên dưới và dán vào thư mục tương ứng trong dự án Web ERP của bạn:
                   </p>
-                  <ul className="list-disc pl-5 text-xs text-muted-foreground space-y-1 font-mono">
+                  
+                  <div className="flex flex-wrap gap-2.5 py-1">
+                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 border-primary/30 hover:bg-primary/10" onClick={() => window.open("/Css/Chatbot.css", "_blank")}>
+                      <DownloadIcon className="w-3.5 h-3.5 text-primary" /> Tải Chatbot.css
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 border-primary/30 hover:bg-primary/10" onClick={() => window.open("/Js/Chatbot.js", "_blank")}>
+                      <DownloadIcon className="w-3.5 h-3.5 text-primary" /> Tải Chatbot.js
+                    </Button>
+                  </div>
+
+                  <ul className="list-disc pl-5 text-xs text-muted-foreground space-y-1 font-mono pt-1">
                     <li>Dán file <code className="text-primary font-semibold">Chatbot.css</code> vào thư mục <code className="text-foreground">/Css/Chatbot.css</code></li>
                     <li>Dán file <code className="text-primary font-semibold">Chatbot.js</code> vào thư mục <code className="text-foreground">/Js/Chatbot.js</code></li>
                   </ul>
