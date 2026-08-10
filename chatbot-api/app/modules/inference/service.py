@@ -726,15 +726,23 @@ class PublicInferenceService:
             system_prompt += f"\n\nInstruction riêng của tenant:\n{tenant_instruction}"
         if context_blocks:
             system_prompt += "\n\nNgữ cảnh truy xuất từ tài liệu:\n" + "\n\n".join(context_blocks)
-        system_prompt += (
-            "\n\nQUY TẮC PHẢN HỒI BẮT BUỘC:"
-            "\n- ĐỌC KỸ TOÀN BỘ tất cả các [Nguồn 1], [Nguồn 2], ... được cung cấp ở trên trước khi đưa ra câu trả lời."
-            "\n- Kiểm tra kỹ cả các phần metadata tiêu đề, người tạo, người duyệt, ngày tháng ở phần đầu các nguồn thông tin."
-            "\n- Trình bày câu trả lời đẹp mắt, dễ đọc bằng Markdown chuẩn (dùng danh sách gạch đầu dòng - hoặc tiêu đề ###). Xuống dòng rõ ràng giữa các mục."
-            "\n- Hãy linh hoạt tổng hợp và trả lời đầy đủ, chính xác dựa trên tất cả thông tin và ngữ cảnh tài liệu được cung cấp."
-            "\n- Bám sát thông tin trong tài liệu, không tự ý suy đoán hoặc đưa ra các quy trình không có trong dữ liệu."
-            "\n- Nếu ngữ cảnh tài liệu chứa các ý liên quan tới một phần hoặc toàn bộ câu hỏi, hãy trình bày chi tiết và rõ ràng từng nội dung đó để giải đáp cho người dùng."
-        )
+            system_prompt += (
+                "\n\nQUY TẮC PHẢN HỒI BẮT BUỘC:"
+                "\n- ĐỌC KỸ TOÀN BỘ tất cả các [Nguồn 1], [Nguồn 2], ... được cung cấp ở trên trước khi đưa ra câu trả lời."
+                "\n- Kiểm tra kỹ cả các phần metadata tiêu đề, người tạo, người duyệt, ngày tháng ở phần đầu các nguồn thông tin."
+                "\n- Trình bày câu trả lời đẹp mắt, dễ đọc bằng Markdown chuẩn (dùng danh sách gạch đầu dòng - hoặc tiêu đề ###). Xuống dòng rõ ràng giữa các mục."
+                "\n- Hãy linh hoạt tổng hợp và trả lời đầy đủ, chính xác dựa trên tất cả thông tin và ngữ cảnh tài liệu được cung cấp."
+                "\n- Bám sát thông tin trong tài liệu, không tự ý suy đoán hoặc đưa ra các quy trình không có trong dữ liệu."
+                "\n- Nếu ngữ cảnh tài liệu chứa các ý liên quan tới một phần hoặc toàn bộ câu hỏi, hãy trình bày chi tiết và rõ ràng từng nội dung đó để giải đáp cho người dùng."
+            )
+        else:
+            system_prompt += (
+                "\n\nCẢNH BÁO: Hiện tại KHÔNG CÓ bất kỳ nguồn tài liệu nào được tìm thấy hoặc Tenant chưa được cấp quyền truy cập tài liệu."
+                "\n\nQUY TẮC BẮT BUỘC KHÓA AI (STRICT ENTERPRISE RAG):"
+                "\n- BẮT BUỘC trả lời chính xác: 'Xin lỗi, hiện tại hệ thống chưa tìm thấy dữ liệu hoặc tài liệu chưa được phân quyền truy cập cho Tenant để trả lời câu hỏi này.'"
+                "\n- TUYỆT ĐỐI KHÔNG DÙNG kiến thức chung bên ngoài hay tự đoán định nghĩa (ví dụ: không được tự ý giải thích các thuật ngữ công nghệ bên ngoài tài liệu)."
+            )
+
 
         llm_messages = [ChatMessage(role=MessageRole.SYSTEM, content=system_prompt)]
         recent_messages = messages[-settings.ai_max_history_messages :]
