@@ -11,10 +11,14 @@ import {
   Clock,
   FileText,
   ChevronRight,
-  Plus,
+  Sparkles,
   Check,
   Building,
   Filter,
+  Bot,
+  User,
+  Cpu,
+  Brain,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -190,9 +194,12 @@ export default function AdminConversationsPage() {
       {/* Header & Filter Controls */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Nhật ký Hội thoại & Kiểm toán</h1>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Brain className="h-6 w-6 text-primary shrink-0" />
+            Nhật ký Hội thoại & Audit AI
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Quản lý lịch sử tương tác người dùng, giám sát độ trễ và khởi tạo FAQ chuẩn hóa cho hệ thống.
+            Quản lý lịch sử tương tác người dùng, giám sát độ trễ AI và khởi tạo FAQ từ các phản hồi chuẩn hóa.
           </p>
         </div>
 
@@ -328,19 +335,27 @@ export default function AdminConversationsPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <Badge
                           variant={isUser ? "outline" : "default"}
-                          className="text-[10px] h-4 font-semibold uppercase tracking-wider"
+                          className="text-[10px] h-4.5 font-semibold uppercase tracking-wider gap-1"
                         >
-                          {isUser ? "User" : "AI"}
+                          {isUser ? (
+                            <>
+                              <User className="h-3 w-3" /> User
+                            </>
+                          ) : (
+                            <>
+                              <Bot className="h-3 w-3" /> AI Assistant
+                            </>
+                          )}
                         </Badge>
 
                         {msg.is_cache_hit && (
-                          <Badge variant="outline" className="text-[10px] h-4 font-medium">
-                            <Zap className="h-3 w-3 mr-1 text-primary" /> Cache HIT ({msg.cached_type || "L1"})
+                          <Badge variant="outline" className="text-[10px] h-4.5 font-medium gap-1 bg-amber-500/10 text-amber-600 border-amber-500/30">
+                            <Zap className="h-3 w-3 text-amber-500" /> Cache HIT ({msg.cached_type || "L1"})
                           </Badge>
                         )}
                         {msg.no_answer && (
-                          <Badge variant="destructive" className="text-[10px] h-4">
-                            <ShieldAlert className="h-3 w-3 mr-1" /> Chưa đủ căn cứ
+                          <Badge variant="destructive" className="text-[10px] h-4.5 gap-1">
+                            <ShieldAlert className="h-3 w-3" /> Chưa đủ căn cứ
                           </Badge>
                         )}
                       </div>
@@ -350,10 +365,10 @@ export default function AdminConversationsPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-6 px-2.5 text-[11px] font-medium gap-1"
+                            className="h-6 px-2.5 text-[11px] font-medium gap-1 text-primary border-primary/30 hover:bg-primary/10 transition-colors"
                             onClick={() => handleOpenFaqModal(prevUserMsg?.content || "", msg.content, msg.citations, selectedTenantId)}
                           >
-                            <Plus className="h-3 w-3" /> Tạo FAQ từ lượt này
+                            <Sparkles className="h-3.5 w-3.5 text-primary" /> Tạo FAQ từ AI
                           </Button>
                         )}
 
@@ -382,12 +397,12 @@ export default function AdminConversationsPage() {
                     {!isUser && msg.citations && msg.citations.length > 0 && (
                       <div className="mt-3 pt-2 border-t border-border/50">
                         <div className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
-                          <BookOpen className="h-3.5 w-3.5" /> Dẫn chứng ({msg.citations.length}):
+                          <BookOpen className="h-3.5 w-3.5 text-muted-foreground" /> Dẫn chứng ({msg.citations.length}):
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {msg.citations.map((c, cIdx) => (
-                            <Badge key={cIdx} variant="secondary" className="text-[11px] font-normal">
-                              <FileText className="h-3 w-3 mr-1" /> {c.title || "Tài liệu"} {c.page_range ? `(Trang ${c.page_range})` : ""}
+                            <Badge key={cIdx} variant="secondary" className="text-[11px] font-normal gap-1">
+                              <FileText className="h-3 w-3" /> {c.title || "Tài liệu"} {c.page_range ? `(Trang ${c.page_range})` : ""}
                             </Badge>
                           ))}
                         </div>
@@ -396,9 +411,17 @@ export default function AdminConversationsPage() {
 
                     {/* Stats */}
                     {!isUser && (
-                      <div className="mt-2.5 text-[11px] text-muted-foreground flex flex-wrap items-center gap-3 pt-2 border-t border-border/40 font-mono">
-                        {msg.model_name && <span>Mô hình: {msg.model_name}</span>}
-                        {msg.latency_ms !== undefined && <span>Độ trễ: {msg.latency_ms.toFixed(0)}ms</span>}
+                      <div className="mt-2.5 text-[11px] text-muted-foreground flex flex-wrap items-center gap-4 pt-2 border-t border-border/40 font-mono">
+                        {msg.model_name && (
+                          <span className="flex items-center gap-1">
+                            <Cpu className="h-3 w-3 text-primary" /> Mô hình: {msg.model_name}
+                          </span>
+                        )}
+                        {msg.latency_ms !== undefined && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" /> Độ trễ: {msg.latency_ms.toFixed(0)}ms
+                          </span>
+                        )}
                         {msg.prompt_tokens !== undefined && (
                           <span>Tokens: {msg.prompt_tokens + (msg.completion_tokens || 0)}</span>
                         )}
@@ -416,9 +439,12 @@ export default function AdminConversationsPage() {
       <Dialog open={faqModalOpen} onOpenChange={setFaqModalOpen}>
         <DialogContent className="max-w-xl max-h-[85vh] flex flex-col rounded-xl border border-border shadow-lg p-6 overflow-hidden">
           <DialogHeader className="shrink-0 pb-2">
-            <DialogTitle className="text-base font-semibold">Tạo FAQ từ Phản hồi Hội thoại</DialogTitle>
+            <DialogTitle className="text-base font-semibold flex items-center gap-2">
+              <Sparkles className="h-4.5 w-4.5 text-primary" />
+              Tạo FAQ từ Phản hồi AI
+            </DialogTitle>
             <DialogDescription className="text-xs">
-              Thiết lập câu hỏi và phản hồi chuẩn hóa. Các yêu cầu phù hợp sẽ được xử lý trực tiếp từ Cache.
+              Chuẩn hóa phản hồi của AI thành FAQ. Yêu cầu trùng khớp sẽ được xử lý qua Redis Cache.
             </DialogDescription>
           </DialogHeader>
 
@@ -426,7 +452,10 @@ export default function AdminConversationsPage() {
             {/* Multi-tenant Selection Grid */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold flex items-center justify-between">
-                <span>Áp dụng cho các công ty (Tenants):</span>
+                <span className="flex items-center gap-1.5">
+                  <Building className="h-3.5 w-3.5 text-primary" />
+                  Áp dụng cho các công ty (Tenants):
+                </span>
                 <span className="text-[11px] text-muted-foreground font-normal">
                   (Đã chọn {faqSelectedTenants.length} đơn vị)
                 </span>
@@ -477,7 +506,7 @@ export default function AdminConversationsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Câu trả lời chuẩn</Label>
+              <Label className="text-xs font-semibold">Câu trả lời chuẩn từ AI</Label>
               <Textarea
                 value={faqAnswer}
                 onChange={(e) => setFaqAnswer(e.target.value)}
@@ -492,7 +521,11 @@ export default function AdminConversationsPage() {
               Hủy
             </Button>
             <Button size="sm" onClick={handleCreateFaq} disabled={submittingFaq} className="gap-1.5">
-              {submittingFaq ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              {submittingFaq ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
               Lưu FAQ cho {faqSelectedTenants.length} công ty
             </Button>
           </DialogFooter>
