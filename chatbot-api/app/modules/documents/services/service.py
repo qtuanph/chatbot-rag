@@ -174,9 +174,13 @@ class DocumentService:
             raise ValueError("Document not found")
         tenants = await self.access_repo.set_tenants_for_document(document_id, tenant_ids, granted_by=granted_by)
         if self.redis:
+            from app.modules.chat.cache.exact_cache import exact_cache_invalidate_tenant
+
             for t_id in tenant_ids:
                 try:
                     await self.redis.delete(f"kb:tenant:{t_id}")
+                    await self.redis.delete(f"doc_access:{t_id}")
+                    await exact_cache_invalidate_tenant(self.redis, t_id)
                 except Exception:
                     pass
         return {"document_id": document_id, "tenants": tenants}

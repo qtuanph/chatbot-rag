@@ -2,18 +2,38 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Brain, Cpu, Network, RefreshCw, ThumbsDown, TimerReset, Trash2, Zap } from "lucide-react";
+import {
+  Activity,
+  Brain,
+  Calculator,
+  Cpu,
+  DollarSign,
+  MessageSquare,
+  Network,
+  RefreshCw,
+  Sliders,
+  ThumbsDown,
+  TimerReset,
+  Trash2,
+  TrendingUp,
+  Users,
+  Zap,
+} from "lucide-react";
 
 import { analyticsApi } from "@/lib/api-client";
-import { formatDateTimeVN, formatLatency, formatNumber, formatVnd, microsVndToRoundedVnd } from "@/lib/format";
+import { formatDateTimeVN, formatLatency, formatNumber, formatVnd } from "@/lib/format";
 import type { AnalyticsStats, ModelTypeStats, RecentRequest } from "@/types/api";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from "recharts";
-import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { TenantUsageTable } from "@/components/analytics/tenant-usage-table";
 import { cn } from "@/lib/utils";
 
 type AnalyticsDashboardProps = {
@@ -26,136 +46,84 @@ const DATE_RANGES = [
   { label: "1 ngày", value: 1 },
   { label: "7 ngày", value: 7 },
   { label: "30 ngày", value: 30 },
+  { label: "90 ngày", value: 90 },
 ];
 
-function CostText({ micros }: { micros: number }) {
-  return <>{formatVnd(microsVndToRoundedVnd(micros))}</>;
-}
+export type ModelPricingConfig = {
+  llmInput: number;
+  llmOutput: number;
+  embInput: number;
+  rerankInput: number;
+  preset: string;
+};
 
-function ModelTypeCard({
+const DEFAULT_PRICING: ModelPricingConfig = {
+  llmInput: 1308,     // FPT Cloud LLM (gpt-oss-20b) Input: 1.308 VND / 1M tokens
+  llmOutput: 5233,    // FPT Cloud LLM (gpt-oss-20b) Output: 5.233 VND / 1M tokens
+  embInput: 291,      // FPT AI Factory (Vietnamese_Embedding) Input: 291 VND / 1M tokens
+  rerankInput: 0,     // Reranker: 0 VND
+  preset: "fpt",
+};
+
+// ── Pure Shadcn Model Breakdown Card ──
+function ModelBreakdownCard({
   title,
   stats,
+  calculatedCostVnd,
+  inputPrice,
+  outputPrice,
   icon: Icon,
-  gradientClass = "from-blue-500/20 to-purple-500/20",
-  iconColor = "text-blue-500",
 }: {
   title: string;
   stats: ModelTypeStats;
+  calculatedCostVnd: number;
+  inputPrice: number;
+  outputPrice?: number;
   icon: typeof Brain;
-  gradientClass?: string;
-  iconColor?: string;
 }) {
   return (
-    <Card className={cn("relative overflow-hidden bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300", "bg-gradient-to-br", gradientClass)}>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="flex items-center gap-3 text-sm font-semibold">
-          <div className={cn("p-2 rounded-xl bg-background/50 backdrop-blur-md shadow-sm", iconColor)}>
-            <Icon className="h-4 w-4" />
-          </div>
+    <Card className="shadow-sm border">
+      <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <Icon className="h-4 w-4 text-muted-foreground" />
           {title}
         </CardTitle>
-        <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-background/50 backdrop-blur-md shadow-sm">{formatNumber(stats.call_count)} lượt</span>
+        <Badge variant="secondary" className="font-mono text-xs">
+          {formatNumber(stats.call_count)} lượt
+        </Badge>
       </CardHeader>
-      <CardContent className="space-y-3 text-sm mt-2">
+
+      <CardContent className="space-y-2.5 pt-2 text-sm">
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground font-medium">Token vào</span>
-          <span className="font-bold">{formatNumber(stats.tokens_in)}</span>
+          <span className="text-muted-foreground">Token Vào</span>
+          <span className="font-mono font-medium">{formatNumber(stats.tokens_in)}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground font-medium">Token ra</span>
-          <span className="font-bold">{formatNumber(stats.tokens_out)}</span>
+          <span className="text-muted-foreground">Token Ra</span>
+          <span className="font-mono font-medium">{formatNumber(stats.tokens_out)}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground font-medium">Độ trễ TB</span>
-          <span className="font-bold">{formatLatency(stats.avg_latency_ms)}</span>
+          <span className="text-muted-foreground">Độ Trễ TB</span>
+          <span className="font-mono font-medium">{formatLatency(stats.avg_latency_ms)}</span>
         </div>
-        <div className="flex items-center justify-between pt-2 border-t border-border/40">
-          <span className="text-muted-foreground font-medium">Chi phí</span>
-          <span className="font-bold text-primary">
-            <CostText micros={stats.cost_micros_vnd} />
+        
+        <div className="flex items-center justify-between text-xs pt-2 border-t text-muted-foreground">
+          <span>Đơn giá áp dụng</span>
+          <span className="font-mono font-medium text-foreground">
+            {formatVnd(inputPrice)}/1M {typeof outputPrice === "number" && outputPrice > 0 ? `• ${formatVnd(outputPrice)}/1M` : ""}
           </span>
+        </div>
+
+        <div className="flex items-center justify-between pt-2 border-t font-semibold">
+          <span>Chi phí tự tính</span>
+          <span className="font-mono text-base text-primary">{formatVnd(calculatedCostVnd)}</span>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function RequestTabCard({ stats, days }: { stats: AnalyticsStats; days: number }) {
-  const [activeTab, setActiveTab] = useState<"llm" | "embedding" | "reranker" | "total">("llm");
-
-  const tabData = {
-    llm: {
-      title: "Request LLM",
-      count: stats.by_model_type.llm.call_count,
-      sub: "Mô hình Chat",
-    },
-    embedding: {
-      title: "Request Embedding",
-      count: stats.by_model_type.embedding.call_count,
-      sub: "Trích xuất véc-tơ",
-    },
-    reranker: {
-      title: "Request Reranker",
-      count: stats.by_model_type.reranker.call_count,
-      sub: "Sắp xếp ngữ cảnh",
-    },
-    total: {
-      title: "Tổng request",
-      count: stats.total_messages,
-      sub: `Tất cả (${days} ngày)`,
-    },
-  };
-
-  const current = tabData[activeTab];
-
-  return (
-    <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-[140px] flex flex-col justify-between p-4">
-      <div className="space-y-1">
-        <div className="text-sm font-medium text-muted-foreground">{current.title}</div>
-        <div className="text-2xl font-bold">{formatNumber(current.count)}</div>
-        <p className="text-xs text-muted-foreground">{current.sub}</p>
-      </div>
-
-      {/* Shadcn Theme Dot Tab Switcher */}
-      <div className="flex items-center justify-center gap-2 pt-1">
-        {(["llm", "embedding", "reranker", "total"] as const).map((tabKey) => {
-          const isActive = activeTab === tabKey;
-          return (
-            <button
-              key={tabKey}
-              type="button"
-              onClick={() => setActiveTab(tabKey)}
-              className={cn(
-                "w-2.5 h-2.5 rounded-full transition-all duration-200 cursor-pointer focus:outline-none",
-                isActive
-                  ? "bg-primary shadow-sm ring-2 ring-primary/20 scale-110"
-                  : "border border-muted-foreground/40 bg-transparent hover:border-primary/60 hover:bg-primary/10"
-              )}
-              title={tabData[tabKey].title}
-            />
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
-function RequestRow({ row }: { row: RecentRequest }) {
-  return (
-    <TableRow>
-      <TableCell className="pr-4 text-sm font-medium">{row.model_name}</TableCell>
-      <TableCell className="pr-4 text-sm">{row.model_type}</TableCell>
-      <TableCell className="pr-4 text-right text-sm">{formatNumber(row.tokens_in)}</TableCell>
-      <TableCell className="pr-4 text-right text-sm">{formatNumber(row.tokens_out)}</TableCell>
-      <TableCell className="pr-4 text-right text-sm">{formatLatency(row.latency_ms)}</TableCell>
-      <TableCell className="pr-4 text-right text-sm">
-        <CostText micros={row.cost_micros_vnd} />
-      </TableCell>
-      <TableCell className="text-right text-xs text-muted-foreground">{formatDateTimeVN(row.created_at)}</TableCell>
-    </TableRow>
-  );
-}
-
+// ── Pure Shadcn Executive Dashboard Component ──
 export function AnalyticsDashboard({ title, subtitle, allowClear = false }: AnalyticsDashboardProps) {
   const { data: session } = useSession();
   const [stats, setStats] = useState<AnalyticsStats | null>(null);
@@ -163,6 +131,37 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Dynamic Custom Model Pricing State (Saved in LocalStorage)
+  const [pricing, setPricing] = useState<ModelPricingConfig>(DEFAULT_PRICING);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("chatbot_custom_model_pricing_v2");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setPricing({
+          llmInput: typeof parsed.llmInput === "number" ? parsed.llmInput : DEFAULT_PRICING.llmInput,
+          llmOutput: typeof parsed.llmOutput === "number" ? parsed.llmOutput : DEFAULT_PRICING.llmOutput,
+          embInput: typeof parsed.embInput === "number" ? parsed.embInput : DEFAULT_PRICING.embInput,
+          rerankInput: typeof parsed.rerankInput === "number" ? parsed.rerankInput : DEFAULT_PRICING.rerankInput,
+          preset: parsed.preset || "custom",
+        });
+      }
+    } catch (e) {
+      console.warn("Could not load custom pricing:", e);
+    }
+  }, []);
+
+  const updatePricing = (newP: Partial<ModelPricingConfig>) => {
+    setPricing((prev) => {
+      const updated = { ...prev, ...newP };
+      try {
+        localStorage.setItem("chatbot_custom_model_pricing_v2", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
 
   const loadStats = useCallback(async () => {
     if (!session) return;
@@ -197,13 +196,19 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
     }
   }, [loadStats]);
 
+  // Dynamic live cost calculation across all models
+  const llmCostVnd = stats ? Math.round((stats.by_model_type.llm.tokens_in * pricing.llmInput) / 1000000 + (stats.by_model_type.llm.tokens_out * pricing.llmOutput) / 1000000) : 0;
+  const embCostVnd = stats ? Math.round((stats.by_model_type.embedding.tokens_in * pricing.embInput) / 1000000) : 0;
+  const rerankCostVnd = stats ? Math.round((stats.by_model_type.reranker.tokens_in * pricing.rerankInput) / 1000000) : 0;
+  const totalCalculatedCostVnd = llmCostVnd + embCostVnd + rerankCostVnd;
+
   if (loading && !stats) {
     return (
       <div className="space-y-6 p-6">
-        <Skeleton className="h-12" />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-32" />
+        <Skeleton className="h-10 w-1/3" />
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} className="h-28" />
           ))}
         </div>
       </div>
@@ -211,12 +216,14 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
   }
 
   return (
-    <div className="space-y-8 p-6 md:p-8 min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-background dark:to-slate-900">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{subtitle}</p>
+    <div className="space-y-6 p-6 md:p-8">
+      {/* ── Top Executive Header ── */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b pb-5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
         </div>
+
         <div className="flex flex-wrap items-center gap-2">
           {DATE_RANGES.map((range) => (
             <Button
@@ -228,12 +235,12 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
               {range.label}
             </Button>
           ))}
-          <Button size="sm" variant="outline" className="rounded-2xl" onClick={loadStats} disabled={loading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <Button size="sm" variant="outline" onClick={loadStats} disabled={loading}>
+            <RefreshCw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} />
             Làm mới
           </Button>
           {allowClear && (
-            <Button size="sm" variant="destructive" className="rounded-2xl" onClick={handleClear} disabled={clearing}>
+            <Button size="sm" variant="destructive" onClick={handleClear} disabled={clearing}>
               <Trash2 className="mr-2 h-4 w-4" />
               {clearing ? "Đang xóa..." : "Xóa usage"}
             </Button>
@@ -242,254 +249,381 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
       </div>
 
       {error && (
-        <Card className="rounded-3xl border-destructive/50 shadow-sm">
+        <Card className="border-destructive/50">
           <CardContent className="pt-6 text-sm text-destructive">{error}</CardContent>
         </Card>
       )}
 
       {stats && (
         <>
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-            <RequestTabCard stats={stats} days={days} />
-
-            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-[140px] flex flex-col justify-between p-4">
-              <div className="text-sm font-medium text-muted-foreground">Tổng Token</div>
-              <div>
-                <div className="text-2xl font-bold">{formatNumber(stats.total_tokens)}</div>
-                <p className="text-xs text-muted-foreground pt-1">
-                  Vào: {formatNumber(stats.total_tokens_in)} • Ra: {formatNumber(stats.total_tokens_out)}
-                </p>
-              </div>
+          {/* ── Executive Top KPI Metric Cards (6 Cards Grid) ── */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            {/* 1. Tổng Chi Phí Ước Tính */}
+            <Card className="shadow-sm border">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">TỔNG CHI PHÍ UỚC TÍNH</CardTitle>
+                <DollarSign className="h-4 w-4 text-primary" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-mono text-primary">{formatVnd(totalCalculatedCostVnd)}</div>
+                <p className="text-xs text-muted-foreground mt-1">Tính theo đơn giá model</p>
+              </CardContent>
             </Card>
 
-            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-[140px] flex flex-col justify-between p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <div className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-500">
-                  <Zap className="h-4 w-4" />
-                </div>
-                Tỷ lệ Cache Hit
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+            {/* 2. Số Truy Vấn LLM */}
+            <Card className="shadow-sm border">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">TRUY VẤN LLM (PROMPTS)</CardTitle>
+                <MessageSquare className="h-4 w-4 text-blue-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-mono">{formatNumber(stats.by_model_type.llm.call_count)}</div>
+                <p className="text-xs text-muted-foreground mt-1">Lượt truy vấn khởi tạo LLM</p>
+              </CardContent>
+            </Card>
+
+            {/* 3. Tổng Token Tiêu Thụ */}
+            <Card className="shadow-sm border">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">TỔNG TOKEN TIÊU THỤ</CardTitle>
+                <Activity className="h-4 w-4 text-emerald-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-mono">{formatNumber(stats.total_tokens)}</div>
+                <p className="text-xs text-muted-foreground mt-1">In: {formatNumber(stats.total_tokens_in)} • Out: {formatNumber(stats.total_tokens_out)}</p>
+              </CardContent>
+            </Card>
+
+            {/* 4. Tỷ Lệ Cache Tối Ưu */}
+            <Card className="shadow-sm border">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">TỶ LỆ CACHE TỐI ƯU</CardTitle>
+                <Zap className="h-4 w-4 text-amber-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-mono text-amber-600 dark:text-amber-400">
                   {stats.total_messages > 0 ? Math.max(0, Math.round(((stats.total_messages - stats.by_model_type.llm.call_count) / stats.total_messages) * 100)) : 0}%
                 </div>
-                <p className="text-xs text-muted-foreground pt-1">Phản hồi siêu tốc ~20ms</p>
-              </div>
+                <p className="text-xs text-muted-foreground mt-1">Truy vấn phản hồi qua Cache</p>
+              </CardContent>
             </Card>
 
-            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-[140px] flex flex-col justify-between p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <div className="p-1.5 rounded-md bg-orange-500/10 text-orange-500">
-                  <TimerReset className="h-4 w-4" />
+            {/* 5. Độ Trễ Trung Bình */}
+            <Card className="shadow-sm border">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">ĐỘ TRỄ TRUNG BÌNH</CardTitle>
+                <TimerReset className="h-4 w-4 text-orange-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-mono">{formatLatency(stats.avg_latency_ms)}</div>
+                <p className="text-xs text-muted-foreground mt-1">Thời gian xử lý trung bình</p>
+              </CardContent>
+            </Card>
+
+            {/* 6. Chỉ Số Hài Lòng */}
+            <Card className="shadow-sm border">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">CHỈ SỐ HÀI LÒNG (CSAT)</CardTitle>
+                <ThumbsDown className="h-4 w-4 text-rose-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-mono">
+                  {100 - Math.round((stats.feedback_summary.dislike_rate || 0) * 100)}%
                 </div>
-                Độ trễ trung bình
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{formatLatency(stats.avg_latency_ms)}</div>
-                <p className="text-xs text-muted-foreground pt-1">Thời gian phản hồi TB</p>
-              </div>
-            </Card>
-
-            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-[140px] flex flex-col justify-between p-4 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-10">
-                <span className="text-6xl font-black">$</span>
-              </div>
-              <div className="text-sm font-medium text-muted-foreground">Chi phí ước tính</div>
-              <div>
-                <div className="text-2xl font-bold">{formatVnd(stats.cost_vnd_rounded)}</div>
-                <p className="text-xs text-muted-foreground pt-1">
-                  Ước tính theo giá API Cloud
+                <p className="text-xs text-muted-foreground mt-1">
+                  {formatNumber(stats.feedback_summary.like_count)} Hài lòng • {formatNumber(stats.feedback_summary.dislike_count)} Chưa hài lòng
                 </p>
-              </div>
-            </Card>
-
-            <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-[140px] flex flex-col justify-between p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <div className="p-1.5 rounded-md bg-destructive/10 text-destructive">
-                  <ThumbsDown className="h-4 w-4" />
-                </div>
-                Đánh giá không thích
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{Math.round((stats.feedback_summary.dislike_rate || 0) * 100)}%</div>
-                <p className="text-xs text-muted-foreground pt-1">
-                  {formatNumber(stats.feedback_summary.like_count)} Thích • {formatNumber(stats.feedback_summary.dislike_count)} Không thích
-                </p>
-              </div>
+              </CardContent>
             </Card>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-3 mt-4">
-            <ModelTypeCard title="LLM" stats={stats.by_model_type.llm} icon={Brain} gradientClass="from-blue-500/10 to-cyan-500/10" iconColor="text-blue-500" />
-            <ModelTypeCard title="Embedding" stats={stats.by_model_type.embedding} icon={Cpu} gradientClass="from-emerald-500/10 to-teal-500/10" iconColor="text-emerald-500" />
-            <ModelTypeCard title="Reranker" stats={stats.by_model_type.reranker} icon={Network} gradientClass="from-purple-500/10 to-pink-500/10" iconColor="text-purple-500" />
-          </div>
+          {/* ── Structured Tabbed Analytics View ── */}
+          <Tabs defaultValue="overview" className="space-y-6 pt-2">
+            <TabsList className="grid w-full grid-cols-2 md:w-auto md:inline-flex md:grid-cols-4">
+              <TabsTrigger value="overview" className="gap-2">
+                <Sliders className="h-4 w-4" />
+                Cấu hình Đơn giá & Model
+              </TabsTrigger>
+              <TabsTrigger value="tenants" className="gap-2">
+                <Users className="h-4 w-4" />
+                Thống kê Theo Tenant
+              </TabsTrigger>
+              <TabsTrigger value="trends" className="gap-2">
+                <TrendingUp className="h-4 w-4" />
+                Biểu đồ Xu hướng
+              </TabsTrigger>
+              <TabsTrigger value="logs" className="gap-2">
+                <Activity className="h-4 w-4" />
+                Nhật ký & Đánh giá
+              </TabsTrigger>
+            </TabsList>
 
-          {/* AI Token Consumption Chart Card */}
-          <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg mt-4">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-base font-semibold">Xu hướng tiêu thụ Token AI</CardTitle>
-              <CardDescription>
-                Biểu đồ thống kê chi tiết lượng Token Input và Output đã được xử lý qua hệ thống theo ngày.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="h-72">
-              <ChartContainer
-                config={{
-                  tokens_in: {
-                    label: "Token Vào (Input)",
-                    color: "var(--primary)",
-                  },
-                  tokens_out: {
-                    label: "Token Ra (Output)",
-                    color: "hsl(142.1 76.2% 36.3%)",
-                  },
-                }}
-                className="h-full w-full"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={stats.daily.map(item => ({
-                      ...item,
-                      formattedDate: item.date.split("-").slice(1).reverse().join("/"), // "2026-07-04" -> "04/07"
-                    }))}
-                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+            {/* ── TAB 1: Tổng Quan & Cấu Hình Đơn Giá ── */}
+            <TabsContent value="overview" className="space-y-6">
+              {/* Form Cấu hình Đơn giá */}
+              <Card className="shadow-sm border">
+                <CardHeader>
+                  <div className="flex items-center gap-2.5">
+                    <Calculator className="h-5 w-5 text-primary" />
+                    <div>
+                      <CardTitle className="text-base font-semibold">Cấu hình Đơn giá Model AI (VND / 1 triệu Tokens)</CardTitle>
+                      <CardDescription className="text-xs">
+                        Nhập đơn giá tương ứng với nhà cung cấp. Tất cả thẻ KPI & bảng thống kê sẽ tự động cập nhật chi phí tương ứng.
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+
+                <CardContent>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="space-y-1.5 p-3 rounded-lg border bg-muted/20">
+                      <label className="text-xs font-semibold text-foreground">💬 LLM Token Vào (Input)</label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          min="0"
+                          className="h-9 font-mono text-sm pr-14"
+                          value={pricing.llmInput}
+                          onChange={(e) => updatePricing({ llmInput: parseFloat(e.target.value) || 0 })}
+                          placeholder="1308"
+                        />
+                        <span className="absolute right-3 top-2.5 text-xs text-muted-foreground font-medium pointer-events-none">
+                          ₫/1M
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 p-3 rounded-lg border bg-muted/20">
+                      <label className="text-xs font-semibold text-foreground">💬 LLM Token Ra (Output)</label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          min="0"
+                          className="h-9 font-mono text-sm pr-14"
+                          value={pricing.llmOutput}
+                          onChange={(e) => updatePricing({ llmOutput: parseFloat(e.target.value) || 0 })}
+                          placeholder="5233"
+                        />
+                        <span className="absolute right-3 top-2.5 text-xs text-muted-foreground font-medium pointer-events-none">
+                          ₫/1M
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 p-3 rounded-lg border bg-muted/20">
+                      <label className="text-xs font-semibold text-foreground">🧠 Embedding (Véc-tơ)</label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          min="0"
+                          className="h-9 font-mono text-sm pr-14"
+                          value={pricing.embInput}
+                          onChange={(e) => updatePricing({ embInput: parseFloat(e.target.value) || 0 })}
+                          placeholder="291"
+                        />
+                        <span className="absolute right-3 top-2.5 text-xs text-muted-foreground font-medium pointer-events-none">
+                          ₫/1M
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 p-3 rounded-lg border bg-muted/20">
+                      <label className="text-xs font-semibold text-foreground">⚡ Reranker (Sắp xếp)</label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          min="0"
+                          className="h-9 font-mono text-sm pr-14"
+                          value={pricing.rerankInput}
+                          onChange={(e) => updatePricing({ rerankInput: parseFloat(e.target.value) || 0 })}
+                          placeholder="0"
+                        />
+                        <span className="absolute right-3 top-2.5 text-xs text-muted-foreground font-medium pointer-events-none">
+                          ₫/1M
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 3 Thẻ Model Chi Tiết */}
+              <div className="grid gap-6 md:grid-cols-3">
+                <ModelBreakdownCard
+                  title="LLM Chat Model"
+                  stats={stats.by_model_type.llm}
+                  calculatedCostVnd={llmCostVnd}
+                  inputPrice={pricing.llmInput}
+                  outputPrice={pricing.llmOutput}
+                  icon={Brain}
+                />
+                <ModelBreakdownCard
+                  title="Embedding Vector"
+                  stats={stats.by_model_type.embedding}
+                  calculatedCostVnd={embCostVnd}
+                  inputPrice={pricing.embInput}
+                  icon={Cpu}
+                />
+                <ModelBreakdownCard
+                  title="Reranker Context"
+                  stats={stats.by_model_type.reranker}
+                  calculatedCostVnd={rerankCostVnd}
+                  inputPrice={pricing.rerankInput}
+                  icon={Network}
+                />
+              </div>
+            </TabsContent>
+
+            {/* ── TAB 2: Thống kê Theo Tenant ── */}
+            <TabsContent value="tenants">
+              <TenantUsageTable />
+            </TabsContent>
+
+            {/* ── TAB 3: Biểu đồ Xu hướng tiêu thụ ── */}
+            <TabsContent value="trends">
+              <Card className="shadow-sm border">
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold">Xu hướng tiêu thụ Token AI</CardTitle>
+                  <CardDescription>
+                    Biểu đồ thống kê chi tiết lượng Token Input và Output đã được xử lý theo từng ngày.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="h-80">
+                  <ChartContainer
+                    config={{
+                      tokens_in: { label: "Token Vào (Input)", color: "var(--primary)" },
+                      tokens_out: { label: "Token Ra (Output)", color: "hsl(142.1 76.2% 36.3%)" },
+                    }}
+                    className="h-full w-full"
                   >
-                    <defs>
-                      <linearGradient id="colorTokensIn" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                      </linearGradient>
-                      <linearGradient id="colorTokensOut" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted/40" />
-                    <XAxis 
-                      dataKey="formattedDate" 
-                      stroke="hsl(var(--muted-foreground))" 
-                      fontSize={11} 
-                      tickLine={false} 
-                      axisLine={false}
-                    />
-                    <YAxis 
-                      stroke="hsl(var(--muted-foreground))" 
-                      fontSize={11} 
-                      tickLine={false} 
-                      axisLine={false}
-                      tickFormatter={(value) => value >= 1000 ? `${(value/1000).toFixed(0)}k` : value}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Area 
-                      type="monotone" 
-                      dataKey="tokens_in" 
-                      name="Token Vào (Input)"
-                      stroke="hsl(var(--primary))" 
-                      strokeWidth={2}
-                      fillOpacity={1} 
-                      fill="url(#colorTokensIn)" 
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="tokens_out" 
-                      name="Token Ra (Output)"
-                      stroke="#22c55e" 
-                      strokeWidth={2}
-                      fillOpacity={1} 
-                      fill="url(#colorTokensOut)" 
-                    />
-                    <ChartLegend content={<ChartLegendContent />} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </ChartContainer>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg mt-4">
-            <CardHeader>
-              <CardTitle>Yêu cầu gần đây</CardTitle>
-              <CardDescription>
-                Giúp kiểm tra model nào đang tiêu tốn nhiều nhất trong cửa sổ hiện tại.
-              </CardDescription>
-              <CardDescription>
-                Embedding và reranker thường chỉ có token vào hoặc số ước tính theo request, nên token ra có thể bằng 0 là bình thường.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {stats.recent_requests.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Chưa có request nào trong khoảng thời gian này.</p>
-              ) : (
-                <ScrollArea className="h-96 pr-2">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="pr-4 text-xs text-muted-foreground">Model</TableHead>
-                        <TableHead className="pr-4 text-xs text-muted-foreground">Loại</TableHead>
-                        <TableHead className="pr-4 text-right text-xs text-muted-foreground">In</TableHead>
-                        <TableHead className="pr-4 text-right text-xs text-muted-foreground">Out</TableHead>
-                        <TableHead className="pr-4 text-right text-xs text-muted-foreground">Độ trễ</TableHead>
-                        <TableHead className="pr-4 text-right text-xs text-muted-foreground">Chi phí</TableHead>
-                        <TableHead className="text-right text-xs text-muted-foreground">Thời điểm</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {stats.recent_requests.map((row, index) => (
-                        <RequestRow key={`${row.model_name}-${row.created_at}-${index}`} row={row} />
-                      ))}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white/40 dark:bg-black/40 backdrop-blur-xl border-white/20 dark:border-white/10 shadow-lg mt-4">
-            <CardHeader>
-              <CardTitle>Phản hồi chất lượng</CardTitle>
-              <CardDescription>
-                Theo dõi dislike để biết tài liệu nào cần cải thiện retrieval hoặc instruction.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-6 lg:grid-cols-2">
-              <div className="space-y-3">
-                <div className="text-sm font-medium">Tài liệu bị dislike nhiều</div>
-                {stats.feedback_summary.top_disliked_documents.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Chưa có dislike nào trong cửa sổ hiện tại.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {stats.feedback_summary.top_disliked_documents.map((item) => (
-                      <div
-                        key={item.document_id}
-                        className="flex items-center justify-between rounded-xl border px-3 py-2"
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={stats.daily.map(item => ({
+                          ...item,
+                          formattedDate: item.date.split("-").slice(1).reverse().join("/"),
+                        }))}
+                        margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                       >
-                        <div className="min-w-0 truncate pr-3 text-sm font-medium">{item.title}</div>
-                        <div className="shrink-0 text-xs text-muted-foreground">{formatNumber(item.count)} dislike</div>
+                        <defs>
+                          <linearGradient id="colorTokensIn" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.0}/>
+                          </linearGradient>
+                          <linearGradient id="colorTokensOut" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="hsl(142.1 76.2% 36.3%)" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="hsl(142.1 76.2% 36.3%)" stopOpacity={0.0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                        <XAxis dataKey="formattedDate" tickLine={false} axisLine={false} tickMargin={8} fontSize={12} />
+                        <YAxis tickLine={false} axisLine={false} tickMargin={8} fontSize={12} tickFormatter={(val) => formatNumber(val)} />
+                        <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
+                        <ChartLegend content={<ChartLegendContent />} />
+                        <Area type="monotone" dataKey="tokens_in" name="Token Vào (Input)" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorTokensIn)" strokeWidth={2} />
+                        <Area type="monotone" dataKey="tokens_out" name="Token Ra (Output)" stroke="hsl(142.1 76.2% 36.3%)" fillOpacity={1} fill="url(#colorTokensOut)" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* ── TAB 4: Nhật ký Request & Phản Hồi ── */}
+            <TabsContent value="logs" className="space-y-6">
+              {/* Table 20 Request gần đây */}
+              <Card className="shadow-sm border">
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold">Nhật ký Request gần đây (20 lượt cuối)</CardTitle>
+                  <CardDescription>Chi tiết số lượng token, độ trễ và chi phí tự tính cho mỗi lượt truy vấn.</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <ScrollArea className="h-[360px] w-full">
+                    <Table>
+                      <TableHeader className="sticky top-0 bg-background z-10 border-b">
+                        <TableRow>
+                          <TableHead className="pl-4">Model</TableHead>
+                          <TableHead className="text-right">Token Vào</TableHead>
+                          <TableHead className="text-right">Token Ra</TableHead>
+                          <TableHead className="text-right">Độ Trễ</TableHead>
+                          <TableHead className="text-right">Chi Phí Tự Tính</TableHead>
+                          <TableHead className="text-right pr-4">Thời Gian</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {stats.recent_requests.map((row: RecentRequest, index: number) => {
+                          const rate = row.model_type === "embedding" ? pricing.embInput : row.model_type === "reranker" ? pricing.rerankInput : pricing.llmInput;
+                          const outRate = row.model_type === "llm" ? pricing.llmOutput : 0;
+                          const reqCostVnd = Math.round((row.tokens_in * rate) / 1000000 + (row.tokens_out * outRate) / 1000000);
+
+                          return (
+                            <TableRow key={index}>
+                              <TableCell className="pl-4 font-mono font-medium text-xs flex items-center gap-2">
+                                <span className={cn(
+                                  "w-2 h-2 rounded-full",
+                                  row.model_type === "llm" ? "bg-blue-500" : row.model_type === "embedding" ? "bg-emerald-500" : "bg-purple-500"
+                                )} />
+                                {row.model_name || "System Request"}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-xs">{formatNumber(row.tokens_in)}</TableCell>
+                              <TableCell className="text-right font-mono text-xs">{formatNumber(row.tokens_out)}</TableCell>
+                              <TableCell className="text-right font-mono text-xs">{formatLatency(row.latency_ms)}</TableCell>
+                              <TableCell className="text-right font-mono text-xs font-semibold text-primary">
+                                {formatVnd(reqCostVnd)}
+                              </TableCell>
+                              <TableCell className="text-right text-xs text-muted-foreground pr-4">{formatDateTimeVN(row.created_at)}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+
+              {/* Quality & Feedback Audit */}
+              <Card className="shadow-sm border">
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold">Đánh giá chất lượng Phản hồi</CardTitle>
+                  <CardDescription>
+                    Theo dõi các tài liệu hoặc section bị dislike nhiều để kịp thời cập nhật dữ liệu.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold">Tài liệu bị Dislike nhiều nhất</h3>
+                    {stats.feedback_summary.top_disliked_documents.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Không có tài liệu nào bị dislike.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {stats.feedback_summary.top_disliked_documents.map((item) => (
+                          <div key={item.document_id} className="flex items-center justify-between rounded-lg border p-2.5 text-xs">
+                            <span className="font-medium truncate pr-2">{item.title}</span>
+                            <Badge variant="destructive">{formatNumber(item.count)} dislike</Badge>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
-              <div className="space-y-3">
-                <div className="text-sm font-medium">Section bị dislike nhiều</div>
-                {stats.feedback_summary.top_disliked_sections.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Chưa có section nào cần ưu tiên xử lý.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {stats.feedback_summary.top_disliked_sections.map((item) => (
-                      <div
-                        key={`${item.document_id}-${item.section_id}`}
-                        className="flex items-center justify-between rounded-xl border px-3 py-2"
-                      >
-                        <div className="min-w-0 truncate pr-3 text-sm font-medium">{item.heading}</div>
-                        <div className="shrink-0 text-xs text-muted-foreground">{formatNumber(item.count)} dislike</div>
+
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold">Section bị Dislike nhiều nhất</h3>
+                    {stats.feedback_summary.top_disliked_sections.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Không có section nào bị dislike.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {stats.feedback_summary.top_disliked_sections.map((item) => (
+                          <div key={`${item.document_id}-${item.section_id}`} className="flex items-center justify-between rounded-lg border p-2.5 text-xs">
+                            <span className="font-medium truncate pr-2">{item.heading}</span>
+                            <Badge variant="destructive">{formatNumber(item.count)} dislike</Badge>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </>
       )}
     </div>

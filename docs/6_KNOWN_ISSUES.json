@@ -154,6 +154,31 @@
       "root_cause": "The public inference router passed `user_id=None`. In `QuotaService`, `user_id=None` caused all API key requests for that tenant to fall back to a shared `'anon'` counter bucket, enforcing a strict per-user limit (6 req/min) and daily request quota across the whole tenant.",
       "resolution": "Updated `QuotaService.check_and_increment_rate` and `check_and_increment_daily` to bypass per-user counters completely when `user_id` is None (Public API key calls). Public API requests are now strictly governed by a single Tenant-scoped limit (`rate_limit_rpm` from PostgreSQL `tenants` table) set by Tenant Admin.",
       "lesson_learned": "Public API callers (M2M / integrations) do not have user identity context. Do not force an 'anon' user bucket on public API requests; enforce single-level tenant-scoped quotas instead."
+    },
+    {
+      "issue_id": 19,
+      "title": "LlamaIndex AutoMergingRetriever Overwrote Leaf Chunks with Parent Section Text",
+      "symptom": "Vector search matches exact operational keywords (e.g., 'Phiếu chi') in a leaf chunk, but AutoMergingRetriever replaces the leaf chunk text with generic parent section intro text (e.g., 'Bút toán kết chuyển'), causing LLM to miss the context.",
+      "root_cause": "When AutoMergingRetriever triggered an auto-merge threshold, it fetched the parent section TextNode from storage_context.docstore and replaced child leaf nodes. The parent node text in docstore started with section intro text, obscuring specific leaf chunk details.",
+      "resolution": "Updated SafeAutoMergingRetriever in app/modules/chat/retrieval/pipeline.py to preserve original_leaf_nodes alongside merged nodes, ensuring specific leaf keywords are never lost during auto-merging.",
+      "lesson_learned": "Hierarchical auto-merging must preserve specific leaf chunk text alongside merged parent context so specialized keywords are not lost."
+    },
+    {
+      "issue_id": 20,
+      "title": "InferenceService _hydrate_context Overwrote Specific Chunk full_text with PostgreSQL Section Content",
+      "symptom": "Even after retrieval returned specific leaf chunk text, RAG_PROMPT received generic section intro text from PostgreSQL, triggering strict fallback ('Chưa tìm thấy dữ liệu').",
+      "root_cause": "In app/modules/inference/service.py, _hydrate_context evaluated `full_text = str(section.get('content') or node.full_text)` which fetched the PostgreSQL document_sections content for section_id and overwrote node.full_text.",
+      "resolution": "Updated InferenceService._hydrate_context to preserve node.full_text when non-empty, falling back to section.get('content') only when node.full_text is empty.",
+      "lesson_learned": "Context hydration must not destructively overwrite specific chunk-level full_text with generic section-level DB content."
+    },
+    {
+      "issue_id": 21,
+      "title": "qdrant-client 1.19.0 Incompatibility with llama-index-vector-stores-qdrant 0.10.2",
+      "symptom": "API startup crashes with `ImportError: cannot import name 'IDF_EMBEDDING_MODELS' from 'qdrant_client.qdrant_fastembed'` when importing `llama_index.vector_stores.qdrant`.",
+      "root_cause": "Upgrading `qdrant-client` to `1.19.0` removed internal symbol `IDF_EMBEDDING_MODELS` from `qdrant_client.qdrant_fastembed`, which `llama-index-vector-stores-qdrant==0.10.2` expects.",
+      "resolution": "Pinned `qdrant-client==1.18.0` in `chatbot-api/requirements.txt` to align with `llama-index-vector-stores-qdrant` requirements.",
+      "lesson_learned": "Pin vector store dependencies tightly with vector library versions (llama-index integrations) and test startup after upgrading PyPI dependencies."
     }
   ]
 }
+

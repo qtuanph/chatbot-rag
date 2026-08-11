@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from sqlalchemy import Date, cast, func, select
+from sqlalchemy import Date, case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.auth import User
@@ -292,6 +292,9 @@ class AnalyticsRepository:
                 func.coalesce(func.sum(AiModelUsage.completion_tokens), 0).label("tokens_out"),
                 func.coalesce(func.sum(AiModelUsage.cost_micros_vnd), 0).label("cost_micros_vnd"),
                 func.coalesce(func.count(AiModelUsage.id), 0).label("call_count"),
+                func.coalesce(func.sum(case((AiModelUsage.model_type == "llm", 1), else_=0)), 0).label(
+                    "question_count"
+                ),
                 func.coalesce(func.avg(AiModelUsage.latency_ms), 0).label("avg_latency_ms"),
             )
             .where(AiModelUsage.tenant_id.isnot(None), AiModelUsage.created_at >= cutoff)
@@ -307,6 +310,7 @@ class AnalyticsRepository:
                 func.coalesce(usage_subq.c.tokens_out, 0).label("tokens_out"),
                 func.coalesce(usage_subq.c.cost_micros_vnd, 0).label("cost_micros_vnd"),
                 func.coalesce(usage_subq.c.call_count, 0).label("call_count"),
+                func.coalesce(usage_subq.c.question_count, 0).label("question_count"),
                 func.coalesce(usage_subq.c.avg_latency_ms, 0).label("avg_latency_ms"),
             )
             .outerjoin(usage_subq, usage_subq.c.tenant_id == Tenant.id)
@@ -323,6 +327,7 @@ class AnalyticsRepository:
                 "total_tokens": int((row.tokens_in or 0) + (row.tokens_out or 0)),
                 "cost_micros_vnd": int(row.cost_micros_vnd or 0),
                 "call_count": int(row.call_count or 0),
+                "question_count": int(row.question_count or 0),
                 "avg_latency_ms": int(row.avg_latency_ms or 0),
                 "window_days": days,
             }

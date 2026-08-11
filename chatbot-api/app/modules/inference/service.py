@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any
@@ -32,6 +33,44 @@ class CompletionResult:
     citations: list[dict[str, Any]]
     usage: dict[str, Any]
     model: str
+
+
+UNANSWERED_KEYWORDS = [
+    "chưa đủ căn cứ",
+    "chưa có đủ thông tin",
+    "chưa có thông tin",
+    "không có thông tin",
+    "không tìm thấy thông tin",
+    "không tìm thấy tài liệu",
+    "không thấy thông tin",
+    "không có dữ liệu",
+    "không tìm thấy trong dữ liệu",
+    "tôi không biết",
+    "tôi không thể",
+    "tôi chưa được cung cấp",
+    "không nằm trong",
+    "không đủ thông tin",
+    "không thể trả lời",
+    "chưa có câu trả lời",
+    "rất tiếc",
+    "sorry",
+    "empty response",
+]
+
+
+def is_unanswered_response(content: str | None, citations: list | None = None) -> bool:
+    if not content or not content.strip():
+        return True
+    lower_content = content.strip().lower()
+    if lower_content == "empty response":
+        return True
+    for kw in UNANSWERED_KEYWORDS:
+        if kw in lower_content:
+            return True
+    if citations is not None and len(citations) == 0:
+        if any(w in lower_content for w in ["chưa", "không", "tiếc", "xin lỗi"]):
+            return True
+    return False
 
 
 def _to_llama_role(role: str) -> MessageRole:
@@ -152,8 +191,6 @@ class PublicInferenceService:
         conversation_id: str | None = None,
     ) -> CompletionResult:
         if not conversation_id:
-            import uuid
-
             conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
 
         user_query = self._latest_user_query(messages)
@@ -290,13 +327,18 @@ class PublicInferenceService:
         provider = type("UsageProxy", (), {"last_usage": result.usage, "model_name": result.model})()
         track_usage(provider, endpoint="public.chat.completions", tenant_id=tenant_id)
 
-        if settings.chat_history_persist_enabled and conversation_id:
+        no_answer_flag = is_unanswered_response(result.content, result.citations)
+        effective_conv_id = conversation_id or (
+            str(uuid.uuid4()) if (settings.chat_history_persist_enabled or no_answer_flag) else None
+        )
+
+        if effective_conv_id and settings.chat_history_persist_enabled:
             try:
                 from app.modules.chat.tasks.usage_tasks import save_conversation_turn_task
 
                 save_conversation_turn_task.delay(
                     tenant_id=tenant_id,
-                    conversation_id=conversation_id,
+                    conversation_id=effective_conv_id,
                     user_content=user_query,
                     assistant_content=result.content,
                     citations=result.citations,
@@ -304,12 +346,7 @@ class PublicInferenceService:
                     model_name=result.model,
                     is_cache_hit=False,
                     cached_type=None,
-                    no_answer=not result.content
-                    or result.content.strip() == "Empty Response"
-                    or "chưa đủ căn cứ" in result.content.lower()
-                    or "chưa có đủ thông tin" in result.content.lower()
-                    or "chưa có thông tin" in result.content.lower()
-                    or "rất tiếc" in result.content.lower(),
+                    no_answer=no_answer_flag,
                 )
             except Exception as exc:
                 logger.warning("Failed to dispatch conversation save: %s", exc)
@@ -328,8 +365,6 @@ class PublicInferenceService:
         conversation_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         if not conversation_id:
-            import uuid
-
             conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
 
         user_query = self._latest_user_query(messages)
@@ -487,13 +522,18 @@ class PublicInferenceService:
         yield f"data: {json.dumps(final_payload)}\n\n"
         yield "data: [DONE]\n\n"
 
-        if settings.chat_history_persist_enabled and conversation_id:
+        no_answer_flag = is_unanswered_response(result.content, result.citations)
+        effective_conv_id = conversation_id or (
+            str(uuid.uuid4()) if (settings.chat_history_persist_enabled or no_answer_flag) else None
+        )
+
+        if effective_conv_id and settings.chat_history_persist_enabled:
             try:
                 from app.modules.chat.tasks.usage_tasks import save_conversation_turn_task
 
                 save_conversation_turn_task.delay(
                     tenant_id=tenant_id,
-                    conversation_id=conversation_id,
+                    conversation_id=effective_conv_id,
                     user_content=user_query,
                     assistant_content=result.content,
                     citations=result.citations,
@@ -501,12 +541,7 @@ class PublicInferenceService:
                     model_name=result.model,
                     is_cache_hit=False,
                     cached_type=None,
-                    no_answer=not result.content
-                    or result.content.strip() == "Empty Response"
-                    or "chưa đủ căn cứ" in result.content.lower()
-                    or "chưa có đủ thông tin" in result.content.lower()
-                    or "chưa có thông tin" in result.content.lower()
-                    or "rất tiếc" in result.content.lower(),
+                    no_answer=no_answer_flag,
                 )
             except Exception as exc:
                 logger.warning("Failed to dispatch stream conversation save: %s", exc)
@@ -646,7 +681,12 @@ class PublicInferenceService:
             if not section:
                 hydrated_nodes.append(node)
                 continue
-            full_text = str(section.get("content") or node.full_text or "").strip() or node.full_text
+            # Preserve chunk-specific text; only fallback to section content if node.full_text is empty
+            full_text = (
+                node.full_text.strip()
+                if (node.full_text and node.full_text.strip())
+                else str(section.get("content") or "").strip()
+            )
             heading = str(section.get("title") or node.heading or "").strip() or node.heading
             page_range = section.get("page_range") or node.page_range
             hydrated_nodes.append(

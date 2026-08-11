@@ -6,6 +6,9 @@ const connectSrc = isDevelopment ? "'self' ws: http://localhost:* ws://localhost
 const workspaceRoot = path.resolve(process.cwd(), "..");
 
 const nextConfig: NextConfig = {
+  experimental: {
+    useTypeScriptCli: true,
+  },
   env: {
     NEXT_PUBLIC_APP_VERSION:
       process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_TAG ||

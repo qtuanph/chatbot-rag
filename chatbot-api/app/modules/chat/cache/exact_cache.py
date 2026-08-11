@@ -50,8 +50,12 @@ async def exact_cache_set(
     payload: dict[str, Any],
     ttl_seconds: int = 2592000,
 ) -> None:
-    """L1 write. Silently skips on error (circuit breaker)."""
+    """L1 write. Silently skips on error or if payload is a negative fallback response."""
     try:
+        content = str((payload or {}).get("content") or "")
+        if any(neg in content for neg in ["chưa tìm thấy dữ liệu", "chưa được phân quyền", "không có trong tài liệu"]):
+            return
+
         normalized = normalize_query(question, stopwords=ALL_DEFAULT_STOPWORDS)
         if not normalized:
             return

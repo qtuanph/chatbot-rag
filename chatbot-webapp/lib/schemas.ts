@@ -480,6 +480,7 @@ export const TenantUsageSummaryItemSchema = MoneyPayloadSchema.extend({
   tokens_out: z.number(),
   total_tokens: z.number(),
   call_count: z.number(),
+  question_count: z.number().optional().default(0),
   avg_latency_ms: z.number(),
   window_days: z.number(),
 });

@@ -317,9 +317,10 @@ def _build_section_recursive_retriever(
 
 
 class SafeAutoMergingRetriever(AutoMergingRetriever):
-    """AutoMergingRetriever that safely strips un-stored sibling node relationships before merging."""
+    """AutoMergingRetriever that safely strips un-stored sibling node relationships and preserves leaf chunk details."""
 
     def _fill_in_nodes(self, nodes: list[NodeWithScore]) -> tuple[list[NodeWithScore], bool]:
+        original_leaf_nodes = [n for n in nodes]
         cleaned_nodes: list[NodeWithScore] = []
         for n in nodes:
             node = n.node
@@ -336,7 +337,10 @@ class SafeAutoMergingRetriever(AutoMergingRetriever):
             ):
                 node.relationships.pop(NodeRelationship.PREVIOUS, None)
             cleaned_nodes.append(n)
-        return super()._fill_in_nodes(cleaned_nodes)
+        merged_nodes, is_merged = super()._fill_in_nodes(cleaned_nodes)
+        if is_merged:
+            return _dedupe_nodes(merged_nodes + original_leaf_nodes), True
+        return merged_nodes, False
 
 
 def _build_auto_merging_retriever(

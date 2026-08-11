@@ -1,6 +1,7 @@
 # Hướng dẫn sử dụng SAO — SSE Accounting Online
 
-## Thông tin tài liệu
+# 0 Thông tin tài liệu và Phân quyền duyệt tài liệu
+
 - **Đơn vị phát hành**: CÔNG TY CP GIẢI PHÁP PHẦN MỀM DOANH NGHIỆP (SSE)
 - **Tên tài liệu**: Hướng dẫn sử dụng SAO (SSE Accounting Online)
 - **Loại tài liệu**: Tài liệu đào tạo & Hướng dẫn kỹ thuật
@@ -10,8 +11,8 @@
 - **Chi nhánh**: Tầng 5 Tòa nhà SONGDO số 62A Phạm Ngọc Thạch, P.6, Q.3, TP.HCM
 - **Liên hệ**: Tel: 02435682222 | Hotline: 0942584285 | Email: Supports@sse.net.vn | Website: http://www.sse.net.vn
 
+---
 
-## Mục lục
 
 7.4.2 Cập nhật đơn đặt hàng 
 

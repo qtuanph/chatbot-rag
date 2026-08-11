@@ -1,8 +1,8 @@
 {
   "document": {
     "id": "7_CURRENT_SETTINGS",
-    "version": "2026-07-25",
-    "purpose": "Snapshot cấu hình hiện tại — ADR-02 Knowledge Base shared documents & ADR-04 Reranker default disabled."
+    "version": "2026-08-11",
+    "purpose": "Snapshot cấu hình hiện tại — Release v1.0.0 Enterprise RAG Platform Launch."
   },
   "architecture": {
     "mode": "multi-tenant-shared-kb",

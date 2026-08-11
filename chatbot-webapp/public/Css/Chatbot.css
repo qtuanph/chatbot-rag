@@ -402,6 +402,77 @@
     border-color: #326DC7 !important;
 }
 
+/* Minimalist Modern Chatbot Table Styling (Strictly Scoped inside #chatbot-messages & #chatbot-box) */
+#chatbot-messages table,
+#chatbot-box table,
+#chatbot-messages .chatbot-table,
+#chatbot-box .chatbot-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    border-spacing: 0 !important;
+    margin: 8px 0 !important;
+    font-size: 11.5px !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-width: 1px !important;
+    border-style: solid !important;
+    border-color: #cbd5e1 !important;
+    border-radius: 6px !important;
+    display: block !important;
+    overflow-x: auto !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+}
+
+#chatbot-messages table th,
+#chatbot-messages table td,
+#chatbot-box table th,
+#chatbot-box table td,
+#chatbot-messages .chatbot-table th,
+#chatbot-messages .chatbot-table td,
+#chatbot-box .chatbot-table th,
+#chatbot-box .chatbot-table td {
+    padding: 6px 9px !important;
+    border: 1px solid #e2e8f0 !important;
+    border-width: 1px !important;
+    border-style: solid !important;
+    border-color: #e2e8f0 !important;
+    text-align: left !important;
+    line-height: 1.35 !important;
+    vertical-align: middle !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    white-space: normal !important;
+    color: #1e293b !important;
+}
+
+#chatbot-messages table th,
+#chatbot-box table th,
+#chatbot-messages .chatbot-table th,
+#chatbot-box .chatbot-table th {
+    background: #f1f5f9 !important;
+    color: #334155 !important;
+    font-weight: 600 !important;
+    font-size: 11px !important;
+    border-bottom: 1.5px solid #cbd5e1 !important;
+}
+
+#chatbot-messages table tr:nth-child(even) td,
+#chatbot-box table tr:nth-child(even) td,
+#chatbot-messages .chatbot-table tr:nth-child(even) td,
+#chatbot-box .chatbot-table tr:nth-child(even) td {
+    background: #f8fafc !important;
+}
+
+#chatbot-messages table tr:hover td,
+#chatbot-box table tr:hover td,
+#chatbot-messages .chatbot-table tr:hover td,
+#chatbot-box .chatbot-table tr:hover td {
+    background: #f1f5f9 !important;
+}
+
+
 /* --------------------------------------------------------------------------
    7. INPUT AREA (Fixed Horizontal Flex Layout)
    -------------------------------------------------------------------------- */

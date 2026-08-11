@@ -176,24 +176,28 @@
         // Context của chatbot khi đưa lên llm
         let chatContext = { statistics: null, lastQuery: null, uploadedData: null, isTyping: false, history: [] };
 
-        // FIX 1: Sanitize HTML chống XSS khi render Markdown từ AI
+        // Render Markdown safely using marked.js
         function safeMarkdownRender(element, markdownText) {
+            if (!element) return;
             try {
-                if (typeof marked !== 'undefined') {
-                    const rawHtml = marked.parse(markdownText);
-                    if (typeof DOMPurify !== 'undefined') {
-                        element.innerHTML = DOMPurify.sanitize(rawHtml);
-                    } else {
-                        const safe = rawHtml.replace(/<script[\s\S]*?<\/script>/gi, '')
-                                            .replace(/on\w+="[^"]*"/gi, '')
-                                            .replace(/on\w+='[^']*'/gi, '');
-                        element.innerHTML = safe;
-                    }
+                const text = markdownText || '';
+                const parser = (typeof window !== 'undefined' && window.marked && typeof window.marked.parse === 'function')
+                    ? window.marked
+                    : (typeof marked !== 'undefined' && typeof marked.parse === 'function')
+                        ? marked
+                        : null;
+                const rawHtml = parser ? parser.parse(text) : text;
+
+                if (typeof DOMPurify !== 'undefined') {
+                    element.innerHTML = DOMPurify.sanitize(rawHtml);
                 } else {
-                    element.textContent = markdownText;
+                    const safe = rawHtml.replace(/<script[\s\S]*?<\/script>/gi, '')
+                                        .replace(/on\w+="[^"]*"/gi, '')
+                                        .replace(/on\w+='[^']*'/gi, '');
+                    element.innerHTML = safe;
                 }
             } catch (e) {
-                element.textContent = markdownText;
+                element.textContent = markdownText || '';
             }
         }
 

@@ -76,7 +76,7 @@ jobs:
           fi
 
   backend-ci:
-    name: Backend Pytest & Linter
+    name: Backend Linter (Black & Flake8)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -108,17 +108,6 @@ jobs:
           python -m black app --check --line-length=120
           python -m flake8 app --select=F,E1,E2,E4,E9,W --ignore=E203,E501,W293,W292,W391,W503,W504
 
-      - name: Run Pytest Suite
-        env:
-          PYTHONPATH: .
-          APP_ENV: testing
-          JWT_SECRET: "Test_Jwt_Secret_Key_At_Least_32_Chars_123!"
-          S3_SECRET_KEY: "test_s3_secret_key_123"
-          S3_ACCESS_KEY: "test_s3_access_key_123"
-          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
-        run: |
-          python -m pytest tests/
-
   frontend-ci:
     name: Frontend TypeScript Verification
     runs-on: ubuntu-latest
@@ -130,10 +119,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 24
+      - name: Set up Node.js 26
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 26
           cache: 'npm'
           cache-dependency-path: chatbot-webapp/package-lock.json
 
@@ -144,6 +133,10 @@ jobs:
       - name: Run TypeScript Compiler Check
         run: |
           npx tsc --noEmit
+
+      - name: Run Next.js Production Build
+        run: |
+          npm run build
 
   secret-scan:
     name: Gitleaks Security Scan

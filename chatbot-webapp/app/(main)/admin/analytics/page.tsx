@@ -1,19 +1,15 @@
 "use client";
 
 import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard";
-import { TenantUsageTable } from "@/components/analytics/tenant-usage-table";
 
 export default function AdminAnalyticsPage() {
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-7xl">
       <AnalyticsDashboard
-        title="Thống kê toàn platform"
-        subtitle="Theo dõi usage tổng thể và phát hiện tenant đang tiêu tốn nhiều nhất."
+        title="Báo cáo Thống kê Platform"
+        subtitle="Theo dõi tổng thể lưu lượng sử dụng, dung lượng Token, độ trễ và chi phí ước tính."
         allowClear
       />
-      <div className="px-6 pb-6">
-        <TenantUsageTable />
-      </div>
     </div>
   );
 }
