@@ -1,0 +1,166 @@
+"""Admin REST API — model listing and usage stats."""
+
+from __future__ import annotations
+
+import httpx
+import logging
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.db.session import get_async_session
+from app.modules.analytics.repository import AnalyticsRepository
+from app.modules.settings.runtime_manager import RuntimeProviderManager
+from app.modules.analytics.service import AnalyticsService
+from app.modules.chat.repositories.usage_repository import UsageRepository
+from app.modules.auth.deps import require_admin
+from app.modules.auth.context import AuthContext
+from app.utils.money import build_money_payload
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/models")
+async def list_models(auth: AuthContext = Depends(require_admin)):
+    """List available models from 9Router's connected providers."""
+    runtime = RuntimeProviderManager.get_instance()
+    proxy_base = runtime.get_llm_api_base() or "http://ai-proxy:2908"
+    api_key = runtime.get_llm_api_key() or ""
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        async with httpx.AsyncClient(timeout=settings.ai_proxy_timeout) as client:
+            resp = await client.get(f"{proxy_base}/v1/models", headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                models = [{"id": m["id"], "provider": m.get("provider", "")} for m in data.get("data", [])]
+                return {"models": models}
+            return {"models": []}
+    except Exception as e:
+        logger.error("list_models error: %s", e)
+        return {"models": []}
+
+
+@router.get("/usage/daily")
+async def get_daily_usage(
+    days: int = Query(30, ge=1, le=365),
+    session: AsyncSession = Depends(get_async_session),
+    auth: AuthContext = Depends(require_admin),
+):
+    """Daily token usage breakdown for quota tracking."""
+    repo = UsageRepository(session)
+    daily = await repo.get_daily_stats(days=days)
+    breakdown = await repo.get_endpoint_breakdown(days=days)
+    normalized_daily = []
+    for row in daily:
+        item = dict(row)
+        item.update(build_money_payload(row["cost_micros_vnd"]))
+        normalized_daily.append(item)
+    return {"daily": normalized_daily, "endpoint_breakdown": breakdown, "days": days}
+
+
+@router.get("/users/usage")
+async def get_users_usage(
+    session: AsyncSession = Depends(get_async_session),
+    auth: AuthContext = Depends(require_admin),
+):
+    """Per-user usage summary in last 30 days.
+
+    Note: token in/out in this summary is LLM-only.
+    """
+    repo = AnalyticsRepository(session)
+    items = await repo.get_user_usage_summary(days=30)
+    normalized = []
+    for item in items:
+        enriched = dict(item)
+        enriched.update(build_money_payload(item["cost_micros_vnd"]))
+        normalized.append(enriched)
+    return {"items": normalized}
+
+
+@router.get("/users/{user_id}/usage")
+async def get_user_usage_detail(
+    user_id: str,
+    session: AsyncSession = Depends(get_async_session),
+    auth: AuthContext = Depends(require_admin),
+):
+    """Usage detail for a specific user in last 30 days with 3 model types."""
+    repo = AnalyticsRepository(session)
+    days = 30
+    daily = await repo.get_daily_stats(is_platform_admin=False, user_id=user_id, tenant_id=None, days_limit=days)
+    by_model_type = await repo.get_model_type_stats(is_platform_admin=False, user_id=user_id, tenant_id=None, days=days)
+    tokens_in = sum(int(row.get("tokens_in", 0)) for row in daily)
+    tokens_out = sum(int(row.get("tokens_out", 0)) for row in daily)
+    total_cost_micros = sum(int(row.get("cost_micros_vnd", 0)) for row in by_model_type.values())
+
+    result = {
+        "user_id": user_id,
+        "window_30d": {
+            "days": days,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "total_tokens": tokens_in + tokens_out,
+            "daily": [
+                {
+                    "date": row["date"],
+                    "tokens_in": int(row.get("tokens_in", 0)),
+                    "tokens_out": int(row.get("tokens_out", 0)),
+                }
+                for row in daily
+            ],
+            "by_model_type": by_model_type,
+        },
+        "pricing": {
+            "currency_code": settings.billing_currency_code,
+            "input_price_vnd_per_1m": settings.ai_input_price_vnd_per_1m,
+            "output_price_vnd_per_1m": settings.ai_output_price_vnd_per_1m,
+        },
+    }
+    result["window_30d"].update(build_money_payload(total_cost_micros))
+    return result
+
+
+@router.get("/tenants/usage")
+async def get_tenants_usage(
+    days: int = Query(30, ge=1, le=365),
+    session: AsyncSession = Depends(get_async_session),
+    auth: AuthContext = Depends(require_admin),
+):
+    """Per-tenant usage summary in the selected time window, sorted by spend descending."""
+    service = AnalyticsService(AnalyticsRepository(session))
+    return await service.get_tenant_usage_summary(days=days)
+
+
+@router.get("/conversations")
+async def list_admin_conversations(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    tenant_id: str | None = None,
+    session: AsyncSession = Depends(get_async_session),
+    auth: AuthContext = Depends(require_admin),
+):
+    """Admin-only: list recorded chat conversations for knowledge base enhancement."""
+    from app.modules.chat.repositories.conversation_repository import ConversationRepository
+
+    repo = ConversationRepository(session)
+    effective_tenant = auth.tenant_id if auth.role != "platform_admin" else tenant_id
+    items, total = await repo.list_conversations(tenant_id=effective_tenant, offset=offset, limit=limit)
+    return {"items": items, "total": total, "offset": offset, "limit": limit}
+
+
+@router.get("/conversations/{conversation_id}/messages")
+async def get_admin_conversation_messages(
+    conversation_id: str,
+    session: AsyncSession = Depends(get_async_session),
+    auth: AuthContext = Depends(require_admin),
+):
+    """Admin-only: view turn-by-turn user queries & AI answers for a specific conversation."""
+    from app.modules.chat.repositories.conversation_repository import ConversationRepository
+
+    repo = ConversationRepository(session)
+    effective_tenant = auth.tenant_id if auth.role != "platform_admin" else None
+    messages = await repo.get_messages(conversation_id, tenant_id=effective_tenant)
+    return {"conversation_id": conversation_id, "messages": messages}
