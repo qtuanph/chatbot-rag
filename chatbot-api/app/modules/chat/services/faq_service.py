@@ -2,30 +2,47 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 from typing import Any
 
 from app.modules.chat.cache.faq_cache import compute_query_hash, faq_cache_remove_item, faq_cache_sync_item
 from app.modules.chat.repositories.escalation_repository import EscalationRepository
-from app.modules.chat.utils.query_normalizer import ALL_DEFAULT_STOPWORDS, normalize_query
 
 logger = logging.getLogger(__name__)
 
 
 def validate_and_compute_hashes(question: str, variants: list[str]) -> list[str]:
+    """Compute all Redis index keys for a FAQ question + its variants.
+
+    Uses dual-hashing to guarantee that short/greeting queries
+    ("Hi", "Hello", "Chào") — which are fully removed by the stopword filter —
+    still produce a valid, deterministic hash and can be looked up in Redis.
+
+    Dual-hash strategy:
+      1. compute_query_hash(q)  → stopword-filtered SHA-256 (may be None for pure stopwords)
+      2. raw SHA-256(lowercase+punct-stripped q)  → always produces a hash regardless of stopwords
+
+    Both hashes are stored in Redis so lookups from either path always hit.
+    """
     all_q = [question] + (variants or [])
     hashes: list[str] = []
     for q in all_q:
-        normalized = normalize_query(q, stopwords=ALL_DEFAULT_STOPWORDS)
-        if not normalized:
+        if not q or not q.strip():
             continue
-        # Safety rule: ensure variant has at least 2 tokens after stopword removal to prevent overly broad matches
-        tokens = normalized.split()
-        if len(tokens) < 2 and len(q.strip()) > 3:
-            logger.warning("FAQ variant '%s' normalized to very short phrase '%s'", q, normalized)
+
+        # Hash 1: stopword-filtered path (handles multi-word semantic deduplication)
         q_hash = compute_query_hash(q)
         if q_hash and q_hash not in hashes:
             hashes.append(q_hash)
+
+        # Hash 2: raw normalized path (guarantees short/greeting queries are always indexed)
+        raw_norm = re.sub(r"\s+", " ", re.sub(r"[^\w\s]", "", q.strip().lower())).strip()
+        if raw_norm:
+            raw_hash = hashlib.sha256(raw_norm.encode("utf-8")).hexdigest()
+            if raw_hash not in hashes:
+                hashes.append(raw_hash)
     return hashes
 
 
@@ -36,6 +53,17 @@ class FAQService:
 
     async def list_faqs(self, tenant_id: str) -> list[dict[str, Any]]:
         entries = await self.repo.list_faqs_for_tenant(tenant_id)
+        if self.redis and entries:
+            # Repair Redis index for legacy FAQ entries whose query_hashes are empty.
+            # This happens for FAQs created before the dual-hash fix (e.g. question="Hi"
+            # was fully stripped by the stopword filter, leaving query_hashes=[]).
+            # Only resyncs entries that need it to avoid unnecessary Redis writes.
+            for entry in entries:
+                if not entry.query_hashes:
+                    hashes = validate_and_compute_hashes(entry.question, entry.question_variants or [])
+                    if hashes:
+                        payload = self._to_redis_payload(entry)
+                        await faq_cache_sync_item(self.redis, tenant_id, hashes, payload)
         return [self._to_dict(e) for e in entries]
 
     async def list_open_escalations(self, tenant_id: str) -> list[dict[str, Any]]:
@@ -99,7 +127,7 @@ class FAQService:
 
         if self.redis and updated:
             tenant_str = str(updated.tenant_id)
-            # Remove old hashes no longer present
+            # Remove old hashes that are no longer part of the updated FAQ
             to_remove = [h for h in old_hashes if h not in new_hashes]
             if to_remove:
                 await faq_cache_remove_item(self.redis, tenant_str, to_remove)
@@ -113,12 +141,20 @@ class FAQService:
         if not existing:
             return False
 
-        old_hashes = list(existing.query_hashes or [])
         tenant_str = str(existing.tenant_id)
 
+        # Merge DB-stored hashes (from creation time) with freshly computed hashes (from
+        # the current dual-hash algorithm). This is necessary because legacy FAQs created
+        # before the dual-hash fix have query_hashes=[] in the DB, but list_faqs()
+        # auto-resync may have already inserted new hashes into Redis. Without this merge,
+        # those Redis keys would become stale after deletion.
+        old_db_hashes = list(existing.query_hashes or [])
+        recomputed_hashes = validate_and_compute_hashes(existing.question, existing.question_variants or [])
+        all_hashes_to_remove = list(set(old_db_hashes + recomputed_hashes))
+
         success = await self.repo.delete(faq_id)
-        if success and self.redis and old_hashes:
-            await faq_cache_remove_item(self.redis, tenant_str, old_hashes)
+        if success and self.redis and all_hashes_to_remove:
+            await faq_cache_remove_item(self.redis, tenant_str, all_hashes_to_remove)
 
         return success
 

@@ -43,7 +43,11 @@ import type {
 
 import * as s from "@/lib/schemas";
 
-const API_INTERNAL = process.env.API_INTERNAL_URL!;
+const API_INTERNAL =
+  process.env.API_INTERNAL_URL ||
+  process.env.BACKENDAPI_INTERNAL_URL ||
+  process.env.BACKEND_INTERNAL_URL ||
+  "https://chatbot-api.sse.net.vn/v1";
 
 function getBaseUrl(): string {
   return typeof window === "undefined" ? API_INTERNAL : "/api/bep";

@@ -46,17 +46,14 @@ services:
       - "traefik.enable=true"
       # — Production Router: chatbot-api.sse.net.vn
       - "traefik.http.routers.api.rule=Host(`chatbot-api.sse.net.vn`)"
-      - "traefik.http.routers.api.entrypoints=web,websecure"
-      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.routers.api.entrypoints=web"
       - "traefik.http.routers.api.priority=100"
       - "traefik.http.services.api.loadbalancer.server.port=8000"
-      - "traefik.http.middlewares.api-ratelimit.ratelimit.average=100"
-      - "traefik.http.middlewares.api-ratelimit.ratelimit.burst=50"
       # — SSE: disable response buffering so stream chunks reach browser immediately
       - "traefik.http.middlewares.api-sse.headers.customResponseHeaders.X-Accel-Buffering=no"
       - "traefik.http.middlewares.api-sse.headers.customResponseHeaders.Cache-Control=no-cache, no-transform"
       - "traefik.http.middlewares.api-sse.headers.customResponseHeaders.Connection=keep-alive"
-      - "traefik.http.routers.api.middlewares=api-ratelimit@docker,api-sse@docker"
+      - "traefik.http.routers.api.middlewares=api-sse@docker"
 
 
   workers:
@@ -123,8 +120,7 @@ services:
       - "traefik.enable=true"
       # — Production Router: chatbot-9router.sse.net.vn
       - "traefik.http.routers.ai-proxy.rule=Host(`chatbot-9router.sse.net.vn`)"
-      - "traefik.http.routers.ai-proxy.entrypoints=web,websecure"
-      - "traefik.http.routers.ai-proxy.tls=true"
+      - "traefik.http.routers.ai-proxy.entrypoints=web"
       - "traefik.http.services.ai-proxy.loadbalancer.server.port=2908"
 
   db:
@@ -197,14 +193,12 @@ services:
       - "traefik.enable=true"
       # — Production Router: chatbot-media.sse.net.vn (RustFS S3 API - Port 9000)
       - "traefik.http.routers.rustfs-s3.rule=Host(`chatbot-media.sse.net.vn`)"
-      - "traefik.http.routers.rustfs-s3.entrypoints=web,websecure"
-      - "traefik.http.routers.rustfs-s3.tls=true"
+      - "traefik.http.routers.rustfs-s3.entrypoints=web"
       - "traefik.http.routers.rustfs-s3.service=rustfs-s3"
       - "traefik.http.services.rustfs-s3.loadbalancer.server.port=9000"
       # — Production Router: chatbot-console.sse.net.vn (RustFS Console UI - Port 9001)
       - "traefik.http.routers.rustfs-console.rule=Host(`chatbot-console.sse.net.vn`)"
-      - "traefik.http.routers.rustfs-console.entrypoints=web,websecure"
-      - "traefik.http.routers.rustfs-console.tls=true"
+      - "traefik.http.routers.rustfs-console.entrypoints=web"
       - "traefik.http.routers.rustfs-console.service=rustfs-console"
       - "traefik.http.services.rustfs-console.loadbalancer.server.port=9001"
 
@@ -236,31 +230,17 @@ services:
       - "--providers.docker.exposedByDefault=false"
       - "--providers.docker.network=chatbot-rag_internal"
       - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
       - "--entrypoints.web.transport.respondingTimeouts.readTimeout=0s"
       - "--entrypoints.web.transport.respondingTimeouts.writeTimeout=0s"
       - "--entrypoints.web.transport.respondingTimeouts.idleTimeout=600s"
-      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=0s"
-      - "--entrypoints.websecure.transport.respondingTimeouts.writeTimeout=0s"
-      - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=600s"
       - "--serversTransport.forwardingTimeouts.responseHeaderTimeout=0s"
       - "--serversTransport.forwardingTimeouts.idleConnTimeout=600s"
       - "--entrypoints.web.http.encodedCharacters.allowEncodedSlash=true"
-      - "--entrypoints.websecure.http.encodedCharacters.allowEncodedSlash=true"
-      - "--providers.file.filename=/etc/traefik/dynamic_tls.yml"
-      - "--providers.file.watch=true"
-      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@sse.net.vn}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
       - "--log.level=INFO"
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:8080:80"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./ops/certs:/etc/traefik/certs:ro
-      - ./ops/traefik-tls.yml:/etc/traefik/dynamic_tls.yml:ro
-      - letsencrypt-data:/letsencrypt
     depends_on:
       api:
         condition: service_healthy

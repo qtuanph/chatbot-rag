@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -18,7 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 def compute_query_hash(text: str) -> str | None:
+    if not text or not text.strip():
+        return None
     normalized = normalize_query(text, stopwords=ALL_DEFAULT_STOPWORDS)
+    if not normalized or not normalized.strip():
+        # Fallback to basic normalization (lowercase + collapse spaces + strip punctuation)
+        # when stopwords remove every word in short queries/greetings like "Hi", "Hello", "Chào"
+        normalized = re.sub(r"\s+", " ", re.sub(r"[^\w\s]", "", text.strip().lower())).strip()
     if not normalized:
         return None
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()

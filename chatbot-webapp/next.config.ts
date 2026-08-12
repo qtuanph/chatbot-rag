@@ -8,6 +8,7 @@ const workspaceRoot = path.resolve(process.cwd(), "..");
 const nextConfig: NextConfig = {
   experimental: {
     useTypeScriptCli: true,
+    optimizePackageImports: ["lucide-react", "recharts", "date-fns"],
   },
   env: {
     NEXT_PUBLIC_APP_VERSION:
@@ -17,7 +18,6 @@ const nextConfig: NextConfig = {
       "dev",
   },
   output: "standalone",
-  outputFileTracingRoot: workspaceRoot,
   productionBrowserSourceMaps: false,
   images: {
     remotePatterns: [

@@ -39,7 +39,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             tenantId: user.tenant_id,
             token: tokenRes.access_token,
           };
-        } catch {
+        } catch (error) {
+          console.error("[NextAuth Authorize Error]:", error);
           return null;
         }
       },
