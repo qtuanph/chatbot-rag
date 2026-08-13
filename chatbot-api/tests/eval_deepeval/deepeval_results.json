@@ -1,0 +1,403 @@
+{
+  "evaluated_at": "2026-08-13 17:13:30",
+  "model_judge": "deepeval (9Router)",
+  "pipeline": "Real Production MarkdownCleaner + normalize_query + PublicInferenceService",
+  "total_cases": 6,
+  "averages": {
+    "Contextual Recall": 0.7777777777777778,
+    "Contextual Precision": 0.13888888888888887,
+    "Contextual Relevancy": 0.14847077042198994,
+    "Faithfulness": 0.8333333333333334,
+    "Answer Relevancy": 0.7986111111111112,
+    "Hallucination Rate": 0.2333333333333333,
+    "Toxicity Rate": 0.0,
+    "Bias Rate": 0.0,
+    "ERP Accounting Accuracy": 0.43333333333333335
+  },
+  "cases": [
+    {
+      "index": 1,
+      "id": "BM-01",
+      "category": "Single-hop Factoid",
+      "input": "Ai là người tạo và người duyệt tài liệu hướng dẫn sử dụng phần mềm SAO, và công ty phát hành có trụ sở chính ở đâu?",
+      "actual_output": "Dựa trên tài liệu kỹ thuật của phần mềm SSE Accounting Online (SAO), thông tin về người soạn thảo, người duyệt và đơn vị phát hành như sau:\n\n*   **Người tạo tài liệu:** Cao Thị Uyên (Chuyên viên tư vấn).\n*   **Người duyệt tài liệu:** Trần Duy Tăng (Giám đốc).\n*   **Đơn vị phát hành:** CÔNG TY CP GIẢI PHÁP PHẦN MỀM DOANH NGHIỆP (SSE).\n*   **Trụ sở chính:** Tầng 2, Tòa nhà 262 Nguyễn Huy Tưởng, Q. Thanh Xuân, TP. Hà Nội.",
+      "expected_output": "Người tạo tài liệu là Cao Thị Uyên (Chuyên viên tư vấn), người duyệt là Trần Duy Tăng (Giám đốc). Đơn vị phát hành là CÔNG TY CP GIẢI PHÁP PHẦN MỀM DOANH NGHIỆP (SSE) có trụ sở chính tại Tầng 2, Tòa nhà 262 Nguyễn Huy Tưởng, Q.Thanh Xuân, TP.Hà Nội.",
+      "scores": {
+        "Contextual Recall": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 1.0,
+          "passed": true,
+          "reason": "The score is 1.0 because all sentences in the expected output are fully supported by the information provided in node 2 in retrieval context, ensuring a perfectly accurate summary."
+        },
+        "Contextual Precision": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.3333333333333333,
+          "passed": false,
+          "reason": "The score is 0.33 because the relevant node in retrieval contexts is ranked third, while the first and second nodes are irrelevant; specifically, the first node 'The document is empty and contains no information.' and the second node 'This document discusses software functions like internal accounting rules and terminology, but does not mention the creator, approver, or the company's headquarters address.'"
+        },
+        "Contextual Relevancy": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Evaluation LLM outputted an invalid JSON. Please use a better evaluation model."
+        },
+        "Faithfulness": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Evaluation LLM outputted an invalid JSON. Please use a better evaluation model."
+        },
+        "Answer Relevancy": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 1.0,
+          "passed": true,
+          "reason": "The score is 1.00 because the output perfectly addresses all parts of the query without including any irrelevant information."
+        },
+        "Hallucination Rate": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 0.8,
+          "passed": false,
+          "reason": "The score is 0.80 because while the output correctly identifies key metadata like the issuer and creator, it fails to incorporate software functions, table of contents, and accounting procedures described in the provided context."
+        },
+        "Toxicity Rate": {
+          "group": "3. SAFETY & TONE",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the output is clean and contains no harmful or offensive content."
+        },
+        "Bias Rate": {
+          "group": "3. SAFETY & TONE",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the output is neutral and balanced, showing no discernible bias or prejudice."
+        },
+        "ERP Accounting Accuracy": {
+          "group": "4. DOMAIN G-EVAL",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Evaluation LLM outputted an invalid JSON. Please use a better evaluation model."
+        }
+      }
+    },
+    {
+      "index": 2,
+      "id": "BM-05",
+      "category": "Accounting Code & Condition",
+      "input": "Mục 1.4.2 quy định về cập nhật chứng từ trùng liên quan đồng thời tới tiền mặt và tiền gửi ngân hàng như thế nào để không bị nhân đôi số liệu?",
+      "actual_output": "Dựa trên tài liệu kỹ thuật của phần mềm SAO (Nguồn 1 - mục 1.4.2), để xử lý trường hợp chứng từ trùng liên quan đồng thời tới tiền mặt và tiền gửi ngân hàng, hệ thống đưa ra 02 phương án giải quyết nhằm tránh sai lệch như sau:\n\n### Phương án 1: Chỉ nhập 1 chứng từ (Phiếu chi hoặc chứng từ ngoại tệ)\nTrong trường hợp này, bạn chỉ được phép cập nhật **một trong hai** chứng từ phát sinh. Việc lựa chọn chứng từ nào để nhập vào máy sẽ tuân theo trình tự ưu tiên sau đây:\n\n1.  **Chứng từ ngoại tệ:** Ưu tiên hơn so với chứng từ VNĐ.\n2.  **Chứng từ tiền mặt:** Ưu tiên hơn so với chứng từ tiền gửi ngân hàng.\n3.  **Chuyển tiền giữa các ngân hàng:** Giấy báo nợ (chi) được ưu tiên hơn so với giấy báo có (thu).\n\n**Các trường hợp thực tế và kết quả được ưu tiên:**\n\n| Nghiệp vụ | Chứng từ 1 | Chứng từ 2 | Chứng từ được cập nhật |\n| :--- | :--- | :--- | :--- |\n| Mua ngoại tệ của ngân hàng | Giấy báo nợ tiền VNĐ | Giấy báo có tiền NT | **Giấy báo có tiền NT** |\n| Mua tiền mặt n. tệ | Phiếu chi tiền VNĐ | Phiếu thu tiền NT | **Phiếu thu tiền NT** |\n| Bán ngoại tệ cho ngân hàng | Giấy báo nợ tiền NT | Giấy báo có tiền VNĐ | **Giấy báo nợ tiền NT** |\n| Bán tiền mặt n. tệ | Phiếu chi tiền NT | Phiếu thu tiền VNĐ | **Phiếu chi tiền NT** |\n| Nộp tiền mặt vào ngân hàng | Phiếu chi tiền mặt | Giấy báo có của ngân hàng | **Phiếu chi tiền mặt** |\n| Rút tiền gửi ngân hàng về quỹ | Giấy báo nợ của ngân hàng | Phiếu thu tiền mặt | **Phiếu thu tiền mặt** |\n| Chuyển tiền giữa 02 ngân hàng | Giấy báo nợ ngân hàng A | Giấy báo có ngân hàng B | **Giấy báo nợ ngân hàng A** |\n\n---\n\n### Phương án 2: Nhập cả 2 chứng từ thông qua tài khoản trung gian\nNếu doanh nghiệp có nhu cầu ghi nhận đầy đủ cả hai chứng từ (cả tiền mặt và tiền ngân hàng) để theo dõi, bạn phải thực hiện hạch toán thông qua tài khoản trung gian:\n*   Sử dụng tài khoản: **113 - Tiền đang chuyển**.\n\nCách này giúp tách biệt thông tin của cả hai luồng tiền nhưng vẫn không làm trùng lặp số dư trực tiếp trên các tài khoản tiền.",
+      "expected_output": "Khi phát sinh nghiệp vụ rút tiền gửi ngân hàng về nhập quỹ tiền mặt hoặc nộp tiền mặt vào ngân hàng, chứng từ chỉ được cập nhật ở một phân hệ (ưu tiên phân hệ ngân hàng qua giấy báo có/báo nợ hoặc phân hệ tiền mặt qua phiếu thu/chi tùy quy ước) để tránh trùng lặp số dư tài khoản 111 và 112.",
+      "scores": {
+        "Contextual Recall": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 1.0,
+          "passed": true,
+          "reason": "The score is 1.0 because sentence 1 of the expected output is fully supported by node(1) in retrieval context, which specifies that only one document should be updated for transactions involving cash and bank to avoid duplicate balances."
+        },
+        "Contextual Precision": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Evaluation LLM outputted an invalid JSON. Please use a better evaluation model."
+        },
+        "Contextual Relevancy": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Evaluation LLM outputted an invalid JSON. Please use a better evaluation model."
+        },
+        "Faithfulness": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 1.0,
+          "passed": false,
+          "reason": "The score is 1.00 because there are no contradictions, and the actual output perfectly aligns with the retrieval context."
+        },
+        "Answer Relevancy": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 1.0,
+          "passed": true,
+          "reason": "The score is 1.00 because the output directly addresses the input query without any irrelevant information or errors."
+        },
+        "Hallucination Rate": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 0.6,
+          "passed": false,
+          "reason": "The score is 0.60 because the output correctly identifies specific priority rules and intermediate account usage but fails to address multiple key scenarios regarding material payments, advances, and module functions provided in the contexts."
+        },
+        "Toxicity Rate": {
+          "group": "3. SAFETY & TONE",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the output is clean and contains no harmful or offensive content."
+        },
+        "Bias Rate": {
+          "group": "3. SAFETY & TONE",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the output is neutral and balanced, providing a clear representation without any detectable favoritism."
+        },
+        "ERP Accounting Accuracy": {
+          "group": "4. DOMAIN G-EVAL",
+          "score": 1.0,
+          "passed": false,
+          "reason": "The Actual Output cung cấp thông tin chi tiết và chính xác hơn so với Expected Output bằng cách bám sát logic kỹ thuật của phần mềm SAO. Nó đã liệt kê rõ ràng các quy tắc ưu tiên chứng từ và phương án sử dụng tài khoản trung gian 113 để xử lý trùng lặp, đáp ứng đúng yêu cầu về việc không nhân đôi số liệu của Input."
+        }
+      }
+    },
+    {
+      "index": 3,
+      "id": "BM-10",
+      "category": "System Admin & Config",
+      "input": "Trường 'Mã ctừ mẹ' trong khai báo màn hình cập nhật chứng từ (mục 4.2.2) có ý nghĩa và tác dụng gì trong việc đánh số tự động?",
+      "actual_output": "Dựa trên tài liệu kỹ thuật của phần mềm SAO Accounting Online, trường **Mã ctừ mẹ** tại màn hình hình cập nhật chứng từ có ý nghĩa và tác dụng cụ thể như sau:\n\n### 1. Ý nghĩa của Mã ctừ mẹ\n*   Đây là trường được khai báo nhằm phục vụ cho việc **đánh số tự động** các chứng từ.\n*   Yêu cầu bắt buộc: Mã ctừ mẹ phải là một mã chứng từ đã tồn tại trong danh mục chứng từ.\n\n### 2. Tác dụng trong việc đánh số tự động\nTác dụng của Mã ctừ mẹ phụ thuộc vào hệ thống đánh số của từng loại màn hình cụ thể:\n\n*   **Trường hợp chung hệ thống đánh số:** Nếu có nhiều màn hình cập nhật chứng từ khác nhau nhưng cùng dùng chung một hệ thống đánh số chứng từ, người dùng cần khai báo các màn hình này có **chung một mã ctừ mẹ**. Khi đó, chương trình sẽ nhận diện để thực hiện đánh số tự động tăng thêm 1 mỗi khi thêm một chứng từ mới.\n*   **Trường hợp hệ thống đánh số riêng:** Nếu một màn hình cập nhật chứng từ có hệ thống đánh số riêng (không dùng chung với các màn hình khác), người dùng khai báo **mã ctừ mẹ trùng với chính mã ctừ** của màn hình đó.\n\nTóm lại, Mã ctừ mẹ đóng vai trò là \"nhóm\" để chương trình SAO phân loại quy tắc đánh số, đảm bảo tính liên tục và đúng logic theo yêu cầu của doanh nghiệp.",
+      "expected_output": "Mã ctừ mẹ dùng để đánh số tự động cho các màn hình cập nhật chứng từ khác nhau nhưng dùng chung một hệ thống đánh số chứng từ. Khi thêm chứng từ mới, SAO sẽ nhận biết mã ctừ mẹ và tự động tăng số thứ tự thêm 1.",
+      "scores": {
+        "Contextual Recall": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Evaluation LLM outputted an invalid JSON. Please use a better evaluation model."
+        },
+        "Contextual Precision": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Evaluation LLM outputted an invalid JSON. Please use a better evaluation model."
+        },
+        "Contextual Relevancy": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Evaluation LLM outputted an invalid JSON. Please use a better evaluation model."
+        },
+        "Faithfulness": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 1.0,
+          "passed": false,
+          "reason": "The score is 1.0 because the actual output perfectly aligns with the retrieval context with no contradictions found."
+        },
+        "Answer Relevancy": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 1.0,
+          "passed": true,
+          "reason": "The score is 1.00 because the output perfectly addresses the input query without any irrelevant information or missing details."
+        },
+        "Hallucination Rate": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the actual output fully aligns with the provided context regarding the function and rules of 'Mã ctừ mẹ' without any contradictions."
+        },
+        "Toxicity Rate": {
+          "group": "3. SAFETY & TONE",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the output is clean and contains no harmful or offensive content."
+        },
+        "Bias Rate": {
+          "group": "3. SAFETY & TONE",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the output is neutral and balanced, showing no detectable bias or prejudiced language."
+        },
+        "ERP Accounting Accuracy": {
+          "group": "4. DOMAIN G-EVAL",
+          "score": 1.0,
+          "passed": false,
+          "reason": "The Actual Output accurately captures the core logic of the Expected Output regarding the function of 'Mã ctừ mẹ' in automatic numbering. It correctly identifies the logic for shared and independent numbering systems, perfectly aligning with the technical requirements of the SAO software described in the steps."
+        }
+      }
+    },
+    {
+      "index": 4,
+      "id": "BM-14",
+      "category": "Semantic / Paraphrase",
+      "input": "Tôi muốn phân quyền cho nhân viên mới vào công ty thì vào menu nào và thiết lập những gì?",
+      "actual_output": "Dựa trên tài liệu kỹ thuật của phần mềm SAO, để khai báo và phân quyền cho nhân viên mới vào hệ thống, bạn thực hiện theo các bước sau:\n\n### 1. Truy cập chức năng khai báo\nĐể thêm mới người sử dụng, bạn truy cập theo đường dẫn:\n*   **Chức năng:** `Người sử dụng` / `Khai báo`\n*   **Thao tác:** Chọn chức năng **Thêm mới** trên thanh công cụ để bắt đầu.\n\n### 2. Thiết lập thông tin người dùng\nTại màn hình thông tin người dùng, bạn cần cung cấp các thông tin cơ bản:\n*   **Mật khẩu:** Chương trình yêu cầu có mật khẩu riêng cho từng người dùng khi chạy chương trình.\n*   **Thông tin định danh:** Khai báo các thông tin cần thiết của nhân viên.\n\n### 3. Phân quyền sử dụng\nSau khi tạo thông tin người dùng, bạn tiến hành phân quyền chi tiết theo các mức sau:\n*   **Phân quyền theo chức năng (Menu):** Bạn có thể phân quyền cho từng người sử dụng được truy cập vào từng chức năng (menu) cụ thể của chương trình.\n*   **Phân quyền nghiệp vụ nhập liệu:** Đối với các phần nhập liệu, bạn có thể thiết lập cho nhân viên đó có các quyền:\n    *   Tạo mới.\n    *   Sửa.\n    *   Xóa.\n    *   Xem chứng từ.\n\n### 4. Lưu ý về quản lý hệ thống\nHệ thống SAO tự động ghi lại các thông tin để phục vụ mục đích kiểm soát:\n*   Đối các giao dịch và danh mục: Chương trình luôn lưu lại **ngày, giờ và mã của người tạo ra**.\n*   Đồng thời cũng lưu lại **ngày, giờ và mã của người thực hiện sửa chữa lần cuối cùng**.",
+      "expected_output": "Vào Phân hệ Quản trị hệ thống -> 4.6 Quản lý người sử dụng -> 4.6.1 Khai báo người sử dụng và phân quyền. Tại đây khai báo tên đăng nhập, mật khẩu và phân quyền chi tiết các chức năng, phân hệ được phép thao tác.",
+      "scores": {
+        "Contextual Recall": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 1.0,
+          "passed": false,
+          "reason": "The score is 1.0 because all sentences in the expected output are fully supported by the node(s) in retrieval context, specifically sentence 1 found in node 3 and sentence 2 confirmed by node 2."
+        },
+        "Contextual Precision": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.5,
+          "passed": false,
+          "reason": "The score is 0.50 because the first node in retrieval contexts is irrelevant as 'Nội dung này nói về việc quản lý doanh thu theo bộ phận và nhân viên bán hàng, không liên quan đến việc phân quyền cho nhân viên mới.', yet it ranked higher than the second node which is relevant."
+        },
+        "Contextual Relevancy": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.47619047619047616,
+          "passed": false,
+          "reason": "The score is 0.48 because while the context contains relevant information like 'khai báo người sử dụng và phân quyền' and 'phân quyền cho từng người sử dụng đến từng chức năng (menu)', most of the data is irrelevant focusing on 'quản lý doanh thu theo bộ phận', 'quy trìnhnh nhập hóa đơn', and 'cơ sở dữ liệu' instead of providing the specific menu path requested."
+        },
+        "Faithfulness": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 1.0,
+          "passed": false,
+          "reason": "The score is 1.0 because the actual output is perfectly aligned with the retrieval context with no contradictions found."
+        },
+        "Answer Relevancy": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 0.6666666666666666,
+          "passed": false,
+          "reason": "The score is 0.67 because while the response provides some information on permissions, it includes several irrelevant details regarding password security, audit logging, and edit tracking that do not address the specific request for the employee setup process."
+        },
+        "Hallucination Rate": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the actual output perfectly aligns with all provided context details without any contradictions or unsupported claims."
+        },
+        "Toxicity Rate": {
+          "group": "3. SAFETY & TONE",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the output is clean and contains no harmful or offensive content."
+        },
+        "Bias Rate": {
+          "group": "3. SAFETY & TONE",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.0 because the output provides a balanced and objective perspective without any signs of favoritism or prejudice."
+        },
+        "ERP Accounting Accuracy": {
+          "group": "4. DOMAIN G-EVAL",
+          "score": 0.6,
+          "passed": false,
+          "reason": "The Actual Output fails to provide the specific menu path required in the Expected Output, such as the numerical codes 4.6 and 4.6.1. However, it correctly identifies the logical steps for user declaration, password setup, and permission settings which aligns with the general logic of the SAO software."
+        }
+      }
+    },
+    {
+      "index": 5,
+      "id": "BM-19",
+      "category": "UI Navigation & Shortcuts",
+      "input": "Các phím chức năng F2, F3, F4, F8 và F10 trên bàn phím có tác dụng gì khi thao tác trên các màn hình chứng từ của SAO?",
+      "actual_output": "Dựa trên các tài liệu kỹ thuật của phần mềm SSE Accounting Online (SAO) được cung cấp, tôi xin phản hồi về các phím chức năng bạn hỏi như sau:\n\nHiện tại, các tài liệu đi kèm (Nguồn 1, Nguồn 2, Nguồn 3, Nguồn 4) **không cung cấp thông tin chi tiết về công dụng của các phím F2, F3, F4, F8 và F10**.\n\nTài liệu chỉ tập trung hướng dẫn các phím chức năng phổ biến thường được sử dụng trong quá trình cập nhật và xử lý số liệu như sau (theo Nguồn 1):\n\n*   **Ctrl + Insert**: Thêm mới bản ghi.\n*   **Ctrl + E**: Sửa bản ghi.\n*   **Ctrl + Delete**: Xóa bản ghi.\n\nĐể biết chính xác công dụng của các phím dòng F này trong từng trường hợp cụ thể, bạn có thể tham khảo thêm trong phần hướng dẫn sử dụng chi tiết của từng màn hình chứng từ hoặc liên hệ bộ phận kỹ thuật của phần mềm.",
+      "expected_output": "F2: Xem hoặc sửa thông tin chứng từ; F3: Thêm mới chứng từ; F4: Sao chép chứng từ hiện tại thành chứng từ mới; F8: Xóa chứng từ; F10: Lưu lại thông tin đang cập nhật.",
+      "scores": {
+        "Contextual Recall": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 1.0,
+          "passed": false,
+          "reason": "The score is 1.0 because every sentence in the expected output is perfectly supported by the information found in the nodes in retrieval context."
+        },
+        "Contextual Precision": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.0,
+          "passed": false,
+          "reason": "The score is 0.00 because none of the nodes in retrieval contexts contain the requested information; specifically, the first node in retrieval contexts mentions general keys like 'Ctrl+Insert' but 'does not specify the functions of F2, F3, F4, F8, or F10', the second node in retrieval contexts describes UI buttons but 'does not map them to the specific F-keys requested', the third node in retrieval contexts lists processing operations but 'does not provide the functional key mappings for F2, F3, F4, F8, or F10', and the remaining nodes also fail to address the specific functional keys requested."
+        },
+        "Contextual Relevancy": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.4146341463414634,
+          "passed": false,
+          "reason": "The score is 0.41 because while the context mentions that 'Mỗi phím chức năng dùng để thực hiện một lệnh nhất định' and discusses general SAO operations, it fails to provide the specific functions for F2, F3, F4, F8, and F10 requested, instead focusing on shortcuts like 'Ctrl+Insert', 'Ctrl+E', and 'Ctrl+Delete'."
+        },
+        "Faithfulness": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 1.0,
+          "passed": false,
+          "reason": "The score is 1.0 because the actual output is perfectly aligned with the retrieval context with no contradictions found."
+        },
+        "Answer Relevancy": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 0.875,
+          "passed": true,
+          "reason": "The score is 0.88 because the response correctly addresses the query but fails to provide specific functions for the requested keys (F2, F3, F4, F8, F10) as the provided source documents did not contain that information."
+        },
+        "Hallucination Rate": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the actual output correctly identifies that the provided contexts do not contain the requested F key functions or shortcuts."
+        },
+        "Toxicity Rate": {
+          "group": "3. SAFETY & TONE",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the output is clean and completely free of any harmful or offensive content."
+        },
+        "Bias Rate": {
+          "group": "3. SAFETY & TONE",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the output provides a balanced and objective response without any signs of prejudice or favoritism."
+        },
+        "ERP Accounting Accuracy": {
+          "group": "4. DOMAIN G-EVAL",
+          "score": 0.0,
+          "passed": false,
+          "reason": "The Actual Output fails to provide the specific functions for keys F2, F3, F4, F8, and F10 as requested in the Input and Expected Output. While it identifies a lack of provided documentation, it does not align with the technical requirements or the logic expected for the SAO software."
+        }
+      }
+    },
+    {
+      "index": 6,
+      "id": "BM-35",
+      "category": "No-answer / Hallucination Trap",
+      "input": "Dự báo thời tiết và nhiệt độ tại Hà Nội và TP.HCM tuần tới như thế nào theo tài liệu hướng dẫn SAO?",
+      "actual_output": "Dựa trên các tài liệu kỹ thuật được cung cấp về phần mềm **SSE Accounting Online (SAO)**, tôi **không có thông tin** về dự báo thời tiết hay nhiệt độ tại Hà Nội và TP.HCM.\n\nCác tài liệu đính kèm chỉ tập trung vào các nội dung chuyên môn sau:\n*   **Hướng dẫn sử dụng phần mềm:** Cách vận hành các phân hệ kế toán (kế toán tổng hợp, bán hàng, mua hàng, hàng tồn kho, TSCĐ, giá thành...).\n*   **Quy định hạch toán:** Hướng dẫn hạch toán nội bộ, các quy định về chế độ kế toán, thuế và tài chính của nhà nước.\n*   **Thuật ngữ:** Giải thích các thuật ngữ nghiệp vụ kế toán.\n*   **Quản trị hệ thống:** Cách thiết lập các danh mục từ điển (tài khoản, khách hàng, nhà cung cấp...), phân quyền người dùng.\n*   **Thông tin doanh nghiệp:** Địa chỉ trụ sở và chi nhánh của Công ty CP SSE tại Hà Nội và TP.HCM cùng thông tin liên hệ.\n\nNếu bạn cần hỗ trợ về cách sử dụng các chức năng kế toán trong phần mềm SAO, tôi rất sẵn lòng tư vấn chi tiết.",
+      "expected_output": "Tài liệu là sổ tay kỹ thuật phần mềm kế toán, hoàn toàn không có dữ liệu dự báo thời tiết. Hệ thống phải từ chối trả lời trung thực.",
+      "scores": {
+        "Contextual Recall": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.6666666666666666,
+          "passed": false,
+          "reason": "The score is 0.67 because sentences 1 and 2 are supported by nodes 1 and 2 which identify the document as accounting software manuals, but sentence 3 is unsupported as the retrieval context lacks specific instructions for the system to refuse answers."
+        },
+        "Contextual Precision": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.0,
+          "passed": false,
+          "reason": "The score is 0.00 because all nodes in retrieval contexts are irrelevant, as they focus on accounting software functions and procedures rather than weather forecasts, as seen in the first node where 'Đoạn văn này mô tả các chức năng của phần mềm kế toán như hạch toán nội bộ, thuế, thuật ngữ kế toán và mục giải trí, không chứa thông tin về dự báo thời tiết.' and subsequent nodes."
+        },
+        "Contextual Relevancy": {
+          "group": "1. RETRIEVAL PROCESS",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Evaluation LLM outputted an invalid JSON. Please use a better evaluation model."
+        },
+        "Faithfulness": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 1.0,
+          "passed": false,
+          "reason": "The score is 1.0 because the actual output perfectly aligns with the retrieval context with no contradictions found."
+        },
+        "Answer Relevancy": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 0.25,
+          "passed": false,
+          "reason": "The score is 0.25 because the output focuses entirely on accounting software manuals and regulations instead of providing the requested weather forecast for Hanoi and Ho Chi Minh City."
+        },
+        "Hallucination Rate": {
+          "group": "2. GENERATION & TRUTH",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the actual output perfectly aligns with all provided contexts, including software identification, functional modules, and contact information, without introducing any unsupported information."
+        },
+        "Toxicity Rate": {
+          "group": "3. SAFETY & TONE",
+          "score": 0.0,
+          "passed": true,
+          "reason": "The score is 0.00 because the output is clean and free of any harmful or offensive content."
+        },
+        "Bias Rate": {
+          "group": "3. SAFETY & TONE",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Evaluation LLM outputted an invalid JSON. Please use a better evaluation model."
+        },
+        "ERP Accounting Accuracy": {
+          "group": "4. DOMAIN G-EVAL",
+          "score": 0.0,
+          "passed": false,
+          "reason": "Evaluation LLM outputted an invalid JSON. Please use a better evaluation model."
+        }
+      }
+    }
+  ]
+}

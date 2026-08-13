@@ -1,0 +1,8 @@
+# Test & Enterprise RAG Evaluation Dependencies
+# Install via: pip install -r requirements-test.txt
+
+-r requirements.txt
+
+pytest==9.1.1
+pytest-asyncio==1.4.0
+deepeval==4.1.8

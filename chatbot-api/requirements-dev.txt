@@ -1,8 +1,9 @@
 -r requirements.txt
 
-# Test/development-only dependencies (do not install in runtime Docker image)
+# Test & RAG Evaluation dependencies (do not install in runtime Docker image)
 pytest==9.1.1
 pytest-asyncio==1.4.0
+deepeval==4.1.8
 
 # Security scanning
 bandit==1.9.4
