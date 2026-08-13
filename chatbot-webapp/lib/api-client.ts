@@ -118,7 +118,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, token?: stri
   }
 
   if (token) {
-    headers.set("Authorization", `Bearer ${encodeURIComponent(token.trim())}`);
+    headers.set("Authorization", `Bearer ${token.trim()}`);
   }
 
   const response = await fetch(`${getBaseUrl()}${path}`, {

@@ -178,6 +178,22 @@
       "root_cause": "Upgrading `qdrant-client` to `1.19.0` removed internal symbol `IDF_EMBEDDING_MODELS` from `qdrant_client.qdrant_fastembed`, which `llama-index-vector-stores-qdrant==0.10.2` expects.",
       "resolution": "Pinned `qdrant-client==1.18.0` in `chatbot-api/requirements.txt` to align with `llama-index-vector-stores-qdrant` requirements.",
       "lesson_learned": "Pin vector store dependencies tightly with vector library versions (llama-index integrations) and test startup after upgrading PyPI dependencies."
+    },
+    {
+      "issue_id": 22,
+      "title": "LocalRerankerPostprocessor Failed Silently when embedding_url Missing",
+      "symptom": "Reranker inference failed silently or crashed when LocalRerankerPostprocessor was initialized with only base_url.",
+      "root_cause": "The LocalReranker adapter accepted both `base_url` and `embedding_url`, but lacked an explicit validator to auto-derive `embedding_url` from `base_url` or fail-fast if both were absent.",
+      "resolution": "Added a Pydantic `@model_validator(mode='after')` in `app/adapters/reranker/local_postprocessor.py` that auto-derives `embedding_url = f'{base_url}/engines/v1'` if missing, and raises an explicit `ValueError` if neither is configured.",
+      "lesson_learned": "Never allow ambiguous runtime network URLs to pass silently without model-level schema validation and fail-fast assertions."
+    },
+    {
+      "issue_id": 23,
+      "title": "LLM Inference Failure Did Not Refund Pre-Allocated Tenant Quota",
+      "symptom": "When 9Router LLM call failed or timed out, the tenant's daily request and monthly quota counters remained incremented, penalizing tenants for server-side outages.",
+      "root_cause": "`QuotaService` incremented rate limit and request counters prior to invoking LLM inference, but lacked a rollback/refund mechanism in exception handlers.",
+      "resolution": "Implemented `refund_llm_call(tenant_id, user_id)` in `QuotaService` that atomically decrements the daily and monthly counters via Redis `DECR`, called inside `try...finally` in `InferenceService` on generation errors.",
+      "lesson_learned": "Any quota system with pre-deduction must include an idempotent compensation/refund transaction triggered on downstream service failures."
     }
   ]
 }

@@ -41,55 +41,64 @@ The result is a platform that serves as a robust foundation for embedding AI ass
 
 ---
 
-## Evaluation Metrics
+## Evaluation & Enterprise Benchmark
 
-The platform is continuously audited and stress-tested using conversational, real-world Vietnamese queries mimicking non-technical end-users.
+The platform is continuously audited and stress-tested using an automated, quantitative evaluation suite (`sao_erp_benchmark_dataset.json`) representing real-world Vietnamese enterprise users (CFOs, chief accountants, warehouse managers, system administrators, and novice operators) across **35 rigorous test cases** and **7 challenge categories**.
 
-### Retrieval Metrics ("Did we find the right document?")
+### 🏆 Executive Benchmark Scorecard (Quantitative SLA Verification)
 
-In our latest live production evaluation (July 2026) using **BGE-M3** semantic embeddings and **Qdrant Hybrid Search (Dense + BM25 Sparse)**, the system achieved a perfect score against complex technical ERP manuals:
+Evaluated against the **6,733-line technical manual** (`test_tailieukythuat.md`, 363 canonical sections) using our Hybrid Retrieval Engine (Sparse BM25 + Section Code Prioritization + Safe Auto-Merging + NVIDIA NIM Reranking):
 
-```text
-Dataset  : 10 conversational, non-standard Vietnamese questions
-           (e.g. slang, typos, casual phrasing from accounting staff)
-MRR      : 1.0000  — relevant doc always ranked #1
-Hit@1    : 1.0000  — 100% first-try accuracy
-Recall@5 : 1.0000  — all relevant docs found in top-5
-nDCG@5   : 1.0000  — perfect ranking quality
+| Evaluation Metric | Measured Value | SLA Target | Status | Technical Meaning |
+|---|:---:|:---:|:---:|---|
+| **Hit Rate @ 1 (Top-1 Accuracy)** | **80.00%** | $\ge 75.0\%$ | ✅ **Meets SLA** | Target canonical section ranked #1 on the very first try |
+| **Hit Rate @ 3 (Top-3 Accuracy)** | **88.57%** | $\ge 85.0\%$ | ✅ **Meets SLA** | Correct context included within the Top 3 retrieved nodes |
+| **Hit Rate @ 5 (Top-5 Accuracy)** | **88.57%** | $\ge 85.0\%$ | ✅ **Meets SLA** | Overall evidence coverage across the Top 5 retrieved nodes |
+| **Mean Reciprocal Rank (MRR)** | **0.833** / 1.000 | $\ge 0.800$ | ✅ **Meets SLA** | Quality score of candidate ranking position |
+| **Context Fact Recall** | **46.52%** | $\ge 40.0\%$ | ✅ **Meets SLA** | Ratio of core factual entities captured in prompt context |
+| **Mean Retrieval Latency** | **26.69 ms** | $\le 50.0\text{ ms}$ | ✅ **Meets SLA** | Average time to retrieve, auto-merge, and rank candidates |
+| **P50 Retrieval Latency** | **25.50 ms** | $\le 30.0\text{ ms}$ | ✅ **Meets SLA** | Median retrieval response time |
+| **P95 Retrieval Latency** | **33.81 ms** | $\le 60.0\text{ ms}$ | ✅ **Meets SLA** | 95th-percentile retrieval response time under load |
+| **Anti-Hallucination Guardrail** | **100.0%** | $100.0\%$ | ✅ **Meets SLA** | Rejection rate of ungrounded out-of-domain questions |
+
+---
+
+### 📊 Performance Breakdown by Query Taxonomy (Diagnostic Matrix)
+
+| Category | Samples | Hit@1 (%) | Hit@3 (%) | Hit@5 (%) | MRR | Fact Recall (%) | Mean Latency |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Multi-hop / Synthesis** | 5 | **100.0%** | **100.0%** | **100.0%** | **1.00** | **40.7%** | 31.4 ms |
+| **System Admin & Config** | 4 | **100.0%** | **100.0%** | **100.0%** | **1.00** | **61.7%** | 28.0 ms |
+| **UI Navigation & Shortcuts** | 3 | **100.0%** | **100.0%** | **100.0%** | **1.00** | **37.2%** | 24.3 ms |
+| **No-answer / Hallucination Trap** | 5 | **100.0%** | **100.0%** | **100.0%** | **1.00** | **100.0%** | 27.4 ms |
+| **Accounting Code & Condition** | 9 | **88.9%** | **88.9%** | **88.9%** | **0.89** | **37.0%** | 25.4 ms |
+| **Single-hop Factoid** | 4 | **25.0%** | **50.0%** | **50.0%** | **0.33** | **50.0%** | 25.5 ms |
+| **Semantic / Paraphrase** | 5 | **40.0%** | **80.0%** | **80.0%** | **0.57** | **6.7%** | 25.1 ms |
+| **OVERALL SUMMARY** | **35** | **80.00%** | **88.57%** | **88.57%** | **0.833** | **46.52%** | **26.69 ms** |
+
+---
+
+### 🚀 Running the Automated Benchmark CLI
+
+Anyone can independently replicate and verify the entire evaluation suite by running:
+
+```bash
+cd chatbot-api
+python tests/benchmark/run_benchmark.py
 ```
 
-**Conclusion:** The Hybrid RAG engine reliably retrieves the exact document on the very first attempt, demonstrating extreme resilience against Vietnamese slang, formatting variations, and casual conversational phrasing.
+*The runner automatically executes all 35 test cases in $< 1.0\text{ second}$, evaluates exact rank positions and factual recall, and exports a fresh Markdown report (`tests/benchmark/BENCHMARK_REPORT.md`) and raw JSON metrics (`tests/benchmark/benchmark_results.json`).*
 
-### Generation Metrics ("Is the answer accurate & grounded?")
+---
 
-| Metric | What it measures | Target |
+### 🔍 Diagnostic Guide — Systematic RAG Triage
+
+| If this score is low... | And this score is high... | Root Cause & Prescribed Fix |
 |---|---|---|
-| **Faithfulness** | Answer derived only from retrieved context — no hallucination | > 0.90 |
-| **Answer Relevance** | Answer actually addresses the user's question | > 0.85 |
-| **Context Precision** | Relevant chunks ranked higher than irrelevant ones | > 0.85 |
-| **Context Recall** | Retrieved context contains all info needed to answer | > 0.80 |
-
-> Faithfulness and Answer Relevance are evaluated using the **LLM-as-a-Judge** pattern (RAGAS framework).
-> A strong LLM (e.g. GPT-4o or Claude) scores each response against the retrieved context automatically.
-
-### Performance Metrics ("Is it fast enough for production?")
-
-| Metric | Description | Target |
-|---|---|---|
-| **TTFT** (Time To First Token) | Latency until streaming starts | < 1.5s |
-| **P95 Response Time** | 95th percentile end-to-end latency | < 6s |
-| **Cache Hit Latency (L1 Exact)** | O(1) Redis lookup for repeated queries | < 50ms |
-| **Cache Hit Rate** | % of queries served from cache (no LLM cost) | > 30% |
-| **Token Cost per Query** | Average LLM API spend per chat turn | Track & minimize |
-
-### Diagnostic Guide — What low scores mean
-
-| If this is low... | And this is high... | The problem is likely... |
-|---|---|---|
-| **Context Recall** | **Faithfulness** | Retriever missing info — improve chunking or embedding |
-| **Answer Relevance** | **Faithfulness** | Retriever finds data but it’s off-topic — improve query rewriting |
-| **Faithfulness** | **Context Recall** | LLM is hallucinating — tighten grounding prompt |
-| **Hit@1** | *any* | Embedding model or BM25 tuning needed |
+| **Context Fact Recall** | **Hit Rate @ 1** | Fragmented chunks — expand via `SafeAutoMergingRetriever` or parent document hydration. |
+| **Hit Rate @ 1** | **Hit Rate @ 3** | Lexical tie-breaking ambiguity — enable cross-encoder reranker (NVIDIA NIM) to boost rank #1. |
+| **Semantic / Paraphrase** | **Keyword-heavy** | High lexical reliance — upgrade dense embedding model (BGE-M3 / Qwen-Embedding). |
+| **Anti-Hallucination** | *any* | Loose grounding prompts — enforce strict keyword verification & entity presence assertion. |
 
 ---
 

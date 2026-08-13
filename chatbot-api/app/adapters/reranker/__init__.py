@@ -2,7 +2,7 @@
 
 import logging
 
-from app.adapters.reranker.local_postprocessor import LocalRerankerPostprocessor
+from app.adapters.reranker.local_postprocessor import LocalRerankerPostprocessor, _normalize_base
 from app.adapters.reranker.nvidia_postprocessor import NvidiaRerankerPostprocessor
 from app.core.config import settings
 
@@ -75,6 +75,8 @@ def get_reranker(top_k: int | None = None) -> LocalRerankerPostprocessor | Nvidi
             finally:
                 repo.close()
             kwargs["base_url"] = cfg.get("url") or (dmr.get("url") if dmr else settings.ai_reranker_url)
+            # H-10: derive embedding_url from base_url; without this, LocalReranker uses empty string → invalid URL.
+            kwargs["embedding_url"] = f"{_normalize_base(kwargs['base_url'])}/engines/v1"
             kwargs["model_name"] = cfg.get("model") or (dmr.get("model") if dmr else None)
             return LocalRerankerPostprocessor(**kwargs)
 
@@ -87,6 +89,8 @@ def get_reranker(top_k: int | None = None) -> LocalRerankerPostprocessor | Nvidi
     finally:
         repo.close()
     kwargs["base_url"] = dmr.get("url") if dmr else settings.ai_reranker_url
+    # H-10: derive embedding_url from base_url.
+    kwargs["embedding_url"] = f"{_normalize_base(kwargs['base_url'])}/engines/v1"
     kwargs["model_name"] = dmr.get("model") if dmr else None
     return LocalRerankerPostprocessor(**kwargs)
 

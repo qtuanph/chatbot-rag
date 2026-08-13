@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 from functools import lru_cache
 from typing import Any
@@ -16,6 +17,8 @@ from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.http import models as rest
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 _embed_async_semaphore = asyncio.Semaphore(8)
 _embed_sync_semaphore = threading.Semaphore(8)
@@ -215,9 +218,21 @@ def get_vector_store() -> QdrantVectorStore:
 
 
 async def delete_document_vectors(document_id: str) -> None:
-    """Delete vectors for one document from both section and chunk collections."""
-    for vector_store in (get_section_vector_store(), get_chunk_vector_store()):
+    """Delete vectors for one document from both section and chunk collections.
+
+    Uses a direct Qdrant filter on the ``document_id`` payload field, which is set
+    reliably during ingestion.  The previous ``adelete(ref_doc_id=...)`` used a
+    LlamaIndex-internal key that did not match the stored payload, causing silent no-ops.
+    """
+    from qdrant_client.http.models import FieldCondition, Filter, MatchValue
+
+    client = get_async_qdrant_client()
+    delete_filter = Filter(
+        must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]
+    )
+    for collection in (settings.qdrant_section_collection, settings.qdrant_chunk_collection):
         try:
-            await vector_store.adelete(ref_doc_id=document_id)
-        except Exception:
-            continue
+            result = await client.delete(collection_name=collection, points_selector=delete_filter)
+            logger.info("[%s] Deleted vectors from '%s': %s", document_id, collection, result)
+        except Exception as exc:
+            logger.warning("[%s] Failed to delete vectors from '%s': %s", document_id, collection, exc)

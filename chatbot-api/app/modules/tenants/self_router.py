@@ -16,10 +16,11 @@ async def _resolve_tenant_id(auth: AuthContext, service: TenantService) -> str:
     if auth.tenant_id:
         return auth.tenant_id
     if auth.role == "platform_admin":
-        tenants = await service.list_tenants()
-        if tenants:
-            return str(tenants[0]["id"])
-        raise http_errors.not_found("No tenants found in system")
+        # C-06: platform_admin has no personal tenant — /tenants/me is meaningless for them.
+        # Previously this silently grabbed tenants[0] which could corrupt another tenant's config.
+        raise http_errors.forbidden(
+            "platform_admin has no personal tenant. Use /admin/tenants/{tenant_id} endpoints instead."
+        )
     raise http_errors.forbidden("Tenant access required")
 
 

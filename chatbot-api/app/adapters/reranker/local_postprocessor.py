@@ -18,6 +18,7 @@ import re
 import httpx
 from llama_index.core.postprocessor.types import BaseNodePostprocessor
 from llama_index.core.schema import NodeWithScore, QueryBundle
+from pydantic import model_validator
 
 from app.core.config import settings
 
@@ -58,6 +59,31 @@ class LocalRerankerPostprocessor(BaseNodePostprocessor):
     embedding_url: str = ""
     embedding_model: str = _DEFAULT_EMBEDDING_MODEL
     timeout: float = settings.ai_reranker_timeout
+
+    @model_validator(mode="after")
+    def _validate_and_derive_embedding_url(self) -> "LocalRerankerPostprocessor":
+        """Ensure embedding_url is always set before any request is made.
+
+        - If embedding_url is explicitly provided: use it as-is.
+        - If only base_url is set: derive embedding_url = {base_url}/engines/v1 and log.
+        - If both are empty: raise ValueError immediately so misconfiguration is
+          visible at startup, not silently at request time.
+        """
+        if not self.embedding_url:
+            if not self.base_url:
+                raise ValueError(
+                    "LocalRerankerPostprocessor: cả 'base_url' lẫn 'embedding_url' đều trống. "
+                    "Kiểm tra cấu hình provider reranker trong SQLite settings "
+                    "(Settings → Reranker → URL).  Không thể khởi động reranker."
+                )
+            self.embedding_url = f"{_normalize_base(self.base_url)}/engines/v1"
+            logger.info(
+                "LocalRerankerPostprocessor: embedding_url chưa được cấu hình, "
+                "tự động derive từ base_url '%s' → '%s'",
+                self.base_url,
+                self.embedding_url,
+            )
+        return self
 
     async def _embed(self, client: httpx.AsyncClient, inputs: list[str]) -> list[list[float]]:
         url = _embeddings_endpoint(self.embedding_url)

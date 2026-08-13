@@ -53,6 +53,11 @@ class DocumentService:
 
         duplicate = await self.doc_repo.find_by_sha256(sha256, tenant_id)
         next_version = await self.doc_repo.get_next_version(filename, tenant_id)
+        # H-08: Bloom filters are append-only — SHA256 stays in the filter even after
+        # soft-delete or failed upload.  Treat those docs as non-duplicate so the file
+        # can be successfully re-uploaded.
+        if duplicate is not None and duplicate.get("status") in ("failed", "deleted"):
+            duplicate = None
         return duplicate, next_version
 
     async def create_and_enqueue(
@@ -189,9 +194,17 @@ class DocumentService:
         return await self.tree_service.get_document_tree(document_id)
 
     async def delete_document(
-        self, *, document_id: str, user_id: str, ip_address: str | None = None, user_agent: str | None = None
+        self,
+        *,
+        document_id: str,
+        user_id: str,
+        owner_tenant_id: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> dict:
-        doc = await self.doc_repo.get_full_document(document_id)
+        # C-05: pass owner_tenant_id so tenant_admin can only delete their own docs.
+        # get_full_document(tenant_id=...) returns None if the doc is from another tenant.
+        doc = await self.doc_repo.get_full_document(document_id, tenant_id=owner_tenant_id)
         if doc is None:
             raise ValueError("Document not found")
 
@@ -233,9 +246,16 @@ class DocumentService:
         return {"status": "deleted", "document_id": document_id}
 
     async def retry_document(
-        self, *, document_id: str, user_id: str, ip_address: str | None = None, user_agent: str | None = None
+        self,
+        *,
+        document_id: str,
+        user_id: str,
+        owner_tenant_id: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> dict:
-        doc = await self.doc_repo.get_full_document(document_id)
+        # C-05: tenant scoped ownership check.
+        doc = await self.doc_repo.get_full_document(document_id, tenant_id=owner_tenant_id)
         if doc is None:
             raise ValueError("Document not found")
         if doc["status"] != "failed":
@@ -281,9 +301,16 @@ class DocumentService:
         return {"task_id": new_task_id, "document_id": document_id, "status": "queued"}
 
     async def rechunk_document(
-        self, *, document_id: str, user_id: str, ip_address: str | None = None, user_agent: str | None = None
+        self,
+        *,
+        document_id: str,
+        user_id: str,
+        owner_tenant_id: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> dict:
-        doc = await self.doc_repo.get_full_document(document_id)
+        # C-05: tenant scoped ownership check.
+        doc = await self.doc_repo.get_full_document(document_id, tenant_id=owner_tenant_id)
         if doc is None:
             raise ValueError("Document not found")
 

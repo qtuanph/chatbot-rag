@@ -53,6 +53,14 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
             from app.core.redis import get_worker_redis
 
             async with get_worker_redis() as async_redis:
+                # H-06: Distributed lock — prevents two workers from concurrently ingesting
+                # the same document (e.g. after visibility-timeout retry or manual re-queue).
+                lock_key = f"ingest:lock:{document_id}"
+                if not await async_redis.set(lock_key, "1", nx=True, ex=3600):
+                    logger.warning(
+                        "[%s] Another worker is already processing this document. Skipping.", document_id
+                    )
+                    return {"status": "skipped", "reason": "already_processing"}
                 try:
                     document = await doc_repo.get_full_document(document_id)
                     if not document:
@@ -75,20 +83,32 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                         section_repo=section_repo,
                     )
 
+                    _last_progress = {"stage": "", "percent": -1}
+
                     async def _progress_callback(stage: str, percent: int, message: str = ""):
                         logger.info("[%s] Progress: %d%% - %s", document_id, percent, message)
-                        try:
-                            async with AsyncSessionLocal() as fresh_session:
-                                fresh_repo = DocumentRepository(fresh_session)
-                                await fresh_repo.update_status(
-                                    document_id,
-                                    status="processing",
-                                    stage=stage,
-                                    progress_percent=percent,
-                                    status_message=message,
-                                )
-                        except Exception as status_err:
-                            logger.warning("[%s] Failed to update progress in DB: %s", document_id, status_err)
+                        # L-07: Batch DB updates to stage changes or >= 5% intervals to reduce session churn
+                        should_update_db = (
+                            stage != _last_progress["stage"]
+                            or (percent - _last_progress["percent"]) >= 5
+                            or percent >= 100
+                            or percent <= 0
+                        )
+                        if should_update_db:
+                            _last_progress["stage"] = stage
+                            _last_progress["percent"] = percent
+                            try:
+                                async with AsyncSessionLocal() as fresh_session:
+                                    fresh_repo = DocumentRepository(fresh_session)
+                                    await fresh_repo.update_status(
+                                        document_id,
+                                        status="processing",
+                                        stage=stage,
+                                        progress_percent=percent,
+                                        status_message=message,
+                                    )
+                            except Exception as status_err:
+                                logger.warning("[%s] Failed to update progress in DB: %s", document_id, status_err)
 
                     ingestion_result = await pipeline.ingest(
                         filename=document.get("file_name") or filename,
@@ -130,6 +150,15 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                     error_msg = str(e)
                     if len(error_msg) > 480:
                         error_msg = error_msg[:480] + "..."
+                    # H-07: rollback any vectors/sections written before the failure so we
+                    # don’t leave orphan data in Qdrant/PostgreSQL.
+                    try:
+                        from app.core.llama_index import delete_document_vectors
+
+                        await delete_document_vectors(document_id)
+                        await section_repo.delete_sections(document_id)
+                    except Exception as cleanup_err:
+                        logger.warning("[%s] Rollback cleanup failed: %s", document_id, cleanup_err)
                     await doc_repo.update_status(
                         document_id,
                         status="failed",
@@ -137,6 +166,12 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                         status_message=f"Loi: {error_msg}",
                     )
                     raise e
+                finally:
+                    # H-06: always release the distributed lock.
+                    try:
+                        await async_redis.delete(lock_key)
+                    except Exception:
+                        pass
 
     try:
         result = asyncio.run(_run_async_pipeline())

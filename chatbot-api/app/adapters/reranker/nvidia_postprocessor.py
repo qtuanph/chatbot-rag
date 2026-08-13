@@ -66,7 +66,7 @@ class NvidiaRerankerPostprocessor(BaseNodePostprocessor):
 
         rankings = data.get("rankings", [])
         ranked = []
-        for item in sorted(rankings, key=lambda x: x.get("logit", 0), reverse=True)[: self.top_k]:
+        for item in sorted(rankings, key=lambda x: x.get("logit", float("-inf")), reverse=True)[: self.top_k]:
             idx = item["index"]
             nodes[idx].score = float(item.get("logit", 0.0))
             ranked.append(nodes[idx])

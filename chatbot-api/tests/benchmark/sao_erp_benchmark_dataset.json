@@ -1,0 +1,317 @@
+[
+  {
+    "id": "BM-01",
+    "category": "Single-hop Factoid",
+    "persona": "Kiểm toán viên / Ban Giám đốc",
+    "query": "Ai là người tạo và người duyệt tài liệu hướng dẫn sử dụng phần mềm SAO, và công ty phát hành có trụ sở chính ở đâu?",
+    "target_sections": ["0"],
+    "ground_truth": "Người tạo tài liệu là Cao Thị Uyên (Chuyên viên tư vấn), người duyệt là Trần Duy Tăng (Giám đốc). Đơn vị phát hành là CÔNG TY CP GIẢI PHÁP PHẦN MỀM DOANH NGHIỆP (SSE) có trụ sở chính tại Tầng 2, Tòa nhà 262 Nguyễn Huy Tưởng, Q.Thanh Xuân, TP.Hà Nội.",
+    "must_include_keywords": ["Cao Thị Uyên", "Trần Duy Tăng", "Giám đốc", "262 Nguyễn Huy Tưởng", "Thanh Xuân", "Hà Nội", "SSE"]
+  },
+  {
+    "id": "BM-02",
+    "category": "Single-hop Factoid",
+    "persona": "Kế toán trưởng",
+    "query": "Hệ thống SSE Accounting Online (SAO) được tổ chức thành bao nhiêu phân hệ nghiệp vụ chính? Liệt kê tên các phân hệ đó.",
+    "target_sections": ["1.1", "1.1.1"],
+    "ground_truth": "SAO gồm 10 phân hệ nghiệp vụ chính: 1. Hệ thống, 2. Kế toán tổng hợp, 3. Kế toán tiền mặt và tiền gửi ngân hàng, 4. Kế toán bán hàng và công nợ phải thu, 5. Kế toán mua hàng và công nợ phải trả, 6. Kế toán hàng tồn kho, 7. Kế toán TSCĐ, 8. Kế toán công cụ dụng cụ, 9. Kế toán giá thành dịch vụ, 10. Báo cáo thuế.",
+    "must_include_keywords": ["10", "kế toán tổng hợp", "tiền mặt", "bán hàng", "mua hàng", "hàng tồn kho", "TSCĐ", "công cụ dụng cụ", "báo cáo thuế"]
+  },
+  {
+    "id": "BM-03",
+    "category": "Accounting Code & Condition",
+    "persona": "Kế toán thanh toán",
+    "query": "Trong phân hệ tiền mặt và ngân hàng, loại phiếu thu số 1, loại phiếu thu số 6 và loại phiếu thu số 7 được dùng cho những nghiệp vụ nào?",
+    "target_sections": ["1.1.1.6", "1.1.1.11", "1.1.1.12", "1.1.1"],
+    "ground_truth": "Loại 1: Thu tiền chi tiết theo từng hóa đơn; Loại 6: Mua ngoại tệ; Loại 7: Người mua trả tiền trước.",
+    "must_include_keywords": ["chi tiết theo từng hóa đơn", "Mua ngoại tệ", "Người mua trả tiền trước"]
+  },
+  {
+    "id": "BM-04",
+    "category": "Accounting Code & Condition",
+    "persona": "Kế toán thanh toán",
+    "query": "Quy định mã loại phiếu chi từ loại 1 đến loại 4 trong SAO tương ứng với các nghiệp vụ chi tiền nào?",
+    "target_sections": ["1.1.1.14", "1.1.1.15", "1.1.1.16", "1.1.1.17", "1.1.1"],
+    "ground_truth": "Loại 1: Chi trả chi tiết theo từng hóa đơn; Loại 2: Chi trả tiền cho một người bán; Loại 3: Chi trả tiền cho nhiều người bán; Loại 4: Chi cho vay, chi tạm ứng.",
+    "must_include_keywords": ["chi trả chi tiết theo từng hóa đơn", "một người bán", "nhiều người bán", "cho vay, chi tạm ứng"]
+  },
+  {
+    "id": "BM-05",
+    "category": "Accounting Code & Condition",
+    "persona": "Kế toán tổng hợp",
+    "query": "Mục 1.4.2 quy định về cập nhật chứng từ trùng liên quan đồng thời tới tiền mặt và tiền gửi ngân hàng như thế nào để không bị nhân đôi số liệu?",
+    "target_sections": ["1.4", "1.4.2"],
+    "ground_truth": "Khi phát sinh nghiệp vụ rút tiền gửi ngân hàng về nhập quỹ tiền mặt hoặc nộp tiền mặt vào ngân hàng, chứng từ chỉ được cập nhật ở một phân hệ (ưu tiên phân hệ ngân hàng qua giấy báo có/báo nợ hoặc phân hệ tiền mặt qua phiếu thu/chi tùy quy ước) để tránh trùng lặp số dư tài khoản 111 và 112.",
+    "must_include_keywords": ["chứng từ trùng", "tiền mặt", "tiền gửi ngân hàng", "chỉ cập nhật"]
+  },
+  {
+    "id": "BM-06",
+    "category": "Accounting Code & Condition",
+    "persona": "Kế toán mua bán hàng",
+    "query": "Quy định xử lý chứng từ trùng trong trường hợp mua bán vật tư hàng hóa thanh toán ngay bằng tiền mặt hoặc tiền gửi ngân hàng theo mục 1.4.3?",
+    "target_sections": ["1.4", "1.4.3"],
+    "ground_truth": "Khi mua bán vật tư thanh toán ngay, có đồng thời hóa đơn mua/bán và phiếu chi/thu. SAO quy định cập nhật trực tiếp tại màn hình mua hàng/bán hàng có kèm hạch toán tiền thanh toán ngay hoặc cập nhật riêng hóa đơn rồi dùng phiếu thu/chi gạch nợ chi tiết.",
+    "must_include_keywords": ["thanh toán ngay", "mua bán vật tư", "chứng từ trùng"]
+  },
+  {
+    "id": "BM-07",
+    "category": "Multi-hop / Synthesis",
+    "persona": "Kế toán trưởng / CFO",
+    "query": "Luồng dữ liệu trong SAO di chuyển như thế nào từ các phân hệ nghiệp vụ cơ sở (vốn bằng tiền, bán hàng, mua hàng, kho, TSCĐ) sang phân hệ kế toán tổng hợp để lên những báo cáo gì?",
+    "target_sections": ["1.1.1", "1.1", "1.5"],
+    "ground_truth": "Số liệu phát sinh ở các phân hệ cơ sở được lưu tại phân hệ đó và tự động kết chuyển các thông tin cần thiết sang phân hệ kế toán tổng hợp để lên các sổ sách kế toán (sổ cái, sổ chi tiết, sổ nhật ký chung), báo cáo tài chính, báo cáo quản trị, chi phí và giá thành.",
+    "must_include_keywords": ["kế toán tổng hợp", "sổ cái", "sổ chi tiết", "sổ nhật ký chung", "báo cáo tài chính", "báo cáo quản trị"]
+  },
+  {
+    "id": "BM-08",
+    "category": "Multi-hop / Synthesis",
+    "persona": "Kế toán kho & giá thành",
+    "query": "Phân hệ kế toán hàng tồn kho nhận dữ liệu từ các chứng từ nào và cung cấp số liệu cho các báo cáo thẻ kho, sổ chi tiết ra sao?",
+    "target_sections": ["1.1.1.35", "1.1.1.37", "1.1.1.39", "1.1.7", "1.1.1"],
+    "ground_truth": "Phân hệ nhận dữ liệu từ phiếu nhập kho, phiếu xuất kho và phiếu xuất điều chuyển kho; sau đó tự động cập nhật số lượng và giá trị tồn kho để lên thẻ kho, sổ chi tiết vật tư, bảng tổng hợp nhập xuất tồn.",
+    "must_include_keywords": ["phiếu nhập kho", "phiếu xuất kho", "phiếu xuất điều chuyển kho", "thẻ kho", "sổ chi tiết vật tư"]
+  },
+  {
+    "id": "BM-09",
+    "category": "Multi-hop / Synthesis",
+    "persona": "Chuyên viên triển khai ERP",
+    "query": "Trước khi đưa phần mềm SAO vào vận hành, doanh nghiệp cần chuẩn bị 9 bước công việc chính nào theo mục 2.1?",
+    "target_sections": ["2.1", "2.1.1", "2.1.4", "2.1.6", "2.1.7", "2.1.8", "2.1.9"],
+    "ground_truth": "Gồm 9 bước: 1. Xác định yêu cầu quản lý; 2. Nghiên cứu tổ chức thông tin của SAO; 3. Tổ chức hệ thống thông tin; 4. Xây dựng danh mục từ điển; 5. Xác định tham số hệ thống; 6. Khai báo ngày bắt đầu năm tài chính; 7. Khai báo ngày tính số dư đầu kỳ; 8. Xác định số dư đầu kỳ và số phát sinh lũy kế; 9. Phân quyền người sử dụng.",
+    "must_include_keywords": ["yêu cầu về quản lý", "danh mục từ điển", "năm tài chính", "số dư đầu kỳ", "số phát sinh lũy kế", "phân quyền"]
+  },
+  {
+    "id": "BM-10",
+    "category": "System Admin & Config",
+    "persona": "Quản trị viên hệ thống (IT Admin)",
+    "query": "Trường 'Mã ctừ mẹ' trong khai báo màn hình cập nhật chứng từ (mục 4.2.2) có ý nghĩa và tác dụng gì trong việc đánh số tự động?",
+    "target_sections": ["4.2", "4.2.2"],
+    "ground_truth": "Mã ctừ mẹ dùng để đánh số tự động cho các màn hình cập nhật chứng từ khác nhau nhưng dùng chung một hệ thống đánh số chứng từ. Khi thêm chứng từ mới, SAO sẽ nhận biết mã ctừ mẹ và tự động tăng số thứ tự thêm 1.",
+    "must_include_keywords": ["Mã ctừ mẹ", "đánh số tự động", "tăng thêm 1", "màn hình cập nhật chứng từ"]
+  },
+  {
+    "id": "BM-11",
+    "category": "System Admin & Config",
+    "persona": "Quản trị viên hệ thống (IT Admin)",
+    "query": "Phân hệ 4.6 Quản lý người sử dụng bao gồm các chức năng cụ thể nào để kiểm soát an toàn hệ thống?",
+    "target_sections": ["4.6", "4.6.1", "4.6.2"],
+    "ground_truth": "Gồm 2 chức năng: 4.6.1 Khai báo người sử dụng và phân quyền (tạo user, gán quyền truy cập chức năng/màn hình) và 4.6.2 Nhật ký người sử dụng (theo dõi lịch sử đăng nhập và thao tác dữ liệu).",
+    "must_include_keywords": ["Khai báo người sử dụng và phân quyền", "Nhật ký người sử dụng", "lịch sử"]
+  },
+  {
+    "id": "BM-12",
+    "category": "System Admin & Config",
+    "persona": "Quản trị viên hệ thống (IT Admin)",
+    "query": "Mục 4.5 Quản lý và bảo trì số liệu cung cấp những công cụ nào để sao lưu và đảm bảo tính toàn vẹn dữ liệu?",
+    "target_sections": ["4.5", "4.5.1", "4.5.2", "4.5.3", "4.5.4", "4.5.5", "4.5.8"],
+    "ground_truth": "Gồm các chức năng: 4.5.1 Lưu trữ (backup) số liệu; 4.5.2 Khóa số liệu; 4.5.3 Bảo trì và kiểm tra số liệu; 4.5.4 Kiểm tra đồng bộ giữa các tệp; 4.5.5 Kiểm tra sai lệch số liệu khi lên báo cáo; 4.5.6/4.5.7 Sao chép số liệu ra/vào; 4.5.8 Đánh lại số chứng từ.",
+    "must_include_keywords": ["Lưu trữ (backup)", "Khóa số liệu", "Bảo trì và kiểm tra số liệu", "Kiểm tra đồng bộ", "Đánh lại số chứng từ"]
+  },
+  {
+    "id": "BM-13",
+    "category": "System Admin & Config",
+    "persona": "Kế toán trưởng",
+    "query": "Khai báo 'Kỳ mở sổ' (mục 4.2.4) và 'Ngày đầu năm tài chính' (mục 4.2.3) có tác dụng gì trong việc bảo vệ dữ liệu kế toán?",
+    "target_sections": ["4.2", "4.2.3", "4.2.4"],
+    "ground_truth": "Khai báo ngày đầu năm tài chính xác định mốc bắt đầu tính toán số liệu của năm; Khai báo kỳ mở sổ dùng để giới hạn khoảng thời gian cho phép nhập và chỉnh sửa chứng từ, ngăn chặn việc sửa đổi số liệu của các kỳ đã khóa sổ.",
+    "must_include_keywords": ["ngày đầu năm tài chính", "kỳ mở sổ", "khóa", "chỉnh sửa chứng từ"]
+  },
+  {
+    "id": "BM-14",
+    "category": "Semantic / Paraphrase",
+    "persona": "Nhân viên mới sử dụng phần mềm",
+    "query": "Tôi muốn phân quyền cho nhân viên mới vào công ty thì vào menu nào và thiết lập những gì?",
+    "target_sections": ["4.6", "4.6.1"],
+    "ground_truth": "Vào Phân hệ Quản trị hệ thống -> 4.6 Quản lý người sử dụng -> 4.6.1 Khai báo người sử dụng và phân quyền. Tại đây khai báo tên đăng nhập, mật khẩu và phân quyền chi tiết các chức năng, phân hệ được phép thao tác.",
+    "must_include_keywords": ["Quản trị hệ thống", "Quản lý người sử dụng", "Khai báo người sử dụng và phân quyền"]
+  },
+  {
+    "id": "BM-15",
+    "category": "Semantic / Paraphrase",
+    "persona": "Kế toán viên doanh nghiệp FDI",
+    "query": "Làm thế nào để hiển thị và in hóa đơn bằng tiếng Anh trên hệ thống SAO cho khách hàng nước ngoài?",
+    "target_sections": ["1.9", "4.2.2"],
+    "ground_truth": "Hệ thống hỗ trợ song ngữ Anh - Việt (mục 1.9). Người dùng có thể khai báo tên tiếng Anh của chứng từ tại trường 'Tên 2' trong mục 4.2.2 Khai báo màn hình cập nhật chứng từ và lựa chọn mẫu in tiếng Anh khi xuất báo cáo/chứng từ.",
+    "must_include_keywords": ["tiếng Anh", "Tên 2", "1.9 Vấn đề giao diện và báo cáo"]
+  },
+  {
+    "id": "BM-16",
+    "category": "Semantic / Paraphrase",
+    "persona": "Thủ kho",
+    "query": "Khi cần chuyển hàng từ kho tổng sang kho chi nhánh thì lập loại giấy tờ nào trong phần mềm?",
+    "target_sections": ["1.1.1.39", "1.1.7", "1.1.1"],
+    "ground_truth": "Lập 'Phiếu xuất điều chuyển kho' (mục 1.1.1.39) trong phân hệ kế toán hàng tồn kho để ghi nhận giảm kho xuất và tăng kho nhận đồng thời.",
+    "must_include_keywords": ["Phiếu xuất điều chuyển kho", "kế toán hàng tồn kho"]
+  },
+  {
+    "id": "BM-17",
+    "category": "Semantic / Paraphrase",
+    "persona": "Nhân viên thu ngân",
+    "query": "Khách hàng đến mua đồ và trả bằng tiền mặt ngay tại chỗ thì xử lý thế nào trong hệ thống?",
+    "target_sections": ["1.1.1.30", "1.1.5", "1.1.1"],
+    "ground_truth": "Sử dụng chức năng 'Bán hàng thu tiền ngay' (mục 1.1.1.30) trong phân hệ kế toán bán hàng, hệ thống sẽ tự động tạo hóa đơn bán kiêm phiếu thu tiền mặt mà không cần hạch toán công nợ trung gian.",
+    "must_include_keywords": ["Bán hàng thu tiền ngay", "kế toán bán hàng"]
+  },
+  {
+    "id": "BM-18",
+    "category": "Semantic / Paraphrase",
+    "persona": "Kế toán viên",
+    "query": "Nếu công ty lỡ nhập sai mã khách hàng hoặc mã vật tư thì có cách nào sửa lại mà không làm mất dữ liệu giao dịch cũ không?",
+    "target_sections": ["3.9"],
+    "ground_truth": "Sử dụng chức năng 'Đổi mã và ghép mã các danh điểm trong các danh mục từ điển' (mục 3.9). Chức năng này cho phép đổi mã cũ sang mã mới hoặc ghép nhiều mã thành một mã duy nhất và tự động cập nhật toàn bộ các chứng từ lịch sử đã phát sinh.",
+    "must_include_keywords": ["Đổi mã và ghép mã", "danh mục từ điển", "cập nhật"]
+  },
+  {
+    "id": "BM-19",
+    "category": "UI Navigation & Shortcuts",
+    "persona": "Người dùng văn phòng",
+    "query": "Các phím chức năng F2, F3, F4, F8 và F10 trên bàn phím có tác dụng gì khi thao tác trên các màn hình chứng từ của SAO?",
+    "target_sections": ["3.2"],
+    "ground_truth": "F2: Xem hoặc sửa thông tin chứng từ; F3: Thêm mới chứng từ; F4: Sao chép chứng từ hiện tại thành chứng từ mới; F8: Xóa chứng từ; F10: Lưu lại thông tin đang cập nhật.",
+    "must_include_keywords": ["F2", "F3", "F4", "F8", "F10", "Xem hoặc sửa", "Thêm mới", "Sao chép", "Xóa", "Lưu"]
+  },
+  {
+    "id": "BM-20",
+    "category": "UI Navigation & Shortcuts",
+    "persona": "Người dùng mới",
+    "query": "Các thao tác chung khi lên báo cáo trong SAO theo mục 3.7 gồm những bước nào?",
+    "target_sections": ["3.7"],
+    "ground_truth": "Gồm: Chọn báo cáo từ menu -> Nhập các tham số lọc báo cáo (khoảng thời gian, tài khoản, mã đơn vị, ngoại tệ...) -> Nhấn nhận để xem màn hình kết quả -> In báo cáo hoặc xuất ra tệp dữ liệu.",
+    "must_include_keywords": ["tham số", "khoảng thời gian", "In báo cáo", "3.7 Các thao tác chung khi lên báo cáo"]
+  },
+  {
+    "id": "BM-21",
+    "category": "Accounting Code & Condition",
+    "persona": "Kế toán bán hàng",
+    "query": "Các thông tin quan trọng cần lưu ý khi nhập hóa đơn bán hàng kiêm phiếu xuất kho (mục 1.1.1.29) là gì?",
+    "target_sections": ["1.1.1.28", "1.1.1.29", "1.1.1"],
+    "ground_truth": "Lưu ý kiểm tra mã khách hàng, thời hạn thanh toán, mã kho xuất, giá bán, thuế suất GTGT và kiểm tra số lượng tồn kho tức thời để đảm bảo không xuất âm kho nếu có thiết lập cấm xuất âm.",
+    "must_include_keywords": ["hóa đơn bán hàng kiêm phiếu xuất kho", "mã khách hàng", "thuế suất", "tồn kho"]
+  },
+  {
+    "id": "BM-22",
+    "category": "Accounting Code & Condition",
+    "persona": "Kế toán công nợ",
+    "query": "Chức năng tạm ứng trước tiền hàng của khách hàng (mục 1.1.1.32) được hạch toán và quản lý như thế nào?",
+    "target_sections": ["1.1.1.32", "1.1.1"],
+    "ground_truth": "Ghi nhận khoản tiền khách hàng trả trước thông qua phiếu thu loại 7 (người mua trả tiền trước), ghi Có tài khoản 131 và theo dõi chi tiết theo từng đối tượng khách hàng để đối trừ tự động khi xuất hóa đơn sau này.",
+    "must_include_keywords": ["Tạm ứng trước tiền hàng", "131", "phiếu thu", "trả trước"]
+  },
+  {
+    "id": "BM-23",
+    "category": "Accounting Code & Condition",
+    "persona": "Kế toán kho",
+    "query": "SAO hỗ trợ các phương pháp tính giá hàng tồn kho nào trong mục 4.4.3?",
+    "target_sections": ["4.4", "4.4.3"],
+    "ground_truth": "Hỗ trợ các phương pháp: Giá đích danh, Giá trung bình (bình quân cả kỳ, bình quân gia quyền di động), và Nhập trước xuất trước (FIFO).",
+    "must_include_keywords": ["đích danh", "trung bình", "bình quân", "FIFO", "tính giá hàng tồn kho"]
+  },
+  {
+    "id": "BM-24",
+    "category": "Accounting Code & Condition",
+    "persona": "Kế toán tổng hợp",
+    "query": "Các phương pháp tính tỷ giá ghi sổ ngoại tệ được hỗ trợ trong SAO theo mục 4.4.4 là gì?",
+    "target_sections": ["4.4", "4.4.4", "1.1.1.23"],
+    "ground_truth": "Bao gồm: Tỷ giá đích danh, Tỷ giá bình quân gia quyền di động (bình quân liên hoàn) và Tỷ giá bình quân cuối tháng.",
+    "must_include_keywords": ["tỷ giá ghi sổ", "đích danh", "bình quân gia quyền", "ngoại tệ"]
+  },
+  {
+    "id": "BM-25",
+    "category": "Single-hop Factoid",
+    "persona": "Nhân viên văn phòng",
+    "query": "Số điện thoại hotline và địa chỉ email hỗ trợ kỹ thuật của công ty SSE là gì?",
+    "target_sections": ["0"],
+    "ground_truth": "Tel: 02435682222, Hotline: 0942584285, Email: Supports@sse.net.vn, Website: http://www.sse.net.vn.",
+    "must_include_keywords": ["02435682222", "0942584285", "Supports@sse.net.vn", "www.sse.net.vn"]
+  },
+  {
+    "id": "BM-26",
+    "category": "Single-hop Factoid",
+    "persona": "Kế toán trưởng",
+    "query": "Chi nhánh phía Nam của công ty phần mềm SSE đặt tại địa chỉ cụ thể nào ở TP. Hồ Chí Minh?",
+    "target_sections": ["0"],
+    "ground_truth": "Tầng 5 Tòa nhà SONGDO số 62A Phạm Ngọc Thạch, P.6, Q.3, TP.HCM.",
+    "must_include_keywords": ["SONGDO", "62A Phạm Ngọc Thạch", "P.6, Q.3", "TP.HCM"]
+  },
+  {
+    "id": "BM-27",
+    "category": "Multi-hop / Synthesis",
+    "persona": "Kế toán trưởng tập đoàn",
+    "query": "SAO giải quyết bài toán quản lý số liệu của các đơn vị thành viên và tổng hợp toàn công ty như thế nào theo mục 1.8 và mục 2.3?",
+    "target_sections": ["1.8", "2.3", "4.3.2"],
+    "ground_truth": "Quản lý thông qua 'Danh mục đơn vị cơ sở' (mục 4.3.2). Mỗi chứng từ phát sinh gắn mã đơn vị cơ sở tương ứng; cho phép lên báo cáo độc lập cho từng chi nhánh/đơn vị thành viên hoặc lên báo cáo tổng hợp hợp nhất toàn công ty.",
+    "must_include_keywords": ["đơn vị thành viên", "đơn vị cơ sở", "tổng hợp toàn công ty", "chi nhánh"]
+  },
+  {
+    "id": "BM-28",
+    "category": "Multi-hop / Synthesis",
+    "persona": "Kế toán trưởng",
+    "query": "Phân hệ kế toán TSCĐ và phân hệ kế toán CCDC khác nhau như thế nào và quản lý các nghiệp vụ gì?",
+    "target_sections": ["1.1.8", "1.1.9", "1.1.1"],
+    "ground_truth": "Phân hệ TSCĐ (1.1.8) theo dõi tài sản cố định, tính và phân bổ khấu hao tài sản; Phân hệ CCDC (1.1.9) theo dõi công cụ dụng cụ, thực hiện phân bổ chi phí trả trước nhiều kỳ theo từng khoản mục phí và bộ phận sử dụng.",
+    "must_include_keywords": ["tài sản cố định (TSCĐ)", "khấu hao", "công cụ dụng cụ (CCDC)", "phân bổ chi phí"]
+  },
+  {
+    "id": "BM-29",
+    "category": "UI Navigation & Shortcuts",
+    "persona": "Kế toán viên",
+    "query": "Quy tắc nhập tài khoản kế toán trong SAO (mục 3.8) được hỗ trợ tìm kiếm và gõ phím như thế nào?",
+    "target_sections": ["3.8"],
+    "ground_truth": "Người dùng có thể gõ trực tiếp số hiệu tài khoản hoặc gõ ký tự đầu để tìm kiếm nhanh, hệ thống hỗ trợ phím mũi tên hoặc phím cách (Spacebar) để hiển thị danh mục tài khoản chi tiết.",
+    "must_include_keywords": ["nhập tài khoản", "tìm kiếm", "danh mục tài khoản"]
+  },
+  {
+    "id": "BM-30",
+    "category": "Accounting Code & Condition",
+    "persona": "Kế toán tiền mặt",
+    "query": "Phiếu chi loại 8 trong phân hệ tiền mặt và ngân hàng được áp dụng cho trường hợp chi tiền cụ thể nào?",
+    "target_sections": ["1.1.1.21", "1.1.1"],
+    "ground_truth": "Phiếu chi loại 8 dùng cho nghiệp vụ: 'Chi thanh toán chi phí trực tiếp bằng tiền mặt'.",
+    "must_include_keywords": ["Chi thanh toán chi phí trực tiếp bằng tiền mặt", "loại phiếu chi bằng 8"]
+  },
+  {
+    "id": "BM-31",
+    "category": "No-answer / Hallucination Trap",
+    "persona": "Nhân viên nhân sự",
+    "query": "Chính sách nghỉ thai sản và mức trợ cấp thôi việc của công ty SSE được quy định chi tiết trong điều khoản nào của tài liệu?",
+    "target_sections": [],
+    "ground_truth": "Tài liệu là Hướng dẫn sử dụng phần mềm kế toán SAO, không chứa thông tin về chính sách nhân sự, nghỉ thai sản hay trợ cấp thôi việc. Hệ thống phải từ chối trả lời dựa trên căn cứ tài liệu.",
+    "must_include_keywords": ["không có thông tin", "không tìm thấy", "chưa đủ căn cứ"]
+  },
+  {
+    "id": "BM-32",
+    "category": "No-answer / Hallucination Trap",
+    "persona": "Khách hàng",
+    "query": "Bảng giá cước phí thuê máy chủ Cloud server và dịch vụ sao lưu đám mây của SSE năm 2026 là bao nhiêu một tháng?",
+    "target_sections": [],
+    "ground_truth": "Tài liệu kỹ thuật SAO không có thông tin về bảng giá cước Cloud server hay chi phí dịch vụ sao lưu đám mây. Hệ thống phải trả lời không tìm thấy dữ liệu.",
+    "must_include_keywords": ["không có thông tin", "không tìm thấy", "chưa đủ căn cứ"]
+  },
+  {
+    "id": "BM-33",
+    "category": "No-answer / Hallucination Trap",
+    "persona": "Nhà đầu tư",
+    "query": "Báo cáo tài chính năm 2025 và chỉ số lợi nhuận sau thuế của công ty cổ phần giải pháp phần mềm doanh nghiệp SSE đạt bao nhiêu tỷ đồng?",
+    "target_sections": [],
+    "ground_truth": "Tài liệu không đề cập đến kết quả kinh doanh hay báo cáo tài chính doanh thu lợi nhuận thực tế của công ty SSE. Hệ thống phải từ chối trả lời.",
+    "must_include_keywords": ["không có thông tin", "không tìm thấy", "chưa đủ căn cứ"]
+  },
+  {
+    "id": "BM-34",
+    "category": "No-answer / Hallucination Trap",
+    "persona": "Kỹ sư công nghệ",
+    "query": "Hệ thống SAO có tích hợp công nghệ Smart Contract trên nền tảng mạng Blockchain Ethereum không và cấu hình ở đâu?",
+    "target_sections": [],
+    "ground_truth": "Trong toàn bộ tài liệu hướng dẫn kỹ thuật không có bất kỳ nội dung nào về công nghệ Blockchain hay Smart Contract. Hệ thống phải phản hồi không tìm thấy căn cứ thông tin.",
+    "must_include_keywords": ["không có thông tin", "không tìm thấy", "chưa đủ căn cứ"]
+  },
+  {
+    "id": "BM-35",
+    "category": "No-answer / Hallucination Trap",
+    "persona": "Người dùng",
+    "query": "Dự báo thời tiết và nhiệt độ tại Hà Nội và TP.HCM tuần tới như thế nào theo tài liệu hướng dẫn SAO?",
+    "target_sections": [],
+    "ground_truth": "Tài liệu là sổ tay kỹ thuật phần mềm kế toán, hoàn toàn không có dữ liệu dự báo thời tiết. Hệ thống phải từ chối trả lời trung thực.",
+    "must_include_keywords": ["không có thông tin", "không tìm thấy", "chưa đủ căn cứ"]
+  }
+]

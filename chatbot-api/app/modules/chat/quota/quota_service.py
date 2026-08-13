@@ -204,16 +204,18 @@ class QuotaService:
                 pipe.incrby(token_key, total_tokens)
                 pipe.expire(token_key, 35 * 24 * 3600)
 
-            # 2. Cost tracking
+            # 2. Cost tracking — track cost_index BEFORE appending to pipeline (L-04 fix).
             hard_budget_vnd = _get_rtm_billing("quota_hard_budget_vnd", str(settings.quota_hard_budget_vnd))
             cost_key = f"budget:tenant:{tenant_id}:{month}"
+            cost_index: int | None = None
             if hard_budget_vnd > 0 and cost_micros_vnd > 0:
+                cost_index = len(pipe)  # explicit index of the INCRBY result
                 pipe.incrby(cost_key, cost_micros_vnd)
                 pipe.expire(cost_key, 35 * 24 * 3600)
 
             if len(pipe) > 0:
                 results = await pipe.execute()
-                total_cost = int(results[-2]) if (hard_budget_vnd > 0 and cost_micros_vnd > 0) else 0
+                total_cost = int(results[cost_index]) if cost_index is not None else 0
             else:
                 total_cost = 0
 
@@ -256,3 +258,23 @@ class QuotaService:
         except Exception as exc:
             logger.warning("Quota check budget error: %s", exc)
             return not settings.quota_fail_closed, f"error:{exc}"
+
+    async def refund_llm_call(self, *, tenant_id: str) -> None:
+        """H-11: Decrement monthly request counter when LLM fails without producing output.
+
+        Called when reserve_llm_call() was already invoked but the actual LLM call failed
+        (timeout, connection error, etc.) so no tokens were consumed.
+        """
+        if not self.redis:
+            return
+        try:
+            month = _month_key()
+            key = f"quota:tenant_monthly_requests:{tenant_id}:{month}"
+            new_val = await self.redis.decr(key)
+            # Ensure counter never goes below 0 due to race conditions.
+            if int(new_val or 0) < 0:
+                await self.redis.set(key, 0, keepttl=True)
+            logger.debug("Refunded LLM call quota for tenant %s (counter=%s)", tenant_id, new_val)
+        except Exception as exc:
+            logger.warning("quota.refund_llm_call error: %s", exc)
+

@@ -30,7 +30,12 @@ async def get_auth_context(
     request_id = getattr(request.state, "correlation_id", "unknown")
 
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            options={"require": ["exp", "sub", "jti"]},
+        )
         token_id = str(payload["jti"])
         if await blacklist.is_revoked(token_id):
             raise http_errors.unauthorized("Token revoked")
@@ -57,6 +62,23 @@ async def require_admin(request: Request, auth: AuthContext | None = Depends(get
         raise http_errors.unauthorized("Authentication required")
     if auth.role != "platform_admin":
         raise http_errors.forbidden("Admin only")
+    return auth
+
+
+async def require_tenant_admin_or_admin(
+    request: Request, auth: AuthContext | None = Depends(get_auth_context)
+) -> AuthContext:
+    """Allow both platform_admin and tenant_admin.
+
+    Callers that mutate data must additionally scope queries to auth.tenant_id when
+    auth.role == 'tenant_admin' to enforce the multi-tenant boundary.
+    """
+    if request.method == "OPTIONS":
+        return None
+    if auth is None:
+        raise http_errors.unauthorized("Authentication required")
+    if auth.role not in ("platform_admin", "tenant_admin"):
+        raise http_errors.forbidden("Admin or Tenant Admin required")
     return auth
 
 

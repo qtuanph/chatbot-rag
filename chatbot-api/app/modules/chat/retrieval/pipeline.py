@@ -147,6 +147,8 @@ def _tenant_filters(
     section_id: str | None = None,
 ) -> MetadataFilters | None:
     if allowed_doc_ids:
+        # Filter by explicit document_id list — correct for shared-document cross-tenant access.
+        # doc_ids are already scoped to tenant by DocumentAccessRepository.get_document_ids_for_tenant.
         doc_filters = [MetadataFilter(key="document_id", value=d_id) for d_id in allowed_doc_ids]
         if section_id:
             return MetadataFilters(
@@ -163,7 +165,10 @@ def _tenant_filters(
     if section_id:
         filters.append(MetadataFilter(key="section_id", value=section_id))
     if not filters:
-        return None
+        # C-03 safety guard: no tenant context and no doc list -> deny all to prevent cross-tenant leak.
+        # This should not happen in normal flow; log a warning for visibility.
+        logger.warning("_tenant_filters called with no tenant_id and no allowed_doc_ids — denying all results")
+        return MetadataFilters(filters=[MetadataFilter(key="tenant_id", value="__DENY_ALL__")])
     return MetadataFilters(filters=filters)
 
 
@@ -517,8 +522,10 @@ async def retrieve_context(
 
         all_nodes.extend(query_nodes)
 
-    all_nodes = _dedupe_nodes(all_nodes)
+    # C-07 fix: sort BEFORE dedup so _dedupe_nodes keeps the highest-score instance of each chunk.
+    # Previous order (dedup -> sort) kept the first-seen (lowest-score) version from the first query.
     all_nodes.sort(key=lambda node: node.score or 0.0, reverse=True)
+    all_nodes = _dedupe_nodes(all_nodes)
     all_nodes = all_nodes[:limit]
 
     rag_nodes: list[RagNode] = []
@@ -526,6 +533,14 @@ async def retrieve_context(
         node = node_with_score.node
         metadata = node.metadata or {}
         full_text = node.get_content()
+        raw_page_range = (
+            metadata.get("page_range")
+            or (
+                f"{metadata['page_start']}-{metadata['page_end']}"
+                if (metadata.get("page_start") and metadata.get("page_end") and metadata.get("page_start") != metadata.get("page_end"))
+                else (str(metadata.get("page_start") or metadata.get("page_number") or "") or None)
+            )
+        )
         rag_nodes.append(
             RagNode(
                 node_id=node.node_id,
@@ -537,7 +552,7 @@ async def retrieve_context(
                 heading=str(metadata.get("heading") or ""),
                 summary=full_text[:400],
                 full_text=full_text,
-                page_range=None,
+                page_range=str(raw_page_range) if raw_page_range else None,
                 section_id=str(metadata.get("section_id") or "") or None,
                 section_code=str(metadata.get("section_code") or "") or None,
                 breadcrumb=tuple(metadata.get("breadcrumb") or []),

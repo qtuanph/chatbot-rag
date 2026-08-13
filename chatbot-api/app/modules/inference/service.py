@@ -52,13 +52,16 @@ UNANSWERED_KEYWORDS = [
     "không đủ thông tin",
     "không thể trả lời",
     "chưa có câu trả lời",
-    "rất tiếc",
-    "sorry",
+    "rất tiếc, tôi không",
+    "rất tiếc tôi không",
+    "rất tiếc, chưa đủ",
+    "rất tiếc chưa đủ",
     "empty response",
 ]
 
 
 def is_unanswered_response(content: str | None, citations: list | None = None) -> bool:
+    """Check if the assistant content is an ungrounded or denial-of-knowledge answer."""
     if not content or not content.strip():
         return True
     lower_content = content.strip().lower()
@@ -68,7 +71,17 @@ def is_unanswered_response(content: str | None, citations: list | None = None) -
         if kw in lower_content:
             return True
     if citations is not None and len(citations) == 0:
-        if any(w in lower_content for w in ["chưa", "không", "tiếc", "xin lỗi"]):
+        denial_phrases = [
+            "không tìm thấy",
+            "chưa tìm thấy",
+            "chưa có thông tin",
+            "không có thông tin",
+            "không thể tìm",
+            "chưa đủ căn cứ",
+            "chưa được cung cấp",
+            "không có dữ liệu",
+        ]
+        if any(phrase in lower_content for phrase in denial_phrases):
             return True
     return False
 
@@ -127,34 +140,59 @@ class PublicInferenceService:
                 pass
         return doc_key
 
-    async def _check_tiered_cache(self, tenant_id: str, user_query: str) -> dict[str, Any] | None:
-        if self._redis and user_query:
-            from app.modules.chat.cache.faq_cache import faq_lookup
+    async def _check_tiered_cache(
+        self, tenant_id: str, user_query: str
+    ) -> tuple[dict[str, Any] | None, list[float] | None, str | None]:
+        """Check FAQ -> Exact -> Semantic cache tiers.
 
-            faq_hit = await faq_lookup(self._redis, tenant_id, user_query)
-            if faq_hit:
-                faq_hit["_cache_tier"] = "faq"
-                return faq_hit
+        Returns (cached_result, query_vector, normalized_query).
+        On hit: query_vector and normalized_query are None.
+        On semantic miss: returns vector so caller can write-back without a second embed call.
 
-        if settings.exact_cache_enabled and self._redis:
-            from app.modules.chat.cache.exact_cache import exact_cache_get
+        M-01: Wrapped in top-level try/except so a Redis/network failure never crashes
+        the entire chat request — we just fall through to a live LLM call.
+        """
+        try:
+            if self._redis and user_query:
+                from app.modules.chat.cache.faq_cache import faq_lookup
 
-            doc_key = await self._resolve_doc_cache_key(tenant_id)
-            cached = await exact_cache_get(self._redis, doc_key, user_query)
-            if cached:
-                cached["_cache_tier"] = "exact"
-                return cached
+                faq_hit = await faq_lookup(self._redis, tenant_id, user_query)
+                if faq_hit:
+                    faq_hit["_cache_tier"] = "faq"
+                    return faq_hit, None, None
 
-        if settings.retrieval_semantic_cache_enabled and self.semantic_cache and user_query:
-            normalized_query = normalize_query(user_query, stopwords=ALL_DEFAULT_STOPWORDS)
-            if normalized_query:
-                embed_model = Settings.embed_model
-                query_vector = await embed_model.aget_query_embedding(normalized_query)
-                cached = await self.semantic_cache.get(tenant_id, query_vector)
+            if settings.exact_cache_enabled and self._redis:
+                from app.modules.chat.cache.exact_cache import exact_cache_get
+
+                doc_key = await self._resolve_doc_cache_key(tenant_id)
+                cached = await exact_cache_get(self._redis, doc_key, user_query)
                 if cached:
-                    cached["_cache_tier"] = "semantic"
-                    return cached
-        return None
+                    cached["_cache_tier"] = "exact"
+                    return cached, None, None
+
+            if settings.retrieval_semantic_cache_enabled and self.semantic_cache and user_query:
+                normalized_query = normalize_query(user_query, stopwords=ALL_DEFAULT_STOPWORDS)
+                if normalized_query:
+                    try:
+                        embed_model = Settings.embed_model
+                        # M-02: timeout guard to prevent slow/hanging embedding calls from blocking chat
+                        query_vector = await asyncio.wait_for(
+                            embed_model.aget_query_embedding(normalized_query),
+                            timeout=5.0,
+                        )
+                        cached = await self.semantic_cache.get(tenant_id, query_vector)
+                        if cached:
+                            cached["_cache_tier"] = "semantic"
+                            return cached, None, None
+                        # H-01: return vector so caller can write-back after LLM without re-embedding.
+                        return None, query_vector, normalized_query
+                    except Exception as exc:
+                        logger.warning("Semantic cache check error: %s", exc)
+        except Exception as exc:
+            # M-01: top-level guard — Redis/network failure must not crash the chat flow.
+            logger.warning("_check_tiered_cache recovered from error, falling through to LLM: %s", exc)
+
+        return None, None, None
 
     async def _write_tiered_cache(
         self,
@@ -206,11 +244,8 @@ class PublicInferenceService:
         if not allowed:
             raise ValueError(f"Rate limit exceeded: {reason}")
 
-        allowed, reason = await quota_svc.check_and_increment_daily(tenant_id=tenant_id, user_id=user_id)
-        if not allowed:
-            raise ValueError(f"Daily request quota exceeded: {reason}")
-
-        cached = await self._check_tiered_cache(tenant_id, user_query)
+        # H-03: cache check BEFORE daily quota. Cache hits must not consume the daily allowance.
+        cached, _query_vector, _normalized_query = await self._check_tiered_cache(tenant_id, user_query)
         if cached:
             cache_tier = cached.pop("_cache_tier", "exact")
             usage = cached.get("usage", {})
@@ -243,6 +278,8 @@ class PublicInferenceService:
                 try:
                     from app.modules.chat.tasks.usage_tasks import save_conversation_turn_task
 
+                    # L-03: check actual content instead of hardcoding no_answer=False.
+                    _cache_no_answer = is_unanswered_response(res.content, res.citations)
                     save_conversation_turn_task.delay(
                         tenant_id=tenant_id,
                         conversation_id=conversation_id,
@@ -253,11 +290,16 @@ class PublicInferenceService:
                         model_name=res.model,
                         is_cache_hit=True,
                         cached_type=cache_tier,
-                        no_answer=False,
+                        no_answer=_cache_no_answer,
                     )
                 except Exception as exc:
                     logger.warning("Failed to dispatch cached conversation save: %s", exc)
             return res
+
+        # H-03: deduct daily quota only for real LLM calls (not cache hits).
+        allowed, reason = await quota_svc.check_and_increment_daily(tenant_id=tenant_id, user_id=user_id)
+        if not allowed:
+            raise ValueError(f"Daily request quota exceeded: {reason}")
 
         allowed, reason = await quota_svc.reserve_llm_call(tenant_id=tenant_id)
         if not allowed:
@@ -274,22 +316,42 @@ class PublicInferenceService:
             user_id=user_id,
         )
         llm_messages = self._build_messages(messages, setting, context)
+        # C-01: copy instead of mutating global Settings.llm (race condition with concurrent requests).
+        import copy as _copy
+
+        # H-09: Pre-check RAG context BEFORE calling LLM to avoid wasting LLM cost when
+        # Qdrant returns 0 results. Same guard as stream_complete() (C-02).
+        _confidence = context.confidence or {}
+        if not _confidence.get("bypass_reason"):
+            _has_context = any(
+                (node.full_text or "").strip() or (node.heading or "").strip()
+                for node in context.nodes
+            )
+            if not _has_context:
+                _fallback_content = self._build_insufficient_evidence_answer(context)
+                await quota_svc.refund_llm_call(tenant_id=tenant_id)
+                return CompletionResult(
+                    content=_fallback_content,
+                    citations=[],
+                    usage=self._normalize_usage({}) | {"model": getattr(Settings.llm, "model", "chatbot-rag")},
+                    model=getattr(Settings.llm, "model", "chatbot-rag"),
+                )
+
         llm = Settings.llm
-        previous_temperature = getattr(llm, "temperature", None)
-        previous_max_tokens = getattr(llm, "max_tokens", None)
-        if temperature is not None:
-            llm.temperature = temperature
-        if max_tokens is not None:
-            llm.max_tokens = max_tokens
+        if temperature is not None or max_tokens is not None:
+            llm = _copy.copy(llm)
+            if temperature is not None:
+                llm.temperature = temperature
+            if max_tokens is not None:
+                llm.max_tokens = max_tokens
+
         t0 = time.perf_counter()
         try:
             response = await llm.achat(llm_messages)
-        finally:
-            if temperature is not None:
-                llm.temperature = previous_temperature
-            if max_tokens is not None:
-                llm.max_tokens = previous_max_tokens
-
+        except Exception:
+            # H-11: LLM call failed — refund the quota reservation so user is not penalised.
+            await quota_svc.refund_llm_call(tenant_id=tenant_id)
+            raise
         latency_ms = (time.perf_counter() - t0) * 1000
         usage = getattr(response, "additional_kwargs", {}) or {}
         usage["latency_ms"] = latency_ms
@@ -307,6 +369,7 @@ class PublicInferenceService:
             model=getattr(llm, "model", "chatbot-rag"),
         )
 
+        # H-01: pass vector captured on cache miss so semantic cache write-back works.
         await self._write_tiered_cache(
             tenant_id=tenant_id,
             user_query=user_query,
@@ -316,6 +379,8 @@ class PublicInferenceService:
                 "usage": result.usage,
                 "model": result.model,
             },
+            query_vector=_query_vector,
+            normalized_query=_normalized_query,
         )
 
         cost_micros = result.usage.get("cost_micros_vnd", 0)
@@ -327,7 +392,9 @@ class PublicInferenceService:
         provider = type("UsageProxy", (), {"last_usage": result.usage, "model_name": result.model})()
         track_usage(provider, endpoint="public.chat.completions", tenant_id=tenant_id)
 
-        no_answer_flag = is_unanswered_response(result.content, result.citations)
+        # H-04: greeting bypass -> skip is_unanswered to avoid false positives.
+        _bypass_reason = (context.confidence or {}).get("bypass_reason")
+        no_answer_flag = False if _bypass_reason else is_unanswered_response(result.content, result.citations)
         effective_conv_id = conversation_id or (
             str(uuid.uuid4()) if (settings.chat_history_persist_enabled or no_answer_flag) else None
         )
@@ -381,12 +448,8 @@ class PublicInferenceService:
             yield f"data: {json.dumps({'error': True, 'code': 'rate_limited', 'message': reason})}\n\n"
             return
 
-        allowed, reason = await quota_svc.check_and_increment_daily(tenant_id=tenant_id, user_id=user_id)
-        if not allowed:
-            yield f"data: {json.dumps({'error': True, 'code': 'daily_quota_exceeded', 'message': reason})}\n\n"
-            return
-
-        cached = await self._check_tiered_cache(tenant_id, user_query)
+        # H-03: cache check BEFORE daily quota. Cache hits must not consume the daily allowance.
+        cached, _query_vector, _normalized_query = await self._check_tiered_cache(tenant_id, user_query)
         if cached:
             cache_tier = cached.pop("_cache_tier", "exact")
             created = int(time.time())
@@ -422,6 +485,12 @@ class PublicInferenceService:
                     logger.warning("Failed to dispatch cached conversation stream save: %s", exc)
             return
 
+        # H-03: deduct daily quota only for real LLM calls (not cache hits).
+        allowed, reason = await quota_svc.check_and_increment_daily(tenant_id=tenant_id, user_id=user_id)
+        if not allowed:
+            yield f"data: {json.dumps({'error': True, 'code': 'daily_quota_exceeded', 'message': reason})}\n\n"
+            return
+
         allowed, reason = await quota_svc.reserve_llm_call(tenant_id=tenant_id)
         if not allowed:
             yield f"data: {json.dumps({'error': True, 'code': 'monthly_quota_exceeded', 'message': reason})}\n\n"
@@ -439,22 +508,42 @@ class PublicInferenceService:
             user_id=user_id,
         )
         llm_messages = self._build_messages(messages, setting, context)
+        # C-01: copy instead of mutating global Settings.llm.
+        import copy as _copy
+
         llm = Settings.llm
-        previous_temperature = getattr(llm, "temperature", None)
-        previous_max_tokens = getattr(llm, "max_tokens", None)
-        if temperature is not None:
-            llm.temperature = temperature
-        if max_tokens is not None:
-            llm.max_tokens = max_tokens
+        if temperature is not None or max_tokens is not None:
+            llm = _copy.copy(llm)
+            if temperature is not None:
+                llm.temperature = temperature
+            if max_tokens is not None:
+                llm.max_tokens = max_tokens
 
         created = int(time.time())
         model_name = getattr(llm, "model", "chatbot-rag")
         completion_id = f"chatcmpl-{created}"
+
+        # C-02: pre-check grounding BEFORE starting LLM stream to prevent hallucination.
+        # stream_complete skipped _ensure_grounded_answer, so empty-RAG responses were streamed raw.
+        _confidence = context.confidence or {}
+        if not _confidence.get("bypass_reason"):
+            _has_context = any(
+                (node.full_text or "").strip() or (node.heading or "").strip()
+                for node in context.nodes
+            )
+            if not _has_context:
+                _fallback = self._build_insufficient_evidence_answer(context)
+                _empty_usage = self._normalize_usage({})
+                yield f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_name, 'choices': [{'index': 0, 'delta': {'content': _fallback}, 'finish_reason': None}]})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'citations': [], 'stats': _empty_usage | {'model': model_name}})}\n\n"
+                yield f"data: {json.dumps({'id': completion_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_name, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}], 'citations': [], 'usage': _empty_usage})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
         usage_info: dict[str, Any] = {}
         collected_text = ""
-        user_query = self._latest_user_query(messages)
+        t0 = time.perf_counter()
         try:
-            t0 = time.perf_counter()
             if thinking_mode:
                 yield f"data: {json.dumps({'thinking': True, 'done': False})}\n\n"
             response = await llm.astream_chat(llm_messages)
@@ -472,12 +561,21 @@ class PublicInferenceService:
                     yield f"data: {json.dumps(payload)}\n\n"
                 if hasattr(chunk, "additional_kwargs") and isinstance(chunk.additional_kwargs, dict):
                     usage_info.update(chunk.additional_kwargs)
+        except Exception:
+            # H-11: if streaming fails before producing any output, refund the quota.
+            if not collected_text:
+                await quota_svc.refund_llm_call(tenant_id=tenant_id)
+            raise
         finally:
-            if temperature is not None:
-                llm.temperature = previous_temperature
-            if max_tokens is not None:
-                llm.max_tokens = previous_max_tokens
             usage_info["latency_ms"] = (time.perf_counter() - t0) * 1000
+
+        # H-05: Many LLM proxies do not report token usage in streaming mode.
+        # Estimate from content length (≈4 chars/token) to keep cost tracking meaningful.
+        if not usage_info.get("prompt_tokens"):
+            prompt_chars = sum(len(getattr(m, "content", "") or "") for m in llm_messages)
+            usage_info["prompt_tokens"] = max(1, prompt_chars // 4)
+        if not usage_info.get("completion_tokens"):
+            usage_info["completion_tokens"] = max(1, len(collected_text) // 4)
 
         final_text = collected_text.strip()
         result = CompletionResult(
@@ -487,6 +585,7 @@ class PublicInferenceService:
             model=model_name,
         )
 
+        # H-01: pass vector captured on cache miss so semantic cache write-back works.
         await self._write_tiered_cache(
             tenant_id=tenant_id,
             user_query=user_query,
@@ -496,6 +595,8 @@ class PublicInferenceService:
                 "usage": result.usage,
                 "model": result.model,
             },
+            query_vector=_query_vector,
+            normalized_query=_normalized_query,
         )
 
         cost_micros = result.usage.get("cost_micros_vnd", 0)
@@ -522,7 +623,9 @@ class PublicInferenceService:
         yield f"data: {json.dumps(final_payload)}\n\n"
         yield "data: [DONE]\n\n"
 
-        no_answer_flag = is_unanswered_response(result.content, result.citations)
+        # H-04: greeting bypass -> skip is_unanswered to avoid false positives.
+        _bypass_reason = (context.confidence or {}).get("bypass_reason")
+        no_answer_flag = False if _bypass_reason else is_unanswered_response(result.content, result.citations)
         effective_conv_id = conversation_id or (
             str(uuid.uuid4()) if (settings.chat_history_persist_enabled or no_answer_flag) else None
         )

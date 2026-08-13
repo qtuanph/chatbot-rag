@@ -27,27 +27,48 @@ class CleanupService:
         self.redis = redis_client
 
     async def hard_delete_document(self, document_id: str) -> dict[str, bool]:
-        """Hard-delete document. Order (per AGENTS.md): Vectors → Sections → File → DB."""
+        """Hard-delete document. Order (per AGENTS.md & 2.3_WORKFLOWS_DELETE.md):
+        1. registry.delete() -> Marks deleted in Redis status
+        2. Vectors (Qdrant via LlamaIndex)
+        3. Sections (PostgreSQL)
+        4. Storage (RustFS/S3 file prefix)
+        5. Document DB row (PostgreSQL)
+        6. registry.purge() -> Purges task registry keys
+        """
         storage = build_storage()
 
-        # 1. Vectors (Qdrant via LlamaIndex)
+        # 1. registry.delete(): Update Redis status so /status immediately returns 'deleted'
+        if self.redis:
+            try:
+                def _mark_deleted_in_redis():
+                    for key in self.redis.scan_iter(f"task:doc:*{document_id}*"):
+                        try:
+                            self.redis.hset(key, mapping={"status": "deleted", "stage": "deleted"})
+                        except Exception:
+                            pass
+                await asyncio.to_thread(_mark_deleted_in_redis)
+            except Exception as e:
+                logger.warning("[%s] Failed to set deleted status in Redis registry: %s", document_id, e)
+
+        # 2. Vectors (Qdrant via LlamaIndex)
         try:
             await delete_document_vectors(document_id)
         except Exception as e:
             logger.warning("[%s] Vector delete warning: %s", document_id, e)
 
-        # 2. Sections (PostgreSQL)
+        # 3. Sections (PostgreSQL)
         await self.section_repo.delete_sections(document_id)
 
-        # 3. Delete entire document folder from S3
+        # 4. Delete entire document folder from S3 / RustFS
         try:
             await asyncio.to_thread(storage.delete_prefix, f"{document_id}/")
         except Exception as e:
             logger.warning("Failed to delete document folder from S3: %s", e)
 
-        # 4. Document DB row (PostgreSQL)
+        # 5. Document DB row (PostgreSQL)
         db_deleted = await self.doc_repo.hard_delete(document_id)
 
+        # 6. registry.purge(): Clean up all task registry keys from Redis
         if self.redis:
             try:
                 # redis client here is sync (from get_sync_redis_client), run in thread.

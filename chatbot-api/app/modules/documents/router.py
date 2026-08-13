@@ -14,7 +14,7 @@ from starlette.responses import StreamingResponse
 if TYPE_CHECKING:
     from app.utils.rate_limiter import RateLimiter
 
-from app.modules.auth.deps import require_admin, get_auth_context
+from app.modules.auth.deps import require_admin, require_tenant_admin_or_admin, get_auth_context
 from app.modules.auth.context import AuthContext
 from app.utils.permissions import resolve_strict_tenant_scope, resolve_loose_tenant_scope
 from app.modules.documents.deps import get_document_service, get_tree_service
@@ -71,7 +71,7 @@ async def upload_document(
     request: Request,
     tenant_id: str | None = Form(None),
     file: UploadFile = File(...),
-    auth: AuthContext = Depends(require_admin),
+    auth: AuthContext = Depends(require_tenant_admin_or_admin),
     service: DocumentService = Depends(get_document_service),
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> UploadAcceptedResponse:
@@ -108,6 +108,10 @@ async def upload_document(
 
     document_id = str(uuid4())
 
+    # C-05: tenant_admin must upload into their own tenant — ignore any tenant_id from the form.
+    if auth.role == "tenant_admin":
+        tenant_id = auth.tenant_id
+
     duplicate, next_version = await service.check_duplicate(sha256, filename, tenant_id)
     if duplicate is not None:
         raise http_errors.conflict("Document already exists")
@@ -131,7 +135,7 @@ async def upload_document(
 @router.get("/status/{task_id}", response_model=TaskStatusResponse)
 async def get_status(
     task_id: str,
-    _auth=Depends(require_admin),
+    _auth=Depends(require_tenant_admin_or_admin),
     service: DocumentService = Depends(get_document_service),
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> TaskStatusResponse:
@@ -295,13 +299,16 @@ async def update_document_access(
 async def delete_document(
     request: Request,
     document_id: str,
-    _auth=Depends(require_admin),
+    _auth=Depends(require_tenant_admin_or_admin),
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentDeleteResponse:
     try:
+        # C-05: tenant_admin scoped to their own tenant for ownership check.
+        owner_tenant_id = _auth.tenant_id if _auth.role == "tenant_admin" else None
         result = await service.delete_document(
             document_id=document_id,
             user_id=_auth.user_id,
+            owner_tenant_id=owner_tenant_id,
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
         )
@@ -316,13 +323,16 @@ async def delete_document(
 async def retry_document(
     request: Request,
     document_id: str,
-    auth: AuthContext = Depends(require_admin),
+    auth: AuthContext = Depends(require_tenant_admin_or_admin),
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentRetryResponse:
     try:
+        # C-05: tenant scoped ownership check.
+        owner_tenant_id = auth.tenant_id if auth.role == "tenant_admin" else None
         result = await service.retry_document(
             document_id=document_id,
             user_id=auth.user_id,
+            owner_tenant_id=owner_tenant_id,
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
         )
@@ -340,13 +350,16 @@ async def retry_document(
 async def rechunk_document(
     request: Request,
     document_id: str,
-    auth: AuthContext = Depends(require_admin),
+    auth: AuthContext = Depends(require_tenant_admin_or_admin),
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentRechunkResponse:
     try:
+        # C-05: tenant scoped ownership check.
+        owner_tenant_id = auth.tenant_id if auth.role == "tenant_admin" else None
         result = await service.rechunk_document(
             document_id=document_id,
             user_id=auth.user_id,
+            owner_tenant_id=owner_tenant_id,
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
         )

@@ -140,16 +140,16 @@ class DocumentRepository(BaseRepository[Document]):
         rows = result.scalars().all()
         return [self._to_dict(r) for r in rows], total
 
-    async def soft_delete(self, document_id: str) -> bool:
-        """Soft-delete a document by setting deleted_at."""
+    async def soft_delete(self, document_id: str, status_message: str = "Deleted.") -> bool:
+        """Soft-delete a document by setting deleted_at and status to deleted."""
         document = await self.get_by_id(document_id)
         if document is None:
             return False
         document.deleted_at = utc_now()
-        document.status = "failed"
-        document.status_stage = "failed"
+        document.status = "deleted"
+        document.status_stage = "deleted"
         document.progress_percent = 100
-        document.status_message = "Failed to enqueue ingestion task."
+        document.status_message = status_message
         document.status_updated_at = utc_now()
         await self.session.commit()
         return True

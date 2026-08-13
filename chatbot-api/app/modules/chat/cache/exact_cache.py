@@ -18,6 +18,19 @@ from app.modules.chat.utils.query_normalizer import ALL_DEFAULT_STOPWORDS, norma
 logger = logging.getLogger(__name__)
 _EXACT_CACHE_PREFIX = "exact_cache"
 
+# Phrases that mark a "no answer" response — these MUST NOT be cached.
+# If cached, subsequent requests with newly-uploaded documents still get the rejection.
+# Keep in sync with: InferenceService._build_insufficient_evidence_answer
+#                    InferenceService._build_messages (no-context system-prompt branch).
+_NO_CACHE_PHRASES = (
+    "chưa tìm thấy dữ liệu",
+    "chưa được phân quyền",
+    "không có trong tài liệu",
+    "chưa đủ căn cứ",                           # _build_insufficient_evidence_answer
+    "chưa có đủ thông tin",
+    "không tìm thấy thông tin",
+    "xin lỗi, hiện tại hệ thống chưa tìm thấy",   # _build_messages no-context branch
+)
 
 def _build_cache_key(doc_key_or_tenant_id: str, normalized_query: str) -> str:
     digest = hashlib.sha256(normalized_query.encode("utf-8")).hexdigest()
@@ -53,7 +66,7 @@ async def exact_cache_set(
     """L1 write. Silently skips on error or if payload is a negative fallback response."""
     try:
         content = str((payload or {}).get("content") or "")
-        if any(neg in content for neg in ["chưa tìm thấy dữ liệu", "chưa được phân quyền", "không có trong tài liệu"]):
+        if any(neg in content for neg in _NO_CACHE_PHRASES):
             return
 
         normalized = normalize_query(question, stopwords=ALL_DEFAULT_STOPWORDS)

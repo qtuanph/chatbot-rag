@@ -1,5 +1,4 @@
 import { getToken } from "next-auth/jwt";
-import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
 
 const API_INTERNAL = process.env.API_INTERNAL_URL!;
@@ -112,9 +111,14 @@ async function proxyHandler(
   const resContentType = backendRes.headers.get("content-type");
   if (resContentType) responseHeaders.set("content-type", resContentType);
 
-  // Redirect to login on 401 (token expired or invalid)
+  // H-14: Return JSON 401 instead of redirect(). next/navigation redirect() throws a 307
+  // which fetch() cannot handle — the AJAX client receives HTML instead of JSON and crashes.
+  // The frontend's global error handler should catch 401 ApiError and navigate to /login.
   if (backendRes.status === 401) {
-    redirect("/login");
+    return new Response(
+      JSON.stringify({ detail: "Session expired. Please log in again.", code: "session_expired" }),
+      { status: 401, headers: { "content-type": "application/json" } },
+    );
   }
 
   // SSE-specific headers to prevent buffering at every layer

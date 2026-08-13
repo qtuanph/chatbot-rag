@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 from typing import TYPE_CHECKING
+import time as _time
 
 if TYPE_CHECKING:
     from app.utils.rate_limiter import RateLimiter
@@ -60,7 +61,10 @@ async def logout(
     auth: AuthContext = Depends(get_auth_context),
     service: AuthService = Depends(get_auth_service),
 ) -> LogoutResponse:
-    # Decode token to get expiry for blacklist TTL
+    # Decode token to get the expiry timestamp for the Redis blacklist TTL.
+    # Note: get_auth_context already validated the token, so this second decode should not fail.
+    # Fallback uses current_time + jwt_expire_minutes to ensure the blacklist entry is never
+    # written with TTL=0, which would cause Redis to expire it immediately (logout no-op).
     authorization = request.headers.get("authorization", "")
     token = authorization.removeprefix("Bearer ").strip() if authorization.startswith("Bearer ") else ""
     expires_at = 0
@@ -69,7 +73,8 @@ async def logout(
             payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
             expires_at = int(payload["exp"])
         except (jwt.exceptions.PyJWTError, KeyError, TypeError, ValueError):
-            pass  # AuthContext already validated the token; proceed with logout
+            # Safe fallback: guarantee at least jwt_expire_minutes of blacklist coverage.
+            expires_at = int(_time.time()) + settings.jwt_expire_minutes * 60
 
     await service.logout(
         jti=auth.token_id,

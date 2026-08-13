@@ -43,11 +43,24 @@ class FAQPromoteSchema(BaseModel):
 
 
 def _verify_platform_admin(ctx: AuthContext = Depends(get_auth_context)) -> None:
+    """Only platform_admin — used for non-tenant-scoped operations (update/delete by faq_id)."""
     if ctx.role != "platform_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Forbidden: Only platform admin can manage FAQs and escalations",
         )
+
+
+def _verify_tenant_faq_access(tenant_id: str, ctx: AuthContext = Depends(get_auth_context)) -> None:
+    """C-08: Allow platform_admin (all tenants) or tenant_admin (their own tenant only)."""
+    if ctx.role == "platform_admin":
+        return
+    if ctx.role == "tenant_admin" and ctx.tenant_id == tenant_id:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Forbidden: tenant_admin can only manage FAQs for their own tenant",
+    )
 
 
 def _get_faq_service(db: AsyncSession = Depends(get_async_session)) -> FAQService:
@@ -62,7 +75,7 @@ async def list_published_faqs(
     ctx: AuthContext = Depends(get_auth_context),
     service: FAQService = Depends(_get_faq_service),
 ) -> list[dict[str, Any]]:
-    _verify_platform_admin(ctx)
+    _verify_tenant_faq_access(tenant_id, ctx)
     return await service.list_faqs(tenant_id)
 
 
@@ -73,7 +86,7 @@ async def create_faq(
     ctx: AuthContext = Depends(get_auth_context),
     service: FAQService = Depends(_get_faq_service),
 ) -> dict[str, Any]:
-    _verify_platform_admin(ctx)
+    _verify_tenant_faq_access(tenant_id, ctx)
     return await service.create_faq(
         tenant_id=tenant_id,
         question=payload.question,
@@ -121,7 +134,7 @@ async def list_open_escalations(
     ctx: AuthContext = Depends(get_auth_context),
     service: FAQService = Depends(_get_faq_service),
 ) -> list[dict[str, Any]]:
-    _verify_platform_admin(ctx)
+    _verify_tenant_faq_access(tenant_id, ctx)
     return await service.list_open_escalations(tenant_id)
 
 
