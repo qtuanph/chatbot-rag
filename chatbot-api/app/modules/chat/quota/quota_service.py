@@ -277,4 +277,3 @@ class QuotaService:
             logger.debug("Refunded LLM call quota for tenant %s (counter=%s)", tenant_id, new_val)
         except Exception as exc:
             logger.warning("quota.refund_llm_call error: %s", exc)
-

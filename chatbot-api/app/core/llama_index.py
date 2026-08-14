@@ -227,9 +227,7 @@ async def delete_document_vectors(document_id: str) -> None:
     from qdrant_client.http.models import FieldCondition, Filter, MatchValue
 
     client = get_async_qdrant_client()
-    delete_filter = Filter(
-        must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]
-    )
+    delete_filter = Filter(must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))])
     for collection in (settings.qdrant_section_collection, settings.qdrant_chunk_collection):
         try:
             result = await client.delete(collection_name=collection, points_selector=delete_filter)

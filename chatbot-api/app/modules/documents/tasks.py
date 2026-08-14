@@ -57,9 +57,7 @@ def parse_document_task(self, task_id: str, document_id: str, file_path: str, us
                 # the same document (e.g. after visibility-timeout retry or manual re-queue).
                 lock_key = f"ingest:lock:{document_id}"
                 if not await async_redis.set(lock_key, "1", nx=True, ex=3600):
-                    logger.warning(
-                        "[%s] Another worker is already processing this document. Skipping.", document_id
-                    )
+                    logger.warning("[%s] Another worker is already processing this document. Skipping.", document_id)
                     return {"status": "skipped", "reason": "already_processing"}
                 try:
                     document = await doc_repo.get_full_document(document_id)

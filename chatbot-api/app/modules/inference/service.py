@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -323,10 +324,7 @@ class PublicInferenceService:
         # Qdrant returns 0 results. Same guard as stream_complete() (C-02).
         _confidence = context.confidence or {}
         if not _confidence.get("bypass_reason"):
-            _has_context = any(
-                (node.full_text or "").strip() or (node.heading or "").strip()
-                for node in context.nodes
-            )
+            _has_context = any((node.full_text or "").strip() or (node.heading or "").strip() for node in context.nodes)
             if not _has_context:
                 _fallback_content = self._build_insufficient_evidence_answer(context)
                 await quota_svc.refund_llm_call(tenant_id=tenant_id)
@@ -527,10 +525,7 @@ class PublicInferenceService:
         # stream_complete skipped _ensure_grounded_answer, so empty-RAG responses were streamed raw.
         _confidence = context.confidence or {}
         if not _confidence.get("bypass_reason"):
-            _has_context = any(
-                (node.full_text or "").strip() or (node.heading or "").strip()
-                for node in context.nodes
-            )
+            _has_context = any((node.full_text or "").strip() or (node.heading or "").strip() for node in context.nodes)
             if not _has_context:
                 _fallback = self._build_insufficient_evidence_answer(context)
                 _empty_usage = self._normalize_usage({})

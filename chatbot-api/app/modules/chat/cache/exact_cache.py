@@ -26,11 +26,12 @@ _NO_CACHE_PHRASES = (
     "chưa tìm thấy dữ liệu",
     "chưa được phân quyền",
     "không có trong tài liệu",
-    "chưa đủ căn cứ",                           # _build_insufficient_evidence_answer
+    "chưa đủ căn cứ",  # _build_insufficient_evidence_answer
     "chưa có đủ thông tin",
     "không tìm thấy thông tin",
-    "xin lỗi, hiện tại hệ thống chưa tìm thấy",   # _build_messages no-context branch
+    "xin lỗi, hiện tại hệ thống chưa tìm thấy",  # _build_messages no-context branch
 )
+
 
 def _build_cache_key(doc_key_or_tenant_id: str, normalized_query: str) -> str:
     digest = hashlib.sha256(normalized_query.encode("utf-8")).hexdigest()

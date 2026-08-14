@@ -40,12 +40,14 @@ class CleanupService:
         # 1. registry.delete(): Update Redis status so /status immediately returns 'deleted'
         if self.redis:
             try:
+
                 def _mark_deleted_in_redis():
                     for key in self.redis.scan_iter(f"task:doc:*{document_id}*"):
                         try:
                             self.redis.hset(key, mapping={"status": "deleted", "stage": "deleted"})
                         except Exception:
                             pass
+
                 await asyncio.to_thread(_mark_deleted_in_redis)
             except Exception as e:
                 logger.warning("[%s] Failed to set deleted status in Redis registry: %s", document_id, e)

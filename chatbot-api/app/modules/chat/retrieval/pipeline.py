@@ -533,13 +533,14 @@ async def retrieve_context(
         node = node_with_score.node
         metadata = node.metadata or {}
         full_text = node.get_content()
-        raw_page_range = (
-            metadata.get("page_range")
-            or (
-                f"{metadata['page_start']}-{metadata['page_end']}"
-                if (metadata.get("page_start") and metadata.get("page_end") and metadata.get("page_start") != metadata.get("page_end"))
-                else (str(metadata.get("page_start") or metadata.get("page_number") or "") or None)
+        raw_page_range = metadata.get("page_range") or (
+            f"{metadata['page_start']}-{metadata['page_end']}"
+            if (
+                metadata.get("page_start")
+                and metadata.get("page_end")
+                and metadata.get("page_start") != metadata.get("page_end")
             )
+            else (str(metadata.get("page_start") or metadata.get("page_number") or "") or None)
         )
         rag_nodes.append(
             RagNode(
