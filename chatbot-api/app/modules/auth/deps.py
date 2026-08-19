@@ -19,6 +19,7 @@ async def get_auth_context(
     request: Request,
     authorization: str | None = Header(default=None),
     blacklist: Any = Depends(get_token_blacklist),
+    session: AsyncSession = Depends(get_async_session),
 ) -> AuthContext | None:
     if request.method == "OPTIONS":
         return None
@@ -43,6 +44,15 @@ async def get_auth_context(
         role_name = payload.get("role")
         if not role_name:
             raise http_errors.unauthorized("Invalid token: missing role")
+
+        from app.modules.auth.repository import AuthRepository
+
+        repo = AuthRepository(session)
+        user = await repo.get_user_by_id(str(payload["sub"]))
+        if not user or not user.is_active:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=401, detail="User account is inactive or deleted")
 
         return AuthContext(
             user_id=str(payload["sub"]),

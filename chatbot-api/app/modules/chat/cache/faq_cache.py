@@ -56,7 +56,10 @@ async def faq_cache_sync_item(
         val = json.dumps(payload, ensure_ascii=False)
         mapping = {h: val for h in query_hashes if h}
         if mapping:
-            await redis.hset(key, mapping=mapping)
+            pipe = redis.pipeline()
+            pipe.hset(key, mapping=mapping)
+            pipe.expire(key, 604800)  # 7 days TTL
+            await pipe.execute()
     except Exception as exc:
         logger.warning("faq_cache_sync_item error: %s", exc)
 

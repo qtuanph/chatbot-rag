@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, String, func, text
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, Index, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,6 +12,7 @@ from app.db.base import Base
 
 class AiModelUsage(Base):
     __tablename__ = "ai_model_usage"
+    __table_args__ = (Index("ix_usage_tenant_created", "tenant_id", "created_at"),)
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     model_name: Mapped[str] = mapped_column(String(255), nullable=False)

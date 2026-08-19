@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     slug VARCHAR(120) NOT NULL UNIQUE,
     name VARCHAR(255) NOT NULL,
-    status VARCHAR(30) NOT NULL DEFAULT 'active',
+    status VARCHAR(30) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'archived')),
     description TEXT,
     monthly_token_quota INTEGER NOT NULL DEFAULT 0,
     monthly_request_quota INTEGER NOT NULL DEFAULT 0,
@@ -191,7 +191,7 @@ CREATE TABLE IF NOT EXISTS tenant_api_keys (
     name VARCHAR(120) NOT NULL,
     key_prefix VARCHAR(32) NOT NULL,
     key_hash VARCHAR(128) NOT NULL UNIQUE,
-    status VARCHAR(30) NOT NULL DEFAULT 'active',
+    status VARCHAR(30) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'archived')),
     expires_at TIMESTAMP WITH TIME ZONE,
     last_used_at TIMESTAMP WITH TIME ZONE,
     revoked_at TIMESTAMP WITH TIME ZONE,
@@ -272,6 +272,10 @@ CREATE TRIGGER touch_document_sections_updated_at BEFORE UPDATE ON document_sect
 CREATE TRIGGER touch_tenant_settings_updated_at BEFORE UPDATE ON tenant_settings FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER touch_tenant_api_keys_updated_at BEFORE UPDATE ON tenant_api_keys FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
+CREATE TRIGGER touch_products_updated_at BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_knowledge_bases_updated_at BEFORE UPDATE ON knowledge_bases FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_escalations_updated_at BEFORE UPDATE ON escalations FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+
 -- ============= PERMISSIONS =============
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE roles TO app_rw;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tenants TO app_rw;
@@ -317,7 +321,7 @@ CREATE TABLE IF NOT EXISTS ai_model_usage (
     latency_ms DOUBLE PRECISION NOT NULL DEFAULT 0,
     endpoint VARCHAR(100) NOT NULL,
     tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
-    user_id UUID,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE ai_model_usage ADD COLUMN IF NOT EXISTS tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL;
@@ -465,6 +469,8 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS knowledge_base_id UUID REFERENCES
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_bases_status ON knowledge_bases(status);
 CREATE INDEX IF NOT EXISTS idx_knowledge_bases_scope ON knowledge_bases(scope);
+CREATE INDEX IF NOT EXISTS idx_kb_owner_tenant ON knowledge_bases(owner_tenant_id);
+CREATE INDEX IF NOT EXISTS idx_kb_product_version ON knowledge_bases(product_version_id);
 CREATE INDEX IF NOT EXISTS idx_tkb_tenant ON tenant_knowledge_bases(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tkb_kb ON tenant_knowledge_bases(knowledge_base_id);
 CREATE INDEX IF NOT EXISTS idx_documents_kb_id ON documents(knowledge_base_id);
@@ -482,7 +488,7 @@ CREATE TABLE IF NOT EXISTS escalations (
     citations JSONB DEFAULT '[]'::jsonb,
     correlation_id VARCHAR(255),
     user_consent BOOLEAN DEFAULT true NOT NULL,
-    status VARCHAR(20) DEFAULT 'open',
+    status VARCHAR(20) DEFAULT 'open' CHECK (status IN ('open', 'published_faq', 'closed')),
     question_variants JSONB DEFAULT '[]'::jsonb,
     query_hashes JSONB DEFAULT '[]'::jsonb,
     hit_count INTEGER DEFAULT 0,
@@ -490,6 +496,7 @@ CREATE TABLE IF NOT EXISTS escalations (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_escalations_published_faq ON escalations(tenant_id, status) WHERE status = 'published_faq';
+CREATE INDEX IF NOT EXISTS idx_escalations_tenant_created ON escalations(tenant_id, created_at DESC);
 ALTER TABLE escalations ADD COLUMN IF NOT EXISTS question_variants JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE escalations ADD COLUMN IF NOT EXISTS query_hashes JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE escalations ADD COLUMN IF NOT EXISTS hit_count INTEGER DEFAULT 0;

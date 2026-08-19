@@ -101,13 +101,16 @@ async def chat_completions(
             "usage": result.usage,
         }
     except ValueError as exc:
+        msg = str(exc).lower()
+        if any(word in msg for word in ["quota", "rate limit", "exceeded", "limit"]):
+            return JSONResponse(status_code=429, content={"detail": str(exc)})
         raise http_errors.bad_request(str(exc)) from None
-    except Exception as exc:
+    except Exception:
         return JSONResponse(
             status_code=500,
             content={
                 "error": {
-                    "message": str(exc),
+                    "message": "An internal error occurred",
                     "type": "server_error",
                     "code": "internal_error",
                 }

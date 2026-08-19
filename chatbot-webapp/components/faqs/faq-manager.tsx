@@ -181,9 +181,11 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
   const handleRejectEscalation = useCallback(async (escId: string) => {
     if (!confirm("Bạn có chắc chắn muốn từ chối và xóa câu hỏi chờ duyệt này khỏi cơ sở dữ liệu?")) return;
     try {
-      await faqApi.delete(escId);
-      toast.success("Đã từ chối và xóa câu hỏi chờ duyệt khỏi cơ sở dữ liệu");
-      void loadData();
+      // TODO: implement reject escalation endpoint
+      toast.error("Chức năng chưa được hỗ trợ");
+      // await faqApi.delete(escId); // this is wrong, it's for faq not escalation
+      // toast.success("Đã từ chối và xóa câu hỏi chờ duyệt khỏi cơ sở dữ liệu");
+      // void loadData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Không thể từ chối câu hỏi";
       toast.error(message);

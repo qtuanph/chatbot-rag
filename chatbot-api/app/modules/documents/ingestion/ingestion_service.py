@@ -102,7 +102,10 @@ class IngestionService:
 
             duration_ms = (time.time() - ctx.start_time) * 1000
             n_nodes = len(ctx.nodes)
-            has_critical_failure = len(ctx.errors) > max(1, n_nodes * 0.5) if n_nodes > 0 else True
+            if n_nodes == 0 and not ctx.errors:
+                has_critical_failure = False
+            else:
+                has_critical_failure = len(ctx.errors) > max(1, n_nodes * 0.5) if n_nodes > 0 else True
 
             if has_critical_failure:
                 await report("failed", 0, f"{len(ctx.errors)} chunk errors exceeded threshold")
@@ -224,19 +227,30 @@ class IngestionService:
         from app.modules.settings.runtime_manager import RuntimeProviderManager
 
         adapter = RuntimeProviderManager.get_instance().get_embedding_adapter()
-        stored, updated_sections = await run_ingestion_pipeline(
-            ctx.nodes,
-            ctx.document_id,
-            ctx.tenant_id,
-            sections_data,
-            progress_callback=_on_pipeline_progress,
-            adapter=adapter,
-        )
-        if updated_sections and self.db_session:
-            repo = self.section_repo or SectionRepository(self.db_session)
-            await repo.store_sections(ctx.document_id, ctx.tenant_id, updated_sections)
-            ctx.parse_metadata.sections_data = updated_sections
-            ctx.section_count = len(updated_sections)
 
-        await report("embedding", 95, "Embedding xong, đang hoàn tất ghi và xác nhận dữ liệu trong Qdrant...")
-        logger.info("[%s] LlamaIndex pipeline stored %d nodes", ctx.document_id, stored)
+        try:
+            stored, updated_sections = await run_ingestion_pipeline(
+                ctx.nodes,
+                ctx.document_id,
+                ctx.tenant_id,
+                sections_data,
+                progress_callback=_on_pipeline_progress,
+                adapter=adapter,
+            )
+            if updated_sections and self.db_session:
+                repo = self.section_repo or SectionRepository(self.db_session)
+                await repo.store_sections(ctx.document_id, ctx.tenant_id, updated_sections)
+                ctx.parse_metadata.sections_data = updated_sections
+                ctx.section_count = len(updated_sections)
+
+            await report("embedding", 95, "Embedding xong, đang hoàn tất ghi và xác nhận dữ liệu trong Qdrant...")
+            logger.info("[%s] LlamaIndex pipeline stored %d nodes", ctx.document_id, stored)
+        except Exception as e:
+            logger.error("[%s] Vector index step failed: %s. Cleaning up sections from DB...", ctx.document_id, e)
+            if self.db_session:
+                repo = self.section_repo or SectionRepository(self.db_session)
+                try:
+                    await repo.delete_sections(ctx.document_id)
+                except Exception as cleanup_err:
+                    logger.warning("[%s] Failed to clean up sections: %s", ctx.document_id, cleanup_err)
+            raise e

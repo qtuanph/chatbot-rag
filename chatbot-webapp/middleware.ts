@@ -36,7 +36,11 @@ export default auth((req) => {
   }
 
   // Admin routes: require platform admin role
-  else if (pathname.startsWith("/admin") && role !== "platform_admin") {
+  else if (
+    pathname.startsWith("/admin") &&
+    role !== "platform_admin" &&
+    !(role === "tenant_admin" && pathname.startsWith("/admin/conversations"))
+  ) {
     response = NextResponse.redirect(new URL("/analytics", req.nextUrl));
   }
 
@@ -65,5 +69,7 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|Js/|Css/|downloads/|api/health).*)'
+  ]
 };

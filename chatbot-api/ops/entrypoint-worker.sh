@@ -78,11 +78,8 @@ celery -A app.core.celery_app.celery_app worker \
 # Only run Beat (-B) on the first replica to avoid duplicate periodic tasks
 # (Assumes K8s StatefulSet or manual scaling where HOSTNAME has index)
 BEAT_FLAG=""
-if [[ "$HOSTNAME" == *"-0" ]] || [[ -z "$HOSTNAME" ]]; then
-    echo "   Beat scheduler: ENABLED on this node ($HOSTNAME)"
+if [[ "${ENABLE_CELERY_BEAT:-false}" == "true" ]]; then
     BEAT_FLAG="-B"
-else
-    echo "   Beat scheduler: DISABLED on this node ($HOSTNAME) to avoid duplicates"
 fi
 
 celery -A app.core.celery_app.celery_app worker \

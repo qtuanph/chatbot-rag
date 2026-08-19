@@ -137,7 +137,7 @@ def _serialize_nodes_for_debug(nodes: list[NodeWithScore], limit: int = 5) -> li
 def _emit_debug(event: str, **payload: Any) -> None:
     message = json.dumps({"event": event, **payload}, ensure_ascii=False)
     logger.info(message)
-    print(message, flush=True)
+    logger.debug(message)
 
 
 def _tenant_filters(
@@ -417,7 +417,7 @@ async def retrieve_context(
             try:
                 t0_embed = time.perf_counter()
                 embed_model = LlamaSettings.embed_model
-                qb.embedding = await embed_model.aget_query_embedding(query)
+                qb.embedding = await asyncio.wait_for(embed_model.aget_query_embedding(query), timeout=5.0)
                 embed_latency_ms = (time.perf_counter() - t0_embed) * 1000
                 embed_model_name = (
                     getattr(embed_model, "model_name", None)
@@ -439,27 +439,37 @@ async def retrieve_context(
                 logger.warning("Failed to manual embed for usage tracking: %s", e)
 
         if _should_prioritize_section_route(query):
-            t0_section = time.perf_counter()
-            section_nodes = await asyncio.to_thread(recursive_retriever.retrieve, qb)
-            query_nodes.extend(section_nodes)
+            try:
+                t0_section = time.perf_counter()
+                section_nodes = await asyncio.wait_for(
+                    asyncio.to_thread(recursive_retriever.retrieve, qb), timeout=30.0
+                )
+                query_nodes.extend(section_nodes)
+                _emit_debug(
+                    "RAG_SECTION_ROUTE",
+                    query=query,
+                    tenant_id=tenant_id,
+                    latency_ms=round((time.perf_counter() - t0_section) * 1000, 2),
+                    nodes=_serialize_nodes_for_debug(section_nodes),
+                )
+            except Exception as e:
+                logger.warning("recursive_retriever.retrieve failed or timed out: %s", e)
+
+        try:
+            t0_semantic = time.perf_counter()
+            semantic_nodes = await asyncio.wait_for(
+                asyncio.to_thread(auto_merging_retriever.retrieve, qb), timeout=30.0
+            )
+            query_nodes.extend(semantic_nodes)
             _emit_debug(
-                "RAG_SECTION_ROUTE",
+                "RAG_SEMANTIC_ROUTE",
                 query=query,
                 tenant_id=tenant_id,
-                latency_ms=round((time.perf_counter() - t0_section) * 1000, 2),
-                nodes=_serialize_nodes_for_debug(section_nodes),
+                latency_ms=round((time.perf_counter() - t0_semantic) * 1000, 2),
+                nodes=_serialize_nodes_for_debug(semantic_nodes),
             )
-
-        t0_semantic = time.perf_counter()
-        semantic_nodes = await asyncio.to_thread(auto_merging_retriever.retrieve, qb)
-        query_nodes.extend(semantic_nodes)
-        _emit_debug(
-            "RAG_SEMANTIC_ROUTE",
-            query=query,
-            tenant_id=tenant_id,
-            latency_ms=round((time.perf_counter() - t0_semantic) * 1000, 2),
-            nodes=_serialize_nodes_for_debug(semantic_nodes),
-        )
+        except Exception as e:
+            logger.warning("auto_merging_retriever.retrieve failed or timed out: %s", e)
 
         query_nodes = _dedupe_nodes(query_nodes)
         query_nodes = replacement_postprocessor.postprocess_nodes(query_nodes, qb)
@@ -478,7 +488,7 @@ async def retrieve_context(
             if reranker is not None:
                 try:
                     t0_rerank = time.perf_counter()
-                    reranked_nodes = await reranker.postprocess_nodes(query_nodes, qb)
+                    reranked_nodes = await asyncio.wait_for(reranker.postprocess_nodes(query_nodes, qb), timeout=30.0)
                     rerank_latency_ms = (time.perf_counter() - t0_rerank) * 1000
                     rerank_model_name = (
                         getattr(reranker, "model_name", None)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,7 +23,7 @@ class Tenant(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'active'"))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    monthly_token_quota: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    monthly_token_quota: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
     monthly_request_quota: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     rate_limit_rpm: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("60"))
     allowed_origins: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))

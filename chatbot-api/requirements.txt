@@ -24,4 +24,4 @@ nvidia-ml-py==13.610.43
 msgpack==1.2.1
 hiredis==3.4.1
 
-easyocr>=1.7.2
+easyocr==1.7.2

@@ -41,6 +41,15 @@ export default function SettingsPage() {
   const saveBilling = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!billingData) return;
+    
+    if (
+      billingData.quota_cost_alert_pct_warn > billingData.quota_cost_alert_pct_alert ||
+      billingData.quota_cost_alert_pct_alert > billingData.quota_cost_alert_pct_cutoff
+    ) {
+      toast.error("Lỗi: Warn <= Alert <= Cutoff");
+      return;
+    }
+
     setBillingSaving(true);
     try {
       const updated = await settingsApi.updateBilling(billingData);
@@ -54,7 +63,12 @@ export default function SettingsPage() {
   };
 
   const handleBillingChange = (field: keyof BillingSettings, val: string) => {
-    setBillingData(prev => prev ? { ...prev, [field]: parseInt(val) || 0 } : null);
+    setBillingData(prev => {
+      if (!prev) return null;
+      let parsed = parseInt(val) || 0;
+      if (field === "quota_user_rate_per_min") parsed = Math.max(1, Math.min(1000, parseInt(val) || 1));
+      return { ...prev, [field]: parsed };
+    });
   };
 
   return (
@@ -143,6 +157,7 @@ export default function SettingsPage() {
                         <Label>User rate per min</Label>
                         <Input
                           type="number"
+                          min="1" max="1000"
                           value={billingData.quota_user_rate_per_min}
                           onChange={(e) => handleBillingChange("quota_user_rate_per_min", e.target.value)}
                         />
@@ -152,6 +167,7 @@ export default function SettingsPage() {
                         <Label>User daily requests</Label>
                         <Input
                           type="number"
+                          min="0" max="1000000"
                           value={billingData.quota_user_daily_requests}
                           onChange={(e) => handleBillingChange("quota_user_daily_requests", e.target.value)}
                         />
@@ -164,6 +180,7 @@ export default function SettingsPage() {
                         <Label>Warn Threshold (%)</Label>
                         <Input
                           type="number"
+                          min="1" max="99"
                           value={billingData.quota_cost_alert_pct_warn}
                           onChange={(e) => handleBillingChange("quota_cost_alert_pct_warn", e.target.value)}
                         />
@@ -173,6 +190,7 @@ export default function SettingsPage() {
                         <Label>Alert Threshold (%)</Label>
                         <Input
                           type="number"
+                          min="1" max="99"
                           value={billingData.quota_cost_alert_pct_alert}
                           onChange={(e) => handleBillingChange("quota_cost_alert_pct_alert", e.target.value)}
                         />
@@ -182,6 +200,7 @@ export default function SettingsPage() {
                         <Label>Cutoff Threshold (%)</Label>
                         <Input
                           type="number"
+                          min="1" max="100"
                           value={billingData.quota_cost_alert_pct_cutoff}
                           onChange={(e) => handleBillingChange("quota_cost_alert_pct_cutoff", e.target.value)}
                         />

@@ -237,6 +237,10 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
             await _rechunk_progress("rechunking", 5, "[1/4] Đang đọc OCR markdown từ S3...")
 
             async_redis = get_redis_client()
+            lock_key = f"rechunk:lock:{document_id}"
+            if not await async_redis.set(lock_key, "1", nx=True, ex=3600):
+                logger.warning("[%s] Another worker is already rechunking this document. Skipping.", document_id)
+                return {"status": "skipped", "reason": "already_processing"}
             try:
                 md_bytes = await asyncio.to_thread(storage.download_bytes, ocr_uri)
                 markdown_text = md_bytes.decode("utf-8")
@@ -268,8 +272,11 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                 await _rechunk_progress("rechunking", 40, "[4/4] Đang embedding và index vào Qdrant...")
 
                 from app.modules.documents.ingestion.pipeline import run_ingestion_pipeline
+                from app.modules.settings.runtime_manager import RuntimeProviderManager
 
-                async def _on_rechunk_pipeline_progress(processed_docs: int, total_docs: int, total_stored: int):
+                async def _on_rechunk_pipeline_progress(
+                    phase: str, processed_docs: int, total_docs: int, total_stored: int
+                ):
                     if total_docs <= 0:
                         return
                     percent = 40 + int((95 - 40) * (processed_docs / total_docs))
@@ -279,12 +286,14 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                         f"[4/4] Đã embed {processed_docs}/{total_docs} chunk, đang ghi vector vào Qdrant...",
                     )
 
+                adapter = RuntimeProviderManager.get_instance().get_embedding_adapter()
                 stored, updated_sections = await run_ingestion_pipeline(
                     nodes,
                     document_id,
                     str(document["tenant_id"]),
                     sections_data,
                     progress_callback=_on_rechunk_pipeline_progress,
+                    adapter=adapter,
                 )
                 if updated_sections:
                     await section_repo.store_sections(document_id, str(document["tenant_id"]), updated_sections)
@@ -325,7 +334,10 @@ def rechunk_document_task(self, task_id: str, document_id: str, user_id: str | N
                     pass
                 raise e
             finally:
-                await async_redis.aclose()
+                try:
+                    await async_redis.delete(lock_key)
+                except Exception:
+                    pass
 
     try:
         result = asyncio.run(_run_async())

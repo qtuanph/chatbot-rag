@@ -65,6 +65,7 @@ services:
       - HUGGINGFACE_HUB_CACHE=/home/qtuanph/.cache/huggingface
       - FASTEMBED_CACHE_PATH=/home/qtuanph/.cache/huggingface/fastembed
       - EMBEDDING_BATCH_SIZE=20
+      - ENABLE_CELERY_BEAT=true
     secrets:
       - hf_token
     volumes:
@@ -80,6 +81,12 @@ services:
         condition: service_healthy
       rustfs:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.core.celery_app.celery_app inspect ping -d node-ingestion@$$HOSTNAME --timeout 5 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
     networks:
       - internal
@@ -101,8 +108,8 @@ services:
       NODE_ENV: production
       BASE_URL: ${AI_PROXY_PUBLIC_URL:-https://chatbot-9router.sse.net.vn}
       NEXT_PUBLIC_BASE_URL: ${AI_PROXY_PUBLIC_URL:-https://chatbot-9router.sse.net.vn}
-      REQUIRE_API_KEY: "false"
-      AUTH_COOKIE_SECURE: "false"
+      REQUIRE_API_KEY: "${REQUIRE_API_KEY:-true}"
+      AUTH_COOKIE_SECURE: "${AUTH_COOKIE_SECURE:-true}"
     ports:
       - "127.0.0.1:2908:2908"
     volumes:
@@ -132,22 +139,22 @@ services:
       - -c
       - log_timezone=Asia/Ho_Chi_Minh
       - -c
-      - app.app_rw_password=${APP_DB_PASSWORD:-replace-me}
+      - app.app_rw_password=${APP_DB_PASSWORD}
       - -c
-      - app.db_admin_password=${POSTGRES_PASSWORD:-replace-me}
+      - app.db_admin_password=${POSTGRES_PASSWORD}
       - -c
-      - app.admin_username=${ADMIN_USERNAME:-replace-me}
+      - app.admin_username=${ADMIN_USERNAME}
       - -c
-      - app.admin_password=${ADMIN_PASSWORD:-replace-me}
+      - app.admin_password=${ADMIN_PASSWORD}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ragbot}
       POSTGRES_USER: ${POSTGRES_USER:-db-admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-replace-me}
-      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-replace-me}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql
+      - pgdata:/var/lib/postgresql/data
       - ./ops/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
@@ -186,6 +193,12 @@ services:
       - "127.0.0.1:9001:9001"
     volumes:
       - rustfsdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
     networks:
       - internal
@@ -256,7 +269,6 @@ volumes:
   hf-cache:
   9router-data:
   settings-data:
-  letsencrypt-data:
 
 networks:
   internal:

@@ -54,6 +54,10 @@ async def update_my_tenant_setting(
     auth: AuthContext = Depends(get_auth_context),
     service: TenantService = Depends(get_tenant_service),
 ) -> TenantSettingResponse:
+    if auth.role != "tenant_admin":
+        from app.core import http_errors
+
+        raise http_errors.forbidden("Tenant admin access required")
     tenant_id = await _resolve_tenant_id(auth, service)
     try:
         return TenantSettingResponse(

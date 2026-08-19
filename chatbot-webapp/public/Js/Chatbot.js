@@ -8,7 +8,7 @@
                     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
                 });
             } catch (err) {
-                console.error("Error creating UUID:", err);
+//                 console.error("Error creating UUID:", err);
             }
             return sender;
         };
@@ -17,10 +17,10 @@
         function triggerNewFormFromTab(tabTitle, callback) {
             try {
                 var tabPanel = $('#main-tab-container').tabs('getTab', tabTitle);
-                if (!tabPanel) return console.warn('⚠️ Không tìm thấy tab:', tabTitle);
+//                 if (!tabPanel) return console.warn('⚠️ Không tìm thấy tab:', tabTitle);
 
                 var iframe = $('iframe', tabPanel)[0];
-                if (!iframe) return console.warn('⚠️ Không tìm thấy iframe trong tab:', tabTitle);
+//                 if (!iframe) return console.warn('⚠️ Không tìm thấy iframe trong tab:', tabTitle);
 
                 var iframeDoc = () => iframe.contentDocument || iframe.contentWindow.document;
 
@@ -31,17 +31,17 @@
 
                         if (newButton) {
                             newButton.click();
-                            console.log("✅ Đã bấm nút Mới trong tab:", tabTitle);
+//                             console.log("✅ Đã bấm nút Mới trong tab:", tabTitle);
 
                             if (typeof callback === 'function') {
                                 // Gọi callback sau 800ms để đảm bảo form chuyển trạng thái
                                 setTimeout(() => callback(doc), 800);
                             }
                         } else {
-                            console.warn("⚠️ Không tìm thấy nút Mới trong iframe.");
+//                             console.warn("⚠️ Không tìm thấy nút Mới trong iframe.");
                         }
                     } catch (err) {
-                        console.error("❌ Lỗi khi truy cập iframe:", err);
+//                         console.error("❌ Lỗi khi truy cập iframe:", err);
                     }
                 };
 
@@ -52,7 +52,7 @@
                 }
 
             } catch (err) {
-                console.error("❌ Lỗi khi trigger form:", err);
+//                 console.error("❌ Lỗi khi trigger form:", err);
             }
         }
 
@@ -75,17 +75,18 @@
                     dvt_input.dispatchEvent(new Event('blur'));
                 }
 
-                console.log("✅ Đã tự động điền thông tin vật tư vào form.");
+//                 console.log("✅ Đã tự động điền thông tin vật tư vào form.");
             } catch (err) {
-                console.error("❌ Lỗi khi điền dữ liệu:", err);
+//                 console.error("❌ Lỗi khi điền dữ liệu:", err);
             }
         }
 
         // Thêm chatbot HTML vào body (icon + box là 2 element độc lập)
         if (!document.getElementById('chatbot-icon')) {
+            const iconUrl = window.CHATBOT_ICON_URL || "/Css/images/chatbot-icon.png";
             document.body.insertAdjacentHTML('beforeend', `
                 <div id="chatbot-icon">
-                    <img src="https://storage-ic.icenter.ai/smartbot-v2/chatbot_images/12282023/dc64a85b-9c28-4f73-ad3f-81025ab81833.png" alt="Chatbot">
+                    <img src="${iconUrl}" alt="Chatbot">
                 </div>
                 <div id="chatbot-box">
                     <div id="chatbot-header">
@@ -176,6 +177,29 @@
         // Context của chatbot khi đưa lên llm
         let chatContext = { statistics: null, lastQuery: null, uploadedData: null, isTyping: false, history: [] };
 
+        // Encode HTML Entities
+        function encodeHtmlEntities(str) {
+            return str.replace(/&/g, '&amp;');
+        }
+
+        function sanitizeHtml(html) {
+            if (typeof DOMPurify !== 'undefined') {
+                return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+            }
+            // Safe fallback
+            const div = document.createElement('div');
+            div.innerHTML = html;
+            div.querySelectorAll('script, [onerror], [onload], [onclick], [onmouseover]').forEach(el => el.remove());
+            div.querySelectorAll('*').forEach(el => {
+                [...el.attributes].forEach(attr => {
+                    if (attr.name.startsWith('on') || attr.value.startsWith('javascript:')) {
+                        el.removeAttribute(attr.name);
+                    }
+                });
+            });
+            return div.innerHTML;
+        }
+
         // Render Markdown safely using marked.js
         function safeMarkdownRender(element, markdownText) {
             if (!element) return;
@@ -188,14 +212,7 @@
                         : null;
                 const rawHtml = parser ? parser.parse(text) : text;
 
-                if (typeof DOMPurify !== 'undefined') {
-                    element.innerHTML = DOMPurify.sanitize(rawHtml);
-                } else {
-                    const safe = rawHtml.replace(/<script[\s\S]*?<\/script>/gi, '')
-                                        .replace(/on\w+="[^"]*"/gi, '')
-                                        .replace(/on\w+='[^']*'/gi, '');
-                    element.innerHTML = safe;
-                }
+                element.innerHTML = sanitizeHtml(rawHtml);
             } catch (e) {
                 element.textContent = markdownText || '';
             }
@@ -280,7 +297,7 @@
                     if (opts && opts.title) screenContext = opts.title;
                 }
             } catch (e) {
-                console.warn('Không lấy được context tab:', e);
+//                 console.warn('Không lấy được context tab:', e);
             }
 
             // Lưu câu hỏi vào lịch sử trước khi gọi API
@@ -425,7 +442,7 @@
                 }
 
             } catch (err) {
-                console.error('Chatbot error:', err);
+//                 console.error('Chatbot error:', err);
                 removeTypingIndicator();
 
                 // Xóa câu hỏi đã push vào history để tránh lệch lịch sử
@@ -445,7 +462,8 @@
         }
 
         function sendFeedback(queryText, answerText, feedbackType) {
-            const feedbackUrl = window.CHATBOT_API_URL.replace('/chat/completions', '/chat/feedback');
+            const baseUrl = window.CHATBOT_API_URL.replace(/\/chat\/completions.*$/, '');
+            const feedbackUrl = baseUrl + '/chat/feedback';
             fetch(feedbackUrl, {
                 method: 'POST',
                 headers: {
@@ -457,9 +475,9 @@
                     query_text: queryText,
                     assistant_answer: answerText
                 })
-            }).catch(err => console.error("Feedback error:", err));
+//             }).catch(err => console.error("Feedback error:", err));
         }
 
         // Initialize
         const senderId = create_UUID();
-        console.log('Chatbot initialized with ID:', senderId);
+//         console.log('Chatbot initialized with ID:', senderId);

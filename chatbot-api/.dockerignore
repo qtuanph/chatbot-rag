@@ -52,3 +52,12 @@ Thumbs.db
 # MCP
 .mcp.json
 .playwright-mcp/
+
+ops/certs/
+*.key
+*.crt
+*.pem
+tests/
+.deepeval/
+.env.*
+!.env.example

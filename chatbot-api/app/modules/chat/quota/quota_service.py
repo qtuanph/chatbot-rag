@@ -120,30 +120,40 @@ class QuotaService:
             return not settings.quota_fail_closed, f"error:{exc}"
 
     async def check_and_increment_daily(self, *, tenant_id: str, user_id: str | None) -> tuple[bool, str]:
-        """Check user daily request quota (bypassed for public API calls where user_id is None)."""
-        if user_id is None:
-            return True, "ok"
-
+        """Check user daily request quota or tenant daily request quota."""
         if not self.redis:
             return not settings.quota_fail_closed, "redis_unavailable"
 
         try:
             date = _date_key()
-            key = f"quota:user_daily:{tenant_id}:{user_id}:{date}"
             now = _vn_now()
             midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
             ttl = int((midnight - now).total_seconds()) + 60
 
-            pipe = self.redis.pipeline()
-            pipe.incr(key)
-            pipe.expire(key, ttl)
-            results = await pipe.execute()
-            count = int(results[0])
+            if user_id is None:
+                # M-13: check tenant-level daily limit
+                key = f"quota:tenant_daily:{tenant_id}:{date}"
+                pipe = self.redis.pipeline()
+                pipe.incr(key)
+                pipe.expire(key, ttl)
+                results = await pipe.execute()
+                count = int(results[0])
+                limit = _get_rtm_billing("quota_tenant_daily_requests", "0")
+                if limit > 0 and count > limit:
+                    return False, f"tenant_daily_request_quota_exceeded:{count}/{limit}"
+                return True, "ok"
+            else:
+                key = f"quota:user_daily:{tenant_id}:{user_id}:{date}"
+                pipe = self.redis.pipeline()
+                pipe.incr(key)
+                pipe.expire(key, ttl)
+                results = await pipe.execute()
+                count = int(results[0])
 
-            limit = _get_rtm_billing("quota_user_daily_requests", str(settings.quota_user_daily_requests))
-            if limit > 0 and count > limit:
-                return False, f"daily_request_quota_exceeded:{count}/{limit}"
-            return True, "ok"
+                limit = _get_rtm_billing("quota_user_daily_requests", str(settings.quota_user_daily_requests))
+                if limit > 0 and count > limit:
+                    return False, f"daily_request_quota_exceeded:{count}/{limit}"
+                return True, "ok"
         except Exception as exc:
             logger.warning("Quota daily check error: %s", exc)
             return not settings.quota_fail_closed, f"error:{exc}"
@@ -166,15 +176,21 @@ class QuotaService:
 
             month = _month_key()
             key = f"quota:tenant_monthly_requests:{tenant_id}:{month}"
-            pipe = self.redis.pipeline()
-            pipe.incr(key)
-            pipe.expire(key, 35 * 24 * 3600)
-            results = await pipe.execute()
-            count = int(results[0])
 
-            if count > monthly_limit:
-                await self.redis.decr(key)
-                return False, f"monthly_request_quota_exceeded:{count - 1}/{monthly_limit}"
+            # M-12: Use Lua script for atomic check-and-increment
+            script = """
+            local current = redis.call('GET', KEYS[1])
+            if current == false then current = 0 else current = tonumber(current) end
+            if current >= tonumber(ARGV[1]) then return -1 end
+            redis.call('INCRBY', KEYS[1], 1)
+            redis.call('EXPIRE', KEYS[1], ARGV[2])
+            return current + 1
+            """
+            result = await self.redis.eval(script, 1, key, monthly_limit, 35 * 24 * 3600)
+
+            if result == -1:
+                return False, f"monthly_request_quota_exceeded:limit_reached/{monthly_limit}"
+
             return True, "ok"
         except Exception as exc:
             logger.warning("Quota reserve LLM error: %s", exc)
@@ -199,8 +215,10 @@ class QuotaService:
 
             # 1. Token quota check
             token_quota = config.get("monthly_token_quota", 0)
+            token_index: int | None = None
             if token_quota > 0 and total_tokens > 0:
                 token_key = f"quota:tenant_monthly_tokens:{tenant_id}:{month}"
+                token_index = len(pipe)
                 pipe.incrby(token_key, total_tokens)
                 pipe.expire(token_key, 35 * 24 * 3600)
 
@@ -216,6 +234,13 @@ class QuotaService:
             if len(pipe) > 0:
                 results = await pipe.execute()
                 total_cost = int(results[cost_index]) if cost_index is not None else 0
+                if token_index is not None:
+                    current_tokens = int(results[token_index])
+                    # C-4: check if tokens exceeded limit and log warning
+                    if current_tokens > token_quota:
+                        logger.warning(
+                            "Tenant %s exceeded monthly_token_quota: %d > %d", tenant_id, current_tokens, token_quota
+                        )
             else:
                 total_cost = 0
 

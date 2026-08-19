@@ -33,20 +33,20 @@ _NO_CACHE_PHRASES = (
 )
 
 
-def _build_cache_key(doc_key_or_tenant_id: str, normalized_query: str) -> str:
+def _build_cache_key(tenant_id: str, doc_key: str, normalized_query: str) -> str:
     digest = hashlib.sha256(normalized_query.encode("utf-8")).hexdigest()
-    return f"{_EXACT_CACHE_PREFIX}:{doc_key_or_tenant_id}:{digest}"
+    return f"{_EXACT_CACHE_PREFIX}:{tenant_id}:{doc_key}:{digest}"
 
 
 async def exact_cache_get(
-    redis: aioredis.Redis, doc_key_or_tenant_id: str, question: str, ttl_seconds: int = 2592000
+    redis: aioredis.Redis, tenant_id: str, doc_key: str, question: str, ttl_seconds: int = 2592000
 ) -> dict[str, Any] | None:
     """L1 lookup with automatic sliding TTL extension on cache hit."""
     try:
         normalized = normalize_query(question, stopwords=ALL_DEFAULT_STOPWORDS)
         if not normalized:
             return None
-        key = _build_cache_key(doc_key_or_tenant_id, normalized)
+        key = _build_cache_key(tenant_id, doc_key, normalized)
         # Atomic read + TTL extension in single Redis command
         raw = await redis.getex(key, ex=ttl_seconds)
         if raw is None:
@@ -59,7 +59,8 @@ async def exact_cache_get(
 
 async def exact_cache_set(
     redis: aioredis.Redis,
-    doc_key_or_tenant_id: str,
+    tenant_id: str,
+    doc_key: str,
     question: str,
     payload: dict[str, Any],
     ttl_seconds: int = 2592000,
@@ -73,7 +74,7 @@ async def exact_cache_set(
         normalized = normalize_query(question, stopwords=ALL_DEFAULT_STOPWORDS)
         if not normalized:
             return
-        key = _build_cache_key(doc_key_or_tenant_id, normalized)
+        key = _build_cache_key(tenant_id, doc_key, normalized)
         await redis.setex(key, ttl_seconds, json.dumps(payload, ensure_ascii=False))
     except Exception as exc:
         logger.warning("exact_cache_set error: %s", exc)
@@ -99,7 +100,7 @@ async def exact_cache_delete(redis: aioredis.Redis, tenant_id: str, question: st
         if not normalized:
             return
         digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-        pattern = f"{_EXACT_CACHE_PREFIX}:*:{digest}"
+        pattern = f"{_EXACT_CACHE_PREFIX}:{tenant_id}:*:{digest}"
         keys = [key async for key in redis.scan_iter(match=pattern)]
         if keys:
             await redis.delete(*keys)

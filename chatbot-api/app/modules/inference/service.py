@@ -166,7 +166,7 @@ class PublicInferenceService:
                 from app.modules.chat.cache.exact_cache import exact_cache_get
 
                 doc_key = await self._resolve_doc_cache_key(tenant_id)
-                cached = await exact_cache_get(self._redis, doc_key, user_query)
+                cached = await exact_cache_get(self._redis, tenant_id, doc_key, user_query)
                 if cached:
                     cached["_cache_tier"] = "exact"
                     return cached, None, None
@@ -212,7 +212,7 @@ class PublicInferenceService:
 
             doc_key = await self._resolve_doc_cache_key(tenant_id)
             await exact_cache_set(
-                self._redis, doc_key, user_query, payload, ttl_seconds=settings.exact_cache_ttl_seconds
+                self._redis, tenant_id, doc_key, user_query, payload, ttl_seconds=settings.exact_cache_ttl_seconds
             )
 
         if settings.retrieval_semantic_cache_enabled and self.semantic_cache and normalized_query and query_vector:

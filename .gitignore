@@ -33,3 +33,10 @@ build/
 chatbot-api/ops/certs/*
 !chatbot-api/ops/certs/.gitkeep
 
+
+.env.*
+!**/.env.example
+secrets/
+.deepeval/
+*.sqlite
+*.db

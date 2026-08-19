@@ -2,7 +2,6 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
-const connectSrc = isDevelopment ? "'self' ws: http://localhost:* ws://localhost:*" : "'self'";
 const workspaceRoot = path.resolve(process.cwd(), "..");
 
 const nextConfig: NextConfig = {
@@ -16,6 +15,19 @@ const nextConfig: NextConfig = {
       process.env.VERCEL_GIT_COMMIT_REF ||
       process.env.NEXT_PUBLIC_APP_VERSION ||
       "dev",
+  },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+        ],
+      },
+    ];
   },
   output: "standalone",
   productionBrowserSourceMaps: false,
