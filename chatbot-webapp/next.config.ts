@@ -7,7 +7,10 @@ const workspaceRoot = path.resolve(process.cwd(), "..");
 const nextConfig: NextConfig = {
   experimental: {
     useTypeScriptCli: true,
-    optimizePackageImports: ["lucide-react", "recharts", "date-fns"],
+    serverActions: {
+      bodySizeLimit: "50mb",
+    },
+    optimizePackageImports: ["lucide-react", "recharts", "date-fns", "clsx", "tailwind-merge"],
   },
   env: {
     NEXT_PUBLIC_APP_VERSION:

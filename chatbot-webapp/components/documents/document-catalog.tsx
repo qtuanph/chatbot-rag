@@ -332,11 +332,45 @@ export function DocumentCatalog({
                     </div>
                   </TableCell>
                 )}
-                {visibleColumns["Trạng thái"] && <TableCell className="pr-4 text-sm capitalize">{document.status}</TableCell>}
-                {visibleColumns["Giai đoạn"] && <TableCell className="pr-4 text-sm capitalize">{document.stage}</TableCell>}
-                {visibleColumns["Tiến độ"] && <TableCell className="pr-4 text-right text-sm">{document.progress_percent}%</TableCell>}
-                {visibleColumns["Kích thước"] && <TableCell className="pr-4 text-right text-sm">{formatNumber(document.file_size)} bytes</TableCell>}
-                {visibleColumns["Cập nhật"] && <TableCell className="pr-4 text-sm text-muted-foreground">{formatDateTimeVN(document.updated_at)}</TableCell>}
+                {visibleColumns["Trạng thái"] && (
+                  <TableCell className="pr-4 text-sm">
+                    {document.status === "ready" ? (
+                      <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 gap-1.5 font-medium text-xs">
+                        <span className="pulse-dot-active" /> Sẵn sàng
+                      </Badge>
+                    ) : document.status === "failed" ? (
+                      <Badge variant="destructive" className="text-xs">
+                        Thất bại
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 gap-1.5 font-medium text-xs">
+                        <span className="pulse-dot-amber" /> Đang nạp
+                      </Badge>
+                    )}
+                  </TableCell>
+                )}
+                {visibleColumns["Giai đoạn"] && (
+                  <TableCell className="pr-4 text-xs font-mono capitalize text-muted-foreground">
+                    {document.stage || "—"}
+                  </TableCell>
+                )}
+                {visibleColumns["Tiến độ"] && (
+                  <TableCell className="pr-4 text-right text-sm">
+                    <div className="flex items-center justify-end gap-2">
+                      <span className="font-mono text-xs font-medium">{document.progress_percent}%</span>
+                      {document.status !== "ready" && document.status !== "failed" && (
+                        <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary transition-all duration-300 rounded-full"
+                            style={{ width: `${document.progress_percent}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                )}
+                {visibleColumns["Kích thước"] && <TableCell className="pr-4 text-right text-xs font-mono">{formatNumber(document.file_size)} B</TableCell>}
+                {visibleColumns["Cập nhật"] && <TableCell className="pr-4 text-xs text-muted-foreground">{formatDateTimeVN(document.updated_at)}</TableCell>}
                 {!readOnly ? (
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">

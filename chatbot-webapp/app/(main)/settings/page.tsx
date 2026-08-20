@@ -72,10 +72,10 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Cài đặt</h1>
-        <p className="text-sm text-muted-foreground">Thông tin tài khoản và cấu hình chatbot theo phạm vi quyền hiện tại.</p>
+    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6 md:p-8 animate-in fade-in-50 duration-300">
+      <div className="border-b pb-4">
+        <h1 className="text-2xl font-bold tracking-tight">Cài đặt hệ thống</h1>
+        <p className="text-sm text-muted-foreground mt-1">Thông tin tài khoản, cấu hình quota và thông số platform theo phạm vi quyền.</p>
       </div>
 
       <Card>

@@ -94,16 +94,18 @@ export default function AdminConversationsPage() {
   };
 
   // Load Conversations list
-  const fetchConversations = async () => {
-    setLoading(true);
+  const fetchConversations = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const tenantParam = filterTenantId !== "ALL" ? filterTenantId : undefined;
       const res = await conversationsApi.list(0, 50, tenantParam);
       setConversations(res.items || []);
     } catch (err: any) {
-      toast.error("Không thể tải nhật ký hội thoại: " + (err?.message || "Lỗi kết nối"));
+      if (!silent) {
+        toast.error("Không thể tải nhật ký hội thoại: " + (err?.message || "Lỗi kết nối"));
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -115,6 +117,17 @@ export default function AdminConversationsPage() {
 
   useEffect(() => {
     fetchConversations();
+  }, [filterTenantId]);
+
+  // Real-time silent background polling for new incoming conversations
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchConversations(true);
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, [filterTenantId]);
 
   // Tenant lookup map by ID
@@ -230,7 +243,7 @@ export default function AdminConversationsPage() {
             </div>
           )}
 
-          <Button onClick={fetchConversations} disabled={loading} variant="outline" size="sm" className="gap-2 shrink-0">
+          <Button onClick={() => fetchConversations(false)} disabled={loading} variant="outline" size="sm" className="gap-2 shrink-0">
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Làm mới
           </Button>
         </div>

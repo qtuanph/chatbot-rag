@@ -183,6 +183,21 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
   };
 
   const handleToggleActive = async (p: AIProvider) => {
+    const nextState = !p.is_active;
+    // Optimistic UI update
+    setProviders((prev) =>
+      prev.map((item) => {
+        if (item.id === p.id) {
+          return { ...item, is_active: nextState };
+        }
+        // In case service type only allows 1 active provider (e.g. LLM, Reranker)
+        if (nextState && item.service_type === p.service_type) {
+          return { ...item, is_active: false };
+        }
+        return item;
+      })
+    );
+
     try {
       if (p.is_active) {
         await settingsApi.deactivateProvider(p.id);
@@ -193,6 +208,7 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
       }
       loadProviders();
     } catch (err) {
+      loadProviders();
       toast.error(err instanceof ApiError ? err.detail : "Thao tác thất bại");
     }
   };
@@ -212,11 +228,14 @@ export function ProviderPage({ serviceType }: { serviceType: "embedding" | "rera
       toast.error("Không thể xóa provider mặc định");
       return;
     }
+    // Optimistic UI update
+    setProviders((prev) => prev.filter((item) => item.id !== p.id));
     try {
       await settingsApi.deleteProvider(p.id);
       toast.success(`Đã xóa ${p.display_name}`);
       loadProviders();
     } catch (err) {
+      loadProviders();
       toast.error(err instanceof ApiError ? err.detail : "Xóa thất bại");
     }
   };

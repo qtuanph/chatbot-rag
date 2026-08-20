@@ -64,17 +64,15 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
     }
   }, [tenantOptions, activeTenantId]);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       let targetTenantId = activeTenantId || selectedTenantId;
       if (!targetTenantId) {
-        // platform_admin has no personal tenant — never call getMyTenant()
         if (isPlatformAdmin) {
-          setLoading(false);
+          if (!silent) setLoading(false);
           return;
         }
-        // tenant_admin: fetch own tenant
         const myTenant = await tenantsApi.getMyTenant();
         setTenant(myTenant);
         targetTenantId = myTenant?.id || null;
@@ -91,16 +89,28 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
         setEscalations(escList);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Không thể tải danh sách FAQ";
-      toast.error(message);
+      if (!silent) {
+        const message = error instanceof Error ? error.message : "Không thể tải danh sách FAQ";
+        toast.error(message);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [activeTenantId, selectedTenantId, tenantOptions, isPlatformAdmin]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { void loadData(); }, 0);
-    return () => window.clearTimeout(timer);
+    void loadData();
+  }, [loadData]);
+
+  // Real-time silent background polling
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void loadData(true);
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, [loadData]);
 
 
@@ -234,7 +244,7 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
               ))}
             </select>
           )}
-          <Button className="rounded-xl" variant="outline" onClick={loadData} disabled={loading}>
+          <Button className="rounded-xl" variant="outline" onClick={() => loadData(false)} disabled={loading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Làm mới
           </Button>

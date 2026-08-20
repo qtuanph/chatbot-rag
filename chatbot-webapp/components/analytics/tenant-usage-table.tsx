@@ -51,25 +51,35 @@ export function TenantUsageTable() {
     return () => window.removeEventListener("storage", handleStorageChange);
   }, [loadPricing]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
       loadPricing();
       const result = await analyticsApi.getTenantsUsage(days);
       setItems(result.items);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải dữ liệu thống kê theo tổ chức");
+      if (!silent) {
+        setError(err instanceof Error ? err.message : "Không thể tải dữ liệu thống kê theo tổ chức");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [days, loadPricing]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void load();
-    }, 0);
-    return () => window.clearTimeout(timer);
+    void load();
+  }, [load]);
+
+  // Real-time silent background polling
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void load(true);
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, [load]);
 
   return (
@@ -108,7 +118,7 @@ export function TenantUsageTable() {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button size="sm" variant="outline" onClick={load} disabled={loading}>
+          <Button size="sm" variant="outline" onClick={() => load(false)} disabled={loading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Làm mới
           </Button>

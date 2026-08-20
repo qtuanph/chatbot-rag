@@ -129,6 +129,8 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
   const [stats, setStats] = useState<AnalyticsStats | null>(null);
   const [days, setDays] = useState(30);
   const [loading, setLoading] = useState(true);
+  const [isRealtime, setIsRealtime] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [clearing, setClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -163,26 +165,40 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
     });
   };
 
-  const loadStats = useCallback(async () => {
+  const loadStats = useCallback(async (silent = false) => {
     if (!session) return;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
       const nextStats = await analyticsApi.getStats(days);
       setStats(nextStats);
+      setLastUpdated(new Date());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải thống kê");
+      if (!silent) {
+        setError(err instanceof Error ? err.message : "Không thể tải thống kê");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [days, session]);
 
+  // Initial load
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadStats();
-    }, 0);
-    return () => window.clearTimeout(timer);
+    void loadStats();
   }, [loadStats]);
+
+  // Real-time silent background polling (every 10 seconds, only when tab is active and isRealtime=true)
+  useEffect(() => {
+    if (!isRealtime) return;
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void loadStats(true);
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [isRealtime, loadStats]);
 
   const handleClear = useCallback(async () => {
     try {
@@ -204,11 +220,11 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
 
   if (loading && !stats) {
     return (
-      <div className="space-y-6 p-6">
-        <Skeleton className="h-10 w-1/3" />
-        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <div className="space-y-6 p-6 md:p-8 animate-in fade-in-50 duration-300">
+        <Skeleton className="h-10 w-1/3 rounded-lg" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={index} className="h-28" />
+            <Skeleton key={index} className="h-28 rounded-xl" />
           ))}
         </div>
       </div>
@@ -216,11 +232,22 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
   }
 
   return (
-    <div className="space-y-6 p-6 md:p-8">
+    <div className="space-y-6 p-6 md:p-8 animate-in fade-in-50 duration-300">
       {/* ── Top Executive Header ── */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b pb-5">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+            {isRealtime ? (
+              <Badge variant="outline" className="gap-1.5 border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium text-xs py-0.5">
+                <span className="pulse-dot-active" /> Trực tiếp (Live)
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs text-muted-foreground">
+                Tạm dừng cập nhật
+              </Badge>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
         </div>
 
@@ -235,7 +262,16 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false }: Anal
               {range.label}
             </Button>
           ))}
-          <Button size="sm" variant="outline" onClick={loadStats} disabled={loading}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setIsRealtime(!isRealtime)}
+            className={cn("gap-1.5", isRealtime && "text-emerald-600 dark:text-emerald-400 border-emerald-500/30")}
+          >
+            <Activity className="size-3.5" />
+            {isRealtime ? "Live Bật" : "Live Tắt"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => loadStats(false)} disabled={loading}>
             <RefreshCw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} />
             Làm mới
           </Button>
