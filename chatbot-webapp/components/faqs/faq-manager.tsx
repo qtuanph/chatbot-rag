@@ -65,6 +65,12 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
     try {
       let targetTenantId = activeTenantId || selectedTenantId;
       if (!targetTenantId) {
+        // tenantOptions is provided (platform_admin) but no selection yet — wait for selection
+        if (tenantOptions.length > 0) {
+          setLoading(false);
+          return;
+        }
+        // tenant_admin: fetch own tenant
         const myTenant = await tenantsApi.getMyTenant();
         setTenant(myTenant);
         targetTenantId = myTenant?.id || null;

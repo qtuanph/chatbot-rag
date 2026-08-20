@@ -40,8 +40,19 @@ export function TenantSettingsForm(props: TenantSettingsFormProps) {
   const loadSetting = useCallback(async () => {
     try {
       setLoading(true);
-      const result =
-        props.mode === "self" ? await tenantsApi.getMySettings() : await tenantsApi.getSettings(tenantId as string);
+      let result: TenantSetting;
+      if (props.mode === "self") {
+        // getMySettings() returns 403 for platform_admin (no tenant).
+        // In that case, swallow the error and leave the form empty.
+        try {
+          result = await tenantsApi.getMySettings();
+        } catch {
+          setLoading(false);
+          return;
+        }
+      } else {
+        result = await tenantsApi.getSettings(tenantId as string);
+      }
 
       setSetting(result);
       setForm({
