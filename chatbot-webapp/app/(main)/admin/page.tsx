@@ -32,7 +32,6 @@ const ICONS: Record<string, typeof Activity> = {
 export default function AdminDashboardPage() {
   const [health, setHealth] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [isRealtime, setIsRealtime] = useState(true);
 
   const serviceEntries = Object.entries(health?.checks ?? health?.services ?? {});
 
@@ -52,53 +51,31 @@ export default function AdminDashboardPage() {
     void load();
   }, [load]);
 
-  // Real-time silent background polling
+  // Real-time silent background polling (every 6 seconds automatically)
   useEffect(() => {
-    if (!isRealtime) return;
-
     const interval = setInterval(() => {
       if (document.visibilityState === "visible") {
         void load(true);
       }
-    }, 10000);
+    }, 6000);
 
     return () => clearInterval(interval);
-  }, [isRealtime, load]);
+  }, [load]);
 
   const isHealthy = health?.status === "healthy" || health?.status === "ok";
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-6 md:p-8 animate-in fade-in-50 duration-300">
-      {/* Top Header */}
+      {/* Top Header (Clean & Minimal) */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b pb-5">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight">Tổng quan Platform</h1>
-            {isRealtime ? (
-              <Badge variant="outline" className="gap-1.5 border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium text-xs py-0.5">
-                <span className="pulse-dot-active" /> Real-time Live
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-xs text-muted-foreground">
-                Tạm dừng live
-              </Badge>
-            )}
-          </div>
+          <h1 className="text-2xl font-bold tracking-tight">Tổng quan Platform</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Theo dõi sức khỏe hạ tầng, tài liệu sẵn sàng và mức tiêu thụ tài nguyên các Tenant.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setIsRealtime(!isRealtime)}
-            className={cn("gap-1.5 text-xs", isRealtime && "text-emerald-600 dark:text-emerald-400 border-emerald-500/30")}
-          >
-            <Activity className="size-3.5" />
-            {isRealtime ? "Live Bật" : "Live Tắt"}
-          </Button>
           <Button size="sm" variant="outline" onClick={() => load(false)} disabled={loading}>
             <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", loading && "animate-spin")} />
             Làm mới
