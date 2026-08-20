@@ -43,19 +43,16 @@ import type {
 
 import * as s from "@/lib/schemas";
 
-const API_INTERNAL_URL =
-  process.env.API_INTERNAL_URL ||
-  process.env.BACKENDAPI_INTERNAL_URL ||
-  process.env.BACKEND_INTERNAL_URL;
-
-if (typeof window === 'undefined' && !API_INTERNAL_URL) {
-  throw new Error('API_INTERNAL_URL environment variable is not configured');
-}
-
-const API_INTERNAL = API_INTERNAL_URL || "https://chatbot-api.sse.net.vn/v1";
-
 function getBaseUrl(): string {
-  return typeof window === "undefined" ? API_INTERNAL : "/api/bep";
+  if (typeof window !== "undefined") {
+    return "/api/bep";
+  }
+  return (
+    process.env.API_INTERNAL_URL ||
+    process.env.BACKENDAPI_INTERNAL_URL ||
+    process.env.BACKEND_INTERNAL_URL ||
+    "http://127.0.0.1:8000/v1"
+  );
 }
 
 export class ApiError extends Error {
@@ -458,5 +455,3 @@ export const faqApi = {
       body: JSON.stringify(parseRequest(s.FaqCreateRequestSchema, data)),
     }),
 };
-
-export { API_INTERNAL };

@@ -1,16 +1,17 @@
 import { getToken } from "next-auth/jwt";
 import type { NextRequest } from "next/server";
 
-const API_INTERNAL = process.env.API_INTERNAL_URL!;
-
-// MIGRATED: Removed export const runtime = "nodejs" (default, not needed)
-// MIGRATED: Removed export const dynamic = "force-dynamic" (dynamic is default with Cache Components)
-
 async function proxyHandler(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   const { path } = await params;
+  const apiInternal = (
+    process.env.API_INTERNAL_URL ||
+    process.env.BACKENDAPI_INTERNAL_URL ||
+    process.env.BACKEND_INTERNAL_URL ||
+    "http://127.0.0.1:8000/v1"
+  ).replace(/\/$/, "");
   const useSecureCookie = (process.env.NEXTAUTH_URL || "").startsWith("https://");
   const token = await getToken({
     req: request,
@@ -18,7 +19,7 @@ async function proxyHandler(
     secureCookie: useSecureCookie,
   });
 
-  const backendUrl = `${API_INTERNAL}/${path.join("/")}${request.nextUrl.search}`;
+  const backendUrl = `${apiInternal}/${path.join("/")}${request.nextUrl.search}`;
 
   // Build forwarding headers
   const headers = new Headers();
