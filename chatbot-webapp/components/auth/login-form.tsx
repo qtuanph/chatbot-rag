@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -15,7 +15,14 @@ export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl");
+  const errorParam = searchParams.get("error");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (errorParam === "SessionExpired") {
+      toast.warning("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+    }
+  }, [errorParam]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

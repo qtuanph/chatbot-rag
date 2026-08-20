@@ -13,7 +13,7 @@ from app.modules.analytics.repository import AnalyticsRepository
 from app.modules.settings.runtime_manager import RuntimeProviderManager
 from app.modules.analytics.service import AnalyticsService
 from app.modules.chat.repositories.usage_repository import UsageRepository
-from app.modules.auth.deps import require_admin
+from app.modules.auth.deps import require_admin, require_tenant_admin_or_admin
 from app.modules.auth.context import AuthContext
 from app.utils.money import build_money_payload
 
@@ -140,9 +140,9 @@ async def list_admin_conversations(
     limit: int = Query(20, ge=1, le=100),
     tenant_id: str | None = None,
     session: AsyncSession = Depends(get_async_session),
-    auth: AuthContext = Depends(require_admin),
+    auth: AuthContext = Depends(require_tenant_admin_or_admin),
 ):
-    """Admin-only: list recorded chat conversations for knowledge base enhancement."""
+    """Admin / Tenant Admin: list recorded chat conversations for knowledge base enhancement."""
     from app.modules.chat.repositories.conversation_repository import ConversationRepository
 
     repo = ConversationRepository(session)
@@ -155,9 +155,9 @@ async def list_admin_conversations(
 async def get_admin_conversation_messages(
     conversation_id: str,
     session: AsyncSession = Depends(get_async_session),
-    auth: AuthContext = Depends(require_admin),
+    auth: AuthContext = Depends(require_tenant_admin_or_admin),
 ):
-    """Admin-only: view turn-by-turn user queries & AI answers for a specific conversation."""
+    """Admin / Tenant Admin: view turn-by-turn user queries & AI answers for a specific conversation."""
     from app.modules.chat.repositories.conversation_repository import ConversationRepository
 
     repo = ConversationRepository(session)

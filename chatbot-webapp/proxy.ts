@@ -49,6 +49,17 @@ export default auth((req) => {
     response = NextResponse.redirect(new URL("/analytics", req.nextUrl));
   }
 
+  // Tenant-only routes: redirect platform_admin to the corresponding /admin pages
+  else if (role === "platform_admin") {
+    if (pathname === "/documents") {
+      response = NextResponse.redirect(new URL("/admin/documents", req.nextUrl));
+    } else if (pathname === "/faqs") {
+      response = NextResponse.redirect(new URL("/admin/faqs", req.nextUrl));
+    } else if (pathname === "/analytics") {
+      response = NextResponse.redirect(new URL("/admin/analytics", req.nextUrl));
+    }
+  }
+
   if (!response) {
     response = NextResponse.next();
   }

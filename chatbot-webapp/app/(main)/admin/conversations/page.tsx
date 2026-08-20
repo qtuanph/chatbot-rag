@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import {
   MessageSquare,
@@ -59,6 +60,9 @@ interface ConversationMessage {
 }
 
 export default function AdminConversationsPage() {
+  const { data: session } = useSession();
+  const isPlatformAdmin = session?.role === "platform_admin";
+
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [tenants, setTenants] = useState<TenantItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,6 +84,7 @@ export default function AdminConversationsPage() {
 
   // Load Tenants list
   const fetchTenants = async () => {
+    if (!isPlatformAdmin) return;
     try {
       const data = await tenantsApi.list();
       setTenants(data || []);
@@ -103,8 +108,10 @@ export default function AdminConversationsPage() {
   };
 
   useEffect(() => {
-    fetchTenants();
-  }, []);
+    if (isPlatformAdmin) {
+      fetchTenants();
+    }
+  }, [isPlatformAdmin]);
 
   useEffect(() => {
     fetchConversations();
@@ -204,22 +211,24 @@ export default function AdminConversationsPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Tenant Filter Dropdown */}
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
-            <NativeSelect
-              value={filterTenantId}
-              onChange={(e) => setFilterTenantId(e.target.value)}
-              className="w-56"
-            >
-              <NativeSelectOption value="ALL">Tất cả công ty (Tenants)</NativeSelectOption>
-              {tenants.map((t) => (
-                <NativeSelectOption key={t.id} value={t.id}>
-                  {t.name} ({t.slug})
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </div>
+          {/* Tenant Filter Dropdown (Platform Admin only) */}
+          {isPlatformAdmin && (
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
+              <NativeSelect
+                value={filterTenantId}
+                onChange={(e) => setFilterTenantId(e.target.value)}
+                className="w-56"
+              >
+                <NativeSelectOption value="ALL">Tất cả công ty (Tenants)</NativeSelectOption>
+                {tenants.map((t) => (
+                  <NativeSelectOption key={t.id} value={t.id}>
+                    {t.name} ({t.slug})
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </div>
+          )}
 
           <Button onClick={fetchConversations} disabled={loading} variant="outline" size="sm" className="gap-2 shrink-0">
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Làm mới

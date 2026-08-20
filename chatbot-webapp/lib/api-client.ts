@@ -130,6 +130,14 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, token?: stri
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({ detail: response.statusText }));
+    if (
+      response.status === 401 &&
+      typeof window !== "undefined" &&
+      !window.location.pathname.startsWith("/login") &&
+      !path.startsWith("/auth/login")
+    ) {
+      window.location.href = `/login?callbackUrl=${encodeURIComponent(window.location.pathname)}&error=SessionExpired`;
+    }
     throw new ApiError(response.status, extractErrorMessage(body, response.statusText));
   }
 
