@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import { ArrowRight, Check, Edit2, HelpCircle, Plus, RefreshCw, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -41,6 +42,9 @@ interface FaqManagerProps {
 }
 
 export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqManagerProps) {
+  const { data: session } = useSession();
+  const isPlatformAdmin = session?.role === "platform_admin";
+
   const [activeTenantId, setActiveTenantId] = useState<string | null>(selectedTenantId);
   const [tenant, setTenant] = useState<TenantItem | null>(null);
   const [faqs, setFaqs] = useState<FaqItem[]>([]);
@@ -65,8 +69,8 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
     try {
       let targetTenantId = activeTenantId || selectedTenantId;
       if (!targetTenantId) {
-        // tenantOptions is provided (platform_admin) but no selection yet — wait for selection
-        if (tenantOptions.length > 0) {
+        // platform_admin has no personal tenant — never call getMyTenant()
+        if (isPlatformAdmin) {
           setLoading(false);
           return;
         }
@@ -92,12 +96,13 @@ export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqM
     } finally {
       setLoading(false);
     }
-  }, [activeTenantId, selectedTenantId, tenantOptions]);
+  }, [activeTenantId, selectedTenantId, tenantOptions, isPlatformAdmin]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadData(); }, 0);
     return () => window.clearTimeout(timer);
   }, [loadData]);
+
 
   const openCreate = () => {
     setForm(EMPTY_FORM);
