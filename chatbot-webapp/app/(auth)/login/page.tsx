@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
+import Image from "next/image";
 import { GalleryVerticalEnd } from "lucide-react";
 import { LoginForm } from "@/components/auth/login-form";
 
@@ -33,10 +34,13 @@ export default function LoginPage() {
 
         {/* Right Side: Cover Image (anchored to the left of the photo) */}
         <div className="relative hidden bg-muted lg:block">
-          <img
+          <Image
             src="/AI.png"
             alt="SSE AI"
-            className="absolute inset-0 h-full w-full object-cover object-left dark:brightness-[0.85]"
+            fill
+            priority
+            sizes="(max-width: 1024px) 100vw, 50vw"
+            className="object-cover object-left dark:brightness-[0.85]"
           />
         </div>
       </div>
