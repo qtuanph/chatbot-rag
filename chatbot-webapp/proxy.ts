@@ -10,7 +10,8 @@ export default auth((req) => {
 
   // Public routes
   if (pathname === "/login") {
-    if (isLoggedIn) {
+    const hasErrorParam = req.nextUrl.searchParams.has("error");
+    if (isLoggedIn && !hasErrorParam) {
       response = NextResponse.redirect(
         new URL(role === "platform_admin" ? "/admin" : "/analytics", req.nextUrl),
       );

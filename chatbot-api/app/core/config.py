@@ -157,7 +157,7 @@ class Settings(BaseSettings):
 
     jwt_secret: str = "replace-me"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 60
+    jwt_expire_minutes: int = 10080  # 7 days (prevents premature logout during active work)
 
     max_upload_size_mb: int = 2048
     allowed_file_types: str = (

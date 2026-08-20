@@ -136,7 +136,17 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, token?: stri
       !window.location.pathname.startsWith("/login") &&
       !path.startsWith("/auth/login")
     ) {
-      window.location.href = `/login?callbackUrl=${encodeURIComponent(window.location.pathname)}&error=SessionExpired`;
+      if (!(window as any).__isSessionRedirecting) {
+        (window as any).__isSessionRedirecting = true;
+        const targetUrl = `/login?error=SessionExpired&callbackUrl=${encodeURIComponent(window.location.pathname)}`;
+        import("next-auth/react")
+          .then(({ signOut }) => {
+            signOut({ callbackUrl: targetUrl });
+          })
+          .catch(() => {
+            window.location.href = targetUrl;
+          });
+      }
     }
     throw new ApiError(response.status, extractErrorMessage(body, response.statusText));
   }

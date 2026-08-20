@@ -54,7 +54,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = authUser.role;
         token.userId = user.id;
         token.tenantId = authUser.tenantId ?? null;
-        token.accessTokenExpires = Math.floor(Date.now() / 1000) + 3600;
+        // 7 days token expiration
+        token.accessTokenExpires = Math.floor(Date.now() / 1000) + 7 * 24 * 3600;
       }
 
       const now = Math.floor(Date.now() / 1000);
@@ -65,6 +66,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
     async session({ session, token }) {
+      if (token.expired === "true") {
+        return null as any;
+      }
       session.role = token.role as string;
       session.userId = token.userId as string;
       session.tenantId = (token.tenantId as string | null | undefined) ?? null;
@@ -76,7 +80,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   session: {
     strategy: "jwt",
-    maxAge: 60 * 60,
+    maxAge: 7 * 24 * 60 * 60, // 7 days
   },
   secret: process.env.NEXTAUTH_SECRET,
 });
