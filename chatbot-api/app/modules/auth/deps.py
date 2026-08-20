@@ -49,10 +49,8 @@ async def get_auth_context(
 
         repo = AuthRepository(session)
         user = await repo.get_user_by_id(str(payload["sub"]))
-        if not user or not user.is_active:
-            from fastapi import HTTPException
-
-            raise HTTPException(status_code=401, detail="User account is inactive or deleted")
+        if not user or not user.get("is_active"):
+            raise http_errors.unauthorized("User account is inactive or deleted")
 
         return AuthContext(
             user_id=str(payload["sub"]),
