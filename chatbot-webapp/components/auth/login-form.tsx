@@ -95,7 +95,7 @@ export function LoginForm({
         <div className="flex flex-col items-center gap-1 text-center">
           <h1 className="text-2xl font-bold">Đăng nhập tài khoản</h1>
           <p className="text-balance text-sm text-muted-foreground">
-            Nhập thông tin đăng nhập để quản trị hệ thống và kiểm thử AI
+            Nhập thông tin đăng nhập để tiếp tục
           </p>
         </div>
 

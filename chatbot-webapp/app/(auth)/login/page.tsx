@@ -14,6 +14,7 @@ export default function LoginPage() {
       }
     >
       <div className="grid min-h-svh lg:grid-cols-2">
+        {/* Left Side: Form & Branding */}
         <div className="flex flex-col gap-4 p-6 md:p-10">
           <div className="flex justify-center gap-2 md:justify-start">
             <a href="#" className="flex items-center gap-2 font-medium">
@@ -29,11 +30,13 @@ export default function LoginPage() {
             </div>
           </div>
         </div>
+
+        {/* Right Side: Cover Image (anchored to the left of the photo) */}
         <div className="relative hidden bg-muted lg:block">
           <img
-            src="/placeholder.svg"
-            alt="Image"
-            className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
+            src="/AI.png"
+            alt="SSE AI"
+            className="absolute inset-0 h-full w-full object-cover object-left dark:brightness-[0.85]"
           />
         </div>
       </div>
