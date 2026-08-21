@@ -59,11 +59,17 @@ function ProviderIcon({ providerName }: { providerName: string }) {
   );
 }
 
-export function ProviderPage({ serviceType }: { serviceType: "embedding" | "reranker" | "llm" | "parser" }) {
+export function ProviderPage({
+  serviceType,
+  initialProviders = [],
+}: {
+  serviceType: "embedding" | "reranker" | "llm" | "parser";
+  initialProviders?: AIProvider[];
+}) {
   const tab = serviceType;
 
-  const [providers, setProviders] = useState<AIProvider[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [providers, setProviders] = useState<AIProvider[]>(initialProviders);
+  const [loading, setLoading] = useState(initialProviders.length === 0);
   const [addDialog, setAddDialog] = useState(false);
   const [editDialog, setEditDialog] = useState<AIProvider | null>(null);
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);

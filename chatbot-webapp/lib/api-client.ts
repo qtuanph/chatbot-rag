@@ -183,11 +183,11 @@ export const authApi = {
       body: JSON.stringify(parseRequest(s.UpdateProfileRequestSchema, data)),
     }),
 
-  getUsers: (): Promise<UserItem[]> =>
-    apiFetchParse(z.array(s.UserItemSchema), "/auth/users"),
+  getUsers: (token?: string): Promise<UserItem[]> =>
+    apiFetchParse(z.array(s.UserItemSchema), "/auth/users", {}, token),
 
-  getRoles: (): Promise<RoleItem[]> =>
-    apiFetchParse(z.array(s.RoleItemSchema), "/auth/roles"),
+  getRoles: (token?: string): Promise<RoleItem[]> =>
+    apiFetchParse(z.array(s.RoleItemSchema), "/auth/roles", {}, token),
 
   createUser: (data: CreateUserRequest): Promise<UserItem> =>
     apiFetchParse(s.UserItemSchema, "/auth/users", {
@@ -211,71 +211,72 @@ export const authApi = {
 };
 
 export const tenantsApi = {
-  list: (): Promise<TenantItem[]> =>
-    apiFetchParse(z.array(s.TenantItemSchema), "/admin/tenants"),
+  list: (token?: string): Promise<TenantItem[]> =>
+    apiFetchParse(z.array(s.TenantItemSchema), "/admin/tenants", {}, token),
 
-  create: (data: TenantCreateRequest): Promise<TenantItem> =>
+  create: (data: TenantCreateRequest, token?: string): Promise<TenantItem> =>
     apiFetchParse(s.TenantItemSchema, "/admin/tenants", {
       method: "POST",
       body: JSON.stringify(parseRequest(s.TenantCreateRequestSchema, data)),
-    }),
+    }, token),
 
-  get: (tenantId: string): Promise<TenantItem> =>
-    apiFetchParse(s.TenantItemSchema, `/admin/tenants/${encodeURIComponent(tenantId)}`),
+  get: (tenantId: string, token?: string): Promise<TenantItem> =>
+    apiFetchParse(s.TenantItemSchema, `/admin/tenants/${encodeURIComponent(tenantId)}`, {}, token),
 
-  update: (tenantId: string, data: TenantUpdateRequest): Promise<TenantItem> =>
+  update: (tenantId: string, data: TenantUpdateRequest, token?: string): Promise<TenantItem> =>
     apiFetchParse(s.TenantItemSchema, `/admin/tenants/${encodeURIComponent(tenantId)}`, {
       method: "PATCH",
       body: JSON.stringify(parseRequest(s.TenantUpdateRequestSchema, data)),
-    }),
+    }, token),
 
-  getSettings: (tenantId: string): Promise<TenantSetting> =>
-    apiFetchParse(s.TenantSettingSchema, `/admin/tenants/${encodeURIComponent(tenantId)}/settings`),
+  getSettings: (tenantId: string, token?: string): Promise<TenantSetting> =>
+    apiFetchParse(s.TenantSettingSchema, `/admin/tenants/${encodeURIComponent(tenantId)}/settings`, {}, token),
 
-  updateSettings: (tenantId: string, data: TenantSettingUpdateRequest): Promise<TenantSetting> =>
+  updateSettings: (tenantId: string, data: TenantSettingUpdateRequest, token?: string): Promise<TenantSetting> =>
     apiFetchParse(s.TenantSettingSchema, `/admin/tenants/${encodeURIComponent(tenantId)}/settings`, {
       method: "PUT",
       body: JSON.stringify(parseRequest(s.TenantSettingUpdateRequestSchema, data)),
-    }),
+    }, token),
 
-  listApiKeys: (tenantId: string): Promise<TenantApiKeyItem[]> =>
-    apiFetchParse(z.array(s.TenantApiKeyItemSchema), `/admin/tenants/${encodeURIComponent(tenantId)}/api-keys`),
+  listApiKeys: (tenantId: string, token?: string): Promise<TenantApiKeyItem[]> =>
+    apiFetchParse(z.array(s.TenantApiKeyItemSchema), `/admin/tenants/${encodeURIComponent(tenantId)}/api-keys`, {}, token),
 
-  createApiKey: (tenantId: string, data: TenantApiKeyCreateRequest): Promise<TenantApiKeyCreateResponse> =>
+  createApiKey: (tenantId: string, data: TenantApiKeyCreateRequest, token?: string): Promise<TenantApiKeyCreateResponse> =>
     apiFetchParse(s.TenantApiKeyCreateResponseSchema, `/admin/tenants/${encodeURIComponent(tenantId)}/api-keys`, {
       method: "POST",
       body: JSON.stringify(parseRequest(s.TenantApiKeyCreateRequestSchema, data)),
-    }),
+    }, token),
 
-  revokeApiKey: (tenantId: string, keyId: string): Promise<TenantApiKeyItem> =>
+  revokeApiKey: (tenantId: string, keyId: string, token?: string): Promise<TenantApiKeyItem> =>
     apiFetchParse(s.TenantApiKeyItemSchema,
       `/admin/tenants/${encodeURIComponent(tenantId)}/api-keys/${encodeURIComponent(keyId)}`,
       { method: "DELETE" },
+      token
     ),
 
-  getMyTenant: (): Promise<TenantItem> =>
-    apiFetchParse(s.TenantItemSchema, "/tenants/me"),
+  getMyTenant: (token?: string): Promise<TenantItem> =>
+    apiFetchParse(s.TenantItemSchema, "/tenants/me", {}, token),
 
-  getMySettings: (): Promise<TenantSetting> =>
-    apiFetchParse(s.TenantSettingSchema, "/tenants/me/settings"),
+  getMySettings: (token?: string): Promise<TenantSetting> =>
+    apiFetchParse(s.TenantSettingSchema, "/tenants/me/settings", {}, token),
 
-  updateMySettings: (data: TenantSettingUpdateRequest): Promise<TenantSetting> =>
+  updateMySettings: (data: TenantSettingUpdateRequest, token?: string): Promise<TenantSetting> =>
     apiFetchParse(s.TenantSettingSchema, "/tenants/me/settings", {
       method: "PUT",
       body: JSON.stringify(parseRequest(s.TenantSettingUpdateRequestSchema, data)),
-    }),
+    }, token),
 };
 
 export const documentsApi = {
-  list: (tenantId?: string): Promise<DocumentListResponse> => {
+  list: (tenantId?: string, token?: string): Promise<DocumentListResponse> => {
     const query = tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : "";
-    return apiFetchParse(s.DocumentListResponseSchema, `/documents${query}`);
+    return apiFetchParse(s.DocumentListResponseSchema, `/documents${query}`, {}, token);
   },
 
-  get: (documentId: string): Promise<DocumentDetail> =>
-    apiFetchParse(s.DocumentDetailSchema, `/documents/${encodeURIComponent(documentId)}`),
+  get: (documentId: string, token?: string): Promise<DocumentDetail> =>
+    apiFetchParse(s.DocumentDetailSchema, `/documents/${encodeURIComponent(documentId)}`, {}, token),
 
-  upload: async (file: File, tenantId?: string): Promise<UploadResponse> => {
+  upload: async (file: File, tenantId?: string, token?: string): Promise<UploadResponse> => {
     const formData = new FormData();
     if (tenantId) {
       formData.append("tenant_id", tenantId);
@@ -285,35 +286,35 @@ export const documentsApi = {
     return apiFetchParse(s.UploadResponseSchema, "/upload", {
       method: "POST",
       body: formData,
-    });
+    }, token);
   },
 
-  getAccess: (documentId: string): Promise<DocumentAccessResponse> =>
-    apiFetchParse(s.DocumentAccessResponseSchema, `/documents/${encodeURIComponent(documentId)}/access`),
+  getAccess: (documentId: string, token?: string): Promise<DocumentAccessResponse> =>
+    apiFetchParse(s.DocumentAccessResponseSchema, `/documents/${encodeURIComponent(documentId)}/access`, {}, token),
 
-  setAccess: (documentId: string, tenantIds: string[]): Promise<DocumentAccessResponse> =>
+  setAccess: (documentId: string, tenantIds: string[], token?: string): Promise<DocumentAccessResponse> =>
     apiFetchParse(s.DocumentAccessResponseSchema, `/documents/${encodeURIComponent(documentId)}/access`, {
       method: "PUT",
       body: JSON.stringify({ tenant_ids: tenantIds }),
-    }),
+    }, token),
 
-  delete: (documentId: string): Promise<{ status: string; document_id: string }> =>
+  delete: (documentId: string, token?: string): Promise<{ status: string; document_id: string }> =>
     apiFetchParse(s.DocumentDeleteResponseSchema, `/documents/${encodeURIComponent(documentId)}`, {
       method: "DELETE",
-    }),
+    }, token),
 
-  retry: (documentId: string): Promise<{ task_id: string; document_id: string; status: string }> =>
+  retry: (documentId: string, token?: string): Promise<{ task_id: string; document_id: string; status: string }> =>
     apiFetchParse(s.DocumentRetryResponseSchema, `/documents/${encodeURIComponent(documentId)}/retry`, {
       method: "POST",
-    }),
+    }, token),
 
-  rechunk: (documentId: string): Promise<{ task_id: string; document_id: string; status: string }> =>
+  rechunk: (documentId: string, token?: string): Promise<{ task_id: string; document_id: string; status: string }> =>
     apiFetchParse(s.DocumentRechunkResponseSchema, `/documents/${encodeURIComponent(documentId)}/rechunk`, {
       method: "POST",
-    }),
+    }, token),
 
-  getStatus: (taskId: string): Promise<TaskStatus> =>
-    apiFetchParse(s.TaskStatusSchema, `/status/${encodeURIComponent(taskId)}`),
+  getStatus: (taskId: string, token?: string): Promise<TaskStatus> =>
+    apiFetchParse(s.TaskStatusSchema, `/status/${encodeURIComponent(taskId)}`, {}, token),
 
   streamList: (tenantId?: string) => {
     const params = new URLSearchParams();
@@ -326,57 +327,58 @@ export const documentsApi = {
 };
 
 export const treeApi = {
-  get: (documentId: string, offset = 0, limit = 100): Promise<TreeResponse> => {
+  get: (documentId: string, offset = 0, limit = 100, token?: string): Promise<TreeResponse> => {
     const params = new URLSearchParams({
       offset: String(offset),
       limit: String(limit),
     });
-    return apiFetchParse(s.TreeResponseSchema, `/tree/${encodeURIComponent(documentId)}?${params.toString()}`);
+    return apiFetchParse(s.TreeResponseSchema, `/tree/${encodeURIComponent(documentId)}?${params.toString()}`, {}, token);
   },
 
-  getNode: (documentId: string, nodeId: string): Promise<NodeDetail> =>
-    apiFetchParse(s.NodeDetailSchema, `/tree/${encodeURIComponent(documentId)}/nodes/${encodeURIComponent(nodeId)}`),
+  getNode: (documentId: string, nodeId: string, token?: string): Promise<NodeDetail> =>
+    apiFetchParse(s.NodeDetailSchema, `/tree/${encodeURIComponent(documentId)}/nodes/${encodeURIComponent(nodeId)}`, {}, token),
 
-  search: (documentId: string, query: string): Promise<{ results: TreeSearchResult[] }> => {
+  search: (documentId: string, query: string, token?: string): Promise<{ results: TreeSearchResult[] }> => {
     const params = new URLSearchParams({ query });
     return apiFetchParse(
       z.object({ results: z.array(s.TreeSearchResultSchema) }),
       `/tree/${encodeURIComponent(documentId)}/search?${params.toString()}`,
+      {},
+      token
     );
   },
 };
 
-
-
 export const analyticsApi = {
-  getStats: (days = 30): Promise<AnalyticsStats> =>
-    apiFetchParse(s.AnalyticsStatsSchema, `/analytics/stats?days=${days}`),
+  getStats: (days = 30, token?: string): Promise<AnalyticsStats> =>
+    apiFetchParse(s.AnalyticsStatsSchema, `/analytics/stats?days=${days}`, {}, token),
 
-  getMyUsageWindows: (): Promise<UserUsageWindows> =>
-    apiFetchParse(s.UserUsageWindowsSchema, "/analytics/me/usage"),
+  getMyUsageWindows: (token?: string): Promise<UserUsageWindows> =>
+    apiFetchParse(s.UserUsageWindowsSchema, "/analytics/me/usage", {}, token),
 
-  clearStats: (): Promise<{ status: string; deleted_records: number }> =>
+  clearStats: (token?: string): Promise<{ status: string; deleted_records: number }> =>
     apiFetchParse(
       z.object({ status: z.string(), deleted_records: z.number() }),
       "/analytics/stats",
       { method: "DELETE" },
+      token
     ),
 
-  getTenantsUsage: (days = 30): Promise<TenantUsageSummaryResponse> =>
-    apiFetchParse(s.TenantUsageSummaryResponseSchema, `/admin/tenants/usage?days=${days}`),
+  getTenantsUsage: (days = 30, token?: string): Promise<TenantUsageSummaryResponse> =>
+    apiFetchParse(s.TenantUsageSummaryResponseSchema, `/admin/tenants/usage?days=${days}`, {}, token),
 };
 
 export const healthApi = {
-  get: () =>
-    apiFetchParse(s.HealthCheckSchema, "/health"),
+  get: (token?: string) =>
+    apiFetchParse(s.HealthCheckSchema, "/health", {}, token),
 
-  getData: (): Promise<HealthData> =>
-    apiFetchParse(s.HealthDataSchema, "/health/data"),
+  getData: (token?: string): Promise<HealthData> =>
+    apiFetchParse(s.HealthDataSchema, "/health/data", {}, token),
 };
 
 export const settingsApi = {
-  listProviders: (serviceType?: string): Promise<AIProvider[]> =>
-    apiFetchParse(z.array(s.AIProviderSchema), `/settings/providers${serviceType ? `?service_type=${serviceType}` : ""}`),
+  listProviders: (serviceType?: string, token?: string): Promise<AIProvider[]> =>
+    apiFetchParse(z.array(s.AIProviderSchema), `/settings/providers${serviceType ? `?service_type=${serviceType}` : ""}`, {}, token),
 
   getProvider: (id: number): Promise<AIProvider> =>
     apiFetchParse(s.AIProviderSchema, `/settings/providers/${id}`),
@@ -422,8 +424,8 @@ export const settingsApi = {
   getTemplates: (): Promise<ProviderTemplate[]> =>
     apiFetchParse(z.array(s.ProviderTemplateSchema), "/settings/templates"),
 
-  getBilling: (): Promise<BillingSettings> =>
-    apiFetchParse(s.BillingSettingsSchema, "/settings/billing"),
+  getBilling: (token?: string): Promise<BillingSettings> =>
+    apiFetchParse(s.BillingSettingsSchema, "/settings/billing", {}, token),
 
   updateBilling: (data: BillingSettings): Promise<BillingSettings> =>
     apiFetchParse(s.BillingSettingsSchema, "/settings/billing", {
@@ -433,43 +435,43 @@ export const settingsApi = {
 };
 
 export const conversationsApi = {
-  list: (offset = 0, limit = 20, tenantId?: string) => {
+  list: (offset = 0, limit = 20, tenantId?: string, token?: string) => {
     const q = new URLSearchParams({ offset: String(offset), limit: String(limit) });
     if (tenantId) q.set("tenant_id", tenantId);
-    return apiFetchParse(s.ConversationAuditListResponseSchema, `/admin/conversations?${q.toString()}`);
+    return apiFetchParse(s.ConversationAuditListResponseSchema, `/admin/conversations?${q.toString()}`, {}, token);
   },
 
-  getMessages: (conversationId: string) =>
-    apiFetchParse(s.ConversationDetailAuditResponseSchema, `/admin/conversations/${encodeURIComponent(conversationId)}/messages`),
+  getMessages: (conversationId: string, token?: string) =>
+    apiFetchParse(s.ConversationDetailAuditResponseSchema, `/admin/conversations/${encodeURIComponent(conversationId)}/messages`, {}, token),
 };
 
 export const faqApi = {
-  list: (tenantId: string): Promise<FaqItem[]> =>
-    apiFetchParse(z.array(s.FaqItemSchema), `/tenants/${encodeURIComponent(tenantId)}/faqs`),
+  list: (tenantId: string, token?: string): Promise<FaqItem[]> =>
+    apiFetchParse(z.array(s.FaqItemSchema), `/tenants/${encodeURIComponent(tenantId)}/faqs`, {}, token),
 
-  create: (tenantId: string, data: FaqCreateRequest): Promise<FaqItem> =>
+  create: (tenantId: string, data: FaqCreateRequest, token?: string): Promise<FaqItem> =>
     apiFetchParse(s.FaqItemSchema, `/tenants/${encodeURIComponent(tenantId)}/faqs`, {
       method: "POST",
       body: JSON.stringify(parseRequest(s.FaqCreateRequestSchema, data)),
-    }),
+    }, token),
 
-  update: (faqId: string, data: Partial<FaqCreateRequest>): Promise<FaqItem> =>
+  update: (faqId: string, data: Partial<FaqCreateRequest>, token?: string): Promise<FaqItem> =>
     apiFetchParse(s.FaqItemSchema, `/faqs/${encodeURIComponent(faqId)}`, {
       method: "PUT",
       body: JSON.stringify(data),
-    }),
+    }, token),
 
-  delete: (faqId: string): Promise<void> =>
+  delete: (faqId: string, token?: string): Promise<void> =>
     apiFetchParse(z.unknown().transform(() => {}), `/faqs/${encodeURIComponent(faqId)}`, {
       method: "DELETE",
-    }),
+    }, token),
 
-  listEscalations: (tenantId: string): Promise<EscalationItem[]> =>
-    apiFetchParse(z.array(s.EscalationItemSchema), `/tenants/${encodeURIComponent(tenantId)}/escalations`),
+  listEscalations: (tenantId: string, token?: string): Promise<EscalationItem[]> =>
+    apiFetchParse(z.array(s.EscalationItemSchema), `/tenants/${encodeURIComponent(tenantId)}/escalations`, {}, token),
 
-  promoteEscalation: (escalationId: string, data: FaqCreateRequest): Promise<FaqItem> =>
+  promoteEscalation: (escalationId: string, data: FaqCreateRequest, token?: string): Promise<FaqItem> =>
     apiFetchParse(s.FaqItemSchema, `/escalations/${encodeURIComponent(escalationId)}/promote`, {
       method: "POST",
       body: JSON.stringify(parseRequest(s.FaqCreateRequestSchema, data)),
-    }),
+    }, token),
 };

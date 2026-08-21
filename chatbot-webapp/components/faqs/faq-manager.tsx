@@ -39,17 +39,24 @@ const EMPTY_FORM: FaqForm = { question: "", answer: "", question_variants: [] };
 interface FaqManagerProps {
   selectedTenantId?: string | null;
   tenantOptions?: TenantItem[];
+  initialFaqs?: FaqItem[];
+  initialEscalations?: EscalationItem[];
 }
 
-export function FaqManager({ selectedTenantId = null, tenantOptions = [] }: FaqManagerProps) {
+export function FaqManager({
+  selectedTenantId = null,
+  tenantOptions = [],
+  initialFaqs = [],
+  initialEscalations = [],
+}: FaqManagerProps) {
   const { data: session } = useSession();
   const isPlatformAdmin = session?.role === "platform_admin";
 
-  const [activeTenantId, setActiveTenantId] = useState<string | null>(selectedTenantId);
+  const [activeTenantId, setActiveTenantId] = useState<string | null>(selectedTenantId || (tenantOptions[0]?.id ?? null));
   const [tenant, setTenant] = useState<TenantItem | null>(null);
-  const [faqs, setFaqs] = useState<FaqItem[]>([]);
-  const [escalations, setEscalations] = useState<EscalationItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [faqs, setFaqs] = useState<FaqItem[]>(initialFaqs);
+  const [escalations, setEscalations] = useState<EscalationItem[]>(initialEscalations);
+  const [loading, setLoading] = useState(initialFaqs.length === 0 && initialEscalations.length === 0);
 
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [selectedFaq, setSelectedFaq] = useState<FaqItem | null>(null);

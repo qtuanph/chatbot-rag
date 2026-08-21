@@ -30,15 +30,17 @@ interface DocumentCatalogProps {
   readOnly?: boolean;
   tenantOptions?: TenantItem[];
   selectedTenantId?: string | null;
+  initialDocuments?: DocumentSummary[];
 }
 
 export function DocumentCatalog({
   readOnly = false,
   tenantOptions = [],
   selectedTenantId = null,
+  initialDocuments = [],
 }: DocumentCatalogProps) {
-  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [documents, setDocuments] = useState<DocumentSummary[]>(initialDocuments);
+  const [loading, setLoading] = useState(initialDocuments.length === 0);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(

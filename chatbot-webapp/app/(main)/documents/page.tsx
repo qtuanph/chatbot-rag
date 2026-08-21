@@ -1,21 +1,22 @@
-"use client";
-
-import { useSession } from "next-auth/react";
-
+import { auth } from "@/lib/auth";
+import { documentsApi } from "@/lib/api-client";
 import { DocumentCatalog } from "@/components/documents/document-catalog";
 
-export default function TenantDocumentsPage() {
-  const { data: session } = useSession();
+export default async function TenantDocumentsPage() {
+  const session = await auth();
+  const tenantId = session?.tenantId || undefined;
+  const docsRes = await documentsApi.list(tenantId, session?.accessToken).catch(() => ({ items: [] }));
 
   return (
-    <div className="flex max-w-7xl flex-col gap-6 p-6">
+    <div className="flex max-w-7xl flex-col gap-6 p-6 md:p-8 animate-in fade-in-50 duration-300">
       <div>
-        <h1 className="text-2xl font-bold">Tài liệu của tenant</h1>
-        <p className="text-sm text-muted-foreground">Danh sách tài liệu hiện được chatbot dùng để trả lời trong tenant hiện tại.</p>
+        <h1 className="text-2xl font-bold tracking-tight">Tài liệu của tenant</h1>
+        <p className="text-sm text-muted-foreground mt-1">Danh sách tài liệu hiện được chatbot dùng để trả lời trong tenant hiện tại.</p>
       </div>
       <DocumentCatalog
         readOnly
-        selectedTenantId={session?.tenantId || null}
+        selectedTenantId={tenantId || null}
+        initialDocuments={docsRes.items}
       />
     </div>
   );

@@ -40,6 +40,7 @@ type AnalyticsDashboardProps = {
   title: string;
   subtitle: string;
   allowClear?: boolean;
+  initialStats?: AnalyticsStats | null;
 };
 
 const DATE_RANGES = [
@@ -124,11 +125,11 @@ function ModelBreakdownCard({
 }
 
 // ── Pure Shadcn Executive Dashboard Component ──
-export function AnalyticsDashboard({ title, subtitle, allowClear = false }: AnalyticsDashboardProps) {
+export function AnalyticsDashboard({ title, subtitle, allowClear = false, initialStats = null }: AnalyticsDashboardProps) {
   const { data: session } = useSession();
-  const [stats, setStats] = useState<AnalyticsStats | null>(null);
+  const [stats, setStats] = useState<AnalyticsStats | null>(initialStats);
   const [days, setDays] = useState(30);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialStats);
   const [clearing, setClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

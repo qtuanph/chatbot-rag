@@ -1,32 +1,25 @@
-"use client";
-
-import { useCallback, useEffect, useState } from "react";
+import { auth } from "@/lib/auth";
 import { FaqManager } from "@/components/faqs/faq-manager";
-import { tenantsApi } from "@/lib/api-client";
-import type { TenantItem } from "@/types/api";
+import { tenantsApi, faqApi } from "@/lib/api-client";
 
-export default function AdminFaqsPage() {
-  const [tenants, setTenants] = useState<TenantItem[]>([]);
-
-  const loadTenants = useCallback(async () => {
-    try {
-      const rows = await tenantsApi.list();
-      setTenants(rows);
-    } catch (err) {
-      console.error("Không thể tải danh sách công ty", err);
-    }
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadTenants();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [loadTenants]);
+export default async function AdminFaqsPage() {
+  const session = await auth();
+  const tenants = await tenantsApi.list(session?.accessToken).catch(() => []);
+  const firstTenantId = tenants[0]?.id;
+  const [initialFaqs, initialEscalations] = firstTenantId
+    ? await Promise.all([
+        faqApi.list(firstTenantId, session?.accessToken).catch(() => []),
+        faqApi.listEscalations(firstTenantId, session?.accessToken).catch(() => []),
+      ])
+    : [[], []];
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6">
-      <FaqManager tenantOptions={tenants} />
+    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6 md:p-8 animate-in fade-in-50 duration-300">
+      <FaqManager
+        tenantOptions={tenants}
+        initialFaqs={initialFaqs}
+        initialEscalations={initialEscalations}
+      />
     </div>
   );
 }

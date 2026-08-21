@@ -2,9 +2,10 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
-const workspaceRoot = path.resolve(process.cwd(), "..");
+const workspaceRoot = process.cwd();
 
 const nextConfig: NextConfig = {
+  reactCompiler: true,
   experimental: {
     useTypeScriptCli: true,
     serverActions: {

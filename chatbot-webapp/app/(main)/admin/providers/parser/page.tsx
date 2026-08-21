@@ -1,10 +1,10 @@
+import { auth } from "@/lib/auth";
+import { settingsApi } from "@/lib/api-client";
 import { ProviderPage } from "@/components/admin/provider-page";
-import { Metadata } from "next";
 
-export const metadata: Metadata = {
-  title: "Parser Engines",
-};
+export default async function ParserPage() {
+  const session = await auth();
+  const initialProviders = await settingsApi.listProviders("parser", session?.accessToken).catch(() => []);
 
-export default function ParserProvidersPage() {
-  return <ProviderPage serviceType="parser" />;
+  return <ProviderPage serviceType="parser" initialProviders={initialProviders} />;
 }
