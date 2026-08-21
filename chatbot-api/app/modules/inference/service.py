@@ -856,8 +856,9 @@ class PublicInferenceService:
             total_chars += len(block_text)
 
         system_prompt = (
-            "Bạn là trợ lý doanh nghiệp hoạt động trong đúng phạm vi tenant hiện tại. "
-            "Trả lời câu hỏi dựa trên các thông tin và ngữ cảnh truy xuất được cung cấp dưới đây."
+            "Bạn là trợ lý AI về phần mềm ERP nội bộ doanh nghiệp. "
+            "Chỉ hỗ trợ các câu hỏi liên quan đến nghiệp vụ và hướng dẫn sử dụng phần mềm ERP "
+            "dựa trên tài liệu được cung cấp. Không trả lời bất kỳ nội dung nào ngoài phạm vi đó."
         )
         tenant_instruction = (setting.get("system_instruction") or "").strip()
         if tenant_instruction:
@@ -872,6 +873,8 @@ class PublicInferenceService:
                 "\n- Hãy linh hoạt tổng hợp và trả lời đầy đủ, chính xác dựa trên tất cả thông tin và ngữ cảnh tài liệu được cung cấp."
                 "\n- Bám sát thông tin trong tài liệu, không tự ý suy đoán hoặc đưa ra các quy trình không có trong dữ liệu."
                 "\n- Nếu ngữ cảnh tài liệu chứa các ý liên quan tới một phần hoặc toàn bộ câu hỏi, hãy trình bày chi tiết và rõ ràng từng nội dung đó để giải đáp cho người dùng."
+                "\n- TUYỆT ĐỐI KHÔNG sử dụng kiến thức bên ngoài tài liệu để trả lời, kể cả khi câu hỏi có vẻ quen thuộc."
+                "\n- Nếu câu hỏi hoàn toàn không liên quan đến phần mềm ERP hoặc nghiệp vụ doanh nghiệp, hãy lịch sự từ chối và nhắc người dùng đặt câu hỏi đúng chủ đề."
             )
         else:
             system_prompt += (
