@@ -194,6 +194,30 @@
       "root_cause": "`QuotaService` incremented rate limit and request counters prior to invoking LLM inference, but lacked a rollback/refund mechanism in exception handlers.",
       "resolution": "Implemented `refund_llm_call(tenant_id, user_id)` in `QuotaService` that atomically decrements the daily and monthly counters via Redis `DECR`, called inside `try...finally` in `InferenceService` on generation errors.",
       "lesson_learned": "Any quota system with pre-deduction must include an idempotent compensation/refund transaction triggered on downstream service failures."
+    },
+    {
+      "issue_id": 24,
+      "title": "Out-of-Domain Technical Queries Triggered LLM Hallucinations on Weak RAG Matches",
+      "symptom": "When users entered raw SQL stored procedures or coding queries, the LLM attempted to explain them using generic knowledge instead of restricting responses to internal ERP documents.",
+      "root_cause": "The system prompt in `_build_messages()` instructed the LLM to synthesize information when context nodes existed, but lacked an explicit domain boundary rule forbidding out-of-domain answers when chunks loosely matched keywords.",
+      "resolution": "Hardened system prompt with strict enterprise ERP domain identity, explicit prohibition on external knowledge, and a mandatory polite refusal instruction for non-ERP queries.",
+      "lesson_learned": "Enterprise RAG assistants require strict negative domain guardrails in system prompts to prevent out-of-domain answering when vector search returns loose keyword overlaps."
+    },
+    {
+      "issue_id": 25,
+      "title": "ESLint v10 Peer Dependency Mismatch with Next.js eslint-config-next",
+      "symptom": "Building webapp produced three `npm warn ERESOLVE overriding peer dependency` warnings for `eslint-plugin-import`, `eslint-plugin-jsx-a11y`, and `eslint-plugin-react`.",
+      "root_cause": "The `package.json` pinned `eslint@^10.x`, whereas Next.js 16 official `eslint-config-next` plugins explicitly specify peer dependencies in the `^8 || ^9` range.",
+      "resolution": "Pinned `eslint@^9.22.0` (ESLint 9 LTS) in `chatbot-webapp/package.json` to fully satisfy all sub-plugin peer requirements.",
+      "lesson_learned": "Always align linter major versions with Next.js official config ecosystems (ESLint 9 LTS for Next.js 15/16) to avoid peer dependency resolution warnings in container builds."
+    },
+    {
+      "issue_id": 26,
+      "title": "Redundant Requirements Files Fragmentation",
+      "symptom": "Two overlapping test/dev requirement files (`requirements-test.txt` and `requirements-dev.txt`) caused confusion and drift during PyPI dependency upgrades.",
+      "root_cause": "`requirements-test.txt` only contained a subset of `requirements-dev.txt` (`pytest`, `pytest-asyncio`, `deepeval`), duplicating definitions.",
+      "resolution": "Consolidated all testing, security scanning, and formatting dependencies into `requirements-dev.txt`, removed `requirements-test.txt`, and updated `README.md` to reference `requirements-dev.txt`.",
+      "lesson_learned": "Maintain a clean two-tier requirement structure: `requirements.txt` strictly for production runtime images, and `requirements-dev.txt` for development, evaluation, and CI/CD."
     }
   ]
 }

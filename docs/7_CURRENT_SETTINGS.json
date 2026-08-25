@@ -1,8 +1,8 @@
 {
   "document": {
     "id": "7_CURRENT_SETTINGS",
-    "version": "2026-08-11",
-    "purpose": "Snapshot cấu hình hiện tại — Release v1.0.0 Enterprise RAG Platform Launch."
+    "version": "2026-08-25",
+    "purpose": "Snapshot cấu hình hiện tại — Release Enterprise RAG & ERP AI Assistant."
   },
   "architecture": {
     "mode": "multi-tenant-shared-kb",
@@ -148,13 +148,18 @@
   },
 
   "frontend": {
+    "framework": "Next.js v16.3.2 (React 19.2.8 + React 19 Compiler enabled)",
+    "node_runtime": "Node 24 (node:24-alpine)",
+    "linter": "ESLint v9.22.0 (LTS alignment with Next.js official plugins)",
+    "auth": "next-auth v5.0.0-beta.32 (Auth.js v5 with HttpOnly Session Cookies)",
+    "ui_components": "@base-ui/react v1.7.0 + Tailwind CSS v4.3.3 (base-luma style)",
     "validation_library": "zod v4.4.3",
     "validation_import_path": "zod/v4",
     "schema_source_of_truth": "lib/schemas.ts",
     "type_re_export": "types/api.ts",
     "api_client_pattern": "apiFetchParse<T>(schema, path, options, token) + parseRequest(schema, payload) cho mutation request body",
     "api_client_file": "lib/api-client.ts",
-    "migration_status": "response parse chuẩn hóa qua apiFetchParse; request payload mutation đã thêm parseRequest; SSE documents và live stream chunk đã parse guard bằng Zod",
+    "migration_status": "Toàn bộ dynamic pages chuyển đổi sang Async Server Components (RSC) pre-fetching SSR; response parse chuẩn hóa qua apiFetchParse; request payload mutation đã thêm parseRequest; SSE documents và live stream chunk đã parse guard bằng Zod",
     "unmigrated": [
       "streamList (EventSource transport layer không parse ở api-client)",
       "guide code snippets dạng string minh họa vẫn dùng JSON.parse"
