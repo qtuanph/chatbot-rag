@@ -59,8 +59,9 @@ export function SettingsManager({ initialBilling = null }: SettingsManagerProps)
       const updated = await settingsApi.updateBilling(billingData);
       setBillingData(updated);
       toast.success("Đã lưu cấu hình platform billing & quota");
-    } catch (err: any) {
-      toast.error(err.message || "Không thể lưu cấu hình");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Không thể lưu cấu hình";
+      toast.error(message);
     } finally {
       setBillingSaving(false);
     }

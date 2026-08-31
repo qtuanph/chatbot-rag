@@ -136,8 +136,9 @@ async function apiFetch<T>(path: string, options: RequestInit = {}, token?: stri
       !window.location.pathname.startsWith("/login") &&
       !path.startsWith("/auth/login")
     ) {
-      if (!(window as any).__isSessionRedirecting) {
-        (window as any).__isSessionRedirecting = true;
+      const customWindow = window as unknown as { __isSessionRedirecting?: boolean };
+      if (!customWindow.__isSessionRedirecting) {
+        customWindow.__isSessionRedirecting = true;
         const targetUrl = `/login?error=SessionExpired&callbackUrl=${encodeURIComponent(window.location.pathname)}`;
         import("next-auth/react")
           .then(({ signOut }) => {

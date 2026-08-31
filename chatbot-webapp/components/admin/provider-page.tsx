@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Power, TestTube, Key, KeyRound, Trash2, Cpu } from "lucide-react";
+import { Plus, Power, TestTube, Key, Trash2, Cpu } from "lucide-react";
 import { settingsApi, ApiError } from "@/lib/api-client";
 import { AIProviderCreateSchema, AIProviderUpdateSchema, ProviderApiKeyCreateRequestSchema } from "@/lib/schemas";
 import { toast } from "sonner";

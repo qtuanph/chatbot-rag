@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
@@ -239,20 +238,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Mode state: 'admin' | 'guides'
-  const [sidebarMode, setSidebarMode] = React.useState<"admin" | "guides">("admin");
-
-  // Auto-detect mode based on current URL path
-  React.useEffect(() => {
-    if (pathname.startsWith("/guides")) {
-      setSidebarMode("guides");
-    } else if (pathname.startsWith("/admin") || pathname.startsWith("/settings")) {
-      setSidebarMode("admin");
-    }
-  }, [pathname]);
+  // Derive sidebar mode directly from URL path without setState in effect
+  const sidebarMode: "admin" | "guides" = pathname.startsWith("/guides") ? "guides" : "admin";
 
   const handleSelectMode = (mode: "admin" | "guides") => {
-    setSidebarMode(mode);
     if (mode === "admin") {
       router.push("/admin");
     } else {

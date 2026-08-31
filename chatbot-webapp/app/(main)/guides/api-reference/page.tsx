@@ -102,7 +102,7 @@ public class ChatbotService
     public async Task<string> CallChatbotAsync(string userQuery)
     {
         string apiUrl = "${API_URL}";
-        string apiKey = "trg_YOUR_TENANT_API_KEY";
+        string apiKey = "YOUR_TENANT_API_KEY";
 
         var jsonPayload = $@"{{
             ""model"": ""chatbot-rag"",
@@ -194,7 +194,7 @@ public class ChatbotService
             </div>
             <div className="p-2.5 rounded-lg border border-border bg-card">
               <span className="text-muted-foreground block text-[10px] font-sans font-semibold">Authorization</span>
-              <span className="font-semibold text-primary">Bearer trg_YOUR_TENANT_API_KEY</span>
+              <span className="font-semibold text-primary">YOUR_TENANT_API_KEY</span>
             </div>
           </div>
         </div>

@@ -32,7 +32,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { conversationsApi, faqApi, tenantsApi } from "@/lib/api-client";
-import { TenantItem } from "@/types/api";
+import { TenantItem, Citation } from "@/types/api";
 
 export interface ConversationItem {
   id: string;
@@ -87,7 +87,7 @@ export function ConversationAuditManager({
   const [faqQuestion, setFaqQuestion] = useState("");
   const [faqAnswer, setFaqAnswer] = useState("");
   const [faqVariants, setFaqVariants] = useState("");
-  const [faqCitations, setFaqCitations] = useState<any[]>([]);
+  const [faqCitations, setFaqCitations] = useState<Citation[]>([]);
   const [submittingFaq, setSubmittingFaq] = useState(false);
 
   // Load Tenants list
@@ -96,7 +96,7 @@ export function ConversationAuditManager({
     try {
       const data = await tenantsApi.list();
       setTenants(data || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to load tenants list:", err);
     }
   };
@@ -108,9 +108,10 @@ export function ConversationAuditManager({
       const tenantParam = filterTenantId !== "ALL" ? filterTenantId : undefined;
       const res = await conversationsApi.list(0, 50, tenantParam);
       setConversations(res.items || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (!silent) {
-        toast.error("Không thể tải nhật ký hội thoại: " + (err?.message || "Lỗi kết nối"));
+        const msg = err instanceof Error ? err.message : "Lỗi kết nối";
+        toast.error("Không thể tải nhật ký hội thoại: " + msg);
       }
     } finally {
       if (!silent) setLoading(false);
@@ -119,7 +120,7 @@ export function ConversationAuditManager({
 
   useEffect(() => {
     if (isPlatformAdmin && tenants.length === 0) {
-      fetchTenants();
+      void fetchTenants();
     }
   }, [isPlatformAdmin, tenants.length]);
 
@@ -152,14 +153,15 @@ export function ConversationAuditManager({
     try {
       const res = await conversationsApi.getMessages(convId);
       setMessages(res.messages || []);
-    } catch (err: any) {
-      toast.error("Không thể tải nội dung chi tiết: " + (err?.message || "Lỗi kết nối"));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Lỗi kết nối";
+      toast.error("Không thể tải nội dung chi tiết: " + msg);
     } finally {
       setLoadingDetail(false);
     }
   };
 
-  const handleOpenFaqModal = (question: string, answer: string, citations?: any[], tenantId?: string) => {
+  const handleOpenFaqModal = (question: string, answer: string, citations?: Citation[], tenantId?: string) => {
     const targetTenant = tenantId || selectedTenantId || (tenants[0]?.id ?? "");
     setFaqSelectedTenants([targetTenant]);
     setFaqQuestion(question);
@@ -210,8 +212,9 @@ export function ConversationAuditManager({
 
       toast.success(`Đã tạo thành công FAQ cho ${successCount} công ty. Phản hồi sẽ được xử lý qua Redis Cache.`);
       setFaqModalOpen(false);
-    } catch (err: any) {
-      toast.error("Không thể tạo FAQ: " + (err?.message || "Lỗi hệ thống"));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Lỗi hệ thống";
+      toast.error("Không thể tạo FAQ: " + msg);
     } finally {
       setSubmittingFaq(false);
     }

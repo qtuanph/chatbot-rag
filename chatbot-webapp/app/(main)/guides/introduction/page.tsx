@@ -307,7 +307,7 @@ export default function IntroductionGuidePage() {
                 </Card>
               ) : (
                 <div className="p-6 text-center border border-dashed border-border rounded-xl text-xs text-muted-foreground">
-                  Nhấn nút <strong>"Bắt đầu mô phỏng"</strong> ở góc phải để kích hoạt mô hình trực quan.
+                  Nhấn nút <strong>&quot;Bắt đầu mô phỏng&quot;</strong> ở góc phải để kích hoạt mô hình trực quan.
                 </div>
               )}
             </div>
@@ -400,7 +400,7 @@ export default function IntroductionGuidePage() {
 
                 <div className="border-l-2 border-primary pl-3.5 space-y-1">
                   <h4 className="font-bold text-foreground text-xs">Bước 3: Khóa an toàn AI khi rỗng tài liệu (Strict Empty Context Guardrail)</h4>
-                  <p>Nếu Tenant chưa được gán quyền tài liệu hoặc tìm kiếm rỗng, hệ thống khóa prompt bắt buộc AI trả lời câu chuẩn mực: <em>"Xin lỗi, hiện tại hệ thống chưa tìm thấy dữ liệu hoặc tài liệu chưa được phân quyền truy cập cho Tenant..."</em>. AI tuyệt đối <strong>KHÔNG DÙNG kiến thức chung bên ngoài hay tự suy đoán</strong>.</p>
+                  <p>Nếu Tenant chưa được gán quyền tài liệu hoặc tìm kiếm rỗng, hệ thống khóa prompt bắt buộc AI trả lời câu chuẩn mực: <em>&quot;Xin lỗi, hiện tại hệ thống chưa tìm thấy dữ liệu hoặc tài liệu chưa được phân quyền truy cập cho Tenant...&quot;</em>. AI tuyệt đối <strong>KHÔNG DÙNG kiến thức chung bên ngoài hay tự suy đoán</strong>.</p>
                 </div>
               </div>
             </AccordionContent>
