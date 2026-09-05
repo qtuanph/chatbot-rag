@@ -19,7 +19,7 @@ export default function MainLayout({
           <SidebarTrigger className="-ml-1 transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]" />
           <Separator orientation="vertical" className="h-4" />
           <div className="flex-1 overflow-hidden">
-            <h1 className="truncate text-sm font-medium">RAG Platform</h1>
+            <h1 className="truncate text-sm font-medium">SSE Chatbot</h1>
           </div>
         </header>
         <main className="flex-1 overflow-auto bg-background">

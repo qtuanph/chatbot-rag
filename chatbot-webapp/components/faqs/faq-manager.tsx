@@ -1,12 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
-import { ArrowRight, Check, Edit2, HelpCircle, Plus, RefreshCw, Trash2, XCircle } from "lucide-react";
+import { Check, Edit2, Plus, RefreshCw, Trash2, MoreHorizontal, Copy } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -15,15 +25,35 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TenantSelect } from "@/components/tenants/tenant-select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  DataTable,
+  DataTableSortHeader,
+  createColumnHelper,
+  type DataTableFeatures,
+} from "@/components/ui/data-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { faqApi, tenantsApi } from "@/lib/api-client";
-import { formatDateTimeVN } from "@/lib/format";
+import { formatDateVN, formatDateTimeVN } from "@/lib/format";
 import type { EscalationItem, FaqItem, FaqCreateRequest, TenantItem } from "@/types/api";
 
 type ModalMode = "create" | "edit" | "promote" | null;
@@ -64,6 +94,9 @@ export function FaqManager({
   const [form, setForm] = useState<FaqForm>(EMPTY_FORM);
   const [variantInput, setVariantInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Delete confirmation state
+  const [deletingFaq, setDeletingFaq] = useState<FaqItem | null>(null);
 
   useEffect(() => {
     if (tenantOptions.length > 0 && !activeTenantId) {
@@ -121,27 +154,27 @@ export function FaqManager({
   }, [loadData]);
 
 
-  const openCreate = () => {
+  const openCreate = useCallback(() => {
     setForm(EMPTY_FORM);
     setVariantInput("");
     setSelectedFaq(null);
     setSelectedEscalation(null);
     setModalMode("create");
-  };
+  }, []);
 
-  const openEdit = (faq: FaqItem) => {
+  const openEdit = useCallback((faq: FaqItem) => {
     setSelectedFaq(faq);
     setForm({ question: faq.question, answer: faq.answer, question_variants: faq.question_variants ?? [] });
     setVariantInput("");
     setModalMode("edit");
-  };
+  }, []);
 
-  const openPromote = (esc: EscalationItem) => {
+  const openPromote = useCallback((esc: EscalationItem) => {
     setSelectedEscalation(esc);
     setForm({ question: esc.question, answer: esc.answer ?? "", question_variants: [] });
     setVariantInput("");
     setModalMode("promote");
-  };
+  }, []);
 
   const closeModal = () => {
     setModalMode(null);
@@ -195,10 +228,10 @@ export function FaqManager({
   }, [form, tenant, modalMode, selectedFaq, selectedEscalation, loadData]);
 
   const handleDelete = useCallback(async (faqId: string) => {
-    if (!confirm("Bạn có chắc chắn muốn xóa bài FAQ này? Câu trả lời nhanh sẽ bị gỡ khỏi cache ngay lập tức.")) return;
     try {
       await faqApi.delete(faqId);
       toast.success("Đã xóa FAQ và xóa khỏi cache");
+      setDeletingFaq(null);
       void loadData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Không thể xóa FAQ";
@@ -206,19 +239,15 @@ export function FaqManager({
     }
   }, [loadData]);
 
-  const handleRejectEscalation = useCallback(async (escId: string) => {
-    if (!confirm("Bạn có chắc chắn muốn từ chối và xóa câu hỏi chờ duyệt này khỏi cơ sở dữ liệu?")) return;
+  const handleRejectEscalation = useCallback(async (_escId: string) => {
     try {
       // TODO: implement reject escalation endpoint
       toast.error("Chức năng chưa được hỗ trợ");
-      // await faqApi.delete(escId); // this is wrong, it's for faq not escalation
-      // toast.success("Đã từ chối và xóa câu hỏi chờ duyệt khỏi cơ sở dữ liệu");
-      // void loadData();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Không thể từ chối câu hỏi";
       toast.error(message);
     }
-  }, [loadData]);
+  }, []);
 
   const modalTitle =
     modalMode === "create" ? "Thêm bài FAQ mới" :
@@ -227,29 +256,207 @@ export function FaqManager({
 
   const submitLabel = modalMode === "create" ? "Tạo & Xuất bản" : modalMode === "edit" ? "Lưu thay đổi" : "Duyệt & Xuất bản";
 
+  const faqColumns = useMemo(() => {
+    const columnHelper = createColumnHelper<DataTableFeatures, FaqItem>();
+
+    return columnHelper.columns([
+      columnHelper.accessor("question", {
+        meta: { title: "Câu hỏi chính" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Câu hỏi chính" />,
+        cell: ({ row }) => <span className="font-medium text-xs text-foreground">{row.original.question}</span>,
+      }),
+      columnHelper.accessor("question_variants", {
+        meta: { title: "Biến thể" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Biến thể" />,
+        cell: ({ row }) => {
+          const variants = row.original.question_variants ?? [];
+          if (variants.length === 0) {
+            return <span className="text-muted-foreground text-xs">—</span>;
+          }
+          if (variants.length === 1) {
+            return (
+              <Badge variant="secondary" className="text-[11px] max-w-[160px] truncate">
+                {variants[0]}
+              </Badge>
+            );
+          }
+          return (
+            <Tooltip>
+              <TooltipTrigger>
+                <div className="flex items-center gap-1 cursor-default">
+                  <Badge variant="secondary" className="text-[11px] max-w-[140px] truncate">
+                    {variants[0]}
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]">
+                    +{variants.length - 1}
+                  </Badge>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                {variants.join(" • ")}
+              </TooltipContent>
+            </Tooltip>
+          );
+        },
+      }),
+      columnHelper.accessor("answer", {
+        meta: { title: "Câu trả lời" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Câu trả lời" />,
+        cell: ({ row }) => (
+          <Tooltip>
+            <TooltipTrigger>
+              <p className="line-clamp-1 text-xs text-muted-foreground max-w-xs cursor-default">{row.original.answer}</p>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-md whitespace-pre-wrap text-xs">
+              {row.original.answer}
+            </TooltipContent>
+          </Tooltip>
+        ),
+      }),
+      columnHelper.accessor("updated_at", {
+        meta: { title: "Cập nhật" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Cập nhật" />,
+        cell: ({ row }) => (
+          <Tooltip>
+            <TooltipTrigger>
+              <span className="text-xs text-muted-foreground font-mono cursor-default">{formatDateVN(row.original.updated_at)}</span>
+            </TooltipTrigger>
+            <TooltipContent>{formatDateTimeVN(row.original.updated_at)}</TooltipContent>
+          </Tooltip>
+        ),
+      }),
+      columnHelper.display({
+        id: "actions",
+        enableHiding: false,
+        cell: ({ row }) => {
+          const faq = row.original;
+          return (
+            <div className="flex justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="ghost" className="h-8 w-8 p-0">
+                      <span className="sr-only">Mở menu</span>
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end">
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={() => openEdit(faq)}>
+                      <Edit2 className="mr-2 h-4 w-4" /> Chỉnh sửa
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        void navigator.clipboard.writeText(faq.question);
+                        toast.success("Đã sao chép câu hỏi");
+                      }}
+                    >
+                      <Copy className="mr-2 h-4 w-4" /> Sao chép câu hỏi
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setDeletingFaq(faq)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" /> Xóa bài FAQ
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          );
+        },
+      }),
+    ]);
+  }, [openEdit]);
+
+  const escalationColumns = useMemo(() => {
+    const columnHelper = createColumnHelper<DataTableFeatures, EscalationItem>();
+
+    return columnHelper.columns([
+      columnHelper.accessor("question", {
+        meta: { title: "Câu hỏi người dùng" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Câu hỏi của người dùng" />,
+        cell: ({ row }) => <span className="font-medium text-xs text-foreground">{row.original.question}</span>,
+      }),
+      columnHelper.accessor("created_at", {
+        meta: { title: "Thời gian" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Thời gian" />,
+        cell: ({ row }) => (
+          <Tooltip>
+            <TooltipTrigger>
+              <span className="text-xs text-muted-foreground font-mono cursor-default">{formatDateVN(row.original.created_at)}</span>
+            </TooltipTrigger>
+            <TooltipContent>{formatDateTimeVN(row.original.created_at)}</TooltipContent>
+          </Tooltip>
+        ),
+      }),
+      columnHelper.display({
+        id: "actions",
+        enableHiding: false,
+        cell: ({ row }) => {
+          const esc = row.original;
+          return (
+            <div className="flex justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="ghost" className="h-8 w-8 p-0">
+                      <span className="sr-only">Mở menu</span>
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end">
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={() => openPromote(esc)}>
+                      <Check className="mr-2 h-4 w-4 text-emerald-600" /> Duyệt thành FAQ
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        void navigator.clipboard.writeText(esc.question);
+                        toast.success("Đã sao chép câu hỏi");
+                      }}
+                    >
+                      <Copy className="mr-2 h-4 w-4" /> Sao chép câu hỏi
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => handleRejectEscalation(esc.id)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" /> Từ chối câu hỏi
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          );
+        },
+      }),
+    ]);
+  }, [handleRejectEscalation, openPromote]);
+
   return (
-    <div className="flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Quản lý FAQ &amp; Hỗ trợ</h1>
-          <p className="text-sm text-muted-foreground">
-            Câu hỏi được duyệt sẽ trả lời tức thì (&lt;1ms, không tốn chi phí AI) — bỏ qua toàn bộ pipeline LLM.
-          </p>
-        </div>
+    <TooltipProvider>
+      <div className="flex flex-col gap-6">
+        {/* Header */}
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Quản lý FAQ &amp; Hỗ trợ</h1>
+            <p className="text-sm text-muted-foreground">
+              Câu hỏi được duyệt sẽ phản hồi tức thì, tiết kiệm chi phí — bỏ qua toàn bộ pipeline LLM.
+            </p>
+          </div>
         <div className="flex items-center gap-2">
           {tenantOptions.length > 0 && (
-            <select
-              className="h-9 rounded-xl border bg-background px-3 py-1 text-sm font-medium shadow-sm"
-              value={activeTenantId || ""}
-              onChange={(e) => setActiveTenantId(e.target.value)}
-            >
-              {tenantOptions.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+            <TenantSelect
+              tenants={tenantOptions}
+              value={activeTenantId}
+              onValueChange={(val) => setActiveTenantId(val || (tenantOptions[0]?.id ?? null))}
+              className="w-56"
+            />
           )}
           <Button className="rounded-xl" variant="outline" onClick={() => loadData(false)} disabled={loading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -274,154 +481,50 @@ export function FaqManager({
 
         {/* Tab 1: Published FAQs */}
         <TabsContent value="published" className="mt-4">
-          {loading ? (
-            <div className="text-sm text-muted-foreground">Đang tải danh sách FAQ...</div>
-          ) : faqs.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center">
-              <HelpCircle className="h-8 w-8 text-muted-foreground/50" />
-              <div>
-                <p className="text-sm font-medium">Chưa có bài FAQ nào được xuất bản</p>
-                <p className="text-xs text-muted-foreground">Bấm &quot;Thêm FAQ mới&quot; để tạo câu hỏi thường gặp.</p>
-              </div>
+          {loading && faqs.length === 0 ? (
+            <div className="space-y-3 py-4">
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-16 w-full rounded-xl" />
+              <Skeleton className="h-16 w-full rounded-xl" />
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pr-4 text-xs text-muted-foreground">Câu hỏi chính</TableHead>
-                  <TableHead className="pr-4 text-xs text-muted-foreground">Câu hỏi biến thể</TableHead>
-                  <TableHead className="pr-4 text-xs text-muted-foreground">Câu trả lời</TableHead>
-                  <TableHead className="pr-4 text-xs text-muted-foreground">Cập nhật</TableHead>
-                  <TableHead className="text-right text-xs text-muted-foreground">Thao tác</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {faqs.map((faq) => (
-                  <TableRow key={faq.id}>
-                    <TableCell className="pr-4 font-medium">{faq.question}</TableCell>
-                    <TableCell className="pr-4">
-                      <div className="flex flex-wrap gap-1">
-                        {(faq.question_variants ?? []).length > 0 ? (
-                          (faq.question_variants ?? []).map((v, idx) => (
-                            <Badge key={idx} variant="secondary" className="text-xs">
-                              {v}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-xs italic text-muted-foreground">Không có</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-xs pr-4">
-                      <p className="line-clamp-2 text-sm text-muted-foreground">{faq.answer}</p>
-                    </TableCell>
-                    <TableCell className="pr-4 text-sm text-muted-foreground">
-                      {formatDateTimeVN(faq.updated_at)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="rounded-xl"
-                                onClick={() => openEdit(faq)}
-                              >
-                                <Edit2 className="h-4 w-4" />
-                              </Button>
-                            }
-                          />
-                          <TooltipContent>Chỉnh sửa FAQ</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                size="icon"
-                                variant="destructive"
-                                className="rounded-xl"
-                                onClick={() => handleDelete(faq.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            }
-                          />
-                          <TooltipContent>Xóa FAQ</TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable
+              columns={faqColumns}
+              data={faqs}
+              searchKey="question"
+              searchPlaceholder="Lọc theo câu hỏi FAQ..."
+              enablePagination
+              enableColumnVisibility
+              emptyMessage={
+                <div className="py-6 text-center">
+                  <p className="text-sm font-medium">Chưa có bài FAQ nào</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Bấm &quot;Thêm FAQ mới&quot; để tạo các câu hỏi và câu trả lời chuẩn cho doanh nghiệp.
+                  </p>
+                </div>
+              }
+            />
           )}
         </TabsContent>
 
         {/* Tab 2: Open Escalations */}
         <TabsContent value="escalations" className="mt-4">
-          {loading ? (
-            <div className="text-sm text-muted-foreground">Đang tải câu hỏi chờ duyệt...</div>
-          ) : escalations.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-              Không có câu hỏi nào đang chờ duyệt.
+          {loading && escalations.length === 0 ? (
+            <div className="space-y-3 py-4">
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-14 w-full rounded-xl" />
+              <Skeleton className="h-14 w-full rounded-xl" />
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pr-4 text-xs text-muted-foreground">Câu hỏi của người dùng</TableHead>
-                  <TableHead className="pr-4 text-xs text-muted-foreground">Thời gian</TableHead>
-                  <TableHead className="text-right text-xs text-muted-foreground">Thao tác</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {escalations.map((esc) => (
-                  <TableRow key={esc.id}>
-                    <TableCell className="pr-4 font-medium">{esc.question}</TableCell>
-                    <TableCell className="pr-4 text-sm text-muted-foreground">
-                      {formatDateTimeVN(esc.created_at)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="rounded-xl"
-                                onClick={() => openPromote(esc)}
-                              >
-                                <Check className="h-4 w-4 text-emerald-600" />
-                              </Button>
-                            }
-                          />
-                          <TooltipContent>Duyệt thành FAQ</TooltipContent>
-                        </Tooltip>
-
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                size="icon"
-                                variant="destructive"
-                                className="rounded-xl"
-                                onClick={() => handleRejectEscalation(esc.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            }
-                          />
-                          <TooltipContent>Từ chối &amp; Xóa khỏi DB</TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable
+              columns={escalationColumns}
+              data={escalations}
+              searchKey="question"
+              searchPlaceholder="Lọc theo câu hỏi người dùng..."
+              enablePagination
+              enableColumnVisibility
+              emptyMessage="Không có câu hỏi nào đang chờ duyệt."
+            />
           )}
         </TabsContent>
       </Tabs>
@@ -506,6 +609,33 @@ export function FaqManager({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+
+      {/* Delete FAQ Confirmation Alert Dialog */}
+      <AlertDialog open={!!deletingFaq} onOpenChange={(open) => !open && setDeletingFaq(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận xóa FAQ</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa bài FAQ <span className="font-semibold text-foreground">&quot;{deletingFaq?.question}&quot;</span>?
+              Hành động này sẽ gỡ câu hỏi khỏi danh mục tri thức và tự động dọn sạch cache FAQ trong bộ nhớ Redis.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: "destructive" })}
+              onClick={async () => {
+                if (deletingFaq) {
+                  await handleDelete(deletingFaq.id);
+                }
+              }}
+            >
+              Xóa FAQ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      </div>
+    </TooltipProvider>
   );
 }

@@ -1,9 +1,7 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { CheckCircle2Icon, KeyIcon, UsersIcon, ShieldAlertIcon, SettingsIcon, UserCheckIcon, Building2Icon, SparklesIcon, FilterIcon } from "lucide-react";
+import { KeyIcon, UsersIcon, ShieldAlertIcon, SettingsIcon } from "lucide-react";
 
 export default function TenantsGuidePage() {
   return (
@@ -57,7 +55,7 @@ export default function TenantsGuidePage() {
               <AccordionContent className="px-5 pb-5 text-muted-foreground text-xs leading-relaxed space-y-2">
                 <p>Một tài liệu trong Kho tài liệu chỉ phục vụ cho Tenant khi được gán quyền:</p>
                 <ul className="list-disc pl-4 space-y-1">
-                  <li>Vào trang <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">Kho Tài liệu</code> ➔ Chọn tài liệu cần gán.</li>
+                  <li>Vào trang <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">Kho Tài liệu</code> → Chọn tài liệu cần gán.</li>
                   <li>Chọn Tenant được phép truy cập tài liệu này.</li>
                   <li>Nếu Tenant chưa được phân quyền tài liệu nào, hệ thống AI sẽ kích hoạt <strong>Strict Empty Context Guardrail</strong> để bảo đảm không trả lời sai hay dùng kiến thức ngoài internet.</li>
                 </ul>

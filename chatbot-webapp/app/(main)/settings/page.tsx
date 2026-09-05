@@ -1,13 +1,17 @@
-import { auth } from "@/lib/auth";
-import { settingsApi } from "@/lib/api-client";
-import { SettingsManager } from "@/components/settings/settings-manager";
+"use client";
 
-export default async function SettingsPage() {
-  const session = await auth();
-  const isPlatformAdmin = session?.role === "platform_admin";
-  const initialBilling = isPlatformAdmin
-    ? await settingsApi.getBilling(session?.accessToken).catch(() => null)
-    : null;
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useSettingsDialog } from "@/components/settings/settings-dialog-context";
 
-  return <SettingsManager initialBilling={initialBilling} />;
+export default function SettingsPage() {
+  const router = useRouter();
+  const { openSettings } = useSettingsDialog();
+
+  useEffect(() => {
+    openSettings();
+    router.replace("/admin");
+  }, [openSettings, router]);
+
+  return null;
 }

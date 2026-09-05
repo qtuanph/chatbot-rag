@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import {
@@ -28,11 +28,28 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { TenantSelect } from "@/components/tenants/tenant-select";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { conversationsApi, faqApi, tenantsApi } from "@/lib/api-client";
-import { TenantItem } from "@/types/api";
+import { TenantItem, Citation } from "@/types/api";
+import {
+  MessageScrollerProvider,
+  MessageScroller,
+  MessageScrollerViewport,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerButton,
+} from "@/components/ui/message-scroller";
+import {
+  Message,
+  MessageAvatar,
+  MessageContent,
+  MessageHeader,
+  MessageFooter,
+} from "@/components/ui/message";
+import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 export interface ConversationItem {
   id: string;
@@ -87,45 +104,46 @@ export function ConversationAuditManager({
   const [faqQuestion, setFaqQuestion] = useState("");
   const [faqAnswer, setFaqAnswer] = useState("");
   const [faqVariants, setFaqVariants] = useState("");
-  const [faqCitations, setFaqCitations] = useState<any[]>([]);
+  const [faqCitations, setFaqCitations] = useState<Citation[]>([]);
   const [submittingFaq, setSubmittingFaq] = useState(false);
 
   // Load Tenants list
-  const fetchTenants = async () => {
+  const fetchTenants = useCallback(async () => {
     if (!isPlatformAdmin) return;
     try {
       const data = await tenantsApi.list();
       setTenants(data || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to load tenants list:", err);
     }
-  };
+  }, [isPlatformAdmin]);
 
   // Load Conversations list
-  const fetchConversations = async (silent = false) => {
+  const fetchConversations = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const tenantParam = filterTenantId !== "ALL" ? filterTenantId : undefined;
       const res = await conversationsApi.list(0, 50, tenantParam);
       setConversations(res.items || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (!silent) {
-        toast.error("Không thể tải nhật ký hội thoại: " + (err?.message || "Lỗi kết nối"));
+        const msg = err instanceof Error ? err.message : "Lỗi kết nối";
+        toast.error("Không thể tải nhật ký hội thoại: " + msg);
       }
     } finally {
       if (!silent) setLoading(false);
     }
-  };
+  }, [filterTenantId]);
 
   useEffect(() => {
     if (isPlatformAdmin && tenants.length === 0) {
-      fetchTenants();
+      void fetchTenants();
     }
-  }, [isPlatformAdmin, tenants.length]);
+  }, [isPlatformAdmin, tenants.length, fetchTenants]);
 
   useEffect(() => {
     void fetchConversations();
-  }, [filterTenantId]);
+  }, [fetchConversations]);
 
   // Real-time silent background polling for new incoming conversations
   useEffect(() => {
@@ -136,7 +154,7 @@ export function ConversationAuditManager({
     }, 6000);
 
     return () => clearInterval(interval);
-  }, [filterTenantId]);
+  }, [fetchConversations]);
 
   // Tenant lookup map by ID
   const tenantMap = useMemo(() => {
@@ -152,14 +170,15 @@ export function ConversationAuditManager({
     try {
       const res = await conversationsApi.getMessages(convId);
       setMessages(res.messages || []);
-    } catch (err: any) {
-      toast.error("Không thể tải nội dung chi tiết: " + (err?.message || "Lỗi kết nối"));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Lỗi kết nối";
+      toast.error("Không thể tải nội dung chi tiết: " + msg);
     } finally {
       setLoadingDetail(false);
     }
   };
 
-  const handleOpenFaqModal = (question: string, answer: string, citations?: any[], tenantId?: string) => {
+  const handleOpenFaqModal = (question: string, answer: string, citations?: Citation[], tenantId?: string) => {
     const targetTenant = tenantId || selectedTenantId || (tenants[0]?.id ?? "");
     setFaqSelectedTenants([targetTenant]);
     setFaqQuestion(question);
@@ -210,8 +229,9 @@ export function ConversationAuditManager({
 
       toast.success(`Đã tạo thành công FAQ cho ${successCount} công ty. Phản hồi sẽ được xử lý qua Redis Cache.`);
       setFaqModalOpen(false);
-    } catch (err: any) {
-      toast.error("Không thể tạo FAQ: " + (err?.message || "Lỗi hệ thống"));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Lỗi hệ thống";
+      toast.error("Không thể tạo FAQ: " + msg);
     } finally {
       setSubmittingFaq(false);
     }
@@ -236,18 +256,14 @@ export function ConversationAuditManager({
           {isPlatformAdmin && (
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
-              <NativeSelect
-                value={filterTenantId}
-                onChange={(e) => setFilterTenantId(e.target.value)}
+              <TenantSelect
+                tenants={tenants}
+                value={filterTenantId === "ALL" ? null : filterTenantId}
+                onValueChange={(val) => setFilterTenantId(val || "ALL")}
+                includeAll
+                allLabel="Tất cả công ty (Tenants)"
                 className="w-56"
-              >
-                <NativeSelectOption value="ALL">Tất cả công ty (Tenants)</NativeSelectOption>
-                {tenants.map((t) => (
-                  <NativeSelectOption key={t.id} value={t.id}>
-                    {t.name} ({t.slug})
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
+              />
             </div>
           )}
 
@@ -346,121 +362,120 @@ export function ConversationAuditManager({
           ) : messages.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">Không có tin nhắn nào trong phiên này.</div>
           ) : (
-            <div className="space-y-3.5 py-2 overflow-y-auto max-h-[60vh] pr-2 scrollbar-thin">
-              {messages.map((msg, idx) => {
-                const isUser = msg.role === "user";
-                const prevUserMsg = messages
-                  .slice(0, idx)
-                  .reverse()
-                  .find((m) => m.role === "user");
+            <MessageScrollerProvider defaultScrollPosition="end">
+              <MessageScroller className="max-h-[60vh] py-2">
+                <MessageScrollerViewport className="pr-3">
+                  <MessageScrollerContent className="gap-5">
+                    {messages.map((msg, idx) => {
+                      const isUser = msg.role === "user";
+                      const prevUserMsg = messages
+                        .slice(0, idx)
+                        .reverse()
+                        .find((m) => m.role === "user");
 
-                return (
-                  <div
-                    key={msg.id}
-                    className={`p-4 rounded-lg border text-sm ${
-                      isUser ? "bg-muted/30 border-border/50 ml-6" : "bg-card border-border mr-6"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-2.5">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge
-                          variant={isUser ? "outline" : "default"}
-                          className="text-[10px] h-4.5 font-semibold uppercase tracking-wider gap-1"
-                        >
-                          {isUser ? (
-                            <>
-                              <User className="h-3 w-3" /> User
-                            </>
-                          ) : (
-                            <>
-                              <Bot className="h-3 w-3" /> AI Assistant
-                            </>
-                          )}
-                        </Badge>
+                      return (
+                        <MessageScrollerItem key={msg.id}>
+                          <Message align={isUser ? "end" : "start"} className="items-start gap-3">
+                            <MessageAvatar>
+                              <Avatar size="sm">
+                                <AvatarFallback className={isUser ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"}>
+                                  {isUser ? <User className="size-3.5" /> : <Bot className="size-3.5" />}
+                                </AvatarFallback>
+                              </Avatar>
+                            </MessageAvatar>
+                            <MessageContent className={isUser ? "items-end" : "items-start"}>
+                              <MessageHeader className="gap-2 mb-1">
+                                <span className="font-semibold text-xs text-foreground">
+                                  {isUser ? "Người dùng" : "Trợ lý AI"}
+                                </span>
+                                {msg.is_cache_hit && (
+                                  <Badge variant="outline" className="text-[10px] h-4.5 font-medium gap-1 bg-amber-500/10 text-amber-600 border-amber-500/30">
+                                    <Zap className="h-3 w-3 text-amber-500" /> Cache HIT • {msg.cached_type || "L1"}
+                                  </Badge>
+                                )}
+                                {msg.no_answer && (
+                                  <Badge variant="destructive" className="text-[10px] h-4.5 gap-1">
+                                    <ShieldAlert className="h-3 w-3" /> Chưa đủ căn cứ
+                                  </Badge>
+                                )}
+                                {msg.created_at && (
+                                  <span className="text-[11px] text-muted-foreground font-mono">
+                                    {new Date(msg.created_at).toLocaleTimeString("vi-VN")}
+                                  </span>
+                                )}
+                              </MessageHeader>
 
-                        {msg.is_cache_hit && (
-                          <Badge variant="outline" className="text-[10px] h-4.5 font-medium gap-1 bg-amber-500/10 text-amber-600 border-amber-500/30">
-                            <Zap className="h-3 w-3 text-amber-500" /> Cache HIT ({msg.cached_type || "L1"})
-                          </Badge>
-                        )}
-                        {msg.no_answer && (
-                          <Badge variant="destructive" className="text-[10px] h-4.5 gap-1">
-                            <ShieldAlert className="h-3 w-3" /> Chưa đủ căn cứ
-                          </Badge>
-                        )}
-                      </div>
+                              <Bubble
+                                variant={isUser ? "muted" : "outline"}
+                                align={isUser ? "end" : "start"}
+                              >
+                                <BubbleContent className={isUser ? "max-w-md" : "max-w-2xl"}>
+                                  {isUser ? (
+                                    <div className="whitespace-pre-wrap font-medium text-sm leading-relaxed">{msg.content}</div>
+                                  ) : (
+                                    <div className="prose prose-sm dark:prose-invert max-w-none space-y-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h1]:text-base [&_h2]:text-base [&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_p]:my-1.5 [&_li]:my-0.5 [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:font-mono [&_code]:text-xs [&_pre]:bg-muted/80 [&_pre]:p-3 [&_pre]:rounded-lg [&_table]:border-collapse [&_table]:w-full [&_th]:border [&_th]:border-border [&_th]:p-2 [&_td]:border [&_td]:border-border [&_td]:p-2">
+                                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {msg.content}
+                                      </ReactMarkdown>
+                                    </div>
+                                  )}
 
-                      <div className="flex items-center gap-2">
-                        {!isUser && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2.5 text-[11px] font-medium gap-1 text-primary border-primary/30 hover:bg-primary/10 transition-colors"
-                            onClick={() => handleOpenFaqModal(prevUserMsg?.content || "", msg.content, msg.citations, selectedTenantId)}
-                          >
-                            <Sparkles className="h-3.5 w-3.5 text-primary" /> Tạo FAQ từ AI
-                          </Button>
-                        )}
+                                  {/* Citations */}
+                                  {!isUser && msg.citations && msg.citations.length > 0 && (
+                                    <div className="mt-3 pt-2.5 border-t border-border/50">
+                                      <div className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
+                                        <BookOpen className="h-3.5 w-3.5 text-muted-foreground" /> Dẫn chứng:
+                                      </div>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {msg.citations.map((c, cIdx) => (
+                                          <Badge key={cIdx} variant="secondary" className="text-[11px] font-normal gap-1">
+                                            <FileText className="h-3 w-3" /> {c.title || "Tài liệu"} {c.page_range ? `(Trang ${c.page_range})` : ""}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </BubbleContent>
+                              </Bubble>
 
-                        {msg.created_at && (
-                          <span className="text-[11px] text-muted-foreground font-mono">
-                            {new Date(msg.created_at).toLocaleTimeString("vi-VN")}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Content */}
-                    <div className="text-sm leading-relaxed text-foreground">
-                      {isUser ? (
-                        <div className="whitespace-pre-wrap font-medium">{msg.content}</div>
-                      ) : (
-                        <div className="prose prose-sm dark:prose-invert max-w-none space-y-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h1]:text-base [&_h2]:text-base [&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_p]:my-1.5 [&_li]:my-0.5 [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:font-mono [&_code]:text-xs [&_pre]:bg-muted/80 [&_pre]:p-3 [&_pre]:rounded-lg [&_table]:border-collapse [&_table]:w-full [&_th]:border [&_th]:border-border [&_th]:p-2 [&_td]:border [&_td]:border-border [&_td]:p-2">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {msg.content}
-                          </ReactMarkdown>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Citations */}
-                    {!isUser && msg.citations && msg.citations.length > 0 && (
-                      <div className="mt-3 pt-2 border-t border-border/50">
-                        <div className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
-                          <BookOpen className="h-3.5 w-3.5 text-muted-foreground" /> Dẫn chứng ({msg.citations.length}):
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {msg.citations.map((c, cIdx) => (
-                            <Badge key={cIdx} variant="secondary" className="text-[11px] font-normal gap-1">
-                              <FileText className="h-3 w-3" /> {c.title || "Tài liệu"} {c.page_range ? `(Trang ${c.page_range})` : ""}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Stats */}
-                    {!isUser && (
-                      <div className="mt-2.5 text-[11px] text-muted-foreground flex flex-wrap items-center gap-4 pt-2 border-t border-border/40 font-mono">
-                        {msg.model_name && (
-                          <span className="flex items-center gap-1">
-                            <Cpu className="h-3 w-3 text-primary" /> Mô hình: {msg.model_name}
-                          </span>
-                        )}
-                        {msg.latency_ms !== undefined && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" /> Độ trễ: {msg.latency_ms.toFixed(0)}ms
-                          </span>
-                        )}
-                        {msg.prompt_tokens !== undefined && (
-                          <span>Tokens: {msg.prompt_tokens + (msg.completion_tokens || 0)}</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                              {/* Assistant Footer */}
+                              {!isUser && (
+                                <MessageFooter className="gap-3 pt-1 flex-wrap">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 px-2.5 text-[11px] font-medium gap-1 text-primary border-primary/30 hover:bg-primary/10 transition-colors"
+                                    onClick={() => handleOpenFaqModal(prevUserMsg?.content || "", msg.content, msg.citations, selectedTenantId)}
+                                  >
+                                    <Sparkles className="h-3.5 w-3.5 text-primary" /> Tạo FAQ từ AI
+                                  </Button>
+                                  {msg.model_name && (
+                                    <span className="flex items-center gap-1 text-[11px] font-mono text-muted-foreground">
+                                      <Cpu className="h-3 w-3 text-primary" /> {msg.model_name}
+                                    </span>
+                                  )}
+                                  {msg.latency_ms !== undefined && (
+                                    <span className="flex items-center gap-1 text-[11px] font-mono text-muted-foreground">
+                                      <Clock className="h-3 w-3" /> {msg.latency_ms.toFixed(0)}ms
+                                    </span>
+                                  )}
+                                  {msg.prompt_tokens !== undefined && (
+                                    <span className="text-[11px] font-mono text-muted-foreground">
+                                      Tokens: {msg.prompt_tokens + (msg.completion_tokens || 0)}
+                                    </span>
+                                  )}
+                                </MessageFooter>
+                              )}
+                            </MessageContent>
+                          </Message>
+                        </MessageScrollerItem>
+                      );
+                    })}
+                  </MessageScrollerContent>
+                </MessageScrollerViewport>
+                <MessageScrollerButton />
+              </MessageScroller>
+            </MessageScrollerProvider>
           )}
         </DialogContent>
       </Dialog>

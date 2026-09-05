@@ -1,9 +1,18 @@
 "use client";
-
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Columns, FileUp, RefreshCw, RotateCcw, ShieldCheck, Trash2, WandSparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Copy, FileUp, Globe, MoreHorizontal, RefreshCw, RotateCcw, ShieldCheck, Trash2, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,16 +24,33 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  DataTable,
+  DataTableSortHeader,
+  createColumnHelper,
+  type DataTableFeatures,
+} from "@/components/ui/data-table";
 import { documentsApi } from "@/lib/api-client";
-import { formatDateTimeVN, formatNumber } from "@/lib/format";
+import { formatBytes, formatDateVN, formatDateTimeVN, formatNumber } from "@/lib/format";
 import { DocumentListResponseSchema } from "@/lib/schemas";
 import type { DocumentSummary, TenantBrief, TenantItem } from "@/types/api";
-
-const TABLE_COLUMNS = ["Tên file", "Phân quyền", "Trạng thái", "Giai đoạn", "Tiến độ", "Kích thước", "Cập nhật"];
 
 interface DocumentCatalogProps {
   readOnly?: boolean;
@@ -43,14 +69,14 @@ export function DocumentCatalog({
   const [loading, setLoading] = useState(initialDocuments.length === 0);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(
-    TABLE_COLUMNS.reduce((acc, col) => ({ ...acc, [col]: true }), {})
-  );
 
   // Access Permission Modal state
   const [accessDoc, setAccessDoc] = useState<DocumentSummary | null>(null);
   const [selectedTenantIds, setSelectedTenantIds] = useState<string[]>([]);
   const [savingAccess, setSavingAccess] = useState(false);
+
+  // Delete confirmation state
+  const [deletingDoc, setDeletingDoc] = useState<DocumentSummary | null>(null);
 
   const canUpload = !readOnly;
   const effectiveTenantId = selectedTenantId || undefined;
@@ -222,8 +248,199 @@ export function DocumentCatalog({
     );
   };
 
+  const columns = useMemo(() => {
+    const columnHelper = createColumnHelper<DataTableFeatures, DocumentSummary>();
+
+    return columnHelper.columns([
+      columnHelper.accessor("file_name", {
+        meta: { title: "Tên file" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Tên file" />,
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium text-foreground text-xs">{row.original.file_name}</div>
+            <div className="text-[11px] text-muted-foreground font-mono">
+              v{row.original.version} • {row.original.file_type}
+            </div>
+          </div>
+        ),
+      }),
+      columnHelper.accessor("allowed_tenants", {
+        meta: { title: "Phân quyền" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Phân quyền" />,
+        cell: ({ row }) => {
+          const tenants = row.original.allowed_tenants;
+          if (!tenants || tenants.length === 0) {
+            return (
+              <Tooltip>
+                <TooltipTrigger>
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Globe className="h-3.5 w-3.5 text-muted-foreground/70" /> Tất cả
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Tất cả các tenant đều có quyền truy cập</TooltipContent>
+              </Tooltip>
+            );
+          }
+          if (tenants.length === 1) {
+            return (
+              <Badge variant="secondary" className="text-[11px]">
+                {tenants[0].name}
+              </Badge>
+            );
+          }
+          return (
+            <Tooltip>
+              <TooltipTrigger>
+                <div className="flex items-center gap-1 cursor-default">
+                  <Badge variant="secondary" className="text-[11px]">
+                    {tenants[0].name}
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]">
+                    +{tenants.length - 1}
+                  </Badge>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {tenants.map((t) => t.name).join(", ")}
+              </TooltipContent>
+            </Tooltip>
+          );
+        },
+      }),
+      columnHelper.accessor("status", {
+        meta: { title: "Trạng thái" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Trạng thái" />,
+        cell: ({ row }) => {
+          const doc = row.original;
+          return doc.status === "ready" ? (
+            <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 gap-1.5 font-medium text-xs">
+              <span className="pulse-dot-active" /> Sẵn sàng
+            </Badge>
+          ) : doc.status === "failed" ? (
+            <Badge variant="destructive" className="text-xs">
+              Thất bại
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 gap-1.5 font-medium text-xs">
+              <span className="pulse-dot-amber" /> Đang nạp
+            </Badge>
+          );
+        },
+      }),
+      columnHelper.accessor("stage", {
+        meta: { title: "Giai đoạn" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Giai đoạn" />,
+        cell: ({ row }) => <span className="font-mono text-xs capitalize text-muted-foreground">{row.original.stage || "—"}</span>,
+      }),
+      columnHelper.accessor("progress_percent", {
+        meta: { title: "Tiến độ" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Tiến độ" />,
+        cell: ({ row }) => {
+          const doc = row.original;
+          return (
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs font-medium">{doc.progress_percent}%</span>
+              {doc.status !== "ready" && doc.status !== "failed" && (
+                <Progress value={doc.progress_percent} className="w-16 h-1.5" />
+              )}
+            </div>
+          );
+        },
+      }),
+      columnHelper.accessor("file_size", {
+        meta: { title: "Kích thước" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Kích thước" />,
+        cell: ({ row }) => (
+          <Tooltip>
+            <TooltipTrigger>
+              <span className="font-mono text-xs cursor-default">{formatBytes(row.original.file_size)}</span>
+            </TooltipTrigger>
+            <TooltipContent>{formatNumber(row.original.file_size)} Bytes</TooltipContent>
+          </Tooltip>
+        ),
+      }),
+      columnHelper.accessor("updated_at", {
+        meta: { title: "Cập nhật" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Cập nhật" />,
+        cell: ({ row }) => (
+          <Tooltip>
+            <TooltipTrigger>
+              <span className="text-xs text-muted-foreground font-mono cursor-default">{formatDateVN(row.original.updated_at)}</span>
+            </TooltipTrigger>
+            <TooltipContent>{formatDateTimeVN(row.original.updated_at)}</TooltipContent>
+          </Tooltip>
+        ),
+      }),
+      columnHelper.display({
+        id: "actions",
+        enableHiding: false,
+        cell: ({ row }) => {
+          if (readOnly) return null;
+          const document = row.original;
+          return (
+            <div className="flex justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="ghost" className="h-8 w-8 p-0">
+                      <span className="sr-only">Mở menu</span>
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end">
+                  <DropdownMenuGroup>
+                    {tenantOptions.length > 0 && (
+                      <DropdownMenuItem onClick={() => openAccessModal(document)}>
+                        <ShieldCheck className="mr-2 h-4 w-4" /> Phân quyền công ty
+                      </DropdownMenuItem>
+                    )}
+                    {isRetryAvailable(document) && (
+                      <DropdownMenuItem onClick={() => handleRetry(document.document_id)}>
+                        <RotateCcw className="mr-2 h-4 w-4" /> Thử lại nạp liệu
+                      </DropdownMenuItem>
+                    )}
+                    {isRechunkAvailable(document) && (
+                      <DropdownMenuItem onClick={() => handleRechunk(document.document_id)}>
+                        <WandSparkles className="mr-2 h-4 w-4" /> Chia lại node (Rechunk)
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem
+                      onClick={() => {
+                        void navigator.clipboard.writeText(document.document_id);
+                        toast.success("Đã sao chép ID tài liệu");
+                      }}
+                    >
+                      <Copy className="mr-2 h-4 w-4" /> Sao chép ID tài liệu
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setDeletingDoc(document)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" /> Xóa tài liệu
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          );
+        },
+      }),
+    ]);
+  }, [
+    handleRechunk,
+    handleRetry,
+    isRechunkAvailable,
+    isRetryAvailable,
+    openAccessModal,
+    readOnly,
+    tenantOptions.length,
+  ]);
+
   return (
-    <div className="flex flex-col gap-4">
+    <TooltipProvider>
+      <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">
           {!readOnly ? (
@@ -243,23 +460,6 @@ export function DocumentCatalog({
             </>
           ) : null}
 
-          <DropdownMenu>
-            <DropdownMenuTrigger className={buttonVariants({ variant: "outline", className: "h-9" })}>
-              <Columns className="mr-2 h-4 w-4" /> Cột hiển thị
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {TABLE_COLUMNS.map((col) => (
-                <DropdownMenuCheckboxItem
-                  key={col}
-                  checked={visibleColumns[col]}
-                  onCheckedChange={(val) => setVisibleColumns((prev) => ({ ...prev, [col]: val }))}
-                >
-                  {col}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
           <Button className="rounded-xl" variant="outline" onClick={loadDocuments} disabled={loading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Làm mới
@@ -273,152 +473,30 @@ export function DocumentCatalog({
         </div>
       ) : null}
 
-      {loading ? (
-        <div className="text-sm text-muted-foreground">Đang tải tài liệu...</div>
-      ) : documents.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">Chưa có tài liệu nào.</div>
+      {loading && documents.length === 0 ? (
+        <div className="space-y-3 py-4">
+          <Skeleton className="h-10 w-full rounded-xl" />
+          <Skeleton className="h-16 w-full rounded-xl" />
+          <Skeleton className="h-16 w-full rounded-xl" />
+          <Skeleton className="h-16 w-full rounded-xl" />
+        </div>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {visibleColumns["Tên file"] && <TableHead className="pr-4 text-xs text-muted-foreground">Tên file</TableHead>}
-              {visibleColumns["Phân quyền"] && <TableHead className="pr-4 text-xs text-muted-foreground">Phân quyền công ty</TableHead>}
-              {visibleColumns["Trạng thái"] && <TableHead className="pr-4 text-xs text-muted-foreground">Trạng thái</TableHead>}
-              {visibleColumns["Giai đoạn"] && <TableHead className="pr-4 text-xs text-muted-foreground">Giai đoạn</TableHead>}
-              {visibleColumns["Tiến độ"] && <TableHead className="pr-4 text-right text-xs text-muted-foreground">Tiến độ</TableHead>}
-              {visibleColumns["Kích thước"] && <TableHead className="pr-4 text-right text-xs text-muted-foreground">Kích thước</TableHead>}
-              {visibleColumns["Cập nhật"] && <TableHead className="pr-4 text-xs text-muted-foreground">Cập nhật</TableHead>}
-              {!readOnly ? <TableHead className="text-right text-xs text-muted-foreground">Thao tác</TableHead> : null}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {documents.map((document) => (
-              <TableRow key={document.document_id}>
-                {visibleColumns["Tên file"] && (
-                  <TableCell className="pr-4">
-                    <div className="font-medium">{document.file_name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      v{document.version} • {document.file_type}
-                    </div>
-                  </TableCell>
-                )}
-                {visibleColumns["Phân quyền"] && (
-                  <TableCell className="pr-4 text-sm">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {document.allowed_tenants && document.allowed_tenants.length > 0 ? (
-                        document.allowed_tenants.map((t) => (
-                          <Badge key={t.id} variant="secondary" className="text-xs">
-                            {t.name}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-xs italic text-muted-foreground">Chưa phân quyền</span>
-                      )}
-                      {!readOnly && tenantOptions.length > 0 ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-6 w-6 rounded-lg"
-                                onClick={() => openAccessModal(document)}
-                              >
-                                <ShieldCheck className="h-3.5 w-3.5" />
-                              </Button>
-                            }
-                          />
-                          <TooltipContent>Phân quyền công ty</TooltipContent>
-                        </Tooltip>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                )}
-                {visibleColumns["Trạng thái"] && (
-                  <TableCell className="pr-4 text-sm">
-                    {document.status === "ready" ? (
-                      <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 gap-1.5 font-medium text-xs">
-                        <span className="pulse-dot-active" /> Sẵn sàng
-                      </Badge>
-                    ) : document.status === "failed" ? (
-                      <Badge variant="destructive" className="text-xs">
-                        Thất bại
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 gap-1.5 font-medium text-xs">
-                        <span className="pulse-dot-amber" /> Đang nạp
-                      </Badge>
-                    )}
-                  </TableCell>
-                )}
-                {visibleColumns["Giai đoạn"] && (
-                  <TableCell className="pr-4 text-xs font-mono capitalize text-muted-foreground">
-                    {document.stage || "—"}
-                  </TableCell>
-                )}
-                {visibleColumns["Tiến độ"] && (
-                  <TableCell className="pr-4 text-right text-sm">
-                    <div className="flex items-center justify-end gap-2">
-                      <span className="font-mono text-xs font-medium">{document.progress_percent}%</span>
-                      {document.status !== "ready" && document.status !== "failed" && (
-                        <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-primary transition-all duration-300 rounded-full"
-                            style={{ width: `${document.progress_percent}%` }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                )}
-                {visibleColumns["Kích thước"] && <TableCell className="pr-4 text-right text-xs font-mono">{formatNumber(document.file_size)} B</TableCell>}
-                {visibleColumns["Cập nhật"] && <TableCell className="pr-4 text-xs text-muted-foreground">{formatDateTimeVN(document.updated_at)}</TableCell>}
-                {!readOnly ? (
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      {isRetryAvailable(document) ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button size="icon" variant="outline" className="rounded-xl" onClick={() => handleRetry(document.document_id)}>
-                                <RotateCcw className="h-4 w-4" />
-                              </Button>
-                            }
-                          />
-                          <TooltipContent>Thử lại</TooltipContent>
-                        </Tooltip>
-                      ) : null}
-
-                      {isRechunkAvailable(document) ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button size="icon" variant="outline" className="rounded-xl" onClick={() => handleRechunk(document.document_id)}>
-                                <WandSparkles className="h-4 w-4" />
-                              </Button>
-                            }
-                          />
-                          <TooltipContent>Chia lại node</TooltipContent>
-                        </Tooltip>
-                      ) : null}
-
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button size="icon" variant="destructive" className="rounded-xl" onClick={() => handleDelete(document.document_id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          }
-                        />
-                        <TooltipContent>Xóa tài liệu</TooltipContent>
-                      </Tooltip>
-                    </div>
-                  </TableCell>
-                ) : null}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <DataTable
+          columns={columns}
+          data={documents}
+          searchKey="file_name"
+          searchPlaceholder="Lọc theo tên file..."
+          enablePagination
+          enableColumnVisibility
+          emptyMessage={
+            <div className="py-6 text-center">
+              <p className="text-sm font-medium">Chưa có tài liệu nào</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Tải lên tài liệu PDF, DOCX hoặc TXT để bắt đầu phân tích và tạo cơ sở tri thức RAG cho Chatbot.
+              </p>
+            </div>
+          }
+        />
       )}
 
       {/* Tenant Access Dialog */}
@@ -466,6 +544,34 @@ export function DocumentCatalog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+
+      {/* Delete Confirmation Alert Dialog */}
+      <AlertDialog open={!!deletingDoc} onOpenChange={(open) => !open && setDeletingDoc(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận xóa tài liệu</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa tài liệu <span className="font-semibold text-foreground">{deletingDoc?.file_name}</span>? 
+              Hành động này sẽ thực hiện quy trình xóa nghiêm ngặt (Hard Delete): xóa vector embeddings, dọn dẹp các phân đoạn tri thức và tệp đính kèm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: "destructive" })}
+              onClick={async () => {
+                if (deletingDoc) {
+                  await handleDelete(deletingDoc.document_id);
+                  setDeletingDoc(null);
+                }
+              }}
+            >
+              Xóa tài liệu
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      </div>
+    </TooltipProvider>
   );
 }

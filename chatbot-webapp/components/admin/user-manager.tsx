@@ -1,18 +1,58 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Columns, Plus, Trash2, RefreshCw } from "lucide-react";
+import { Plus, Trash2, RefreshCw, MoreHorizontal, Copy, Globe } from "lucide-react";
 import { toast } from "sonner";
 
 import { TenantSelect } from "@/components/tenants/tenant-select";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DataTable,
+  DataTableSortHeader,
+  createColumnHelper,
+  type DataTableFeatures,
+} from "@/components/ui/data-table";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { authApi, tenantsApi } from "@/lib/api-client";
 import { CreateUserRequestSchema } from "@/lib/schemas";
 import type { CreateUserRequest, RoleItem, TenantItem, UserItem } from "@/types/api";
@@ -23,8 +63,6 @@ const EMPTY_FORM: CreateUserRequest = {
   role: "tenant_admin",
   tenant_id: null,
 };
-
-const TABLE_COLUMNS = ["Username", "Vai trò", "Tenant", "Thao tác"];
 
 interface UserManagerProps {
   initialUsers?: UserItem[];
@@ -44,9 +82,7 @@ export function UserManager({
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(initialUsers.length === 0);
   const [createOpen, setCreateOpen] = useState(false);
-  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(
-    TABLE_COLUMNS.reduce((acc, col) => ({ ...acc, [col]: true }), {})
-  );
+  const [deletingUser, setDeletingUser] = useState<string | null>(null);
 
   const tenantNameMap = useMemo(() => new Map(tenants.map((t) => [t.id, t.name])), [tenants]);
 
@@ -114,6 +150,7 @@ export function UserManager({
     try {
       await authApi.deleteUser(username);
       setUsers((current) => current.filter((u) => u.username !== username));
+      setDeletingUser(null);
       toast.success("Đã xóa người dùng");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Không thể xóa người dùng";
@@ -121,92 +158,135 @@ export function UserManager({
     }
   }, []);
 
+  const columns = useMemo(() => {
+    const columnHelper = createColumnHelper<DataTableFeatures, UserItem>();
+
+    return columnHelper.columns([
+      columnHelper.accessor("username", {
+        meta: { title: "Tên đăng nhập" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Tên đăng nhập" />,
+        cell: ({ row }) => <span className="font-medium text-foreground">{row.original.username}</span>,
+      }),
+      columnHelper.accessor("role", {
+        meta: { title: "Vai trò" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Vai trò" />,
+        cell: ({ row }) => {
+          const role = row.original.role;
+          return (
+            <Tooltip>
+              <TooltipTrigger>
+                <Badge variant={role === "platform_admin" ? "default" : "secondary"} className="cursor-default text-xs">
+                  {role === "platform_admin" ? "Platform" : "Tenant"}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                {role === "platform_admin" ? "Platform Administrator (Toàn quyền hệ thống)" : "Tenant Administrator (Quản trị tenant)"}
+              </TooltipContent>
+            </Tooltip>
+          );
+        },
+      }),
+      columnHelper.accessor("tenant_id", {
+        meta: { title: "Tenant trực thuộc" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Tenant trực thuộc" />,
+        cell: ({ row }) => {
+          const tenantId = row.original.tenant_id;
+          if (!tenantId) {
+            return (
+              <Tooltip>
+                <TooltipTrigger>
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground cursor-default">
+                    <Globe className="h-3.5 w-3.5 text-muted-foreground/70" /> Toàn hệ thống
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Tài khoản quản trị cấp cao, truy cập toàn bộ hệ thống</TooltipContent>
+              </Tooltip>
+            );
+          }
+          return (
+            <Badge variant="outline" className="text-xs font-normal">
+              {tenantNameMap.get(tenantId) || "Không rõ"}
+            </Badge>
+          );
+        },
+      }),
+      columnHelper.display({
+        id: "actions",
+        enableHiding: false,
+        cell: ({ row }) => {
+          const username = row.original.username;
+          return (
+            <div className="flex justify-end">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="ghost" className="h-8 w-8 p-0">
+                      <span className="sr-only">Mở menu</span>
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Hành động</DropdownMenuLabel>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        void navigator.clipboard.writeText(username);
+                        toast.success("Đã sao chép tên đăng nhập");
+                      }}
+                    >
+                      <Copy className="mr-2 h-4 w-4" /> Sao chép username
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setDeletingUser(username)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" /> Xóa tài khoản
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          );
+        },
+      }),
+    ]);
+  }, [tenantNameMap]);
+
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6 md:p-8 animate-in fade-in-50 duration-300">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Quản lý người dùng</h1>
-          <p className="text-sm text-muted-foreground mt-1">Tạo platform admin hoặc tenant admin mới.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger className={buttonVariants({ variant: "outline", className: "h-9" })}>
-              <Columns className="mr-2 h-4 w-4" /> Cột hiển thị
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {TABLE_COLUMNS.map((col) => (
-                <DropdownMenuCheckboxItem
-                  key={col}
-                  checked={visibleColumns[col]}
-                  onCheckedChange={(val) => setVisibleColumns((prev) => ({ ...prev, [col]: val }))}
-                >
-                  {col}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button onClick={() => { setForm(EMPTY_FORM); setCreateOpen(true); }}>
-            <Plus className="mr-2 h-4 w-4" /> Tạo người dùng
-          </Button>
-          <Button variant="outline" onClick={() => load(false)} disabled={loading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Làm mới
-          </Button>
-        </div>
+    <TooltipProvider>
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6 md:p-8 animate-in fade-in-50 duration-300">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Quản lý người dùng</h1>
+        <p className="text-sm text-muted-foreground mt-1">Tạo platform admin hoặc tenant admin mới.</p>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {visibleColumns["Username"] && <TableHead className="text-xs text-muted-foreground">Username</TableHead>}
-            {visibleColumns["Vai trò"] && <TableHead className="text-xs text-muted-foreground">Vai trò</TableHead>}
-            {visibleColumns["Tenant"] && <TableHead className="text-xs text-muted-foreground">Tenant</TableHead>}
-            {visibleColumns["Thao tác"] && <TableHead className="text-right text-xs text-muted-foreground">Thao tác</TableHead>}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {users.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={4} className="text-center text-sm text-muted-foreground py-8">
-                {loading ? "Đang tải danh sách người dùng..." : "Chưa có người dùng nào."}
-              </TableCell>
-            </TableRow>
-          ) : (
-            users.map((user) => (
-              <TableRow key={user.id}>
-                {visibleColumns["Username"] && <TableCell className="font-medium">{user.username}</TableCell>}
-                {visibleColumns["Vai trò"] && <TableCell>{user.role}</TableCell>}
-                {visibleColumns["Tenant"] && (
-                  <TableCell className="text-sm text-muted-foreground">
-                    {user.tenant_id ? tenantNameMap.get(user.tenant_id) || "Không rõ" : "—"}
-                  </TableCell>
-                )}
-                {visibleColumns["Thao tác"] && (
-                  <TableCell className="text-right">
-                    <TooltipProvider delay={100}>
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button size="icon-sm" variant="destructive" onClick={() => handleDelete(user.username)}>
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          }
-                        />
-                        <TooltipContent>Xóa người dùng</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </TableCell>
-                )}
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+      <DataTable
+        columns={columns}
+        data={users}
+        searchKey="username"
+        searchPlaceholder="Lọc theo tên đăng nhập..."
+        enablePagination
+        enableColumnVisibility
+        emptyMessage={loading ? "Đang tải danh sách người dùng..." : "Chưa có người dùng nào."}
+        toolbarExtra={
+          <div className="flex items-center gap-2">
+            <Button onClick={() => { setForm(EMPTY_FORM); setCreateOpen(true); }}>
+              <Plus className="mr-2 h-4 w-4" /> Tạo người dùng
+            </Button>
+            <Button variant="outline" onClick={() => load(false)} disabled={loading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Làm mới
+            </Button>
+          </div>
+        }
+      />
 
-      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
-        <SheetContent className="w-[90vw] sm:max-w-xl overflow-y-auto" side="right">
-          <SheetHeader>
-            <SheetTitle>Tạo người dùng mới</SheetTitle>
-          </SheetHeader>
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="w-full sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Tạo người dùng mới</DialogTitle>
+          </DialogHeader>
           <FieldGroup className="grid gap-4 py-4">
             <Field>
               <FieldContent>
@@ -225,21 +305,32 @@ export function UserManager({
             <Field>
               <FieldContent>
                 <FieldLabel>Vai trò</FieldLabel>
-                <NativeSelect
+                <Select
                   value={form.role}
-                  onChange={(e) =>
+                  onValueChange={(val) =>
                     setForm((c) => ({
                       ...c,
-                      role: e.target.value || "tenant_admin",
-                      tenant_id: (e.target.value || "tenant_admin") === "tenant_admin" ? c.tenant_id : null,
+                      role: val || "tenant_admin",
+                      tenant_id: (val || "tenant_admin") === "tenant_admin" ? c.tenant_id : null,
                     }))
                   }
                 >
-                  {roles.map((role) => (
-                    <NativeSelectOption key={role.id} value={role.name}>{role.name}</NativeSelectOption>
-                  ))}
-                </NativeSelect>
-                <FieldDescription>Platform Admin có toàn quyền hệ thống; Tenant Admin chỉ quản lý dữ liệu thuộc Tenant được phân công.</FieldDescription>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Chọn vai trò..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roles.map((role) => (
+                      <SelectItem key={role.id} value={role.name}>
+                        {role.name === "platform_admin"
+                          ? "Platform Admin"
+                          : role.name === "tenant_admin"
+                          ? "Tenant Admin"
+                          : role.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FieldDescription>Platform Admin quản trị toàn hệ thống; Tenant Admin quản trị phạm vi tenant.</FieldDescription>
               </FieldContent>
             </Field>
             <Field>
@@ -251,7 +342,7 @@ export function UserManager({
                   onValueChange={(tenantId) => setForm((c) => ({ ...c, tenant_id: tenantId }))}
                   disabled={form.role !== "tenant_admin"}
                 />
-                <FieldDescription>Chọn Tenant mà tài khoản này trực thuộc quản lý.</FieldDescription>
+                <FieldDescription>Tenant mà tài khoản trực thuộc.</FieldDescription>
               </FieldContent>
             </Field>
             <div className="flex justify-end gap-2 pt-2">
@@ -262,8 +353,34 @@ export function UserManager({
               </Button>
             </div>
           </FieldGroup>
-        </SheetContent>
-      </Sheet>
-    </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Confirmation Alert Dialog */}
+      <AlertDialog open={!!deletingUser} onOpenChange={(open) => !open && setDeletingUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận xóa người dùng</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa tài khoản <span className="font-semibold text-foreground">&quot;{deletingUser}&quot;</span> khỏi hệ thống? Thao tác này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: "destructive" })}
+              onClick={async () => {
+                if (deletingUser) {
+                  await handleDelete(deletingUser);
+                }
+              }}
+            >
+              Xóa tài khoản
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      </div>
+    </TooltipProvider>
   );
 }

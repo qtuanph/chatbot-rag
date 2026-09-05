@@ -56,3 +56,29 @@ export function formatDateTimeVN(dateIso?: string | null): string {
     hour12: false,
   }).format(date);
 }
+
+export function formatDateVN(dateIso?: string | null): string {
+  if (!dateIso) return "—";
+  const date = new Date(dateIso);
+  if (Number.isNaN(date.getTime())) return dateIso;
+  return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+export function formatCompactNumber(value: number): string {
+  if (!value || value <= 0) return "0";
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return formatNumber(value);
+}

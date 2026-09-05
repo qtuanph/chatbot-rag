@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import {
   Activity,
+  ArrowDownLeft,
+  ArrowUpRight,
   Brain,
   Calculator,
   Cpu,
   DollarSign,
+  ListFilter,
   MessageSquare,
   Network,
   RefreshCw,
@@ -28,9 +31,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  DataTable,
+  DataTableSortHeader,
+  createColumnHelper,
+  type DataTableFeatures,
+} from "@/components/ui/data-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { TenantUsageTable } from "@/components/analytics/tenant-usage-table";
@@ -159,7 +166,9 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false, initia
       const updated = { ...prev, ...newP };
       try {
         localStorage.setItem("chatbot_custom_model_pricing_v2", JSON.stringify(updated));
-      } catch (e) {}
+      } catch {
+        // Ignore localStorage errors
+      }
       return updated;
     });
   };
@@ -213,6 +222,63 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false, initia
   const embCostVnd = stats ? Math.round((stats.by_model_type.embedding.tokens_in * pricing.embInput) / 1000000) : 0;
   const rerankCostVnd = stats ? Math.round((stats.by_model_type.reranker.tokens_in * pricing.rerankInput) / 1000000) : 0;
   const totalCalculatedCostVnd = llmCostVnd + embCostVnd + rerankCostVnd;
+
+  const recentRequestColumns = useMemo(() => {
+    const columnHelper = createColumnHelper<DataTableFeatures, RecentRequest>();
+
+    return columnHelper.columns([
+      columnHelper.accessor("model_name", {
+        meta: { title: "Model" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Model" />,
+        cell: ({ row }) => {
+          const mType = row.original.model_type;
+          return (
+            <div className="font-mono font-medium text-xs flex items-center gap-2">
+              <span
+                className={cn(
+                  "w-2 h-2 rounded-full shrink-0",
+                  mType === "llm" ? "bg-blue-500" : mType === "embedding" ? "bg-emerald-500" : "bg-purple-500"
+                )}
+              />
+              <span className="truncate max-w-[180px]">{row.original.model_name || "System Request"}</span>
+            </div>
+          );
+        },
+      }),
+      columnHelper.accessor("tokens_in", {
+        meta: { title: "Token Vào" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Token Vào" />,
+        cell: ({ row }) => <span className="font-mono text-xs">{formatNumber(row.original.tokens_in)}</span>,
+      }),
+      columnHelper.accessor("tokens_out", {
+        meta: { title: "Token Ra" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Token Ra" />,
+        cell: ({ row }) => <span className="font-mono text-xs">{formatNumber(row.original.tokens_out)}</span>,
+      }),
+      columnHelper.accessor("latency_ms", {
+        meta: { title: "Độ Trễ" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Độ Trễ" />,
+        cell: ({ row }) => <span className="font-mono text-xs">{formatLatency(row.original.latency_ms)}</span>,
+      }),
+      columnHelper.display({
+        id: "cost_vnd",
+        meta: { title: "Chi Phí Tự Tính" },
+        header: "Chi Phí Tự Tính",
+        cell: ({ row }) => {
+          const r = row.original;
+          const rate = r.model_type === "embedding" ? pricing.embInput : r.model_type === "reranker" ? pricing.rerankInput : pricing.llmInput;
+          const outRate = r.model_type === "llm" ? pricing.llmOutput : 0;
+          const reqCostVnd = Math.round((r.tokens_in * rate) / 1000000 + (r.tokens_out * outRate) / 1000000);
+          return <span className="font-mono text-xs font-semibold text-primary">{formatVnd(reqCostVnd)}</span>;
+        },
+      }),
+      columnHelper.accessor("created_at", {
+        meta: { title: "Thời Gian" },
+        header: ({ column }) => <DataTableSortHeader column={column} title="Thời Gian" />,
+        cell: ({ row }) => <span className="text-xs text-muted-foreground">{formatDateTimeVN(row.original.created_at)}</span>,
+      }),
+    ]);
+  }, [pricing]);
 
   if (loading && !stats) {
     return (
@@ -389,7 +455,10 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false, initia
                 <CardContent>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="space-y-1.5 p-3 rounded-lg border bg-muted/20">
-                      <label className="text-xs font-semibold text-foreground">💬 LLM Token Vào (Input)</label>
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <ArrowDownLeft className="size-3.5 text-blue-500" />
+                        LLM Token Vào (Input)
+                      </label>
                       <div className="relative">
                         <Input
                           type="number"
@@ -406,7 +475,10 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false, initia
                     </div>
 
                     <div className="space-y-1.5 p-3 rounded-lg border bg-muted/20">
-                      <label className="text-xs font-semibold text-foreground">💬 LLM Token Ra (Output)</label>
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <ArrowUpRight className="size-3.5 text-emerald-500" />
+                        LLM Token Ra (Output)
+                      </label>
                       <div className="relative">
                         <Input
                           type="number"
@@ -423,7 +495,10 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false, initia
                     </div>
 
                     <div className="space-y-1.5 p-3 rounded-lg border bg-muted/20">
-                      <label className="text-xs font-semibold text-foreground">🧠 Embedding (Véc-tơ)</label>
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Network className="size-3.5 text-purple-500" />
+                        Embedding (Véc-tơ)
+                      </label>
                       <div className="relative">
                         <Input
                           type="number"
@@ -440,7 +515,10 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false, initia
                     </div>
 
                     <div className="space-y-1.5 p-3 rounded-lg border bg-muted/20">
-                      <label className="text-xs font-semibold text-foreground">⚡ Reranker (Sắp xếp)</label>
+                      <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <ListFilter className="size-3.5 text-amber-500" />
+                        Reranker (Sắp xếp)
+                      </label>
                       <div className="relative">
                         <Input
                           type="number"
@@ -545,50 +623,19 @@ export function AnalyticsDashboard({ title, subtitle, allowClear = false, initia
               {/* Table 20 Request gần đây */}
               <Card className="shadow-sm border">
                 <CardHeader>
-                  <CardTitle className="text-base font-semibold">Nhật ký Request gần đây (20 lượt cuối)</CardTitle>
+                  <CardTitle className="text-base font-semibold">Nhật ký Request gần đây</CardTitle>
                   <CardDescription>Chi tiết số lượng token, độ trễ và chi phí tự tính cho mỗi lượt truy vấn.</CardDescription>
                 </CardHeader>
-                <CardContent className="p-0">
-                  <ScrollArea className="h-[360px] w-full">
-                    <Table>
-                      <TableHeader className="sticky top-0 bg-background z-10 border-b">
-                        <TableRow>
-                          <TableHead className="pl-4">Model</TableHead>
-                          <TableHead className="text-right">Token Vào</TableHead>
-                          <TableHead className="text-right">Token Ra</TableHead>
-                          <TableHead className="text-right">Độ Trễ</TableHead>
-                          <TableHead className="text-right">Chi Phí Tự Tính</TableHead>
-                          <TableHead className="text-right pr-4">Thời Gian</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {stats.recent_requests.map((row: RecentRequest, index: number) => {
-                          const rate = row.model_type === "embedding" ? pricing.embInput : row.model_type === "reranker" ? pricing.rerankInput : pricing.llmInput;
-                          const outRate = row.model_type === "llm" ? pricing.llmOutput : 0;
-                          const reqCostVnd = Math.round((row.tokens_in * rate) / 1000000 + (row.tokens_out * outRate) / 1000000);
-
-                          return (
-                            <TableRow key={index}>
-                              <TableCell className="pl-4 font-mono font-medium text-xs flex items-center gap-2">
-                                <span className={cn(
-                                  "w-2 h-2 rounded-full",
-                                  row.model_type === "llm" ? "bg-blue-500" : row.model_type === "embedding" ? "bg-emerald-500" : "bg-purple-500"
-                                )} />
-                                {row.model_name || "System Request"}
-                              </TableCell>
-                              <TableCell className="text-right font-mono text-xs">{formatNumber(row.tokens_in)}</TableCell>
-                              <TableCell className="text-right font-mono text-xs">{formatNumber(row.tokens_out)}</TableCell>
-                              <TableCell className="text-right font-mono text-xs">{formatLatency(row.latency_ms)}</TableCell>
-                              <TableCell className="text-right font-mono text-xs font-semibold text-primary">
-                                {formatVnd(reqCostVnd)}
-                              </TableCell>
-                              <TableCell className="text-right text-xs text-muted-foreground pr-4">{formatDateTimeVN(row.created_at)}</TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </ScrollArea>
+                <CardContent className="p-4">
+                  <DataTable
+                    columns={recentRequestColumns}
+                    data={stats.recent_requests}
+                    searchKey="model_name"
+                    searchPlaceholder="Lọc theo Model..."
+                    enablePagination
+                    enableColumnVisibility
+                    emptyMessage="Chưa có nhật ký request nào gần đây."
+                  />
                 </CardContent>
               </Card>
 

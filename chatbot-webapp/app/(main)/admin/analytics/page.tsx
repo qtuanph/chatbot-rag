@@ -1,19 +1,14 @@
 import { auth } from "@/lib/auth";
 import { analyticsApi } from "@/lib/api-client";
-import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard";
+import { AnalyticsOverview } from "@/components/analytics/analytics-overview";
 
 export default async function AdminAnalyticsPage() {
   const session = await auth();
   const initialStats = await analyticsApi.getStats(30, session?.accessToken).catch(() => null);
 
   return (
-    <div className="mx-auto max-w-7xl">
-      <AnalyticsDashboard
-        title="Báo cáo Thống kê Platform"
-        subtitle="Theo dõi tổng thể lưu lượng sử dụng, dung lượng Token, độ trễ và chi phí ước tính."
-        allowClear
-        initialStats={initialStats}
-      />
+    <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6 md:p-8 animate-in fade-in-50 duration-300">
+      <AnalyticsOverview initialStats={initialStats} />
     </div>
   );
 }

@@ -1,7 +1,5 @@
 import type { NextConfig } from "next";
-import path from "node:path";
 
-const isDevelopment = process.env.NODE_ENV !== "production";
 const workspaceRoot = process.cwd();
 
 const nextConfig: NextConfig = {

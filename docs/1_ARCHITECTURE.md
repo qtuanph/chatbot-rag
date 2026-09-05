@@ -195,9 +195,15 @@ Chi tiết luồng xử lý và các bước ingestion cụ thể, vui lòng xem
 
 ### Internal webapp
 
-- browser gọi business API qua `/api/bep/*`
-- Next.js route handler lấy token từ NextAuth
-- backend bearer token không lộ ra browser
+- **Bảo mật Gateway**: Browser gọi business API qua `/api/bep/*`. Next.js Route Handler lấy token từ NextAuth session, backend bearer token không bao giờ lộ ra browser.
+- **Framework**: Next.js v16.3.4 (React 19, Turbopack enabled) với Async Server Components (RSC) pre-fetching dữ liệu ở SSR.
+- **Design System & Components**:
+  - Base UI + Shadcn UI (`base-luma` preset) + Tailwind CSS v4.
+  - **ReUI Stepper**: Bộ compound primitives (`components/ui/stepper.tsx`) phục vụ wizard tạo tenant đa bước với validation từng bước.
+  - **ChatGPT-style 2-Column Dialogs**: Modal cài đặt hệ thống (`SettingsDialog`, phím tắt `Cmd+,` / `Ctrl+,`) và Modal cấu hình Tenant (`TenantDetailDialog`) chia cột danh mục bên trái và khung nội dung cuộn độc lập bên phải.
+  - **TanStack DataTables**: Bảng dữ liệu chuẩn hóa với giới hạn độ rộng cột (`max-w-[...] truncate`) và Tooltip tương phản cao cho dữ liệu dài.
+  - **Theme Engine**: `next-themes` hỗ trợ chuyển đổi Light / Dark / System mode đồng bộ toàn bộ app.
+  - **Iconography**: 100% Lucide React icons, không dùng emoji hay raw SVG trong component.
 
 ### Public API
 

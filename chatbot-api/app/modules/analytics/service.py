@@ -19,7 +19,9 @@ class AnalyticsService:
 
         Returns overall stats + per-model-type breakdown (llm, embedding, reranker).
         """
-        totals = await self.repo.get_totals(is_platform_admin=is_platform_admin, user_id=user_id, tenant_id=tenant_id)
+        totals = await self.repo.get_totals(
+            is_platform_admin=is_platform_admin, user_id=user_id, tenant_id=tenant_id, days=days
+        )
         daily_rows = await self.repo.get_daily_stats(
             is_platform_admin=is_platform_admin, user_id=user_id, tenant_id=tenant_id, days_limit=days
         )
@@ -65,7 +67,7 @@ class AnalyticsService:
             "total_tokens_out": total_tokens_out,
             "total_tokens": total_tokens_in + total_tokens_out,
             "avg_latency_ms": totals["avg_latency_ms"],
-            "model_used": "multiple (tracked in ai_model_usage)",
+            "model_used": RuntimeProviderManager.get_instance().get_llm_model() or "Standard",
             "daily": daily_stats,
             "by_model_type": model_type_stats,
             "daily_by_model_type": daily_by_type,

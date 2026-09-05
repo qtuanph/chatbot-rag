@@ -1,8 +1,16 @@
 "use client";
 
+import { useMemo } from "react";
 import type { TenantItem } from "@/types/api";
 import { cn } from "@/lib/utils";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 
 interface TenantSelectProps {
   tenants: TenantItem[];
@@ -16,32 +24,63 @@ interface TenantSelectProps {
   triggerClassName?: string;
 }
 
+interface TenantOption {
+  value: string;
+  label: string;
+}
+
 export function TenantSelect({
   tenants,
   value,
   onValueChange,
-  placeholder = "Chọn tenant",
-  allLabel = "Tất cả tenant",
+  placeholder = "Tìm kiếm hoặc chọn tenant...",
+  allLabel = "Tất cả công ty (Tenants)",
   includeAll = false,
   disabled = false,
   className,
   triggerClassName,
 }: TenantSelectProps) {
+  const items: TenantOption[] = useMemo(() => {
+    const list = tenants.map((t) => ({ value: t.id, label: t.name }));
+    if (includeAll) {
+      return [{ value: "ALL", label: allLabel }, ...list];
+    }
+    return list;
+  }, [tenants, includeAll, allLabel]);
+
+  const selectedItem = useMemo(() => {
+    if (!value) return null;
+    return items.find((i) => i.value === value) ?? null;
+  }, [items, value]);
+
   return (
-    <NativeSelect
-      value={value ?? ""}
-      onChange={(e) => onValueChange(e.target.value || null)}
+    <Combobox
+      items={items}
+      value={selectedItem}
+      onValueChange={(item: TenantOption | null) => {
+        if (!item || item.value === "ALL" || !item.value) {
+          onValueChange(null);
+        } else {
+          onValueChange(item.value);
+        }
+      }}
       disabled={disabled}
-      className={cn(className, triggerClassName)}
     >
-      {includeAll ? (
-        <NativeSelectOption value="">{allLabel}</NativeSelectOption>
-      ) : null}
-      {tenants.map((tenant) => (
-        <NativeSelectOption key={tenant.id} value={tenant.id}>
-          {tenant.name}
-        </NativeSelectOption>
-      ))}
-    </NativeSelect>
+      <ComboboxInput
+        placeholder={placeholder}
+        className={cn("h-9 rounded-xl", className, triggerClassName)}
+        showClear={!!value}
+      />
+      <ComboboxContent>
+        <ComboboxEmpty>Không tìm thấy công ty nào</ComboboxEmpty>
+        <ComboboxList>
+          {(item: TenantOption) => (
+            <ComboboxItem key={item.value} value={item}>
+              {item.label}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   );
 }

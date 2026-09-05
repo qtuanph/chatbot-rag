@@ -67,7 +67,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async session({ session, token }) {
       if (token.expired === "true") {
-        return null as any;
+        return null as unknown as typeof session;
       }
       session.role = token.role as string;
       session.userId = token.userId as string;

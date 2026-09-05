@@ -8,14 +8,16 @@ import { UserSettingsForm } from "@/components/auth/user-settings-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatRoleLabel } from "@/lib/format";
 import { settingsApi } from "@/lib/api-client";
 import type { BillingSettings } from "@/types/api";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { CreditCard, Loader2 } from "lucide-react";
 
 interface SettingsManagerProps {
   initialBilling?: BillingSettings | null;
@@ -59,8 +61,9 @@ export function SettingsManager({ initialBilling = null }: SettingsManagerProps)
       const updated = await settingsApi.updateBilling(billingData);
       setBillingData(updated);
       toast.success("Đã lưu cấu hình platform billing & quota");
-    } catch (err: any) {
-      toast.error(err.message || "Không thể lưu cấu hình");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Không thể lưu cấu hình";
+      toast.error(message);
     } finally {
       setBillingSaving(false);
     }
@@ -116,8 +119,17 @@ export function SettingsManager({ initialBilling = null }: SettingsManagerProps)
             </CardHeader>
             <CardContent>
               {billingLoading ? (
-                <div className="flex items-center justify-center p-6">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <div className="space-y-4 py-2">
+                  <Skeleton className="h-6 w-36 rounded-lg" />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Skeleton className="h-16 w-full rounded-xl" />
+                    <Skeleton className="h-16 w-full rounded-xl" />
+                  </div>
+                  <Skeleton className="h-6 w-48 rounded-lg mt-4" />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Skeleton className="h-16 w-full rounded-xl" />
+                    <Skeleton className="h-16 w-full rounded-xl" />
+                  </div>
                 </div>
               ) : billingData ? (
                 <div className="space-y-6">
@@ -214,7 +226,15 @@ export function SettingsManager({ initialBilling = null }: SettingsManagerProps)
                   </div>
                 </div>
               ) : (
-                <div className="text-sm text-muted-foreground">Không có dữ liệu.</div>
+                <Empty className="border border-dashed rounded-xl py-12">
+                  <EmptyMedia variant="icon">
+                    <CreditCard className="h-5 w-5 text-muted-foreground" />
+                  </EmptyMedia>
+                  <EmptyHeader>
+                    <EmptyTitle>Chưa có dữ liệu cấu hình</EmptyTitle>
+                    <EmptyDescription>Không tìm thấy dữ liệu ngân sách và quota từ máy chủ.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               )}
             </CardContent>
             {billingData && (

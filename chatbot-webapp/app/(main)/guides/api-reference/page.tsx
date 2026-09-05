@@ -2,41 +2,39 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { 
   CopyIcon, 
   CheckCircle2Icon, 
   KeyIcon, 
-  ServerIcon, 
-  DatabaseIcon, 
   InfoIcon, 
-  ZapIcon, 
-  ShieldAlertIcon, 
-  FileTextIcon, 
-  LayersIcon, 
   TerminalIcon, 
   CheckIcon, 
-  XIcon,
   GlobeIcon,
+  XIcon,
+  LayersIcon,
+  ShieldAlertIcon,
 } from "lucide-react";
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button
+    <Button
+      variant="outline"
+      size="icon"
       onClick={() => {
         navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className="p-1.5 text-muted-foreground hover:text-foreground rounded border border-border hover:bg-muted transition-colors"
+      className="h-7 w-7 rounded-lg"
       title="Sao chép"
     >
       {copied ? <CheckCircle2Icon className="w-3.5 h-3.5 text-emerald-500" /> : <CopyIcon className="w-3.5 h-3.5" />}
-    </button>
+    </Button>
   );
 }
 
@@ -102,7 +100,7 @@ public class ChatbotService
     public async Task<string> CallChatbotAsync(string userQuery)
     {
         string apiUrl = "${API_URL}";
-        string apiKey = "trg_YOUR_TENANT_API_KEY";
+        string apiKey = "YOUR_TENANT_API_KEY";
 
         var jsonPayload = $@"{{
             ""model"": ""chatbot-rag"",
@@ -194,7 +192,7 @@ public class ChatbotService
             </div>
             <div className="p-2.5 rounded-lg border border-border bg-card">
               <span className="text-muted-foreground block text-[10px] font-sans font-semibold">Authorization</span>
-              <span className="font-semibold text-primary">Bearer trg_YOUR_TENANT_API_KEY</span>
+              <span className="font-semibold text-primary">YOUR_TENANT_API_KEY</span>
             </div>
           </div>
         </div>

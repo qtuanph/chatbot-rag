@@ -1,12 +1,7 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { 
-  FileUpIcon, 
-  SearchIcon, 
-  BotIcon, 
-  DatabaseIcon, 
   InfoIcon,
   MousePointerClickIcon,
   CheckCircle2Icon,
@@ -14,7 +9,6 @@ import {
   AlertTriangleIcon,
   ShieldCheckIcon,
   Trash2Icon,
-  WorkflowIcon,
 } from "lucide-react";
 
 export default function DocumentsGuidePage() {
@@ -92,7 +86,7 @@ export default function DocumentsGuidePage() {
         </h2>
         <p className="text-xs text-muted-foreground leading-relaxed">
           Khi xóa một tài liệu khỏi Kho tri thức, hệ thống thực thi xóa triệt để theo thứ tự bắt buộc: 
-          <strong> 1. Vector Qdrant ➔ 2. Section Chunks trong DB ➔ 3. File nguồn trên Storage ➔ 4. Dòng dữ liệu DB</strong>.
+          <strong> 1. Vector Qdrant → 2. Section Chunks trong DB → 3. File nguồn trên Storage → 4. Dòng dữ liệu DB</strong>.
           Quy trình này bảo đảm tài liệu xóa sẽ biến mất hoàn toàn khỏi bộ nhớ AI và không để lại vector rác.
         </p>
       </section>

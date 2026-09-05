@@ -1,19 +1,14 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { 
   SettingsIcon, 
   ZapIcon, 
   LayersIcon, 
   ArrowRightIcon,
-  MousePointerClickIcon,
   ShieldAlertIcon,
   ServerCrashIcon,
   CpuIcon,
-  BotIcon,
-  ShieldCheckIcon,
 } from "lucide-react";
 
 export default function ProvidersGuidePage() {

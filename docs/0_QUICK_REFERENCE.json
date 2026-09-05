@@ -1,7 +1,7 @@
 {
   "document": {
     "id": "0_QUICK_REFERENCE",
-    "version": "2026-08-11",
+    "version": "2026-09-05",
     "purpose": "Cheat sheet ngắn gọn cho project hiện tại."
   },
   "read_order": [
@@ -24,7 +24,9 @@
     "delete_order": "registry -> vectors -> sections -> file -> DB row -> purge",
     "embedding_default": "Docker Model Runner ai/qwen3-embedding:0.6B-F16",
     "reranker_default": "NVIDIA NIM, có local fallback",
-    "llm_default": "9Router"
+    "llm_default": "9Router",
+    "analytics": "Sub-routes (/admin/analytics, /trends, /tenants, /logs) with ?days=N filtering; messages strictly count LLM completions",
+    "frontend": "Next.js 16 (React 19, Turbopack) + Shadcn UI + ReUI Stepper compound primitives + Next Themes"
   },
   "important_notes": [
     "User chat flow 100% stateless; Admin audit persistence handles turn-by-turn logging asynchronously via Celery",

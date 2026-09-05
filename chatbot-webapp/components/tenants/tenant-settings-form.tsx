@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { tenantsApi } from "@/lib/api-client";
 import { formatDateTimeVN } from "@/lib/format";
@@ -105,7 +106,14 @@ export function TenantSettingsForm(props: TenantSettingsFormProps) {
   }, [form, props.mode, tenantId]);
 
   const content = loading ? (
-    <div className="text-sm text-muted-foreground">Đang tải cấu hình...</div>
+    <div className="space-y-4 py-2">
+      <Skeleton className="h-5 w-44 rounded-lg" />
+      <Skeleton className="h-44 w-full rounded-xl" />
+      <div className="flex justify-between items-center pt-2">
+        <Skeleton className="h-4 w-36 rounded" />
+        <Skeleton className="h-9 w-28 rounded-xl" />
+      </div>
+    </div>
   ) : (
     <>
       <FieldGroup>

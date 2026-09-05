@@ -2,9 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +23,7 @@ import {
   ThumbsUpIcon,
   ThumbsDownIcon,
   DownloadIcon,
+  FolderCode,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -36,17 +35,19 @@ import { OpenAIStreamChunkSchema } from "@/lib/schemas";
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button
+    <Button
+      variant="outline"
+      size="icon"
       onClick={() => {
         navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className="absolute top-3 right-3 p-1.5 bg-muted text-muted-foreground hover:bg-accent rounded border transition-colors z-10"
+      className="absolute top-3 right-3 h-8 w-8 rounded-lg z-10"
       title="Sao chép"
     >
       {copied ? <CheckCircle2Icon className="w-4 h-4 text-emerald-500" /> : <CopyIcon className="w-4 h-4" />}
-    </button>
+    </Button>
   );
 }
 
@@ -54,7 +55,7 @@ function CodeBlock({ code, lang = "" }: { code: string; lang?: string }) {
   return (
     <div className="relative">
       <CopyButton text={code} />
-      <pre className="bg-zinc-950 dark:bg-zinc-900 text-zinc-100 p-5 pr-12 rounded-lg text-xs overflow-x-auto leading-relaxed whitespace-pre font-mono">
+      <pre data-language={lang} className="bg-zinc-950 dark:bg-zinc-900 text-zinc-100 p-5 pr-12 rounded-lg text-xs overflow-x-auto leading-relaxed whitespace-pre font-mono">
         {code}
       </pre>
     </div>
@@ -67,7 +68,7 @@ const API_URL = `${API_BASE}/chat/completions`;
 const PLACEHOLDER_KEY = "trg_YOUR_TENANT_API_KEY";
 
 
-function getStreamContentChunk(dataPayload: string): string {
+export function getStreamContentChunk(dataPayload: string): string {
   try {
     const parsedPayload = OpenAIStreamChunkSchema.safeParse(JSON.parse(dataPayload) as unknown);
     if (!parsedPayload.success) {
@@ -82,14 +83,14 @@ function getStreamContentChunk(dataPayload: string): string {
 
 /* ─── Code strings ────────────────────────────────────────────── */
 
-const webConfigCode = `<!-- Web.config trong ứng dụng ASP.NET ERP -->
+export const webConfigCode = `<!-- Web.config trong ứng dụng ASP.NET ERP -->
 <configuration>
   <appSettings>
     <add key="Chatbot_ApiKey" value="${PLACEHOLDER_KEY}" />
   </appSettings>
 </configuration>`;
 
-const curlCode = `curl -X POST "${API_URL}" \\
+export const curlCode = `curl -X POST "${API_URL}" \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer ${PLACEHOLDER_KEY}" \\
   -d '{
@@ -100,7 +101,7 @@ const curlCode = `curl -X POST "${API_URL}" \\
     "stream": false
   }'`;
 
-const pythonCode = `from openai import OpenAI
+export const pythonCode = `from openai import OpenAI
 
 client = OpenAI(
     base_url="${API_BASE}",
@@ -125,7 +126,7 @@ stream = client.chat.completions.create(
 for chunk in stream:
     print(chunk.choices[0].delta.content or "", end="", flush=True)`;
 
-const nodejsCode = `import OpenAI from "openai";
+export const nodejsCode = `import OpenAI from "openai";
 
 const client = new OpenAI({
   baseURL: "${API_BASE}",
@@ -148,7 +149,7 @@ for await (const chunk of stream) {
   process.stdout.write(chunk.choices[0]?.delta?.content ?? "");
 }`;
 
-const cssCode = `/* ===== Chatbot Container ===== */
+export const cssCode = `/* ===== Chatbot Container ===== */
 #chatbot-container, #chatbot-container * { box-sizing: border-box; }
 
 /* Nút mở chatbot - cố định góc dưới phải */
@@ -326,7 +327,7 @@ const cssCode = `/* ===== Chatbot Container ===== */
 .send-btn:hover { transform:translateY(-1px); }
 .send-btn:active { transform:translateY(0); }`;
 
-const htmlCode = `<!-- Dán vào cuối <body>, trước thẻ đóng </body> -->
+export const htmlCode = `<!-- Dán vào cuối <body>, trước thẻ đóng </body> -->
 
 <!-- 1. Thư viện render Markdown (dán vào <head>) -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -346,7 +347,7 @@ const htmlCode = `<!-- Dán vào cuối <body>, trước thẻ đóng </body> --
             </svg>
         </button>
         <button type="button" id="chatbot-close" onclick="closeChatbox()" title="Đóng">×</button>
-        <h3>🤖 Trợ Lý AI</h3>
+        <h3>Trợ Lý AI</h3>
         <p>Hỏi bất cứ điều gì về nghiệp vụ</p>
     </div>
     <div id="chatbot-messages">
@@ -370,7 +371,7 @@ const htmlCode = `<!-- Dán vào cuối <body>, trước thẻ đóng </body> --
     </div>
 </div>`;
 
-const jsVbnet = `<script>
+export const jsVbnet = `<script>
     // === CẤU HÌNH API GỌI TRỰC TIẾP ===
     // API_KEY và LLM_API_URL được ASP.NET tự động đọc từ Web.config khi render trang (.master/.aspx)
     const LLM_API_URL = '<%= ConfigurationManager.AppSettings("Chatbot_ApiUrl") %>';
@@ -518,11 +519,11 @@ const jsVbnet = `<script>
             
             const likeBtn = document.createElement('button');
             likeBtn.className = 'feedback-btn';
-            likeBtn.innerHTML = '👍';
+            likeBtn.textContent = 'Hữu ích';
             
             const dislikeBtn = document.createElement('button');
             dislikeBtn.className = 'feedback-btn';
-            dislikeBtn.innerHTML = '👎';
+            dislikeBtn.textContent = 'Chưa hữu ích';
 
             const currentQuestion = question;
             const currentAnswer = answer;
@@ -530,13 +531,13 @@ const jsVbnet = `<script>
             likeBtn.onclick = (e) => {
                 e.stopPropagation();
                 sendFeedback(currentQuestion, currentAnswer, 'like');
-                feedbackActions.innerHTML = '<span style="font-size: 11px; color: #10b981; font-style: italic;">✓ Đã gửi đánh giá</span>';
+                feedbackActions.innerHTML = '<span style="font-size: 11px; color: #10b981; font-style: italic;">Đã gửi đánh giá</span>';
             };
 
             dislikeBtn.onclick = (e) => {
                 e.stopPropagation();
                 sendFeedback(currentQuestion, currentAnswer, 'dislike');
-                feedbackActions.innerHTML = '<span style="font-size: 11px; color: #10b981; font-style: italic;">✓ Đã gửi đánh giá</span>';
+                feedbackActions.innerHTML = '<span style="font-size: 11px; color: #10b981; font-style: italic;">Đã gửi đánh giá</span>';
             };
 
             feedbackActions.appendChild(likeBtn);
@@ -549,7 +550,7 @@ const jsVbnet = `<script>
             chatContext.history.pop();
             const errMsg = document.createElement('div');
             errMsg.className = 'message bot';
-            errMsg.innerHTML = marked.parse('⚠️ Lỗi kết nối: ' + err.message);
+            errMsg.innerHTML = marked.parse('Lỗi kết nối: ' + err.message);
             chatBox.appendChild(errMsg);
         } finally {
             chatContext.isTyping = false;
@@ -837,7 +838,7 @@ function LivePlayground() {
       const errMessage = error instanceof Error ? error.message : "Không thể kết nối đến API RAG.";
       setMessages((prev) => {
         const list = [...prev];
-        list[assistantIndex] = { role: "assistant", content: `❌ Lỗi: ${errMessage}` };
+        list[assistantIndex] = { role: "assistant", content: `Lỗi: ${errMessage}` };
         return list;
       });
     } finally {
@@ -870,13 +871,15 @@ function LivePlayground() {
                 onChange={(e) => setApiKey(e.target.value)}
                 className="font-mono text-[10px] h-8 pr-8 bg-background border-border"
               />
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
                 onClick={() => setShowKey(!showKey)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 text-muted-foreground hover:text-foreground"
               >
                 {showKey ? <EyeOffIcon className="w-3.5 h-3.5" /> : <EyeIcon className="w-3.5 h-3.5" />}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -915,20 +918,24 @@ function LivePlayground() {
                   </div>
                   {(!isLoading || idx !== messages.length - 1) && m.content !== "" && !m.feedback && (
                     <div className="flex items-center gap-1.5 mt-1 border-t border-border/50 pt-2">
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => handleFeedback(idx, "like")}
-                        className="p-1 rounded transition-colors hover:bg-muted text-muted-foreground"
+                        className="h-6 w-6 rounded text-muted-foreground"
                         title="Thích câu trả lời này"
                       >
                         <ThumbsUpIcon className="w-3.5 h-3.5" />
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => handleFeedback(idx, "dislike")}
-                        className="p-1 rounded transition-colors hover:bg-muted text-muted-foreground"
+                        className="h-6 w-6 rounded text-muted-foreground"
                         title="Không thích câu trả lời này"
                       >
                         <ThumbsDownIcon className="w-3.5 h-3.5" />
-                      </button>
+                      </Button>
                     </div>
                   )}
                   {m.feedback && (
@@ -1171,7 +1178,10 @@ export default function IntegrationGuidePage() {
               <Accordion multiple className="border border-border rounded-xl mt-4 bg-muted/10">
                 <AccordionItem value="playground-source">
                   <AccordionTrigger className="px-4 hover:no-underline font-semibold text-foreground text-xs">
-                    📁 Xem mã nguồn React/TypeScript của Sandbox này
+                    <span className="flex items-center gap-1.5">
+                      <FolderCode className="size-4 text-primary" />
+                      Xem mã nguồn React/TypeScript của Sandbox này
+                    </span>
                   </AccordionTrigger>
                   <AccordionContent className="px-4 pb-4">
                     <p className="mb-2 text-[11px]">Dành cho dự án frontend phát triển bằng React/Next.js có hỗ trợ stream: </p>
@@ -1200,7 +1210,7 @@ export default function IntegrationGuidePage() {
                   "Các thẻ button trong widget HTML đã có thuộc tính type=\"button\" để tránh xung đột submit form WebForms",
                   "Đã upload và vector hóa đầy đủ các tài liệu quy trình nghiệp vụ trên Admin Panel",
                   "F12 → Network kiểm tra request /chat/completions gọi trực tiếp đến API RAG thành công và stream mượt mà",
-                  "Nút Đóng (✕) và Xoay reset (🔄) trên widget hoạt động trơn tru không lỗi",
+                  "Nút Đóng và Xoay reset trên widget hoạt động trơn tru không lỗi",
                 ].map((item, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <CheckCircle2Icon className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />

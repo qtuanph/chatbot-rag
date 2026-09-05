@@ -1,14 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useEffect, useState, useCallback } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Power, TestTube, Key, KeyRound, Trash2, Cpu } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, Power, TestTube, Key, Trash2, Cpu, Bot, Sparkles, Zap } from "lucide-react";
 import { settingsApi, ApiError } from "@/lib/api-client";
 import { AIProviderCreateSchema, AIProviderUpdateSchema, ProviderApiKeyCreateRequestSchema } from "@/lib/schemas";
 import { toast } from "sonner";
@@ -75,6 +87,9 @@ export function ProviderPage({
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);
   const [newKeyValue, setNewKeyValue] = useState("");
 
+  // Delete confirmation state
+  const [deletingProvider, setDeletingProvider] = useState<AIProvider | null>(null);
+
   const [formData, setFormData] = useState<AIProviderCreate>({
     service_type: tab,
     provider_name: "",
@@ -84,19 +99,19 @@ export function ProviderPage({
     api_key: "",
   });
 
-  const loadProviders = async () => {
+  const loadProviders = useCallback(async () => {
     try {
       const data = await settingsApi.listProviders(tab);
       setProviders(data);
     } catch {
       toast.error("Không thể tải danh sách providers");
     }
-  };
+  }, [tab]);
 
   useEffect(() => {
     setLoading(true);
-    loadProviders().finally(() => setLoading(false));
-  }, [tab]);
+    void loadProviders().finally(() => setLoading(false));
+  }, [loadProviders]);
 
   const resetForm = () => {
     setFormData({ service_type: tab, provider_name: "", display_name: "", url: "", model: "", api_key: "" });
@@ -315,11 +330,26 @@ export function ProviderPage({
           ))}
         </div>
       ) : list.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground">
-          <Cpu className="h-10 w-10" />
-          <p className="text-sm">Chưa có provider nào</p>
-          <p className="text-xs">Thêm provider mới để bắt đầu</p>
-        </div>
+        <Empty className="border border-dashed rounded-2xl py-16">
+          <EmptyMedia variant="icon">
+            <Cpu className="h-6 w-6 text-muted-foreground" />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>Chưa có provider {TAB_LABELS[tab]}</EmptyTitle>
+            <EmptyDescription>
+              Thêm nhà cung cấp mới để kết nối mô hình trí tuệ nhân tạo vào hệ thống RAG.
+            </EmptyDescription>
+          </EmptyHeader>
+          <Button
+            className="gap-2 rounded-xl mt-2"
+            onClick={() => {
+              setFormData({ service_type: tab, provider_name: "", display_name: "", url: "", model: "", api_key: "" });
+              setAddDialog(true);
+            }}
+          >
+            <Plus className="h-4 w-4" /> Thêm provider ngay
+          </Button>
+        </Empty>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {list.map((p) => {
@@ -384,7 +414,7 @@ export function ProviderPage({
                       <TestTube className="h-3.5 w-3.5" />
                     </Button>
                     {!p.is_builtin && (
-                      <Button variant="ghost" size="icon-sm" title="Xóa" onClick={() => handleDelete(p)}>
+                      <Button variant="ghost" size="icon-sm" title="Xóa" onClick={() => setDeletingProvider(p)}>
                         <Trash2 className="h-3.5 w-3.5 text-destructive" />
                       </Button>
                     )}
@@ -396,22 +426,27 @@ export function ProviderPage({
         </div>
       )}
 
-      {/* ── Add Sheet ── */}
-      <Sheet open={addDialog} onOpenChange={setAddDialog}>
-        <SheetContent className="w-[90vw] sm:max-w-xl overflow-y-auto" side="right">
-          <SheetHeader>
-            <SheetTitle>Thêm provider — {TAB_LABELS[tab]}</SheetTitle>
-          </SheetHeader>
+      {/* ── Add Dialog ── */}
+      <Dialog open={addDialog} onOpenChange={setAddDialog}>
+        <DialogContent className="w-full sm:max-w-xl max-h-[85vh] flex flex-col p-0">
+          <DialogHeader className="shrink-0 px-6 pt-6 pb-4 border-b">
+            <DialogTitle>Thêm provider — {TAB_LABELS[tab]}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="px-6 py-4">
           <form id="add-form" onSubmit={handleAdd}>
             {tab === "llm" && (
               <div className="mb-4 rounded-xl border bg-muted/30 p-3">
-                <span className="text-xs font-semibold text-muted-foreground block mb-2">⚡ Chọn mẫu kết nối nhanh (Presets):</span>
+                <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-2">
+                  <Zap className="size-3.5 text-amber-500" />
+                  Mẫu kết nối nhanh:
+                </span>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-8 text-xs rounded-lg border-teal-500/30 hover:bg-teal-500/10 text-teal-600 dark:text-teal-400 font-semibold"
+                    className="h-8 text-xs rounded-lg border-teal-500/30 hover:bg-teal-500/10 text-teal-600 dark:text-teal-400 font-semibold gap-1.5"
                     onClick={() => setFormData({
                       service_type: "llm",
                       provider_name: "deepseek",
@@ -421,13 +456,14 @@ export function ProviderPage({
                       api_key: "",
                     })}
                   >
-                    🐳 DeepSeek Official
+                    <Bot className="size-3.5 text-teal-500" />
+                    DeepSeek Official
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-8 text-xs rounded-lg border-red-500/30 hover:bg-red-500/10 text-red-600 dark:text-red-400 font-semibold"
+                    className="h-8 text-xs rounded-lg border-red-500/30 hover:bg-red-500/10 text-red-600 dark:text-red-400 font-semibold gap-1.5"
                     onClick={() => setFormData({
                       service_type: "llm",
                       provider_name: "fpt",
@@ -443,13 +479,14 @@ export function ProviderPage({
                       },
                     })}
                   >
-                    🔴 FPT Cloud LLM
+                    <Cpu className="size-3.5 text-red-500" />
+                    FPT Cloud LLM
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-8 text-xs rounded-lg"
+                    className="h-8 text-xs rounded-lg gap-1.5"
                     onClick={() => setFormData({
                       service_type: "llm",
                       provider_name: "openai",
@@ -459,7 +496,8 @@ export function ProviderPage({
                       api_key: "",
                     })}
                   >
-                    🟢 OpenAI Official
+                    <Sparkles className="size-3.5 text-emerald-500" />
+                    OpenAI Official
                   </Button>
                 </div>
               </div>
@@ -495,198 +533,238 @@ export function ProviderPage({
             </Field>
             </FieldGroup>
           </form>
-          <SheetFooter>
+          </div>
+          </div>
+          <DialogFooter className="shrink-0 px-6 py-4 border-t">
             <Button type="button" variant="outline" onClick={() => setAddDialog(false)}>Hủy</Button>
             <Button type="submit" form="add-form">Thêm</Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* ── Edit Sheet ── */}
-      <Sheet open={!!editDialog} onOpenChange={() => setEditDialog(null)}>
-        <SheetContent className="w-[90vw] sm:max-w-xl overflow-y-auto" side="right">
-          <SheetHeader>
-            <SheetTitle>Sửa — {editDialog?.display_name}</SheetTitle>
-          </SheetHeader>
-          <form id="edit-form" key={editDialog?.id} onSubmit={handleUpdate}>
-            <FieldGroup>
-            <Field>
-              <FieldContent>
-                <FieldLabel htmlFor="edit-url">URL</FieldLabel>
-                <Input id="edit-url" name="edit-url" defaultValue={editDialog?.url} required />
-              </FieldContent>
-            </Field>
-            <Field>
-              <FieldContent>
-                <FieldLabel htmlFor="edit-model">Model</FieldLabel>
-                <Input id="edit-model" name="edit-model" defaultValue={editDialog?.model} />
-              </FieldContent>
-            </Field>
-
-            {tab === "embedding" && (
-              <>
+      {/* ── Edit Dialog ── */}
+      <Dialog open={!!editDialog} onOpenChange={() => setEditDialog(null)}>
+        <DialogContent className="w-full sm:max-w-xl max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="shrink-0 px-6 pt-6 pb-4 border-b">
+            <DialogTitle>Sửa — {editDialog?.display_name}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="px-6 py-4 space-y-4">
+              <form id="edit-form" key={editDialog?.id} onSubmit={handleUpdate}>
+                <FieldGroup>
                 <Field>
                   <FieldContent>
-                    <FieldLabel htmlFor="edit-max_sequence_length">Max Sequence Length (Độ dài chuỗi tối đa - Tokens)</FieldLabel>
-                    <Input
-                      id="edit-max_sequence_length"
-                      name="edit-max_sequence_length"
-                      type="number"
+                    <FieldLabel htmlFor="edit-url">URL</FieldLabel>
+                    <Input id="edit-url" name="edit-url" defaultValue={editDialog?.url} required />
+                  </FieldContent>
+                </Field>
+                <Field>
+                  <FieldContent>
+                    <FieldLabel htmlFor="edit-model">Model</FieldLabel>
+                    <Input id="edit-model" name="edit-model" defaultValue={editDialog?.model} />
+                  </FieldContent>
+                </Field>
+
+                {tab === "embedding" && (
+                  <>
+                    <Field>
+                      <FieldContent>
+                        <FieldLabel htmlFor="edit-max_sequence_length">Max Sequence Length</FieldLabel>
+                        <Input
+                          id="edit-max_sequence_length"
+                          name="edit-max_sequence_length"
+                          type="number"
+                          defaultValue={
+                            (editDialog?.config?.max_sequence_length as number) ||
+                            (editDialog?.config?.context_window as number) ||
+                            (editDialog?.config?.max_length as number) ||
+                            2048
+                          }
+                          placeholder="2048"
+                        />
+                        <FieldDescription>
+                          Giới hạn độ dài ngữ cảnh tối đa của mô hình Embedding (mặc định: 2048 tokens).
+                        </FieldDescription>
+                      </FieldContent>
+                    </Field>
+
+                    <Field>
+                      <FieldContent>
+                        <FieldLabel htmlFor="edit-sparse">Chế độ Sparse Vectors</FieldLabel>
+                        <Select
+                          name="edit-sparse"
+                          defaultValue={(editDialog?.config?.sparse as string) || "auto"}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">Tự động (Auto)</SelectItem>
+                            <SelectItem value="native">Native Sparse</SelectItem>
+                            <SelectItem value="bm25">BM25 Fallback</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FieldDescription>Cấu hình cách tạo sparse vectors cho tìm kiếm Hybrid.</FieldDescription>
+                      </FieldContent>
+                    </Field>
+                  </>
+                )}
+
+                {tab === "llm" && (
+                  <>
+                    <Field>
+                      <FieldContent>
+                        <FieldLabel htmlFor="edit-reasoning">Reasoning Effort</FieldLabel>
+                        <Select
+                          name="edit-reasoning"
+                          defaultValue={(editDialog?.config?.reasoning_effort as string) || "none"}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Mặc định</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="low">Low</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FieldDescription>Điều khiển độ sâu suy luận của LLM.</FieldDescription>
+                      </FieldContent>
+                    </Field>
+
+                    <Field>
+                      <FieldContent>
+                        <FieldLabel htmlFor="edit-thinking">Thinking Mode</FieldLabel>
+                        <Select
+                          name="edit-thinking"
+                          defaultValue={(editDialog?.config?.thinking as { type?: string })?.type || "none"}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Mặc định</SelectItem>
+                            <SelectItem value="enabled">Bật</SelectItem>
+                            <SelectItem value="disabled">Tắt</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FieldDescription>Đính kèm thinking: &#123;&quot;type&quot;: &quot;enabled&quot;&#125; cho mô hình suy luận.</FieldDescription>
+                      </FieldContent>
+                    </Field>
+                  </>
+                )}
+
+                <Field>
+                  <FieldContent>
+                    <FieldLabel htmlFor="edit-custom-json">JSON Cấu hình bổ sung</FieldLabel>
+                    <Textarea
+                      id="edit-custom-json"
+                      name="edit-custom-json"
+                      rows={3}
                       defaultValue={
-                        (editDialog?.config?.max_sequence_length as number) ||
-                        (editDialog?.config?.context_window as number) ||
-                        (editDialog?.config?.max_length as number) ||
-                        2048
+                        editDialog?.config && Object.keys(editDialog.config).length > 0
+                          ? JSON.stringify(editDialog.config, null, 2)
+                          : ""
                       }
-                      placeholder="2048"
+                      placeholder='{"temperature": 0.7}'
+                      className="font-mono text-xs"
                     />
-                    <FieldDescription>
-                      Giới hạn độ dài ngữ cảnh tối đa của mô hình Embedding (Ví dụ: Vietnamese Embedding Model = 2048).
-                    </FieldDescription>
+                    <FieldDescription>Cấu hình JSON bổ sung lưu trực tiếp vào SQLite `ai_providers.config`.</FieldDescription>
                   </FieldContent>
                 </Field>
 
-                <Field>
-                  <FieldContent>
-                    <FieldLabel htmlFor="edit-sparse">Chế độ Sparse Vectors (BM25 / Hybrid)</FieldLabel>
-                    <select
-                      id="edit-sparse"
-                      name="edit-sparse"
-                      defaultValue={(editDialog?.config?.sparse as string) || "auto"}
-                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="auto">Tự động phát hiện (Auto Probe)</option>
-                      <option value="native">Native Sparse (Dùng sparse weights của model)</option>
-                      <option value="bm25">BM25 Fallback (Dùng BM25 của Qdrant)</option>
-                    </select>
-                    <FieldDescription>Cấu hình cách tạo sparse vectors cho tìm kiếm Hybrid.</FieldDescription>
-                  </FieldContent>
-                </Field>
-              </>
-            )}
+                </FieldGroup>
+              </form>
 
-            {tab === "llm" && (
-              <>
-                <Field>
-                  <FieldContent>
-                    <FieldLabel htmlFor="edit-reasoning">Reasoning Effort (Mức độ suy luận)</FieldLabel>
-                    <select
-                      id="edit-reasoning"
-                      name="edit-reasoning"
-                      defaultValue={(editDialog?.config?.reasoning_effort as string) || "none"}
-                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="none">Mặc định (Không đặt)</option>
-                      <option value="high">high (Cao)</option>
-                      <option value="medium">medium (Trung bình)</option>
-                      <option value="low">low (Thấp)</option>
-                    </select>
-                    <FieldDescription>Tham số reasoning_effort điều khiển độ sâu suy luận của LLM.</FieldDescription>
-                  </FieldContent>
-                </Field>
-
-                <Field>
-                  <FieldContent>
-                    <FieldLabel htmlFor="edit-thinking">Chế độ Thinking Mode (extra_body)</FieldLabel>
-                    <select
-                      id="edit-thinking"
-                      name="edit-thinking"
-                      defaultValue={(editDialog?.config?.thinking as { type?: string })?.type || "none"}
-                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="none">Mặc định (Không đặt)</option>
-                      <option value="enabled">enabled (Bật suy luận)</option>
-                      <option value="disabled">disabled (Tắt suy luận)</option>
-                    </select>
-                    <FieldDescription>Tự động đính kèm extra_body: &#123;&quot;thinking&quot;: &#123;&quot;type&quot;: &quot;enabled&quot;&#125;&#125; cho các mô hình suy luận.</FieldDescription>
-                  </FieldContent>
-                </Field>
-              </>
-            )}
-
-            <Field>
-              <FieldContent>
-                <FieldLabel htmlFor="edit-custom-json">JSON Cấu hình tùy chỉnh bổ sung (SQLite config)</FieldLabel>
-                <textarea
-                  id="edit-custom-json"
-                  name="edit-custom-json"
-                  rows={3}
-                  defaultValue={
-                    editDialog?.config && Object.keys(editDialog.config).length > 0
-                      ? JSON.stringify(editDialog.config, null, 2)
-                      : ""
-                  }
-                  placeholder='{"temperature": 0.7}'
-                  className="w-full rounded-lg border border-input bg-background p-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-                <FieldDescription>Cấu hình JSON bổ sung lưu trực tiếp vào SQLite `ai_providers.config`.</FieldDescription>
-              </FieldContent>
-            </Field>
-
-            </FieldGroup>
-          </form>
-          
-          <div className="mt-6 border-t pt-6">
-            <h3 className="mb-4 text-sm font-semibold">Danh sách API Key</h3>
-            <FieldGroup>
-              <Field orientation="horizontal">
-                <FieldContent>
-                  <FieldLabel htmlFor="new-provider-key">Thêm API key mới</FieldLabel>
-                  <Input
-                    id="new-provider-key"
-                    type="password"
-                    placeholder="Nhập API key mới..."
-                    value={newKeyValue}
-                    onChange={(e) => setNewKeyValue(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKey())}
-                    disabled={["llamaparse", "9router"].includes(editDialog?.provider_name || "") && keys.length >= 1}
-                  />
-                  {["llamaparse", "9router"].includes(editDialog?.provider_name || "") && keys.length >= 1 && (
-                    <p className="text-[10px] text-muted-foreground mt-1">Provider này chỉ hỗ trợ tối đa 1 key.</p>
-                  )}
-                </FieldContent>
-                <Button 
-                  onClick={addKey} 
-                  disabled={!newKeyValue.trim() || (["llamaparse", "9router"].includes(editDialog?.provider_name || "") && keys.length >= 1)}
-                >
-                  Thêm
-                </Button>
-              </Field>
-            </FieldGroup>
-            {keys.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                <Key className="mx-auto h-6 w-6 mb-1" />
-                Chưa có API key
-              </p>
-            ) : (
-              <ScrollArea className="max-h-60 mt-4">
-                <div className="flex flex-col gap-2 pr-3">
-                {keys.map((k) => (
-                  <div key={k.id} className="flex items-center justify-between border rounded-md p-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs truncate max-w-[200px]">
-                        {k.key_value.slice(0, 12)}...{k.key_value.slice(-4)}
-                      </span>
-                      {k.failure_count > 0 && (
-                        <Badge variant="destructive" className="text-xs">{k.failure_count} lỗi</Badge>
+              <div className="border-t pt-4 space-y-3">
+                <h3 className="text-sm font-semibold">Danh sách API Key</h3>
+                <FieldGroup>
+                  <Field orientation="horizontal">
+                    <FieldContent>
+                      <FieldLabel htmlFor="new-provider-key">Thêm API key mới</FieldLabel>
+                      <Input
+                        id="new-provider-key"
+                        type="password"
+                        placeholder="Nhập API key mới..."
+                        value={newKeyValue}
+                        onChange={(e) => setNewKeyValue(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addKey())}
+                        disabled={["llamaparse", "9router"].includes(editDialog?.provider_name || "") && keys.length >= 1}
+                      />
+                      {["llamaparse", "9router"].includes(editDialog?.provider_name || "") && keys.length >= 1 && (
+                        <p className="text-[10px] text-muted-foreground mt-1">Provider này chỉ hỗ trợ tối đa 1 key.</p>
                       )}
-                    </div>
-                    <Button variant="ghost" size="icon" onClick={() => deleteKey(k)}>
-                      <Trash2 className="h-3 w-3 text-destructive" />
+                    </FieldContent>
+                    <Button
+                      onClick={addKey}
+                      disabled={!newKeyValue.trim() || (["llamaparse", "9router"].includes(editDialog?.provider_name || "") && keys.length >= 1)}
+                    >
+                      Thêm
                     </Button>
+                  </Field>
+                </FieldGroup>
+                {keys.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    <Key className="mx-auto h-6 w-6 mb-1" />
+                    Chưa có API key
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {keys.map((k) => (
+                      <div key={k.id} className="flex items-center justify-between border rounded-md p-2 text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs truncate max-w-[200px]">
+                            {k.key_value.slice(0, 12)}...{k.key_value.slice(-4)}
+                          </span>
+                          {k.failure_count > 0 && (
+                            <Badge variant="destructive" className="text-xs">{k.failure_count} lỗi</Badge>
+                          )}
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={() => deleteKey(k)}>
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-                </div>
-              </ScrollArea>
-            )}
+                )}
+              </div>
+            </div>
           </div>
-
-          <SheetFooter className="mt-6">
+          <DialogFooter className="shrink-0 px-6 py-4 border-t">
             <Button type="button" variant="outline" onClick={() => setEditDialog(null)}>Hủy</Button>
             <Button type="submit" form="edit-form">Lưu</Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Provider Confirmation Alert Dialog */}
+      <AlertDialog open={!!deletingProvider} onOpenChange={(open) => !open && setDeletingProvider(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận xóa nhà cung cấp AI</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn xóa provider <span className="font-semibold text-foreground">{deletingProvider?.display_name}</span> ({deletingProvider?.provider_name})?
+              Hệ thống sẽ gỡ bỏ cấu hình kết nối và toàn bộ các API Key liên quan của provider này.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: "destructive" })}
+              onClick={async () => {
+                if (deletingProvider) {
+                  const p = deletingProvider;
+                  setDeletingProvider(null);
+                  await handleDelete(p);
+                }
+              }}
+            >
+              Xóa provider
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

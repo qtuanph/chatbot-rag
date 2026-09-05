@@ -18,18 +18,25 @@ class AnalyticsRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    def _usage_scope(self, *, is_platform_admin: bool, user_id: str, tenant_id: str | None):
+    def _usage_scope(self, *, is_platform_admin: bool, user_id: str, tenant_id: str | None, days: int | None = None):
         stmt = select(AiModelUsage)
+        if days:
+            cutoff = utc_now() - timedelta(days=days)
+            stmt = stmt.where(AiModelUsage.created_at >= cutoff)
         if is_platform_admin:
             return stmt
         if tenant_id:
             return stmt.where(AiModelUsage.tenant_id == tenant_id)
         return stmt.where(AiModelUsage.user_id == user_id)
 
-    async def get_totals(self, *, is_platform_admin: bool, user_id: str, tenant_id: str | None) -> dict:
-        scoped = self._usage_scope(is_platform_admin=is_platform_admin, user_id=user_id, tenant_id=tenant_id).subquery()
+    async def get_totals(
+        self, *, is_platform_admin: bool, user_id: str, tenant_id: str | None, days: int | None = None
+    ) -> dict:
+        scoped = self._usage_scope(
+            is_platform_admin=is_platform_admin, user_id=user_id, tenant_id=tenant_id, days=days
+        ).subquery()
         stmt = select(
-            func.count(scoped.c.id).label("messages"),
+            func.coalesce(func.sum(case((scoped.c.model_type == "llm", 1), else_=0)), 0).label("messages"),
             func.coalesce(func.sum(scoped.c.prompt_tokens), 0).label("tokens_in"),
             func.coalesce(func.sum(scoped.c.completion_tokens), 0).label("tokens_out"),
             func.coalesce(func.avg(scoped.c.latency_ms), 0).label("avg_latency_ms"),
@@ -99,7 +106,7 @@ class AnalyticsRepository:
         stmt = (
             select(
                 day_col,
-                func.count(AiModelUsage.id).label("messages"),
+                func.coalesce(func.sum(case((AiModelUsage.model_type == "llm", 1), else_=0)), 0).label("messages"),
                 func.coalesce(func.sum(AiModelUsage.prompt_tokens), 0).label("tokens_in"),
                 func.coalesce(func.sum(AiModelUsage.completion_tokens), 0).label("tokens_out"),
                 func.coalesce(func.avg(AiModelUsage.latency_ms), 0).label("avg_latency_ms"),

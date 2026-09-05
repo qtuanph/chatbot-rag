@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { toast } from "sonner";
 
@@ -9,9 +9,10 @@ import { UpdateProfileRequestSchema } from "@/lib/schemas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { KeyRoundIcon, UserIcon } from "lucide-react";
+import { Label } from "@/components/ui/label";
 
-export function UserSettingsForm() {
+
+export function UserSettingsForm({ noCard = false }: { noCard?: boolean }) {
   const { data: session, update } = useSession();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [username, setUsername] = useState(session?.user?.name || "");
@@ -80,6 +81,69 @@ export function UserSettingsForm() {
     }
   };
 
+  const formContent = (
+    <form onSubmit={onSubmit} className="space-y-6">
+      <div className="space-y-1.5">
+        <Label className="text-xs">Tên đăng nhập mới</Label>
+        <Input
+          placeholder="Nhập tên đăng nhập"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          className="h-8 text-xs max-w-sm"
+        />
+      </div>
+
+      <div className="space-y-3 pt-2 border-t">
+        <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider">
+          Đổi mật khẩu
+        </h4>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Mật khẩu hiện tại</Label>
+            <Input
+              type="password"
+              placeholder="Nhập mật khẩu cũ (nếu muốn đổi)"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="h-8 text-xs"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Mật khẩu mới</Label>
+            <Input
+              type="password"
+              placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="h-8 text-xs"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="pt-2">
+        <Button size="sm" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Đang cập nhật..." : "Lưu thay đổi"}
+        </Button>
+      </div>
+    </form>
+  );
+
+  if (noCard) {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-1">
+          <h3 className="text-sm font-medium">Bảo mật tài khoản</h3>
+          <p className="text-xs text-muted-foreground">
+            Thay đổi tên đăng nhập hoặc mật khẩu cho tài khoản của bạn.
+          </p>
+        </div>
+        {formContent}
+      </div>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -89,48 +153,7 @@ export function UserSettingsForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={onSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-sm font-medium flex items-center gap-2">
-              <UserIcon className="size-4" />
-              Tên đăng nhập mới
-            </label>
-            <Input
-              placeholder="Nhập tên đăng nhập"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 border-t pt-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <KeyRoundIcon className="size-4" />
-                Mật khẩu hiện tại
-              </label>
-              <Input
-                type="password"
-                placeholder="Nhập mật khẩu cũ (nếu muốn đổi)"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Mật khẩu mới</label>
-              <Input
-                type="password"
-                placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Đang cập nhật..." : "Lưu thay đổi"}
-          </Button>
-        </form>
+        {formContent}
       </CardContent>
     </Card>
   );

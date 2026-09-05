@@ -6,14 +6,13 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   Building2Icon, 
   DatabaseIcon, 
   BrainCircuitIcon, 
   ShieldCheckIcon,
   MessageSquareTextIcon,
-  HelpCircleIcon,
   InfoIcon,
   ServerIcon,
   KeyIcon,
@@ -25,12 +24,9 @@ import {
   WorkflowIcon,
   ZapIcon,
   SparklesIcon,
-  FileTextIcon,
   CheckCircle2Icon,
-  BotIcon,
   PlayIcon,
   RotateCcwIcon,
-  ChevronRightIcon,
   ActivityIcon,
 } from "lucide-react";
 
@@ -53,7 +49,7 @@ export default function IntroductionGuidePage() {
     },
     {
       title: "3. Truy xuất Vector & Reranking & Guardrail",
-      desc: "Số hóa câu hỏi thành Vector ➔ Quét Qdrant theo tenant_id ➔ Chấm điểm bằng NVIDIA NIM Reranker. Nếu rỗng tài liệu, kích hoạt Strict Empty Context Guardrail.",
+      desc: "Số hóa câu hỏi thành Vector → Quét Qdrant theo tenant_id → Chấm điểm bằng NVIDIA NIM Reranker. Nếu rỗng tài liệu, kích hoạt Strict Empty Context Guardrail.",
       badge: "Qdrant + NVIDIA Reranker",
       highlight: "rag",
     },
@@ -307,7 +303,7 @@ export default function IntroductionGuidePage() {
                 </Card>
               ) : (
                 <div className="p-6 text-center border border-dashed border-border rounded-xl text-xs text-muted-foreground">
-                  Nhấn nút <strong>"Bắt đầu mô phỏng"</strong> ở góc phải để kích hoạt mô hình trực quan.
+                  Nhấn nút <strong>&quot;Bắt đầu mô phỏng&quot;</strong> ở góc phải để kích hoạt mô hình trực quan.
                 </div>
               )}
             </div>
@@ -400,7 +396,7 @@ export default function IntroductionGuidePage() {
 
                 <div className="border-l-2 border-primary pl-3.5 space-y-1">
                   <h4 className="font-bold text-foreground text-xs">Bước 3: Khóa an toàn AI khi rỗng tài liệu (Strict Empty Context Guardrail)</h4>
-                  <p>Nếu Tenant chưa được gán quyền tài liệu hoặc tìm kiếm rỗng, hệ thống khóa prompt bắt buộc AI trả lời câu chuẩn mực: <em>"Xin lỗi, hiện tại hệ thống chưa tìm thấy dữ liệu hoặc tài liệu chưa được phân quyền truy cập cho Tenant..."</em>. AI tuyệt đối <strong>KHÔNG DÙNG kiến thức chung bên ngoài hay tự suy đoán</strong>.</p>
+                  <p>Nếu Tenant chưa được gán quyền tài liệu hoặc tìm kiếm rỗng, hệ thống khóa prompt bắt buộc AI trả lời câu chuẩn mực: <em>&quot;Xin lỗi, hiện tại hệ thống chưa tìm thấy dữ liệu hoặc tài liệu chưa được phân quyền truy cập cho Tenant...&quot;</em>. AI tuyệt đối <strong>KHÔNG DÙNG kiến thức chung bên ngoài hay tự suy đoán</strong>.</p>
                 </div>
               </div>
             </AccordionContent>

@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
@@ -47,42 +46,51 @@ import type { NavGroup } from "@/components/layout/nav-main";
 // ── 1. Trang Quản trị (Admin System Mode) Navigation ────────────────────────
 const adminNavGroups: NavGroup[] = [
   {
-    label: "Hệ thống & Báo cáo",
+    label: "Báo cáo",
     items: [
-      { title: "Tổng quan Quản trị", href: "/admin", icon: <LayoutDashboardIcon /> },
-      { title: "Thống kê & Quota", href: "/admin/analytics", icon: <BarChart3Icon /> },
-      { title: "Nhật ký Hỏi & Đáp", href: "/admin/conversations", icon: <MessageSquareIcon /> },
+      { title: "Tổng quan", href: "/admin", icon: <LayoutDashboardIcon /> },
+      {
+        title: "Thống kê",
+        href: "/admin/analytics",
+        icon: <BarChart3Icon />,
+        children: [
+          { title: "Tổng quan", href: "/admin/analytics" },
+          { title: "Theo Tenant", href: "/admin/analytics/tenants" },
+          { title: "Xu hướng", href: "/admin/analytics/trends" },
+          { title: "Nhật ký API", href: "/admin/analytics/logs" },
+        ],
+      },
+      { title: "Hội thoại", href: "/admin/conversations", icon: <MessageSquareIcon /> },
     ],
   },
   {
-    label: "Tri thức & Dữ liệu",
+    label: "Dữ liệu",
     items: [
-      { title: "Kho Tài liệu", href: "/admin/documents", icon: <FileTextIcon /> },
-      { title: "Quản lý FAQ", href: "/admin/faqs", icon: <HelpCircle /> },
+      { title: "Tài liệu", href: "/admin/documents", icon: <FileTextIcon /> },
+      { title: "FAQ", href: "/admin/faqs", icon: <HelpCircle /> },
     ],
   },
   {
-    label: "Tổ chức & Phân quyền",
+    label: "Quản trị",
     items: [
-      { title: "Quản lý Công ty (Tenants)", href: "/admin/tenants", icon: <Building2Icon /> },
-      { title: "Quản lý Người dùng", href: "/admin/users", icon: <ShieldUserIcon /> },
+      { title: "Tenants", href: "/admin/tenants", icon: <Building2Icon /> },
+      { title: "Người dùng", href: "/admin/users", icon: <ShieldUserIcon /> },
     ],
   },
   {
-    label: "Cấu hình & Kết nối AI",
+    label: "Hệ thống",
     items: [
       {
-        title: "Kết nối Provider AI",
+        title: "Provider AI",
         href: "/admin/providers/embedding",
         icon: <CpuIcon />,
         children: [
-          { title: "Embedding Engine", href: "/admin/providers/embedding" },
-          { title: "Reranker Model", href: "/admin/providers/reranker" },
-          { title: "LLM Provider", href: "/admin/providers/llm" },
-          { title: "Parser Engine", href: "/admin/providers/parser" },
+          { title: "Embedding", href: "/admin/providers/embedding" },
+          { title: "Reranker", href: "/admin/providers/reranker" },
+          { title: "LLM", href: "/admin/providers/llm" },
+          { title: "Parser", href: "/admin/providers/parser" },
         ],
       },
-      { title: "Cấu hình Hệ thống", href: "/settings", icon: <Settings2Icon /> },
     ],
   },
 ];
@@ -131,23 +139,17 @@ const guidesNavGroups: NavGroup[] = [
 // ── Tenant User Default Navigation ─────────────────────────────────────────
 const tenantUserGroups: NavGroup[] = [
   {
-    label: "Tài liệu & Hỗ trợ",
+    label: "Tài liệu",
     items: [
-      { title: "Hướng dẫn sử dụng", href: "/guides/introduction", icon: <BookOpenIcon /> },
+      { title: "Hướng dẫn", href: "/guides/introduction", icon: <BookOpenIcon /> },
+      { title: "Tài liệu", href: "/documents", icon: <FileTextIcon /> },
     ],
   },
   {
     label: "Workspace",
     items: [
-      { title: "Thống kê Sử dụng", href: "/analytics", icon: <BarChart3Icon /> },
-      { title: "Nhật ký Hỏi & Đáp", href: "/admin/conversations", icon: <MessageSquareIcon /> },
-      { title: "Cài đặt Tenant", href: "/settings", icon: <Settings2Icon /> },
-    ],
-  },
-  {
-    label: "Dữ liệu",
-    items: [
-      { title: "Kho Tài liệu", href: "/documents", icon: <FileTextIcon /> },
+      { title: "Thống kê", href: "/analytics", icon: <BarChart3Icon /> },
+      { title: "Hội thoại", href: "/admin/conversations", icon: <MessageSquareIcon /> },
     ],
   },
 ];
@@ -160,8 +162,8 @@ interface SidebarModeSwitcherProps {
 function SidebarModeSwitcher({ currentMode, onSelectMode }: SidebarModeSwitcherProps) {
   const { isMobile } = useSidebar();
 
-  const activeTitle = currentMode === "admin" ? "Trang quản trị (Tổng quan)" : "Hướng dẫn sử dụng";
-  const activeSubtext = currentMode === "admin" ? "Quản trị Hệ thống RAG" : "Tài liệu & Kỹ thuật Phần mềm";
+  const activeTitle = currentMode === "admin" ? "Quản trị hệ thống" : "Hướng dẫn sử dụng";
+  const activeSubtext = currentMode === "admin" ? "SSE Chatbot Admin" : "Tài liệu kỹ thuật";
   const ActiveIcon = currentMode === "admin" ? LayoutDashboardIcon : BookOpenIcon;
 
   return (
@@ -239,20 +241,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Mode state: 'admin' | 'guides'
-  const [sidebarMode, setSidebarMode] = React.useState<"admin" | "guides">("admin");
-
-  // Auto-detect mode based on current URL path
-  React.useEffect(() => {
-    if (pathname.startsWith("/guides")) {
-      setSidebarMode("guides");
-    } else if (pathname.startsWith("/admin") || pathname.startsWith("/settings")) {
-      setSidebarMode("admin");
-    }
-  }, [pathname]);
+  // Derive sidebar mode directly from URL path without setState in effect
+  const sidebarMode: "admin" | "guides" = pathname.startsWith("/guides") ? "guides" : "admin";
 
   const handleSelectMode = (mode: "admin" | "guides") => {
-    setSidebarMode(mode);
     if (mode === "admin") {
       router.push("/admin");
     } else {

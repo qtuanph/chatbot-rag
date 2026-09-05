@@ -2,7 +2,6 @@
 
 import { LogOutIcon, Settings2Icon, ChevronsUpDownIcon } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 
 import { authApi } from "@/lib/api-client";
 import { formatRoleLabel } from "@/lib/format";
@@ -18,11 +17,12 @@ import {
   DropdownMenuShortcut,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
+import { useSettingsDialog } from "@/components/settings/settings-dialog-context";
 
 export function NavUser() {
   const { data: session } = useSession();
   const { isMobile } = useSidebar();
-  const router = useRouter();
+  const { openSettings } = useSettingsDialog();
 
   if (!session) return null;
 
@@ -70,7 +70,7 @@ export function NavUser() {
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => router.push("/settings")}>
+              <DropdownMenuItem onClick={() => openSettings()}>
                 <Settings2Icon />
                 Cài đặt
                 <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>

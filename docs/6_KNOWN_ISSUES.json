@@ -1,6 +1,6 @@
 {
   "document": "Known Issues & Post-Mortems",
-  "version": "2026-06-04",
+  "version": "2026-09-05",
   "schema": {
     "issue_id": "integer",
     "title": "string",
@@ -146,6 +146,7 @@
       "symptom": "API returns 500 error with `psycopg.errors.UndefinedTable: relation conversations does not exist` when accessing new endpoints.",
       "root_cause": "PostgreSQL init scripts in `/docker-entrypoint-initdb.d/init.sql` only execute during initial container volume creation. Subsequent schema updates added to `ops/init.sql` require explicit DDL execution on pre-existing database volumes.",
       "resolution": "Executed `ops/init.sql` DDL statements using the database superuser `db-admin` (`psql -U db-admin -d ragbot < ops/init.sql`), which created the new `conversations`, `conversation_messages`, `knowledge_bases`, `tenant_knowledge_bases`, `products`, `product_versions`, `tenant_products`, and `escalations` tables.",
+      "lesson_learned": "Database init scripts in container entrypoints only execute once on fresh volumes; schema updates to existing databases must be applied via explicit migrations or DDL executions."
     },
     {
       "issue_id": 18,
@@ -194,6 +195,54 @@
       "root_cause": "`QuotaService` incremented rate limit and request counters prior to invoking LLM inference, but lacked a rollback/refund mechanism in exception handlers.",
       "resolution": "Implemented `refund_llm_call(tenant_id, user_id)` in `QuotaService` that atomically decrements the daily and monthly counters via Redis `DECR`, called inside `try...finally` in `InferenceService` on generation errors.",
       "lesson_learned": "Any quota system with pre-deduction must include an idempotent compensation/refund transaction triggered on downstream service failures."
+    },
+    {
+      "issue_id": 24,
+      "title": "Out-of-Domain Technical Queries Triggered LLM Hallucinations on Weak RAG Matches",
+      "symptom": "When users entered raw SQL stored procedures or coding queries, the LLM attempted to explain them using generic knowledge instead of restricting responses to internal ERP documents.",
+      "root_cause": "The system prompt in `_build_messages()` instructed the LLM to synthesize information when context nodes existed, but lacked an explicit domain boundary rule forbidding out-of-domain answers when chunks loosely matched keywords.",
+      "resolution": "Hardened system prompt with strict enterprise ERP domain identity, explicit prohibition on external knowledge, and a mandatory polite refusal instruction for non-ERP queries.",
+      "lesson_learned": "Enterprise RAG assistants require strict negative domain guardrails in system prompts to prevent out-of-domain answering when vector search returns loose keyword overlaps."
+    },
+    {
+      "issue_id": 25,
+      "title": "ESLint v10 Peer Dependency Mismatch with Next.js eslint-config-next",
+      "symptom": "Building webapp produced three `npm warn ERESOLVE overriding peer dependency` warnings for `eslint-plugin-import`, `eslint-plugin-jsx-a11y`, and `eslint-plugin-react`.",
+      "root_cause": "The `package.json` pinned `eslint@^10.x`, whereas Next.js 16 official `eslint-config-next` plugins explicitly specify peer dependencies in the `^8 || ^9` range.",
+      "resolution": "Pinned `eslint@^9.22.0` (ESLint 9 LTS) in `chatbot-webapp/package.json` to fully satisfy all sub-plugin peer requirements.",
+      "lesson_learned": "Always align linter major versions with Next.js official config ecosystems (ESLint 9 LTS for Next.js 15/16) to avoid peer dependency resolution warnings in container builds."
+    },
+    {
+      "issue_id": 26,
+      "title": "Redundant Requirements Files Fragmentation",
+      "symptom": "Two overlapping test/dev requirement files (`requirements-test.txt` and `requirements-dev.txt`) caused confusion and drift during PyPI dependency upgrades.",
+      "root_cause": "`requirements-test.txt` only contained a subset of `requirements-dev.txt` (`pytest`, `pytest-asyncio`, `deepeval`), duplicating definitions.",
+      "resolution": "Consolidated all testing, security scanning, and formatting dependencies into `requirements-dev.txt`, removed `requirements-test.txt`, and updated `README.md` to reference `requirements-dev.txt`.",
+      "lesson_learned": "Maintain a clean two-tier requirement structure: `requirements.txt` strictly for production runtime images, and `requirements-dev.txt` for development, evaluation, and CI/CD."
+    },
+    {
+      "issue_id": 27,
+      "title": "Flex Container Missing min-h-0 Prevented Overflow Scrolling in Modal",
+      "symptom": "Inside TenantDetailDialog, the form content did not show a scrollbar and the bottom portion (CORS input and submit button) was clipped outside the modal viewport.",
+      "root_cause": "In CSS Flexbox, flex items default to `min-height: auto`. The right-side flex column lacked `min-h-0`, causing the container to expand to fit its children rather than respecting the modal's fixed height and triggering `overflow-y-auto`.",
+      "resolution": "Added `min-h-0 overflow-y-auto` to the content container, ensuring overflow is properly detected and scrolled smoothly.",
+      "lesson_learned": "Always set `min-h-0` on flex column parents containing scrollable children in fixed-height dialogs."
+    },
+    {
+      "issue_id": 28,
+      "title": "Low-Contrast text-muted-foreground in Inverted TooltipContent",
+      "symptom": "In TenantManager DataTable, secondary text inside TooltipContent appeared dark gray on black, rendering it virtually unreadable in light mode.",
+      "root_cause": "Shadcn's TooltipContent renders with `bg-foreground text-background` (dark pill in light mode). Using `text-muted-foreground` inside it resolved to dark gray (`hsl(240 3.8% 46.1%)`), resulting in near-zero contrast.",
+      "resolution": "Styled nested tooltip text with high-contrast text (`text-white`, `text-zinc-300`, or `opacity-80`) instead of `text-muted-foreground`.",
+      "lesson_learned": "Inverted tooltips must never use theme-dependent muted foreground classes intended for light card backgrounds."
+    },
+    {
+      "issue_id": 29,
+      "title": "Analytics Total Messages Inflated by Embedding and Reranker Inferences",
+      "symptom": "The 'Lượt hỏi' (Total Messages) metric on the Analytics dashboard reported numbers 10x-20x higher than actual user chat completions.",
+      "root_cause": "The query in `AnalyticsRepository.get_totals()` used `func.count(scoped.c.id)`, counting every row in `ai_model_usage` including internal embedding generation and reranking calls.",
+      "resolution": "Refactored the aggregation to `func.coalesce(func.sum(case((scoped.c.model_type == 'llm', 1), else_=0)), 0)`, strictly counting LLM completion turns.",
+      "lesson_learned": "In multi-model telemetry databases, always filter or partition aggregations by `model_type` when reporting user-facing interaction metrics."
     }
   ]
 }

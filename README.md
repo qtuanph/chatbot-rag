@@ -71,7 +71,7 @@ Install testing dependencies and execute the evaluation CLI:
 
 ```bash
 cd chatbot-api
-pip install -r requirements-test.txt
+pip install -r requirements-dev.txt
 
 # Run DeepEval across representative multi-domain sample (top_k=5):
 .venv\Scripts\python.exe tests/eval_deepeval/run_deepeval.py --diverse --top_k 5
