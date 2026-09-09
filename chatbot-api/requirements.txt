@@ -10,11 +10,11 @@ sqlalchemy==2.0.52
 psycopg[binary]==3.3.5
 redis==8.1.0
 celery==5.6.3
-boto3==1.43.87
+boto3==1.43.89
 httpx==0.28.1
 PyJWT==2.13.0
 bcrypt==5.0.0
-docling==2.124.0
+docling==2.126.0
 qdrant-client==1.19.0
 fastembed==0.8.0
 nh3==0.3.7
