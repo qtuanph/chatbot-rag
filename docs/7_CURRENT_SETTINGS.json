@@ -152,7 +152,7 @@
     "node_runtime": "Node 24 (node:24-alpine)",
     "linter": "ESLint v9.22.0 (LTS alignment with Next.js official plugins)",
     "auth": "next-auth v5.0.0-beta.32 (Auth.js v5 with HttpOnly Session Cookies)",
-    "ui_components": "@base-ui/react v1.7.0 + Tailwind CSS v4.3.3 + Shadcn UI + ReUI Stepper (base-luma style)",
+    "ui_components": "@base-ui/react v1.8.0 + Tailwind CSS v4.3.3 + Shadcn UI v4.21.0 + ReUI Stepper (base-luma style)",
     "theme_engine": "next-themes with ThemeProvider (System / Dark / Light mode switching)",
     "iconography": "100% Lucide React icons (strictly zero emoji in UI labels and zero raw SVG)",
     "dialog_patterns": "2-column ChatGPT-style SettingsDialog (global shortcut Cmd+, / Ctrl+,) and TenantDetailDialog (General, AI Prompt, API Keys, Admins)",
