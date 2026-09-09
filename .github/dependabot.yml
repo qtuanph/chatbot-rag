@@ -6,7 +6,7 @@ updates:
       interval: "monthly"
       time: "03:00"
       timezone: "Asia/Ho_Chi_Minh"
-    open-pull-requests-limit: 20
+    open-pull-requests-limit: 50
     groups:
       all-python-dependencies:
         patterns:
@@ -20,10 +20,11 @@ updates:
       interval: "monthly"
       time: "03:15"
       timezone: "Asia/Ho_Chi_Minh"
-    open-pull-requests-limit: 20
+    open-pull-requests-limit: 50
     groups:
       all-webapp-dependencies:
         patterns:
           - "*"
     labels:
       - "dependencies"
+      - "devDependencies"
