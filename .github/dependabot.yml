@@ -33,3 +33,59 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      time: "03:30"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 10
+    groups:
+      all-root-dependencies:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "docker"
+    directory: "/chatbot-api"
+    schedule:
+      interval: "monthly"
+      time: "03:45"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 10
+    groups:
+      all-api-docker-images:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "docker"
+    directory: "/chatbot-webapp"
+    schedule:
+      interval: "monthly"
+      time: "03:45"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 10
+    groups:
+      all-webapp-docker-images:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "docker-compose"
+    directory: "/chatbot-api"
+    schedule:
+      interval: "monthly"
+      time: "04:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 10
+    groups:
+      all-compose-images:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"

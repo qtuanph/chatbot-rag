@@ -1,7 +1,7 @@
 {
   "document": {
     "id": "7_CURRENT_SETTINGS",
-    "version": "2026-09-09",
+    "version": "2026-09-22",
     "purpose": "Snapshot cấu hình hiện tại — Release Enterprise RAG & ERP AI Assistant."
   },
   "architecture": {
@@ -127,7 +127,7 @@
     "cache_hit_tracking": true
   },
   "deployment": {
-    "reverse_proxy": "Traefik v3.7.10",
+    "reverse_proxy": "Traefik v3.7.11",
     "webapp_proxy_base": "/api/bep",
     "api_internal_url": "http://api:8000/v1",
     "ai_proxy_service": "ai-proxy",
@@ -148,7 +148,7 @@
   },
 
   "frontend": {
-    "framework": "Next.js v16.3.4 (React 19.2.8 + Turbopack enabled)",
+    "framework": "Next.js v16.3.5 (React 19.3.0 + Turbopack enabled)",
     "node_runtime": "Node 24 (node:24-alpine)",
     "linter": "ESLint v9.22.0 (LTS alignment with Next.js official plugins)",
     "auth": "next-auth v5.0.0-beta.32 (Auth.js v5 with HttpOnly Session Cookies)",
@@ -158,7 +158,7 @@
     "dialog_patterns": "2-column ChatGPT-style SettingsDialog (global shortcut Cmd+, / Ctrl+,) and TenantDetailDialog (General, AI Prompt, API Keys, Admins)",
     "stepper_patterns": "ReUI Stepper compound primitives for 3-step Tenant Creation Wizard with step validation",
     "table_patterns": "TanStack Table with compact clipped cells, max-w truncation and high-contrast TooltipContent",
-    "validation_library": "zod v4.5.4",
+    "validation_library": "zod v4.6.5",
     "validation_import_path": "zod/v4",
     "schema_source_of_truth": "lib/schemas.ts",
     "type_re_export": "types/api.ts",

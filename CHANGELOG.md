@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Changed — Annual Maintenance (2026-09-22)
+- **Backend dependencies** (`chatbot-api/requirements.txt`): `llama-index-core` 0.14.24 → 0.14.25, `uvicorn` 0.52.4 → 0.53.0, `sqlalchemy` 2.0.52 → 2.0.54, `psycopg` 3.3.5 → 3.3.6, `boto3` 1.43.89 → 1.43.99, `PyJWT` 2.13.0 → 2.14.0, `docling` 2.126.0 → 2.129.0, `qdrant-client` 1.19.0 → 1.19.1; dev: `deepeval` 4.2.1 → 4.2.3. Verified with `black`, `flake8` and `pytest tests/unit` (10 passed).
+- **Frontend dependencies** (`chatbot-webapp/package.json`): `next` 16.3.4 → 16.3.5, `react`/`react-dom` 19.2.8 → 19.3.0, `zod` 4.5.4 → 4.6.5, `lucide-react` 1.41.0 → 1.47.0, `tailwind-merge` 3.6.0 → 3.7.0, `react-resizable-panels` 4.12.3 → 4.13.2, `eslint-config-next` 16.3.4 → 16.3.5, `@types/node` 26.4.1 → 26.6.2, `@types/react` 19.2.18 → 19.3.0, `@types/react-dom` 19.2.7 → 19.3.0; root `shadcn` 4.14.0 → 4.21.0. Verified with `tsc --noEmit`, `eslint` and `next build`. `npm audit` reports 0 vulnerabilities in webapp and root.
+- **Held back intentionally**: `eslint` stays on v9 (v10 is semver-major, ignored in dependabot config), `typescript` stays on v6.0.3 (v7 breaks `typescript-eslint` v8 peer range `>=4.8.4 <6.1.0`), `next-auth` stays on `5.0.0-beta.32` (no newer beta; `latest` tag still points to v4), Python stays on 3.13 (dependency compatibility).
+- **Docker images** (`chatbot-api/docker-compose.yml`): `postgres` 18.4 → 18.6, `redis` 8.10.0 → 8.10.1, `traefik` v3.7.10 → v3.7.11.
+- **Dependabot coverage fix** (`.github/dependabot.yml`): added missing `npm` entry for repo root (root `package.json`/`package-lock.json` were unmonitored), `docker` entries for both Dockerfiles, and `docker-compose` entry for `chatbot-api` (GA since Feb 2025, matches `docker-compose.yml`).
+
 ## [v1.0.0] - 2026-08-11
 
 ### Added & Redesigned
