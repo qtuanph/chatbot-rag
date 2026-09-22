@@ -63,9 +63,10 @@ updates:
       - "dependencies"
     ignore:
       # Python 3.13 is pinned deliberately (dependency compatibility);
-      # review major Python bumps manually during annual maintenance.
+      # review Python bumps manually during annual maintenance.
+      # NOTE: 3.13 -> 3.14 counts as semver-MINOR for Docker tags.
       - dependency-name: "python"
-        update-types: ["version-update:semver-major"]
+        update-types: ["version-update:semver-minor"]
 
   - package-ecosystem: "docker"
     directory: "/chatbot-webapp"
