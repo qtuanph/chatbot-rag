@@ -3,7 +3,7 @@
 # Test & RAG Evaluation dependencies (do not install in runtime Docker image)
 pytest==9.1.1
 pytest-asyncio==1.4.0
-deepeval==4.2.3
+deepeval==4.2.6
 
 # Security scanning
 bandit==1.9.4
@@ -15,4 +15,4 @@ mypy==2.3.1
 black==26.5.1
 
 # Linting
-flake8==7.3.0
+flake8==7.4.1
