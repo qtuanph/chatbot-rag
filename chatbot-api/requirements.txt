@@ -14,7 +14,7 @@ boto3==1.43.99
 httpx==0.28.1
 PyJWT==2.14.0
 bcrypt==5.0.0
-docling==2.129.0
+docling==2.132.0
 qdrant-client==1.19.1
 fastembed==0.8.0
 nh3==0.3.7
