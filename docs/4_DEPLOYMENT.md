@@ -21,8 +21,8 @@ Tài liệu deployment bám theo `docker-compose.yml` hiện tại.
 
 - `qdrant` ở `qdrant/qdrant:latest`
 - `postgres` pin ở `postgres:18.4-trixie`
-- `redis` pin ở `redis:8.10.0-trixie`
-- `traefik` pin ở `traefik:v3.7.10`
+- `redis` pin ở `redis:8.10.3-trixie`
+- `traefik` pin ở `traefik:v3.7.16`
 - embedding mặc định: Docker Model Runner (Qwen3-Embedding / BGE-M3)
 - reranker mặc định: NVIDIA NIM
 - local reranker chỉ là fallback

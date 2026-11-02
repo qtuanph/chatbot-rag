@@ -1,18 +1,18 @@
 -r requirements.txt
 
 # Test & RAG Evaluation dependencies (do not install in runtime Docker image)
-pytest==9.1.1
-pytest-asyncio==1.4.0
-deepeval==4.2.3
+pytest==9.2.0
+pytest-asyncio==1.4.1
+deepeval==4.3.2
 
 # Security scanning
 bandit==1.9.4
 
 # Static type checking
-mypy==2.3.1
+mypy==2.4.1
 
 # Code formatting
-black==26.5.1
+black==26.10.1
 
 # Linting
-flake8==7.3.0
+flake8==7.4.1
